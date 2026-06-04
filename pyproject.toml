@@ -1,0 +1,13 @@
+[project]
+name = "cogitator"
+version = "0.0.0"
+description = "Cogitator — a local, system-agnostic AI game master for tabletop RPGs (Bot B: the DM brain)."
+requires-python = ">=3.12"
+# Dependencies are added per-phase with `uv add` (see the model/effort + phase plan in
+# roadmap.md). Phase 0 needs none — it is install + config + smoke test only.
+# New heavy deps must be justified in the commit/PR and architecture.md §3 (golden rule #9).
+dependencies = []
+
+[tool.uv]
+# This is an application, not an installable library — no build backend needed.
+package = false

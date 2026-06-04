@@ -1,0 +1,3 @@
+# System profiles: data/systems/<system>.json (e.g. imperium_maledictum.json).
+# Declarative per-ruleset mechanics (dice, resolution, target, degrees, damage, char schema).
+# Hand-written for IM in Phase 8; proposed from a rulebook PDF in Phase 10. Generated — untracked.
