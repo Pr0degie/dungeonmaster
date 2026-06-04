@@ -4,9 +4,9 @@ Living status document. A phase counts as done only when its **verification gate
 met and the proof is recorded here.
 
 ## Current focus
-Phase 3 — VAD segmentation, **code complete, live gate pending**. Phases 0–2 are done (gates
-met). The resample + silero-vad pipeline is implemented and offline-verified; the gate ("one
-spoken sentence = one utterance, start/end correct") is a **live mic test only Tobi can run**.
+Phase 4 — STT (faster-whisper). **Phases 0–3 are complete** (gates met). The voice pipeline
+delivers clean per-user 16 kHz mono utterances (resample + silero-vad, ADR 007; live-confirmed
+2026-06-04). Next: turn each utterance into German text.
 
 ## Last session
 **Phase 3 — VAD segmentation — implemented (gate pending a live test).** Decided the stack at
@@ -26,14 +26,13 @@ segmenter state machine tested with a scripted fake model (clean cut=1, blip dro
 receive + DAVE/E2EE decrypt (ADR 006), Bot B→DMbot rename.
 
 ## Next concrete step
-**Run the Phase 3 live gate** (only Tobi can — needs mic + both bots in a voice channel):
-`!join`, speak a few German sentences, then check the logged `🗣 utterance #…` lines and the
-`dm_utt_*.wav` files in the temp dir — confirm **one sentence ≈ one utterance**, start/end not
-clipped, no Bot-A self-segmentation. If splits/clips are off, tune the constants at the top of
-`voice/vad.py` (`_MIN_SILENCE_MS` / `_MIN_SPEECH_MS` / `_SPEECH_PAD_MS` / thresholds). Then fill
-the Phase 3 `VERIFY EVIDENCE` and move to **Phase 4 — STT (faster-whisper)** (read
-`architecture.md` §4; Windows: cuDNN/cuBLAS DLLs on `PATH`). Recommended level: **opusplan /
-high**.
+Begin **Phase 4 — STT (faster-whisper)**: feed each cut utterance (16 kHz mono s16le, the bytes
+`VadSink` already produces) to faster-whisper and log the German transcript. New module
+`dmbot/stt/` wrapping faster-whisper; replace the WAV-dump in `VoiceReceiveCog._on_utterance`
+with a transcribe-and-buffer step. **Windows:** the cuDNN/cuBLAS DLLs must be on `PATH` or GPU
+inference won't start (SETUP B3) — `docs/SETUP.md`; this is a Tobi step. **Gate:** a spoken
+German sentence appears correctly as text in the log. Read `architecture.md` §4 first;
+recommended level (`roadmap.md`): **opusplan / high** (set `/model` + `/effort` on the dial).
 
 ---
 
@@ -132,10 +131,10 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   `discord.py 2.7.1`, `discord-ext-voice-recv 0.5.2a179`, `davey 0.1.4`, Opus bundled DLL.
   Remaining `lost being flushed` jitter (sender voice-activation) is benign, quieted in logs.
 
-### 🔄 Phase 3 — VAD segmentation  (code complete, live gate pending)
+### ✅ Phase 3 — VAD segmentation
 - [x] Resample 48k/stereo → 16k/mono (`voice/resample.py`, `soxr.ResampleStream` per user)
 - [x] silero-vad → cut utterances (`voice/vad.py`; onnx via onnxruntime, ADR 007; wired as `VadSink`)
-- [ ] **Live gate** — Tobi runs `!join` + speaks, confirms one sentence ≈ one utterance
+- [x] **Live gate met** — clean per-speaker utterances; Tobi confirmed the WAVs sound right
 - **Gate:** one sentence = one utterance, start/end correct.
 - **VERIFY EVIDENCE:** _Offline (2026-06-04):_ resample ratio ≈ 16000 samples/s; pure silence →
   **0 utterances** (no false trigger); `UtteranceSegmenter` state machine verified with a
@@ -147,8 +146,12 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   512 scored prob≈0 on clear speech (0/1874 frames), fixed → 1451/1874 voiced; (2) **voice
   activation** means clients send no RTP while silent, so utterances never closed — fixed by
   wrapping in `SilenceGeneratorSink` (injects silence; lock-guarded sink). After the fixes a
-  live utterance + WAV was produced. _Final gate still open_ — needs one clean confirming run
-  (one sentence ≈ one utterance, start/end correct) on the fixed build (see Next concrete step).
+  live utterance + WAV was produced. _Final gate met (2026-06-04):_ clean run (bot start
+  18:56:56) segmented **both** speakers per sentence — Pr0degie 9 utterances (0.99–5.06 s),
+  Timo 4 (1.06–8.51 s), each dumped as a 16 kHz mono WAV; **Tobi listened to the WAVs and
+  confirmed they sound clean/correct**. Utterances also close now while a speaker is silent
+  (silence injection), so separate sentences no longer merge. Stack live: `discord.py 2.7.1`,
+  `discord-ext-voice-recv 0.5.2a179`, `onnxruntime 1.26.0`, `soxr 1.1.0`.
 
 ### ⬜ Phase 4 — STT (faster-whisper)
 - [ ] faster-whisper wrapper, transcript log
@@ -217,6 +220,16 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   `gemma3:12b` is the atmospheric runner-up — worth re-checking against nemo in Phase 5 with the
   real persona prompt if the tone needs more richness.
 - **TTS voice:** `de_DE-thorsten-medium` vs. `thorsten_emotional` — listen. _(Phase 6.)_
+
+**Loose ends / housekeeping (from the Phase 3 session):**
+- **Intermittent voice-connect `TimeoutError` on `!join`** (seen once, ~18:45): the discord.py
+  voice handshake occasionally times out; the command errored but a retry joined fine. Benign
+  so far — watch it; if it recurs, look at the connect timeout / a clean error message in
+  `voice/commands.py` rather than the raw traceback.
+- Logging now also writes `logs/dmbot.log` (UTF-8, gitignored) — handy for inspecting a run
+  after the window closes.
+- Continuous silence injection runs silero on every silent user ~50×/s (cheap, ~1–2 %/core
+  each); fine for a small table, revisit only if many idle users ever cost CPU.
 
 **Loose ends / housekeeping (from the Phase 2 session):**
 - `docs/pipeline-diagram.{md,mmd,png}` are present but **untracked** — deliberately left out of
