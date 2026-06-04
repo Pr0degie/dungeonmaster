@@ -62,6 +62,8 @@ class DMBot(commands.Bot):
                 whisper_device=self._config.whisper_device,
                 whisper_compute=self._config.whisper_compute,
                 dump_utterances=self._config.dump_utterances,
+                ollama_host=self._config.ollama_host,
+                ollama_model=self._config.ollama_model,
             )
         )
 

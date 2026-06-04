@@ -49,6 +49,20 @@ class _ConsoleFormatter(logging.Formatter):
         ts = time.strftime("%H:%M:%S", time.localtime(record.created))
         msg = record.getMessage()
 
+        if msg.startswith("🎭"):  # the DM's answer — prominent, bright, hanging indent
+            text = msg.split(" ", 1)[1] if " " in msg else msg
+            label = "Spielleiter"[:_NAME_W]
+            prefix = f"{ts}{_GAP}{label:>{_NAME_W}}{_GAP}"
+            indent = len(prefix)
+            cols = shutil.get_terminal_size((100, 24)).columns
+            lines = textwrap.wrap(text, width=max(20, cols - indent - 1)) or [""]
+            head = (
+                f"{_DIM}{_GREEN}{ts}{_RESET}{_GAP}"
+                f"{_BGREEN}{_BOLD}{label:>{_NAME_W}}{_RESET}{_GAP}{_BGREEN}{_BOLD}{lines[0]}{_RESET}"
+            )
+            rest = [f"{' ' * indent}{_BGREEN}{ln}{_RESET}" for ln in lines[1:]]
+            return "\n".join([head, *rest])
+
         if msg.startswith("📝"):  # "📝 Name | clip·ms | text" → a chat line, hanging indent
             body = msg.split(" ", 1)[1] if " " in msg else msg
             name, metric, text = (body.split(" | ", 2) + ["", ""])[:3]

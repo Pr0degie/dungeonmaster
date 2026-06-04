@@ -20,6 +20,8 @@ from discord.ext import commands, voice_recv
 
 from .recv import VadSink
 from ..stt import Transcriber
+from ..llm.client import OllamaClient
+from ..orchestrator import DMBrain
 
 log = logging.getLogger(__name__)
 
@@ -51,11 +53,15 @@ class VoiceReceiveCog(commands.Cog):
         whisper_device: str = "cuda",
         whisper_compute: str = "float16",
         dump_utterances: bool = False,
+        ollama_host: str = "http://127.0.0.1:11434",
+        ollama_model: str = "mistral-nemo",
     ) -> None:
         self.bot = bot
         self._bot_a_user_id = bot_a_user_id
         self._dump_utterances = dump_utterances
         self._utterance_counts: dict[int, int] = {}
+        self._active_vc_id: int | None = None  # the voice channel we buffer/answer for
+        self._brain = DMBrain(OllamaClient(ollama_host, ollama_model))
         # STT worker (Phase 4): loads faster-whisper in its own thread, transcribes off the
         # audio path. Started here so a broken cuDNN surfaces at boot, not on first utterance.
         self._transcriber = Transcriber(
@@ -91,9 +97,36 @@ class VoiceReceiveCog(commands.Cog):
         # "📝 name | clip·ms | text" — the console formatter renders the metric dim inline;
         # the file log keeps the same one-line, greppable form.
         log.info("📝 %s | %.1fs·%dms | %s", name, clip_s, round(latency_ms), text)
+        # Buffer the line for the next DM turn (triggered by !dm). Runs on the STT thread;
+        # the brain's buffer is lock-guarded.
+        if self._active_vc_id is not None:
+            self._brain.add_player_line(self._active_vc_id, name, text)
 
     async def cog_unload(self) -> None:
         self._transcriber.stop()
+        await self._brain.aclose()
+
+    @commands.command(name="dm")
+    async def dm(self, ctx: commands.Context, *, text: str = "") -> None:
+        """Run a DM turn. `!dm` answers the buffered voice lines; `!dm <Text>` answers text."""
+        channel_id = self._active_vc_id if self._active_vc_id is not None else ctx.channel.id
+        if not text and self._brain.pending_count(channel_id) == 0:
+            await ctx.send(
+                "Nichts zu beantworten — sprecht etwas (nach `!j`) oder nutzt `!dm <Text>`."
+            )
+            return
+        try:
+            async with ctx.typing():
+                answer = await self._brain.respond(channel_id, extra_text=text or None)
+        except Exception:
+            log.exception("DM turn failed")
+            await ctx.send("(Der Spielleiter schweigt — Fehler bei der Antwort, siehe Log.)")
+            return
+        if not answer:
+            await ctx.send("(Nichts zu beantworten.)")
+            return
+        log.info("🎭 %s", answer)  # rendered prominently in the console
+        await ctx.send(answer)
 
     @commands.command(name="join", aliases=["j"])
     async def join(self, ctx: commands.Context) -> None:
@@ -121,14 +154,15 @@ class VoiceReceiveCog(commands.Cog):
         )
         sink = voice_recv.SilenceGeneratorSink(vad_sink)
         vc.listen(sink, after=self._on_listen_done)
+        self._active_vc_id = channel.id  # buffer transcripts + answer for this channel
 
         log.info(
             "joined voice '%s' (id=%s) and started VAD pipeline (16k mono + silero)",
             channel.name, channel.id,
         )
         await ctx.send(
-            f"Beigetreten: **{channel.name}** — höre zu, VAD segmentiert Utterances "
-            f"(WAVs im Temp-Ordner). (Opus geladen: {discord.opus.is_loaded()})"
+            f"Beigetreten: **{channel.name}** — ich höre zu. Sprecht, dann `!dm` für die "
+            f"Antwort der Spielleitung (oder `!dm <Text>`). (Opus: {discord.opus.is_loaded()})"
         )
 
     @commands.command(name="leave")
@@ -141,6 +175,7 @@ class VoiceReceiveCog(commands.Cog):
         if isinstance(vc, voice_recv.VoiceRecvClient) and vc.is_listening():
             vc.stop_listening()
         await vc.disconnect()
+        self._active_vc_id = None
         await ctx.send("Voice-Channel verlassen.")
 
     @commands.command(name="vstatus")

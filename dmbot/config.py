@@ -19,6 +19,7 @@ class Config:
 
     discord_token: str
     ollama_host: str
+    ollama_model: str
     bridge_host: str
     bridge_port: int
     bot_a_user_id: int | None
@@ -49,6 +50,7 @@ class Config:
         return cls(
             discord_token=token,
             ollama_host=os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").strip(),
+            ollama_model=os.environ.get("OLLAMA_MODEL", "mistral-nemo").strip(),
             bridge_host=os.environ.get("DM_BRIDGE_HOST", "127.0.0.1").strip(),
             bridge_port=int(os.environ.get("DM_BRIDGE_PORT", "8765")),
             bot_a_user_id=int(bot_a_raw) if bot_a_raw else None,
