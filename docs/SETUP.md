@@ -57,14 +57,12 @@ Runtime is **Windows** (see decision log D16). Check the items off.
 - Tunable via env (no code change): `WHISPER_MODEL` (default `small`), `WHISPER_DEVICE`
   (`cuda`), `WHISPER_COMPUTE` (`float16`). Bump to `medium` if German accuracy needs it.
 
-### B4 — Discord (two bots)
-- [ ] **DMbot** new in the Discord Developer Portal: Application → Bot → copy the **token**.
-- [ ] **Bot A** (music bot) already exists — keep the token handy.
-- [ ] Enable the **Privileged Gateway Intents** as needed (at least the voice/server ones;
-      Message Content only if you read text commands — buttons go through interactions).
-- [ ] **OAuth2 invite** for both bots with permissions: **Connect**, **Speak**,
-      **Send Messages**, **Use Application Commands**.
-- [ ] Add both bots to the **same server** and, for testing, the **same voice channel**.
+### B4 — Discord (two bots) — ✅ DONE (2026-06-04)
+- [x] **DMbot** created, token in `.env`; **Bot A** (music bot) token in its own repo.
+- [x] Privileged intents enabled (Message Content + Server Members + voice); OAuth2 invites with
+      Connect/Speak/Send Messages. Both bots verified live in the **same voice channel** — the
+      full loop (speak → DM answers aloud) worked. **Bot A must run on its `dungeon_master`
+      branch** (the bridge cog `cogs/dm_bridge.py` is only there; `main` → "connection refused").
 
 ### B5 — TTS voice (Piper) — ✅ DONE (2026-06-04)
 - [x] **piper-tts** installed (`uv add piper-tts`, v1.4.2) — installs cleanly on Windows/py3.12
@@ -77,11 +75,10 @@ Runtime is **Windows** (see decision log D16). Check the items off.
   **running with both bots in the same voice channel** so DMbot's `/speak` POST has somewhere to
   play. The agent cannot start Bot A (separate repo/process).
 
-### B6 — Audio/Opus (Windows)
-- [ ] **Opus DLL** ready for discord.py voice (send *and* receive need libopus); possibly
-      `discord.opus.load_opus(...)` in code — the agent does that, but you must have the DLL
-      available.
-- [ ] A working **microphone**, test people in the voice channel.
+### B6 — Audio/Opus (Windows) — ✅ DONE (2026-06-04)
+- [x] **Opus** loads via discord.py's **bundled DLL** (no manual install needed) — confirmed in
+      Phase 2 (`discord.opus.is_loaded()` true; receive decodes PCM).
+- [x] **Microphone** works — live tests with two human speakers transcribed correctly (Phase 3/4).
 
 ### B7 — Game content (PDFs)
 - [ ] **Your first system's rulebook as a PDF** (legally owned) into `data/pdfs/` — for the

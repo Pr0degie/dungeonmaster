@@ -110,13 +110,15 @@ This is the **DMbot repo**. Bot A is a separate repo (the music bot) — not her
 dmbot/          the DM bot
   voice/        recv, resample, VAD
   stt/          faster-whisper wrapper
-  tts/          piper wrapper
+  tts/          piper + xtts (Coqui XTTS v2) wrappers
   llm/          Ollama client, prompt building
   rag/          ingestion + retrieval + profile bootstrap
   memory/       JSON state + recaps
   rules/        engine.py (generic) + profile loader (+ tests)  ← deterministic core
   discord_ui/   buttons, turn-order view
-  orchestrator.py
+  orchestrator.py   the DM brain (history + buffer → LLM)
+  bridge.py     HTTP client to Bot A's /speak
+  logsetup.py   console (green chat) + file logging
 data/           systems/ (profiles), pdfs/ (RAG), sessions/ (state+recaps), vectordb/  ← generated, not hand-edited
 prompts/        dm_core_de.md (generic GM persona) + campaign_tone_de.md (campaign overlay)  — GERMAN, game content
 docs/           SETUP.md, decisions/ (ADRs)
