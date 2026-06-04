@@ -1,6 +1,6 @@
 """Discord commands to drive Phase 2 voice receive.
 
-`!join`  — join the caller's voice channel and start the per-user PCM sink.
+`!join`  — join the caller's voice channel and start the per-user VAD pipeline.
 `!leave` — stop listening, print per-user totals, disconnect.
 `!vstatus` — connection / listening / Opus state.
 
@@ -11,19 +11,58 @@ Foreign voice-recv wiring stays inside ``voice/`` (CLAUDE.md). Bot replies are G
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
+import wave
 
 import discord
 from discord.ext import commands, voice_recv
 
-from .recv import PcmLogSink
+from .recv import VadSink
 
 log = logging.getLogger(__name__)
+
+_SR_16K = 16_000
+
+
+def _write_utterance_wav(name: str, index: int, pcm_s16le_mono_16k: bytes) -> str:
+    """Write one utterance to a 16 kHz mono WAV in the OS temp dir (Phase-3 inspection).
+
+    Uses ``tempfile.gettempdir()`` — never ``/tmp`` (Windows runtime, CLAUDE.md).
+    """
+    safe = "".join(c if c.isalnum() else "_" for c in name) or "user"
+    path = os.path.join(tempfile.gettempdir(), f"dm_utt_{safe}_{index:03d}.wav")
+    with wave.open(path, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)  # s16le
+        wav.setframerate(_SR_16K)
+        wav.writeframes(pcm_s16le_mono_16k)
+    return path
 
 
 class VoiceReceiveCog(commands.Cog):
     def __init__(self, bot: commands.Bot, *, bot_a_user_id: int | None = None) -> None:
         self.bot = bot
         self._bot_a_user_id = bot_a_user_id
+        self._utterance_counts: dict[int, int] = {}
+
+    def _on_utterance(self, user_id: int, name: str, pcm: bytes, duration_s: float) -> None:
+        """Phase-3 gate harness: log each cut utterance and dump it as a WAV to inspect.
+
+        Runs on the voice-recv reader thread — keep it light, never raise. (Phases 4+ will
+        replace this with: hand the PCM to faster-whisper, buffer the transcript.)
+        """
+        n = self._utterance_counts.get(user_id, 0) + 1
+        self._utterance_counts[user_id] = n
+        try:
+            path = _write_utterance_wav(name, n, pcm)
+        except Exception:
+            log.exception("failed to write utterance WAV")
+            path = "<unwritten>"
+        log.info(
+            "🗣 utterance #%d from %s — %.2fs (%d KiB) → %s",
+            n, name, duration_s, len(pcm) // 1024, path,
+        )
 
     @commands.command(name="join", aliases=["j"])
     async def join(self, ctx: commands.Context) -> None:
@@ -41,13 +80,18 @@ class VoiceReceiveCog(commands.Cog):
         vc: voice_recv.VoiceRecvClient = await channel.connect(
             cls=voice_recv.VoiceRecvClient
         )
-        sink = PcmLogSink(bot_a_user_id=self._bot_a_user_id)
+        sink = VadSink(
+            bot_a_user_id=self._bot_a_user_id, on_utterance=self._on_utterance
+        )
         vc.listen(sink, after=self._on_listen_done)
 
-        log.info("joined voice '%s' (id=%s) and started PCM sink", channel.name, channel.id)
+        log.info(
+            "joined voice '%s' (id=%s) and started VAD pipeline (16k mono + silero)",
+            channel.name, channel.id,
+        )
         await ctx.send(
-            f"Beigetreten: **{channel.name}** — höre zu, PCM-Log läuft. "
-            f"(Opus geladen: {discord.opus.is_loaded()})"
+            f"Beigetreten: **{channel.name}** — höre zu, VAD segmentiert Utterances "
+            f"(WAVs im Temp-Ordner). (Opus geladen: {discord.opus.is_loaded()})"
         )
 
     @commands.command(name="leave")

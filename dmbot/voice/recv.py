@@ -3,7 +3,8 @@
 Wraps the foreign ``discord-ext-voice-recv`` library — kept isolated in ``voice/`` per
 CLAUDE.md. The sink receives per-user audio, undoes the DAVE/E2EE layer, decodes it to PCM,
 and logs it; it also drops audio from Bot A (feedback protection **layer 1** —
-non-negotiable, golden rule #4). Resampling to 16 kHz mono and VAD segmentation are Phase 3.
+non-negotiable, golden rule #4). :class:`VadSink` extends it with Phase-3 resampling
+(48 kHz stereo → 16 kHz mono) and silero-vad utterance segmentation.
 
 API checked against the *installed* discord-ext-voice-recv 0.5.2a179 (the sink callback
 signature is version-sensitive — verify before trusting it):
@@ -33,11 +34,15 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
+from typing import Callable
 
 import davey
 import discord
 from discord.ext import voice_recv
 from discord.opus import Decoder, OpusError
+
+from .resample import StereoResampler
+from .vad import SileroVad, UtteranceSegmenter
 
 log = logging.getLogger(__name__)
 
@@ -150,8 +155,15 @@ class PcmLogSink(voice_recv.AudioSink):
             tally.decoded_since_flush += 1
             tally.pcm_bytes += len(pcm)
             self._maybe_flush()
+
+            # Seam for subclasses (Phase 3+): hand the decoded 48 kHz stereo PCM onward.
+            # Runs only for non-filtered users — Bot A never reaches here (layer 1).
+            self._on_pcm(user.id, user.display_name, pcm)
         except Exception:
             log.exception("PcmLogSink.write failed")
+
+    def _on_pcm(self, user_id: int, name: str, pcm: bytes) -> None:
+        """Hook for decoded per-user PCM (48 kHz stereo s16le). No-op in the base sink."""
 
     def _maybe_flush(self) -> None:
         now = time.monotonic()
@@ -182,3 +194,57 @@ class PcmLogSink(voice_recv.AudioSink):
         if self._filtered_ids:
             log.info("sink cleanup — filtered (layer 1): %s", sorted(self._filtered_ids))
         self._decoders.clear()
+
+
+# Callback shape: (user_id, display_name, pcm_s16le_16k_mono, duration_s).
+OnUtterance = Callable[[int, str, bytes, float], None]
+
+
+class VadSink(PcmLogSink):
+    """Phase 3: resample each user's decoded PCM to 16 kHz mono and segment into utterances.
+
+    Inherits the whole receive path from :class:`PcmLogSink` — DAVE/E2EE decrypt, Opus
+    decode, and crucially the **layer-1 Bot A filter** (golden rule #4) — and only adds the
+    per-user resample + silero-vad pipeline via the ``_on_pcm`` seam. One resampler and one
+    segmenter per user; all segmenters share a single loaded silero model.
+    """
+
+    def __init__(
+        self, *, bot_a_user_id: int | None = None, on_utterance: OnUtterance
+    ) -> None:
+        super().__init__(bot_a_user_id=bot_a_user_id)
+        self._vad = SileroVad()  # load the onnx model once, up front
+        self._on_utterance = on_utterance
+        self._resamplers: dict[int, StereoResampler] = {}
+        self._segmenters: dict[int, UtteranceSegmenter] = {}
+
+    def _pipeline_for(
+        self, user_id: int, name: str
+    ) -> tuple[StereoResampler, UtteranceSegmenter]:
+        seg = self._segmenters.get(user_id)
+        if seg is None:
+            self._resamplers[user_id] = StereoResampler()
+            seg = UtteranceSegmenter(
+                self._vad,
+                lambda pcm, dur, uid=user_id, nm=name: self._on_utterance(
+                    uid, nm, pcm, dur
+                ),
+            )
+            self._segmenters[user_id] = seg
+        return self._resamplers[user_id], seg
+
+    def _on_pcm(self, user_id: int, name: str, pcm: bytes) -> None:  # reader thread
+        resampler, seg = self._pipeline_for(user_id, name)
+        mono16 = resampler.feed(pcm)
+        if mono16.size:
+            seg.feed(mono16)
+
+    def cleanup(self) -> None:
+        for seg in self._segmenters.values():
+            try:
+                seg.flush()  # emit any utterance still in progress at disconnect
+            except Exception:
+                log.exception("segmenter flush failed")
+        self._resamplers.clear()
+        self._segmenters.clear()
+        super().cleanup()
