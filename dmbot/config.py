@@ -23,6 +23,9 @@ class Config:
     bridge_port: int
     bot_a_user_id: int | None
     log_level: str
+    whisper_model: str
+    whisper_device: str
+    whisper_compute: str
 
     @classmethod
     def load(cls) -> "Config":
@@ -49,4 +52,9 @@ class Config:
             bridge_port=int(os.environ.get("DM_BRIDGE_PORT", "8765")),
             bot_a_user_id=int(bot_a_raw) if bot_a_raw else None,
             log_level=os.environ.get("LOG_LEVEL", "INFO").strip().upper(),
+            # STT (Phase 4). Default to a GPU float16 small model — good German, fits next to
+            # Ollama on the 4070; override via env if it OOMs or needs more accuracy (medium).
+            whisper_model=os.environ.get("WHISPER_MODEL", "small").strip(),
+            whisper_device=os.environ.get("WHISPER_DEVICE", "cuda").strip(),
+            whisper_compute=os.environ.get("WHISPER_COMPUTE", "float16").strip(),
         )

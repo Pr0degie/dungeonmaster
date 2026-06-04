@@ -19,6 +19,7 @@ import discord
 from discord.ext import commands, voice_recv
 
 from .recv import VadSink
+from ..stt import Transcriber
 
 log = logging.getLogger(__name__)
 
@@ -41,16 +42,31 @@ def _write_utterance_wav(name: str, index: int, pcm_s16le_mono_16k: bytes) -> st
 
 
 class VoiceReceiveCog(commands.Cog):
-    def __init__(self, bot: commands.Bot, *, bot_a_user_id: int | None = None) -> None:
+    def __init__(
+        self,
+        bot: commands.Bot,
+        *,
+        bot_a_user_id: int | None = None,
+        whisper_model: str = "small",
+        whisper_device: str = "cuda",
+        whisper_compute: str = "float16",
+    ) -> None:
         self.bot = bot
         self._bot_a_user_id = bot_a_user_id
         self._utterance_counts: dict[int, int] = {}
+        # STT worker (Phase 4): loads faster-whisper in its own thread, transcribes off the
+        # audio path. Started here so a broken cuDNN surfaces at boot, not on first utterance.
+        self._transcriber = Transcriber(
+            self._on_transcript,
+            model=whisper_model,
+            device=whisper_device,
+            compute_type=whisper_compute,
+        )
+        self._transcriber.start()
 
     def _on_utterance(self, user_id: int, name: str, pcm: bytes, duration_s: float) -> None:
-        """Phase-3 gate harness: log each cut utterance and dump it as a WAV to inspect.
-
-        Runs on the voice-recv reader thread — keep it light, never raise. (Phases 4+ will
-        replace this with: hand the PCM to faster-whisper, buffer the transcript.)
+        """Per cut utterance (voice-recv reader / silence-gen thread): dump a WAV for
+        inspection and hand the PCM to the STT worker. Keep it light, never raise.
         """
         n = self._utterance_counts.get(user_id, 0) + 1
         self._utterance_counts[user_id] = n
@@ -63,6 +79,14 @@ class VoiceReceiveCog(commands.Cog):
             "🗣 utterance #%d from %s — %.2fs (%d KiB) → %s",
             n, name, duration_s, len(pcm) // 1024, path,
         )
+        self._transcriber.submit(name, pcm)  # transcription happens on the STT worker thread
+
+    def _on_transcript(self, name: str, text: str) -> None:
+        """STT result (on the STT worker thread). Phase-4 gate: surface the German text."""
+        log.info("📝 %s: %s", name, text)
+
+    async def cog_unload(self) -> None:
+        self._transcriber.stop()
 
     @commands.command(name="join", aliases=["j"])
     async def join(self, ctx: commands.Context) -> None:

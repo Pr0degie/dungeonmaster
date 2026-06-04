@@ -90,7 +90,13 @@ class DMBot(commands.Bot):
 
     async def setup_hook(self) -> None:
         await self.add_cog(
-            VoiceReceiveCog(self, bot_a_user_id=self._config.bot_a_user_id)
+            VoiceReceiveCog(
+                self,
+                bot_a_user_id=self._config.bot_a_user_id,
+                whisper_model=self._config.whisper_model,
+                whisper_device=self._config.whisper_device,
+                whisper_compute=self._config.whisper_compute,
+            )
         )
 
     async def on_ready(self) -> None:
