@@ -14,50 +14,15 @@ Windows (SETUP B6) so incoming Opus can be decoded to PCM.
 from __future__ import annotations
 
 import logging
-import time
-from pathlib import Path
 
 import discord
 from discord.ext import commands
 
 from .config import Config
+from .logsetup import setup_logging
 from .voice.commands import VoiceReceiveCog
 
 log = logging.getLogger("dmbot")
-
-# Console logs vanish when the bot window is closed; mirror everything to a file so the
-# Phase-3 gate evidence (the "🗣 utterance" lines) survives a restart. Gitignored (*.log).
-_LOG_FILE = Path(__file__).resolve().parent.parent / "logs" / "dmbot.log"
-
-
-def _setup_logging(level: str) -> None:
-    fmt = logging.Formatter(
-        "%(asctime)s %(levelname)-7s %(name)s | %(message)s", datefmt="%H:%M:%S"
-    )
-    console = logging.StreamHandler()
-    console.setFormatter(fmt)
-    handlers: list[logging.Handler] = [console]
-
-    # File handler: UTF-8 so the glyphs/Umlauts don't blow up on Windows cp1252; append, with
-    # a per-run banner so successive runs stay separable in one file.
-    try:
-        _LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        file_h = logging.FileHandler(_LOG_FILE, mode="a", encoding="utf-8")
-        file_h.setFormatter(fmt)
-        handlers.append(file_h)
-    except OSError:
-        log.warning("could not open log file %s — console only", _LOG_FILE, exc_info=True)
-
-    logging.basicConfig(
-        level=getattr(logging, level, logging.INFO), handlers=handlers, force=True
-    )
-    log.info("=== DMbot starting (%s) — logging to %s ===", time.strftime("%Y-%m-%d %H:%M:%S"), _LOG_FILE)
-
-    # discord.py gateway/voice logs are noisy at DEBUG; keep them civil.
-    logging.getLogger("discord").setLevel(logging.WARNING)
-    # voice-recv warns per single lost/late RTP packet ("lost being flushed") — benign jitter
-    # (a sender's voice-activation cutting in/out). Quiet it so it doesn't drown the PCM log.
-    logging.getLogger("discord.ext.voice_recv.opus").setLevel(logging.ERROR)
 
 
 def _ensure_opus() -> None:
@@ -112,7 +77,7 @@ class DMBot(commands.Bot):
 
 def main() -> None:
     config = Config.load()
-    _setup_logging(config.log_level)
+    setup_logging(config.log_level)
     _ensure_opus()
     DMBot(config).run(config.discord_token, log_handler=None)
 

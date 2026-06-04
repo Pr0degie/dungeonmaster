@@ -20,8 +20,8 @@ REM UTF-8 console so the PCM-log glyphs and German text render correctly.
 chcp 65001 >nul
 set PYTHONUTF8=1
 
-REM Window theme: dark glowing green background, bright white text.
-color 2F
+REM Window theme: black background so the colourised transcript output reads well.
+color 0F
 
 where uv >nul 2>nul
 if errorlevel 1 (

@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 # roadmap.md). Phase 0 needs none — it is install + config + smoke test only.
 # New heavy deps must be justified in the commit/PR and architecture.md §3 (golden rule #9).
 dependencies = [
+    "colorama>=0.4.6",
     "discord-ext-voice-recv>=0.5.2a179",
     "discord-py[voice]>=2.7.1",
     "faster-whisper>=1.2.1",

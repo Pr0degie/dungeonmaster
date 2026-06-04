@@ -322,6 +322,7 @@ name = "cogitator"
 version = "0.0.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "colorama" },
     { name = "discord-ext-voice-recv" },
     { name = "discord-py", extra = ["voice"] },
     { name = "faster-whisper" },
@@ -335,6 +336,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "colorama", specifier = ">=0.4.6" },
     { name = "discord-ext-voice-recv", specifier = ">=0.5.2a179" },
     { name = "discord-py", extras = ["voice"], specifier = ">=2.7.1" },
     { name = "faster-whisper", specifier = ">=1.2.1" },
