@@ -4,10 +4,10 @@ Living status document. A phase counts as done only when its **verification gate
 met and the proof is recorded here.
 
 ## Current focus
-Phase 6 — TTS + first full loop ⭐. **Phases 0–5 are complete** (gates met). The brain works:
-voice → text → buffered → `!dm` → `mistral-nemo` with the layered Eisenhorn persona → an
-atmospheric German DM answer (logged + posted to text). Next: speak that answer aloud (Piper →
-WAV → Bot A `/speak`) and measure the full speak-to-answer latency.
+**Phases 0–6 complete — the loop is PLAYABLE** ⭐ (speak → German DM answer, heard aloud, 2026-06-04).
+Two tracks next: (a) **latency tuning** — the DM turn took ~15 s, root-caused to VRAM pressure on
+the 12 GB 4070 (see Phase 6 evidence); mitigations in code, biggest lever is freeing whisper's
+VRAM. (b) **Phase 7** — turn-taking + feedback-protection layer 2 (pause VAD while Bot A speaks).
 
 ## Last session
 **Phase 3 — VAD segmentation — implemented (gate pending a live test).** Decided the stack at
@@ -27,12 +27,14 @@ segmenter state machine tested with a scripted fake model (clean cut=1, blip dro
 receive + DAVE/E2EE decrypt (ADR 006), Bot B→DMbot rename.
 
 ## Next concrete step
-**Run the Phase 6 live full loop** (needs Tobi): start **Bot A** (music bot, `dungeon_master`
-branch) so its `/speak` bridge is up on `127.0.0.1:8765`, get **both** bots into the same voice
-channel, then DMbot `!j` → speak → `!dm` (or `!say <Text>`) and confirm the DM answer is
-**heard aloud**. Watch the `⏱ LLM` / `🔊 TTS` log lines for latency, and confirm no self-hearing
-(layer-1 should keep DMbot from transcribing Bot A). If `/speak` fails, `GET /health` first.
-Then fill the Phase 6 `VERIFY EVIDENCE` → **Phase 7** (turn-taking + VAD-pause layer 2).
+**First: cut the DM-turn latency** (it dominates play feel). After restarting on the new code
+(`num_ctx=8192` + `keep_alive=30m` are in), re-measure `⏱ LLM`. If still slow, free GPU memory:
+set `WHISPER_DEVICE=cpu` (+ `WHISPER_COMPUTE=int8`) **or** `WHISPER_MODEL=small` in `.env` to give
+nemo room (whisper-medium eats ~2.5 GB); check with `ollama ps` (want nemo 100% GPU, fast warm
+gen) and `nvidia-smi`. The clean long-term fix is Ollama on the 5080 via Tailscale (ADR 002).
+**Then Phase 7 — turn-taking + feedback layer 2:** pause the VAD while Bot A speaks (read ADR 003).
+Recommended level: **opusplan / high**. Also still open: DM model/persona tuning (nemo vs gemma3;
+trim the "Was siehst du?" role-inversion), and the STT confidence-filter live check.
 
 _Carry-overs:_ (1) **STT confidence filter** is live but only tested on clean speech — watch a
 live run for whether the "Vielen Dank…" phantoms are gone and nothing real is dropped (tune
@@ -195,20 +197,26 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   and lets the setting drift with sparse context → re-run the Phase-0 **nemo vs gemma3:12b** taste
   test with this persona; consider it in Phase 6 once TTS gives a feel for tone aloud.
 
-### 🔄 Phase 6 — TTS + first full loop ⭐  (code complete, live loop pending Bot A)
+### ✅ Phase 6 — TTS + first full loop ⭐  (PLAYABLE)
 - [x] Piper wrapper (`tts/piper.py`): `de_DE-thorsten-medium` → WAV in the OS temp dir
       (`tempfile.gettempdir()`, not `/tmp`); loaded once, synth off the event loop
 - [x] Bridge client (`bridge.py`): async httpx `GET /health` + blocking `POST /speak`
       (architecture §3 contract); WAV deleted after playback so temp doesn't fill
 - [x] Wired: `!dm` answer → Piper → `/speak` (spoken); `!say <Text>` smoke test; LLM + TTS
       times logged (`⏱`, `🔊`). Piper missing → text-only, bot still runs
-- [ ] **Live full loop** — Bot A running + both bots in the channel; speak → DM answers audibly
+- [x] **Live full loop confirmed** (2026-06-04, 21:37): `!dm` → German DM answer → spoken aloud,
+      Tobi heard it; no self-hearing (layer-1 filters Bot A)
 - **Gate:** speak → DM answers audibly; latency measured; no self-hearing.
-- **VERIFY EVIDENCE:** _Offline (2026-06-04):_ `piper-tts 1.4.2` installs clean on Windows/py3.12
-  (bundles espeak-ng), voice loads ~1.3 s, **~224 ms** to synthesise a 6 s German sentence →
-  valid 22050 Hz mono WAV (ffmpeg-playable). _Live loop still open_ — needs Bot A's `/speak`
-  bridge up (SETUP B5). No-self-hearing is covered by layer-1 (Bot A's user-ID filtered); the
-  VAD pause is layer 2 (Phase 7).
+- **VERIFY EVIDENCE:** Live full loop works end to end and is **audible** (player line → nemo →
+  Piper → Bot A `/speak`). Piper: voice loads ~1.3 s, synth ~130–1250 ms (length-dependent).
+  **Latency caveat (the Phase-6 tuning target):** `⏱ LLM = 15.2 s` on the first turn. Root cause
+  is **VRAM pressure** — `ollama ps` shows nemo at **9.5 GB / 100% GPU with a 16384 context**, and
+  total VRAM sat at **11.8/12.3 GB** (nemo + whisper-medium 2.5 GB + desktop apps), so nemo
+  cold-loads/runs under near-full memory. _Mitigations applied in code:_ `num_ctx=8192` (smaller
+  KV cache) + `keep_alive=30m` (no cold reload between turns). _Biggest remaining lever (Tobi):_
+  run whisper on CPU or `small` to free ~2.5 GB, and/or offload Ollama to the 5080 via Tailscale
+  (ADR 002). Bridge fix this session: Bot A had to be on the `dungeon_master` branch (the `main`
+  branch has no DMBridge → "All connection attempts failed").
 
 ### ⬜ Phase 7 — Turn-taking & feedback protection layer 2
 - [ ] VAD pauses while Bot A speaks

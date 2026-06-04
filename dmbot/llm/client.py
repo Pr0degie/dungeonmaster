@@ -17,16 +17,28 @@ import httpx
 
 log = logging.getLogger(__name__)
 
-# A storyteller wants some spark but must stay coherent and in-world.
-_DEFAULT_OPTIONS = {"temperature": 0.8, "top_p": 0.9}
+# A storyteller wants some spark but must stay coherent and in-world. num_ctx is capped well
+# below nemo's 16k default: the KV cache for 16k context costs ~2 GB of VRAM we don't have to
+# spare on the 12 GB 4070 (history is trimmed anyway), and a smaller cache loads faster.
+_DEFAULT_OPTIONS = {"temperature": 0.8, "top_p": 0.9, "num_ctx": 8192}
 
 
 class OllamaClient:
     """Minimal async Ollama chat client. One per bot; close it on shutdown."""
 
-    def __init__(self, host: str, model: str, *, timeout: float = 120.0) -> None:
+    def __init__(
+        self,
+        host: str,
+        model: str,
+        *,
+        timeout: float = 120.0,
+        keep_alive: str = "30m",
+    ) -> None:
         self._host = host.rstrip("/")
         self._model = model
+        # Keep the model resident between DM turns so it isn't cold-loaded each time (a cold
+        # load of a ~9 GB model under VRAM pressure is the dominant latency — measured 15 s).
+        self._keep_alive = keep_alive
         self._client = httpx.AsyncClient(timeout=timeout)
 
     @property
@@ -49,6 +61,7 @@ class OllamaClient:
         payload = {
             "model": self._model,
             "stream": False,
+            "keep_alive": self._keep_alive,
             "messages": [{"role": "system", "content": system}, *messages],
             "options": {**_DEFAULT_OPTIONS, **(options or {})},
         }
