@@ -201,6 +201,15 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   real persona prompt if the tone needs more richness.
 - **TTS voice:** `de_DE-thorsten-medium` vs. `thorsten_emotional` — listen. _(Phase 6.)_
 
+**Loose ends / housekeeping (from the Phase 2 session):**
+- `docs/pipeline-diagram.{md,mmd,png}` are present but **untracked** — deliberately left out of
+  commit `44e501d` (not authored in this session). Decide next time: keep + commit, or delete.
+- Voice stack is **version-sensitive**: the DAVE decrypt reaches into a discord.py internal
+  (`_connection.dave_session`) and the voice-recv sink is an alpha (`0.5.2a179`) — re-verify both
+  on any `discord.py` / `discord-ext-voice-recv` / `davey` upgrade (ADR 006).
+- DAVE decrypt skips frames received before the MLS group is `ready` (brief startup gap), and
+  single-packet RTP jitter ("lost being flushed", sender voice-activation) is benign for STT.
+
 **Resolved design questions (now in the decision log / ADRs):**
 - ✅ Ollama host → D6 / ADR 002
 - ✅ Conversational control (when the DM speaks) → D10 / ADR 003
