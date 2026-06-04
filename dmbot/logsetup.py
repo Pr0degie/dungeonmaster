@@ -36,11 +36,10 @@ _BGREEN = "\033[92m"  # bright green, for emphasis (speaker names)
 _RED = "\033[91m"
 _YELLOW = "\033[93m"
 
-# Chat layout widths: "HH:MM:SS" + 2 spaces + a 12-wide name + 2 spaces → text starts at 24.
-_TS_W = 8
+# Chat layout: timestamp + a 12-wide name + a dim metric, then the text. The hanging indent
+# for wrapped lines is computed per line from the actual prefix width.
 _NAME_W = 12
 _GAP = "  "
-_INDENT = _TS_W + len(_GAP) + _NAME_W + len(_GAP)  # 24: where the message text begins
 
 
 class _ConsoleFormatter(logging.Formatter):
@@ -50,20 +49,22 @@ class _ConsoleFormatter(logging.Formatter):
         ts = time.strftime("%H:%M:%S", time.localtime(record.created))
         msg = record.getMessage()
 
-        if msg.startswith("📝"):  # "📝 Name: text" → a chat line with hanging indent
+        if msg.startswith("📝"):  # "📝 Name | clip·ms | text" → a chat line, hanging indent
             body = msg.split(" ", 1)[1] if " " in msg else msg
-            name, _, text = body.partition(": ")
+            name, metric, text = (body.split(" | ", 2) + ["", ""])[:3]
             name = name[:_NAME_W]
-            # Wrap the text to the terminal so continuation lines hang under the first word
-            # (indented to the text column) instead of starting at the left edge.
+            # The text column sits after ts + name + the dim metric, so continuation lines
+            # hang under the first word (indented to that column) rather than at the margin.
+            prefix = f"{ts}{_GAP}{name:>{_NAME_W}}{_GAP}{metric}{_GAP}"
+            indent = len(prefix)
             cols = shutil.get_terminal_size((100, 24)).columns
-            avail = max(20, cols - _INDENT - 1)
-            lines = textwrap.wrap(text, width=avail) or [""]
+            lines = textwrap.wrap(text, width=max(20, cols - indent - 1)) or [""]
             head = (
                 f"{_DIM}{_GREEN}{ts}{_RESET}{_GAP}"
-                f"{_BGREEN}{_BOLD}{name:>{_NAME_W}}{_RESET}{_GAP}{_GREEN}{lines[0]}{_RESET}"
+                f"{_BGREEN}{_BOLD}{name:>{_NAME_W}}{_RESET}{_GAP}"
+                f"{_DIM}{_GREEN}{metric}{_RESET}{_GAP}{_GREEN}{lines[0]}{_RESET}"
             )
-            rest = [f"{' ' * _INDENT}{_GREEN}{ln}{_RESET}" for ln in lines[1:]]
+            rest = [f"{' ' * indent}{_GREEN}{ln}{_RESET}" for ln in lines[1:]]
             return "\n".join([head, *rest])
 
         if msg.startswith("🗣"):  # utterance cut — secondary, dim green

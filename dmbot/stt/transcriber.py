@@ -24,6 +24,7 @@ import logging
 import os
 import queue
 import threading
+import time
 from typing import Callable
 
 import numpy as np
@@ -58,8 +59,8 @@ from faster_whisper import WhisperModel  # noqa: E402  (after the DLL-dir regist
 
 _I16_FULL_SCALE = 32768.0
 
-# Callback shape: (speaker_name, transcript_text).
-OnTranscript = Callable[[str, str], None]
+# Callback shape: (speaker_name, transcript_text, clip_seconds, transcribe_ms).
+OnTranscript = Callable[[str, str, float, float], None]
 
 
 class Transcriber:
@@ -93,9 +94,9 @@ class Transcriber:
         )
         self._thread.start()
 
-    def submit(self, name: str, pcm_s16le_mono_16k: bytes) -> None:
-        """Hand one utterance to the worker (non-blocking)."""
-        self._queue.put((name, pcm_s16le_mono_16k))
+    def submit(self, name: str, pcm_s16le_mono_16k: bytes, clip_s: float) -> None:
+        """Hand one utterance to the worker (non-blocking). ``clip_s`` is its audio length."""
+        self._queue.put((name, pcm_s16le_mono_16k, clip_s))
 
     def stop(self) -> None:
         """Signal the worker to drain and exit."""
@@ -136,21 +137,24 @@ class Transcriber:
             item = self._queue.get()
             if item is None:
                 break
-            name, pcm = item
+            name, pcm, clip_s = item
             try:
-                self._transcribe_one(name, pcm)
+                self._transcribe_one(name, pcm, clip_s)
             except Exception:
                 log.exception("transcription failed for %s", name)
 
-    def _transcribe_one(self, name: str, pcm: bytes) -> None:
+    def _transcribe_one(self, name: str, pcm: bytes, clip_s: float) -> None:
         # s16le mono → float32 [-1, 1), what faster-whisper expects as a raw array.
         audio = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / _I16_FULL_SCALE
-        # We already did VAD upstream, so don't run whisper's own VAD filter.
+        # We already did VAD upstream, so don't run whisper's own VAD filter. transcribe()
+        # returns a generator — the real work happens as we consume it, so time the join.
+        t0 = time.perf_counter()
         segments, _info = self._model.transcribe(  # type: ignore[union-attr]
             audio, language=self._language, vad_filter=False, beam_size=5
         )
         text = " ".join(seg.text.strip() for seg in segments).strip()
+        latency_ms = (time.perf_counter() - t0) * 1000.0
         if text:
-            self._on_transcript(name, text)
+            self._on_transcript(name, text, clip_s, latency_ms)
         else:
             log.debug("empty transcript for a %s utterance (%d samples)", name, audio.size)

@@ -75,20 +75,22 @@ class VoiceReceiveCog(commands.Cog):
         if self._dump_utterances:  # debug only — off by default so temp doesn't fill up
             try:
                 path = _write_utterance_wav(name, n, pcm)
+                log.debug("dumped %s utterance #%d (%.2fs) → %s", name, n, duration_s, path)
             except Exception:
                 log.exception("failed to write utterance WAV")
-                path = "<unwritten>"
-            log.info(
-                "🗣 utterance #%d from %s — %.2fs (%d KiB) → %s",
-                n, name, duration_s, len(pcm) // 1024, path,
-            )
-        else:
-            log.info("🗣 utterance #%d from %s — %.2fs", n, name, duration_s)
-        self._transcriber.submit(name, pcm)  # transcription happens on the STT worker thread
+        # The metric (clip length · transcribe ms) is logged with the transcript once STT
+        # returns — see _on_transcript. clip length is passed through for that line.
+        self._transcriber.submit(name, pcm, duration_s)
 
-    def _on_transcript(self, name: str, text: str) -> None:
-        """STT result (on the STT worker thread). Phase-4 gate: surface the German text."""
-        log.info("📝 %s: %s", name, text)
+    def _on_transcript(
+        self, name: str, text: str, clip_s: float, latency_ms: float
+    ) -> None:
+        """STT result (on the STT worker thread). Phase-4 gate: the German text, with the
+        clip length and the transcription response time (ms) right next to it.
+        """
+        # "📝 name | clip·ms | text" — the console formatter renders the metric dim inline;
+        # the file log keeps the same one-line, greppable form.
+        log.info("📝 %s | %.1fs·%dms | %s", name, clip_s, round(latency_ms), text)
 
     async def cog_unload(self) -> None:
         self._transcriber.stop()
