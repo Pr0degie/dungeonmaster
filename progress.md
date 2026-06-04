@@ -16,8 +16,10 @@ markers, content gitignored), German prompt placeholders; `uv`/Python-3.12 `pypr
 (two-bot isolation). Verified tooling and ran the **Phase 0 gate** (curl → grimdark German).
 Did a **model taste test** (scene + NSC dialogue) across mistral-nemo / gemma3:12b / qwen3.5:9b /
 glm-4.7-flash → chose **mistral-nemo** as primary (best idiomatic German + dialogue; glm 19 GB
-doesn't fit the 4070's 12 GB). _Earlier:_ reframed to a system-agnostic DM (D1/D7/D12/D18, ADR
-005); built/reviewed the Bot A bridge (musicbot `dungeon_master`, commit `249cc38`).
+doesn't fit the 4070's 12 GB). Committed and pushed the whole Phase 0 scaffold + docs to
+`origin/main` (`f17f134`); hardened `.gitignore` (voices/, tool caches, IDE/OS cruft, `.env.*`);
+`uv.lock` tracked. _Earlier:_ reframed to a system-agnostic DM (D1/D7/D12/D18, ADR 005);
+built/reviewed the Bot A bridge (musicbot `dungeon_master`, commit `249cc38`).
 
 ## Next concrete step
 Begin **Phase 2 — Bot B voice receive**: join a voice channel, wire a `discord-ext-voice-recv`
