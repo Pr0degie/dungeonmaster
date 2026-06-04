@@ -80,9 +80,15 @@ class VoiceReceiveCog(commands.Cog):
         vc: voice_recv.VoiceRecvClient = await channel.connect(
             cls=voice_recv.VoiceRecvClient
         )
-        sink = VadSink(
+        # Wrap the VAD sink in voice-recv's SilenceGeneratorSink: Discord clients send no
+        # packets at all while a user is silent (voice activation), so without injected silence
+        # the segmenter never sees an utterance's trailing gap and can't close it. The wrapper
+        # feeds synthetic silence frames during transmission downtime (cleanup propagates to the
+        # child automatically — reader walks the sink tree).
+        vad_sink = VadSink(
             bot_a_user_id=self._bot_a_user_id, on_utterance=self._on_utterance
         )
+        sink = voice_recv.SilenceGeneratorSink(vad_sink)
         vc.listen(sink, after=self._on_listen_done)
 
         log.info(

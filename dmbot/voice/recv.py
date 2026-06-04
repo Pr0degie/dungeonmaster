@@ -32,6 +32,7 @@ lock), not the event loop — keep it non-async and never raise out of the callb
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from dataclasses import dataclass
 from typing import Callable
@@ -79,6 +80,10 @@ class PcmLogSink(voice_recv.AudioSink):
         self._filtered_ids: set[int] = set()
         self._last_flush = time.monotonic()
         self._dave_active_logged = False
+        # write() is called from TWO threads once a SilenceGeneratorSink wraps us: the
+        # voice-recv reader thread (real frames) and the silence-generator thread (synthetic
+        # silence during transmission gaps). Serialize per-user state with one lock.
+        self._lock = threading.Lock()
 
     def wants_opus(self) -> bool:
         # True -> library hands us raw frames; we DAVE-decrypt then Opus-decode here (see
@@ -104,63 +109,73 @@ class PcmLogSink(voice_recv.AudioSink):
         conn = getattr(self.voice_client, "_connection", None)
         return getattr(conn, "dave_session", None)
 
-    def write(self, user, data: voice_recv.VoiceData) -> None:  # reader thread
+    def write(self, user, data: voice_recv.VoiceData) -> None:  # reader / silence-gen thread
         try:
             if user is None:
                 return
-
-            if self._is_filtered(user):
-                if user.id not in self._filtered_ids:
-                    self._filtered_ids.add(user.id)
-                    log.info(
-                        "layer-1: filtering out %s (id=%s) — bot/Bot A voice dropped",
-                        user.display_name,
-                        user.id,
-                    )
-                return
-
-            opus = data.opus
-            if not opus:
-                return
-
-            # Undo the DAVE/E2EE layer if the call is encrypted (ADR 006). voice-recv only
-            # undoes the transport layer, so the frame is still E2EE-wrapped; decrypt it via
-            # the dave_session discord.py established over MLS.
-            ds = self._dave_session()
-            if ds is not None:
-                if not ds.ready:
-                    return  # MLS group not established yet — can't decrypt; wait for it
-                try:
-                    opus = ds.decrypt(user.id, _MEDIA_AUDIO, opus)
-                except Exception:
-                    return  # user not yet in the MLS group / transient — skip this frame
-                if not self._dave_active_logged:
-                    self._dave_active_logged = True
-                    log.info("DAVE/E2EE active — decrypting incoming Opus via dave_session")
-
-            tally = self._tallies.get(user.id)
-            if tally is None:
-                tally = _UserTally(name=user.display_name)
-                self._tallies[user.id] = tally
-                log.info("▶ receiving audio from %s (id=%s)", user.display_name, user.id)
-            tally.packets += 1
-
-            try:
-                pcm = self._decoder_for(user.id).decode(opus, fec=False)
-            except OpusError:
-                tally.decode_errors += 1
-                return
-
-            tally.decoded += 1
-            tally.decoded_since_flush += 1
-            tally.pcm_bytes += len(pcm)
-            self._maybe_flush()
-
-            # Seam for subclasses (Phase 3+): hand the decoded 48 kHz stereo PCM onward.
-            # Runs only for non-filtered users — Bot A never reaches here (layer 1).
-            self._on_pcm(user.id, user.display_name, pcm)
+            with self._lock:
+                self._write_locked(user, data)
         except Exception:
             log.exception("PcmLogSink.write failed")
+
+    def _write_locked(self, user, data: voice_recv.VoiceData) -> None:
+        if self._is_filtered(user):
+            if user.id not in self._filtered_ids:
+                self._filtered_ids.add(user.id)
+                log.info(
+                    "layer-1: filtering out %s (id=%s) — bot/Bot A voice dropped",
+                    user.display_name,
+                    user.id,
+                )
+            return
+
+        opus = data.opus
+        if not opus:
+            # A SilenceGeneratorSink fills transmission gaps with synthetic frames that carry
+            # decoded silence PCM (no opus, no DAVE layer). Feed it straight through so the
+            # segmenter sees the gap and can close the open utterance — Discord clients send
+            # nothing at all while a user is silent (voice activation), so without this the
+            # utterance would never end until the next speech or disconnect.
+            if data.pcm:
+                self._on_pcm(user.id, user.display_name, data.pcm)
+            return
+
+        # Undo the DAVE/E2EE layer if the call is encrypted (ADR 006). voice-recv only
+        # undoes the transport layer, so the frame is still E2EE-wrapped; decrypt it via
+        # the dave_session discord.py established over MLS.
+        ds = self._dave_session()
+        if ds is not None:
+            if not ds.ready:
+                return  # MLS group not established yet — can't decrypt; wait for it
+            try:
+                opus = ds.decrypt(user.id, _MEDIA_AUDIO, opus)
+            except Exception:
+                return  # user not yet in the MLS group / transient — skip this frame
+            if not self._dave_active_logged:
+                self._dave_active_logged = True
+                log.info("DAVE/E2EE active — decrypting incoming Opus via dave_session")
+
+        tally = self._tallies.get(user.id)
+        if tally is None:
+            tally = _UserTally(name=user.display_name)
+            self._tallies[user.id] = tally
+            log.info("▶ receiving audio from %s (id=%s)", user.display_name, user.id)
+        tally.packets += 1
+
+        try:
+            pcm = self._decoder_for(user.id).decode(opus, fec=False)
+        except OpusError:
+            tally.decode_errors += 1
+            return
+
+        tally.decoded += 1
+        tally.decoded_since_flush += 1
+        tally.pcm_bytes += len(pcm)
+        self._maybe_flush()
+
+        # Seam for subclasses (Phase 3+): hand the decoded 48 kHz stereo PCM onward.
+        # Runs only for non-filtered users — Bot A never reaches here (layer 1).
+        self._on_pcm(user.id, user.display_name, pcm)
 
     def _on_pcm(self, user_id: int, name: str, pcm: bytes) -> None:
         """Hook for decoded per-user PCM (48 kHz stereo s16le). No-op in the base sink."""
@@ -233,18 +248,22 @@ class VadSink(PcmLogSink):
             self._segmenters[user_id] = seg
         return self._resamplers[user_id], seg
 
-    def _on_pcm(self, user_id: int, name: str, pcm: bytes) -> None:  # reader thread
+    def _on_pcm(self, user_id: int, name: str, pcm: bytes) -> None:  # holds self._lock
         resampler, seg = self._pipeline_for(user_id, name)
         mono16 = resampler.feed(pcm)
         if mono16.size:
             seg.feed(mono16)
 
     def cleanup(self) -> None:
-        for seg in self._segmenters.values():
-            try:
-                seg.flush()  # emit any utterance still in progress at disconnect
-            except Exception:
-                log.exception("segmenter flush failed")
-        self._resamplers.clear()
-        self._segmenters.clear()
+        # The wrapping SilenceGeneratorSink is cleaned up first (walk_children yields the root
+        # before its child), so its thread is already stopped here; the lock guards against any
+        # in-flight reader-thread write all the same.
+        with self._lock:
+            for seg in self._segmenters.values():
+                try:
+                    seg.flush()  # emit any utterance still in progress at disconnect
+                except Exception:
+                    log.exception("segmenter flush failed")
+            self._resamplers.clear()
+            self._segmenters.clear()
         super().cleanup()
