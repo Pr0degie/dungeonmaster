@@ -117,8 +117,8 @@ from Bot A; layer-1 user-ID filtering protects regardless).
 | Step | Component | Note |
 |---|---|---|
 | Receive voice | `discord-ext-voice-recv` (+ `davey`) | real-time streaming sinks, per-user audio (48 kHz stereo). `davey` decrypts Discord's **DAVE/E2EE** layer on receive — calls are end-to-end encrypted (ADR 006) |
-| Resampling | internal | 48 kHz stereo → 16 kHz mono for VAD/STT |
-| VAD/segmentation | `silero-vad` (or `webrtcvad`) | detects speech start/end, cuts utterances |
+| Resampling | `soxr` (streaming) | 48 kHz stereo → 16 kHz mono for VAD/STT, one `ResampleStream` per user (ADR 007) |
+| VAD/segmentation | `silero-vad` via `onnxruntime` | neural VAD run through onnxruntime (no torch), model vendored in-repo; cuts utterances on silence (ADR 007) |
 | STT | `faster-whisper` | small/medium depending on load (on the 4070) |
 | LLM | **Ollama** (local/5080) + `httpx` | DM system prompt + history + RAG context + JSON state |
 | Embeddings | `nomic-embed-text` via Ollama | for RAG (tiny, runs anywhere) |

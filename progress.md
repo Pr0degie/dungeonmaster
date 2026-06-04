@@ -4,32 +4,36 @@ Living status document. A phase counts as done only when its **verification gate
 met and the proof is recorded here.
 
 ## Current focus
-Phase 3 — VAD segmentation. **Phases 0–2 are complete** (gates met). Phase 2 voice receive
-works: per-user PCM decoded, Bot A filtered (layer 1), and Discord's **DAVE/E2EE** layer
-decrypted on receive (ADR 006). Phase 1's bridge gate (`curl /speak` → audible) is now also
-ticked (2026-06-04).
+Phase 3 — VAD segmentation, **code complete, live gate pending**. Phases 0–2 are done (gates
+met). The resample + silero-vad pipeline is implemented and offline-verified; the gate ("one
+spoken sentence = one utterance, start/end correct") is a **live mic test only Tobi can run**.
 
 ## Last session
-**Phase 2 — voice receive — done.** Built the DMbot runtime: `config.py` (env/`.env`, incl.
-`BOT_A_USER_ID`), `voice/recv.py` (`PcmLogSink`), `voice/commands.py` (`!join`/`!j`/`!leave`/
-`!vstatus`), `__main__.py` (`python -m dmbot`), `start_dmbot.bat` + Desktop shortcut. Checked
-the `discord-ext-voice-recv 0.5.2a179` sink signature against the installed version; Opus
-loads via discord.py's bundled DLL (B6 satisfied). **Renamed Bot B → DMbot** project-wide
-(package `bot_b/`→`dmbot/`, env var `DISCORD_TOKEN_DMBOT`, all docs; Bot A untouched). The hard
-part was the audio: (1) voice-recv's packet-router is **fatal** on one decode error → took
-`wants_opus=True` and decode in the sink; (2) ~40 % "corrupted stream" was **Discord DAVE/E2EE**
-— every frame ended in `0xFAFA`. Declining DAVE (`max_dave_protocol_version=0`) was rejected
-(voice close 4017); the fix is to **decrypt the DAVE layer via the `dave_session`** discord.py
-builds over MLS (ADR 006). Result: consistent Opus TOC `0x78…`, ~100 % decode, 0 dropped,
-Bot A filtered. _Earlier:_ Phase 0 scaffold + model taste test (mistral-nemo) on `origin/main`
-(`f17f134`); system-agnostic reframe (ADR 005); Bot A bridge (musicbot `249cc38`).
+**Phase 3 — VAD segmentation — implemented (gate pending a live test).** Decided the stack at
+phase start → **ADR 007**: silero-vad run via **onnxruntime** (no torch) + **soxr** streaming
+resampler; rejected the torch-backed silero pip package (golden rule #9) and webrtcvad (cruder,
+noise-prone). New deps `onnxruntime` + `soxr` + `numpy` (CPU-only); vendored the ~2 MB v5
+`silero_vad.onnx` at `dmbot/voice/models/`. New modules: `voice/resample.py` (`StereoResampler`,
+48k stereo → 16k mono, one `soxr.ResampleStream` per user) and `voice/vad.py` (`SileroVad` onnx
+session + `UtteranceSegmenter` streaming state machine: 512-sample/32 ms windows, hysteresis
+0.5/0.35, 600 ms silence closes, 250 ms min speech, 200 ms pad). Wired in via a new `_on_pcm`
+seam on `PcmLogSink`; `VadSink` subclasses it so the **layer-1 Bot A filter + DAVE-decrypt +
+Opus-decode are inherited unchanged** (golden rule #4). `!join` now starts `VadSink`; each cut
+utterance is logged and dumped as a 16 kHz mono WAV to the OS temp dir for inspection.
+**Offline-verified:** resample ratio ~16000/s; pure silence → 0 utterances (no false trigger);
+segmenter state machine tested with a scripted fake model (clean cut=1, blip dropped, mid-pause
+<600 ms not split, real split >600 ms=2, flush mid-speech emits). _Earlier (Phase 2):_ voice
+receive + DAVE/E2EE decrypt (ADR 006), Bot B→DMbot rename.
 
 ## Next concrete step
-Begin **Phase 3 — VAD segmentation**: resample the decoded 48 kHz stereo PCM → 16 kHz mono,
-run `silero-vad` to cut clean utterances (one sentence = one utterance). New modules
-`voice/resample.py` + `voice/vad.py`; decide silero-vad vs webrtcvad + the resampler at phase
-start (justify new heavy deps per golden rule #9). Recommended level (`roadmap.md`):
-**opusplan / high**. Read `architecture.md` §4–§5 first.
+**Run the Phase 3 live gate** (only Tobi can — needs mic + both bots in a voice channel):
+`!join`, speak a few German sentences, then check the logged `🗣 utterance #…` lines and the
+`dm_utt_*.wav` files in the temp dir — confirm **one sentence ≈ one utterance**, start/end not
+clipped, no Bot-A self-segmentation. If splits/clips are off, tune the constants at the top of
+`voice/vad.py` (`_MIN_SILENCE_MS` / `_MIN_SPEECH_MS` / `_SPEECH_PAD_MS` / thresholds). Then fill
+the Phase 3 `VERIFY EVIDENCE` and move to **Phase 4 — STT (faster-whisper)** (read
+`architecture.md` §4; Windows: cuDNN/cuBLAS DLLs on `PATH`). Recommended level: **opusplan /
+high**.
 
 ---
 
@@ -63,6 +67,7 @@ create the next-numbered ADR.
 | D17 | Doc language | **Dev docs in English** (game content stays German) | Token efficiency on docs read every session; matches the schema precedent |
 | D18 | System-agnostic engine | **Generic dice/resolution engine + per-system profile**; DM **proposes the profile from the PDF**, user confirms (MVP). Persona = generic GM + per-campaign tone overlay | Reusable across rulesets; "paste PDFs → DM knows what's played"; dice still code → ADR 005 |
 | D19 | DAVE/E2EE on voice receive | **Decrypt the DAVE layer via discord.py's `dave_session`** (keep E2EE; sink takes `wants_opus=True`, decrypts each frame before Opus-decode) | Discord calls are end-to-end encrypted; voice-recv only undoes transport → garbage. Declining DAVE is rejected (voice close 4017) → ADR 006 |
+| D20 | VAD segmentation stack | **silero-vad via `onnxruntime`** (no torch) + **`soxr`** streaming resampler; model vendored in-repo | Robust neural VAD without torch's ~GB weight; webrtcvad too noise-prone; soxr is the smallest correct resampler → ADR 007 |
 
 ### Phase → ADR map (read these when you enter the phase)
 
@@ -70,7 +75,7 @@ create the next-numbered ADR.
 |---|---|
 | 0 — Foundation & setup | ADR 002 (topology, `OLLAMA_HOST`, localhost bridge) |
 | 1 — Bridge (done) | ADR 002 + `architecture.md` §3 (bridge contract) |
-| 2–4 — Voice / VAD / STT | **ADR 006** (DAVE/E2EE decrypt on receive) + `architecture.md` §4–§5 (feedback protection) |
+| 2–4 — Voice / VAD / STT | **ADR 006** (DAVE/E2EE decrypt on receive) + **ADR 007** (VAD stack, Phase 3) + `architecture.md` §4–§5 (feedback protection) |
 | 5 — LLM wiring + persona | ADR 002 + ADR 005 (persona = generic core + campaign overlay) |
 | 6–7 — Full loop, turn-taking, registration | ADR 003 (conversational control, registration, turn-taking) |
 | 8 — Dice engine, IM profile, marker flow | ADR 005 (engine + profile) + ADR 004 (test marker, character data) + ADR 001 (IM specifics) |
@@ -127,11 +132,17 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   `discord.py 2.7.1`, `discord-ext-voice-recv 0.5.2a179`, `davey 0.1.4`, Opus bundled DLL.
   Remaining `lost being flushed` jitter (sender voice-activation) is benign, quieted in logs.
 
-### ⬜ Phase 3 — VAD segmentation
-- [ ] Resample 48k/stereo → 16k/mono
-- [ ] silero-vad → cut utterances
+### 🔄 Phase 3 — VAD segmentation  (code complete, live gate pending)
+- [x] Resample 48k/stereo → 16k/mono (`voice/resample.py`, `soxr.ResampleStream` per user)
+- [x] silero-vad → cut utterances (`voice/vad.py`; onnx via onnxruntime, ADR 007; wired as `VadSink`)
+- [ ] **Live gate** — Tobi runs `!join` + speaks, confirms one sentence ≈ one utterance
 - **Gate:** one sentence = one utterance, start/end correct.
-- **VERIFY EVIDENCE:** _(empty)_
+- **VERIFY EVIDENCE:** _Offline (2026-06-04):_ resample ratio ≈ 16000 samples/s; pure silence →
+  **0 utterances** (no false trigger); `UtteranceSegmenter` state machine verified with a
+  scripted fake model — clean utterance cut=1, sub-250 ms blip dropped, mid-sentence pause
+  <600 ms not split, real >600 ms gap splits into 2, flush mid-speech emits. Stack:
+  `onnxruntime 1.26.0`, `soxr 1.1.0`, `numpy 2.4.6`, vendored silero v5 onnx (~2 MB).
+  _Live gate still open_ — needs a mic test (see Next concrete step).
 
 ### ⬜ Phase 4 — STT (faster-whisper)
 - [ ] faster-whisper wrapper, transcript log
