@@ -4,29 +4,32 @@ Living status document. A phase counts as done only when its **verification gate
 met and the proof is recorded here.
 
 ## Current focus
-Phase 2 — Bot B scaffold: voice receive. **Phase 0 is complete** (gate met, primary model
-chosen — see below). Phase 1's Bot A bridge is done; its formal gate tick (`curl /speak` →
-audible) is a formality pending both bots in one voice channel.
+Phase 3 — VAD segmentation. **Phases 0–2 are complete** (gates met). Phase 2 voice receive
+works: per-user PCM decoded, Bot A filtered (layer 1), and Discord's **DAVE/E2EE** layer
+decrypted on receive (ADR 006). Phase 1's bridge gate (`curl /speak` → audible) is now also
+ticked (2026-06-04).
 
 ## Last session
-Set up the **Bot B repo**: project skeleton (`architecture.md` §12) — `bot_b/` subpackages
-(incl. the **generic** `rules/`), the `data/` tree (systems/pdfs/sessions/vectordb, `.gitkeep`
-markers, content gitignored), German prompt placeholders; `uv`/Python-3.12 `pyproject.toml`,
-`.gitignore`, `.env.example` (Bot B token, `OLLAMA_HOST`, `DM_BRIDGE_*`). No `bot_a_bridge/`
-(two-bot isolation). Verified tooling and ran the **Phase 0 gate** (curl → grimdark German).
-Did a **model taste test** (scene + NSC dialogue) across mistral-nemo / gemma3:12b / qwen3.5:9b /
-glm-4.7-flash → chose **mistral-nemo** as primary (best idiomatic German + dialogue; glm 19 GB
-doesn't fit the 4070's 12 GB). Committed and pushed the whole Phase 0 scaffold + docs to
-`origin/main` (`f17f134`); hardened `.gitignore` (voices/, tool caches, IDE/OS cruft, `.env.*`);
-`uv.lock` tracked. _Earlier:_ reframed to a system-agnostic DM (D1/D7/D12/D18, ADR 005);
-built/reviewed the Bot A bridge (musicbot `dungeon_master`, commit `249cc38`).
+**Phase 2 — voice receive — done.** Built the DMbot runtime: `config.py` (env/`.env`, incl.
+`BOT_A_USER_ID`), `voice/recv.py` (`PcmLogSink`), `voice/commands.py` (`!join`/`!j`/`!leave`/
+`!vstatus`), `__main__.py` (`python -m dmbot`), `start_dmbot.bat` + Desktop shortcut. Checked
+the `discord-ext-voice-recv 0.5.2a179` sink signature against the installed version; Opus
+loads via discord.py's bundled DLL (B6 satisfied). **Renamed Bot B → DMbot** project-wide
+(package `bot_b/`→`dmbot/`, env var `DISCORD_TOKEN_DMBOT`, all docs; Bot A untouched). The hard
+part was the audio: (1) voice-recv's packet-router is **fatal** on one decode error → took
+`wants_opus=True` and decode in the sink; (2) ~40 % "corrupted stream" was **Discord DAVE/E2EE**
+— every frame ended in `0xFAFA`. Declining DAVE (`max_dave_protocol_version=0`) was rejected
+(voice close 4017); the fix is to **decrypt the DAVE layer via the `dave_session`** discord.py
+builds over MLS (ADR 006). Result: consistent Opus TOC `0x78…`, ~100 % decode, 0 dropped,
+Bot A filtered. _Earlier:_ Phase 0 scaffold + model taste test (mistral-nemo) on `origin/main`
+(`f17f134`); system-agnostic reframe (ADR 005); Bot A bridge (musicbot `249cc38`).
 
 ## Next concrete step
-Begin **Phase 2 — Bot B voice receive**: join a voice channel, wire a `discord-ext-voice-recv`
-sink, log per-user PCM, and filter Bot A's user-ID (feedback protection **layer 1**). Check the
-sink callback signature against the *installed* voice-recv version; ensure the Opus DLL loads on
-Windows (B6). Recommended level (`roadmap.md`): **Opus 4.8 / xhigh** — this is the research part.
-Open prerequisites for the gate: both bots in the same voice channel, a working mic (B6).
+Begin **Phase 3 — VAD segmentation**: resample the decoded 48 kHz stereo PCM → 16 kHz mono,
+run `silero-vad` to cut clean utterances (one sentence = one utterance). New modules
+`voice/resample.py` + `voice/vad.py`; decide silero-vad vs webrtcvad + the resampler at phase
+start (justify new heavy deps per golden rule #9). Recommended level (`roadmap.md`):
+**opusplan / high**. Read `architecture.md` §4–§5 first.
 
 ---
 
@@ -59,6 +62,7 @@ create the next-numbered ADR.
 | D16 | Runtime environment | **Windows** (both bots + pipeline) | No `/tmp` (OS temp dir); Opus DLL for voice; cuDNN/cuBLAS DLLs on `PATH` for faster-whisper. _WSL considered but rejected — keeps both bots co-located so the file-path bridge works without path translation._ |
 | D17 | Doc language | **Dev docs in English** (game content stays German) | Token efficiency on docs read every session; matches the schema precedent |
 | D18 | System-agnostic engine | **Generic dice/resolution engine + per-system profile**; DM **proposes the profile from the PDF**, user confirms (MVP). Persona = generic GM + per-campaign tone overlay | Reusable across rulesets; "paste PDFs → DM knows what's played"; dice still code → ADR 005 |
+| D19 | DAVE/E2EE on voice receive | **Decrypt the DAVE layer via discord.py's `dave_session`** (keep E2EE; sink takes `wants_opus=True`, decrypts each frame before Opus-decode) | Discord calls are end-to-end encrypted; voice-recv only undoes transport → garbage. Declining DAVE is rejected (voice close 4017) → ADR 006 |
 
 ### Phase → ADR map (read these when you enter the phase)
 
@@ -66,7 +70,7 @@ create the next-numbered ADR.
 |---|---|
 | 0 — Foundation & setup | ADR 002 (topology, `OLLAMA_HOST`, localhost bridge) |
 | 1 — Bridge (done) | ADR 002 + `architecture.md` §3 (bridge contract) |
-| 2–4 — Voice / VAD / STT | _no ADR_ — see `architecture.md` §4–§5 (incl. feedback protection) |
+| 2–4 — Voice / VAD / STT | **ADR 006** (DAVE/E2EE decrypt on receive) + `architecture.md` §4–§5 (feedback protection) |
 | 5 — LLM wiring + persona | ADR 002 + ADR 005 (persona = generic core + campaign overlay) |
 | 6–7 — Full loop, turn-taking, registration | ADR 003 (conversational control, registration, turn-taking) |
 | 8 — Dice engine, IM profile, marker flow | ADR 005 (engine + profile) + ADR 004 (test marker, character data) + ADR 001 (IM specifics) |
@@ -81,7 +85,7 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 
 ### ✅ Phase 0 — Foundation & setup
 - [x] Repo + project structure (skeleton per `architecture.md` §12; uv/Python-3.12, `.gitignore`, `.env.example`)
-- [x] Discord Bot B app + token (in `.env`). _(Bot A token already exists in the music bot repo.)_
+- [x] Discord DMbot app + token (in `.env`). _(Bot A token already exists in the music bot repo.)_
 - [x] Ollama installed locally on the 4070 + models pulled (`mistral-nemo`, `nomic-embed-text`) + reachable
 - [x] Model taste test → primary model chosen: **mistral-nemo**
 - **Manual setup (outside the agent): see `docs/SETUP.md`.**
@@ -90,7 +94,7 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   `mistral-nemo` returned a plausible grimdark German answer ("Die Finsternis hat sich über die
   Welt gelegt wie ein Grabtuch aus Eisen…"). Tooling: git 2.42, Python 3.12.10, uv 0.11.19,
   Ollama 0.30.4 on `:11434`, models `mistral-nemo` + `nomic-embed-text` pulled, NVIDIA 596.49
-  (RTX 4070). Discord Bot B created, token in `.env`. **Primary model: `mistral-nemo`**, chosen
+  (RTX 4070). Discord DMbot created, token in `.env`. **Primary model: `mistral-nemo`**, chosen
   via taste test (scene description + NSC dialogue) over gemma3:12b / qwen3.5:9b / glm-4.7-flash
   (glm 19 GB doesn't fit 12 GB; nemo gave the most idiomatic German + dialogue). Deferred to
   later phases (flagged, not blocking): cuDNN/cuBLAS DLLs (B3→Phase 4), Piper voice (B5→Phase 6),
@@ -103,15 +107,25 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 - **Gate:** `curl -X POST .../speak` with a test WAV → audible.
 - **VERIFY EVIDENCE:** Implemented & code-reviewed — `Pr0degie/musicbot` branch
   `dungeon_master`, commit `249cc38`. Contract in `architecture.md` §3. Music cogs untouched.
-  _(Run the `curl /speak` → audible check once both bots share a voice channel to formally tick the gate.)_
+  **Gate met 2026-06-04:** `GET /health` → `{"status":"ok","bot":"EarRape#8961"}`;
+  `curl -X POST :8765/speak` with a 2 s test WAV (both bots in voice channel `circlejerk`) →
+  `HTTP 200 {"status":"played"}`, the call **blocked 2.09 s** (= the WAV's full length,
+  confirming the blocking-return contract D15), and Tobi confirmed the tone was **audible**.
 
-### ⬜ Phase 2 — Bot B scaffold: voice receive
-- [ ] Voice join + `discord-ext-voice-recv` sink
-- [ ] per-user PCM log
-- [ ] Bot A's user-ID filtered (protection layer 1)
-- [ ] Windows: Opus DLL for voice available
+### ✅ Phase 2 — DMbot scaffold: voice receive
+- [x] Voice join + `discord-ext-voice-recv` sink (`!join`/`!j`/`!leave`/`!vstatus`)
+- [x] per-user PCM log (decoded 48 kHz stereo s16le; heartbeat every 2 s)
+- [x] Bot A's user-ID filtered (protection layer 1) — explicit `BOT_A_USER_ID` + `.bot` flag
+- [x] Windows: Opus loaded via discord.py's bundled DLL (B6 satisfied, no manual install)
+- [x] _(unforeseen)_ DAVE/E2EE layer decrypted on receive → clean Opus (ADR 006)
 - **Gate:** PCM frames in the log; Bot A's own voice absent.
-- **VERIFY EVIDENCE:** _(empty)_
+- **VERIFY EVIDENCE:** Gate met 2026-06-04. Live test in voice channel `circlejerk`: two human
+  speakers (`Pr0degie`, `Timo`) logged with `▶ receiving audio` + `PCM ⟳` heartbeats; **Bot A
+  ("EarRape", id 1361375360784273409) filtered** — `layer-1: filtering out …`, never tallied.
+  After wiring the DAVE/E2EE decrypt (ADR 006): consistent Opus TOC `0x78…`, **~100 % decode,
+  0 dropped**; a captured WAV analysed as real speech (ZCR 0.061, 13 % silent frames). Stack:
+  `discord.py 2.7.1`, `discord-ext-voice-recv 0.5.2a179`, `davey 0.1.4`, Opus bundled DLL.
+  Remaining `lost being flushed` jitter (sender voice-activation) is benign, quieted in logs.
 
 ### ⬜ Phase 3 — VAD segmentation
 - [ ] Resample 48k/stereo → 16k/mono
@@ -201,6 +215,6 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 
 ## Notes
 - Order deliberately risk-minimal: bridge first (curl-testable, no risk to the music bot),
-  then Bot B layer by layer.
+  then DMbot layer by layer.
 - **Principle:** dice/success = code, narration = LLM. Do not mix.
 - Verify each phase in isolation before the next begins.

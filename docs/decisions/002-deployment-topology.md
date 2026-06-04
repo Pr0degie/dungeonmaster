@@ -7,7 +7,7 @@
 ## Context
 
 Tobi (RTX 4070, 12 GB) and his colleague (RTX 5080, 16 GB) are **not on the same
-network**. Originally the LLM was planned on the stronger 5080, with Bot B on Tobi's
+network**. Originally the LLM was planned on the stronger 5080, with DMbot on Tobi's
 machine — which would have forced a cross-network call. Two insights change the picture:
 (1) Discord is the meeting point for the voice audio, not the home networks — where the
 bots run is irrelevant to Discord. (2) The bridge passes a file path to the WAV, so it

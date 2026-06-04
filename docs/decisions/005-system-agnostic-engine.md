@@ -17,7 +17,7 @@ different character stat schemas.
 
 Make the DM **system-agnostic**:
 
-- **Generic engine** (`bot_b/rules/engine.py`): rolls dice (RNG is always code) and resolves
+- **Generic engine** (`dmbot/rules/engine.py`): rolls dice (RNG is always code) and resolves
   them per the **active system profile**. Never the LLM.
 - **System profile** (`data/systems/<system>.json`): a declarative description of one
   ruleset's core mechanic — dice, resolution (roll-under/over/pool/…), target source, degrees

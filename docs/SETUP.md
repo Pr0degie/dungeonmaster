@@ -18,7 +18,7 @@ Runtime is **Windows** (see decision log D16). Check the items off.
 - [ ] **`.gitignore`** with at least: `.env`, `data/`, `__pycache__/`, `.venv/`, `*.wav`,
       model/voice files.
 - [ ] **`.env`** (do NOT commit) for the two bot tokens + config:
-      `BOT_B_TOKEN=…`, `BOT_A_TOKEN=…`, `OLLAMA_HOST=http://localhost:11434`.
+      `DMBOT_TOKEN=…`, `BOT_A_TOKEN=…`, `OLLAMA_HOST=http://localhost:11434`.
 
 > From here the session ritual applies: the agent reads `CLAUDE.md` → `progress.md` →
 > the latest ADR and does the handshake.
@@ -53,7 +53,7 @@ Runtime is **Windows** (see decision log D16). Check the items off.
 - [ ] **Budget time here** — this is empirically the most stubborn setup point.
 
 ### B4 — Discord (two bots)
-- [ ] **Bot B** new in the Discord Developer Portal: Application → Bot → copy the **token**.
+- [ ] **DMbot** new in the Discord Developer Portal: Application → Bot → copy the **token**.
 - [ ] **Bot A** (music bot) already exists — keep the token handy.
 - [ ] Enable the **Privileged Gateway Intents** as needed (at least the voice/server ones;
       Message Content only if you read text commands — buttons go through interactions).

@@ -57,7 +57,7 @@ here is the failure mode that breaks continuity across sessions.
 voice-only over Discord, German play language. You load a ruleset/adventure as PDFs; the DM
 learns the setting (RAG) and the mechanics (a per-system **profile** it proposes from the
 rulebook, §9) and runs the game. Two discord.py bots: **Bot A** (existing music bot, output
-via the `/speak` bridge — separate repo) and **Bot B** (this repo, the DM brain: voice
+via the `/speak` bridge — separate repo) and **DMbot** (this repo, the DM brain: voice
 receive, VAD, STT, LLM orchestration, TTS, RAG, memory, rules engine, Discord UI).
 Everything local — no cloud, no API costs.
 
@@ -78,18 +78,18 @@ in the same change.**
    workflow to keep context lean.
 2. **Dice = code, narration = LLM.** This is the project's signature. Dice rolling (RNG)
    *and* their resolution (success, degrees, damage) are computed by the generic engine
-   `bot_b/rules/engine.py` applying the **active system profile** (`data/systems/<system>.json`)
+   `dmbot/rules/engine.py` applying the **active system profile** (`data/systems/<system>.json`)
    — **never** the language model. The LLM *requests* a test (via marker), the engine rolls
    and reports back. Never let the LLM invent dice results or rulings.
 3. **Memory split.** JSON world state = hard facts (HP, inventory, NPCs, flags), advanced
    **deterministically by code**. Recaps = narrative thread, by the LLM. Never write hard
    state from LLM free text.
 4. **Feedback protection is non-negotiable.** Bot A's user-ID filter in the sink (layer 1)
-   must **always** be present — never remove it "for debugging", or Bot B transcribes its
+   must **always** be present — never remove it "for debugging", or DMbot transcribes its
    own DM voice. Pausing VAD while Bot A speaks is layer 2.
 5. **Two-bot isolation.** Bot A stays minimal: only `/speak` + status. All complexity
-   (voice receive, pipeline) lives in Bot B. The bridge is the **only** contact surface.
-   Never let Bot B logic leak into the music bot.
+   (voice receive, pipeline) lives in DMbot. The bridge is the **only** contact surface.
+   Never let DMbot logic leak into the music bot.
 6. **Layer by layer, with a gate.** Voice/VAD/STT/LLM/TTS/RAG/memory are verified one at
    a time (see the verification gates in `roadmap.md`) before the next phase begins. Don't
    couple what is separately testable.
@@ -104,10 +104,10 @@ in the same change.**
 
 ## Repo layout
 
-This is the **Bot B repo**. Bot A is a separate repo (the music bot) — not here.
+This is the **DMbot repo**. Bot A is a separate repo (the music bot) — not here.
 
 ```
-bot_b/          the DM bot
+dmbot/          the DM bot
   voice/        recv, resample, VAD
   stt/          faster-whisper wrapper
   tts/          piper wrapper
@@ -126,7 +126,7 @@ docs/           SETUP.md, decisions/ (ADRs)
 
 Bot A is the existing music bot in its **own repo** (`Pr0degie/musicbot`, branch
 `dungeon_master`, commit `249cc38`). It is **not** edited from this repo. What matters
-here is its contract, which Bot B calls:
+here is its contract, which DMbot calls:
 
 - `GET /health` → liveness. `POST /speak` with JSON `{"path","guild_id?"}` plays the WAV
   and **blocks until playback ends** — the return is the resume signal (no callback, no
@@ -135,7 +135,7 @@ here is its contract, which Bot B calls:
   ever genuinely needs a change, that's a separate task in the music bot repo — keep it
   minimal there (the music/queue logic stays untouched).
 
-## Bot B — DM conventions (`bot_b/`)
+## DMbot — DM conventions (`dmbot/`)
 
 - **`discord-ext-voice-recv` is the only research part.** Less well-trodden than plain
   discord.py. Check against the *installed* version (the sink callback signature may
@@ -154,7 +154,7 @@ here is its contract, which Bot B calls:
 - **Discord UI (`discord_ui/`):** buttons via `View`/`Button`. Dice buttons call the rules
   engine, never inline their own dice logic.
 
-## Rules engine (`bot_b/rules/`)
+## Rules engine (`dmbot/rules/`)
 
 - Pure Python, **fully decoupled** from the LLM. A **generic** engine: it rolls dice (RNG)
   and resolves them per the **active system profile** (`data/systems/<system>.json`) — it
@@ -167,13 +167,13 @@ here is its contract, which Bot B calls:
 - Pure functions, fixed seed in tests. The engine is unit-tested against each profile (IM
   first). This is the only part that is deterministically testable — use that.
 
-## Memory (`bot_b/memory/`)
+## Memory (`dmbot/memory/`)
 
 - JSON world state per voice channel in `data/sessions/`. Schema in `architecture.md` §7.
 - Advancement is **deterministic in code** (e.g. HP after damage), never from LLM free text.
 - Recaps: the LLM summarizes, code stores & re-injects at the front next time.
 
-## RAG (`bot_b/rag/`)
+## RAG (`dmbot/rag/`)
 
 - Ingestion: PDF → chunks → `nomic-embed-text` → vector store. **40k rulebooks are
   multi-column/table-heavy** — extracted text comes out scrambled. Inspect a real chunk
@@ -196,7 +196,7 @@ here is its contract, which Bot B calls:
   WAV temp via `tempfile.gettempdir()`, **never `/tmp`**.
 - **Two processes, two tokens** — both bots must join the voice channel. Tokens in
   env/`.env`, **never commit them**.
-- Ollama runs as its own process, not bundled with Bot B — in development locally on the
+- Ollama runs as its own process, not bundled with DMbot — in development locally on the
   4070, later optionally on the 5080 (Tailscale). Switchable via `OLLAMA_HOST`.
 - Keep the latency chain lean (LAN/Tailscale). Streaming TTS is a later optimization, not
   an MVP must.
@@ -215,7 +215,7 @@ The pipeline doesn't lie about itself — but real-time audio and foreign libs d
 
 ## Style
 
-- Commit messages: imperative, scoped (`bot_b(stt): resample to 16k mono`,
+- Commit messages: imperative, scoped (`dmbot(stt): resample to 16k mono`,
   `rules(im): success-level calculation`).
 - Small functions; prefer pure functions in `rules/` and `memory/` so they stay testable.
 - Comments explain *why*, not *what*.

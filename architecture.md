@@ -34,12 +34,12 @@ not baked into the DM.
 ## 2. Hardware topology
 
 **Important up front:** both bots talk to Discord's servers, not to each other or to
-the players' home networks. Voice audio flows player → Discord → Bot B and
+the players' home networks. Voice audio flows player → Discord → DMbot and
 Bot A → Discord → player. **Where the bots run is irrelevant to Discord** — Tobi and
 his colleague do *not* need to be on the same network. The only internal links are
-Bot B → Ollama and Bot B → Bot A (the bridge).
+DMbot → Ollama and DMbot → Bot A (the bridge).
 
-**Bot A and Bot B belong on the same machine.** The bridge passes a *file path* to the
+**Bot A and DMbot belong on the same machine.** The bridge passes a *file path* to the
 WAV — that only works with a shared filesystem. The only component that splits off
 cleanly is Ollama (JSON over HTTP, no path).
 
@@ -47,7 +47,7 @@ cleanly is Ollama (JSON over HTTP, no path).
 
 | Machine | GPU | Tasks |
 |---|---|---|
-| **Tobi's PC** | RTX 4070 (12 GB) | **everything**: Bot A, Bot B, VAD, STT, TTS, RAG, **and Ollama locally** |
+| **Tobi's PC** | RTX 4070 (12 GB) | **everything**: Bot A, DMbot, VAD, STT, TTS, RAG, **and Ollama locally** |
 
 Mistral Nemo 12B (Q4, ~8 GB) fits alongside Whisper-small and Piper in 12 GB. No
 internal network, no Tailscale setup — and the separate networks are a non-issue for
@@ -64,7 +64,7 @@ audio on someone else's hardware).
 
 | Machine | GPU | Tasks |
 |---|---|---|
-| **Tobi's PC** | RTX 4070 (12 GB) | Bot A, Bot B, VAD, STT, TTS, RAG |
+| **Tobi's PC** | RTX 4070 (12 GB) | Bot A, DMbot, VAD, STT, TTS, RAG |
 | **Colleague** | RTX 5080 (16 GB) | Ollama only (+ embeddings) — bigger model possible |
 
 If Nemo 12B feels too weak, **only the LLM** moves to the 5080. Switching = one line of
@@ -84,7 +84,7 @@ generation). Then the LLM has the 16 GB card to itself; STT/TTS stay on the 4070
 - **Why reuse the music bot?** It is already in the voice channel and can play audio —
   the playback logic already exists.
 
-#### Bridge contract (what Bot B builds against)
+#### Bridge contract (what DMbot builds against)
 An `aiohttp` server, **localhost only**, on `DM_BRIDGE_HOST`:`DM_BRIDGE_PORT`
 (defaults `127.0.0.1:8765`, via the music bot's `config.py` / `.env`).
 
@@ -98,15 +98,15 @@ An `aiohttp` server, **localhost only**, on `DM_BRIDGE_HOST`:`DM_BRIDGE_PORT`
 - `!dm` — Discord command, shows bridge status (server, voice connection).
 
 **Signalling:** the blocking return is the *only* "done" signal — no callback, no shared
-state (matches D15; an earlier Bot-A→Bot-B callback was removed as redundant).
+state (matches D15; an earlier Bot-A→DMbot callback was removed as redundant).
 
-**Bot B's side of the contract:** write the TTS WAV to a real file on the shared
+**DMbot's side of the contract:** write the TTS WAV to a real file on the shared
 filesystem (OS temp dir — same machine, Windows), then `POST` its path to
-`http://DM_BRIDGE_HOST:DM_BRIDGE_PORT/speak`. Bot B pauses its own VAD before the
+`http://DM_BRIDGE_HOST:DM_BRIDGE_PORT/speak`. DMbot pauses its own VAD before the
 `await` and resumes after the response returns (it owns the loop, so it needs no push
 from Bot A; layer-1 user-ID filtering protects regardless).
 
-### Bot B — Receiver / DM brain (new)
+### DMbot — Receiver / DM brain (new)
 - **Stack:** discord.py + `discord-ext-voice-recv` (the only real research part)
 - **Responsibility:** voice receive, VAD, STT, orchestration (LLM + RAG + memory),
   TTS, bridge call, text-channel mechanics (buttons). Pure *outbound* HTTP client toward
@@ -116,7 +116,7 @@ from Bot A; layer-1 user-ID filtering protects regardless).
 
 | Step | Component | Note |
 |---|---|---|
-| Receive voice | `discord-ext-voice-recv` | real-time streaming sinks, per-user PCM (48 kHz stereo) |
+| Receive voice | `discord-ext-voice-recv` (+ `davey`) | real-time streaming sinks, per-user audio (48 kHz stereo). `davey` decrypts Discord's **DAVE/E2EE** layer on receive — calls are end-to-end encrypted (ADR 006) |
 | Resampling | internal | 48 kHz stereo → 16 kHz mono for VAD/STT |
 | VAD/segmentation | `silero-vad` (or `webrtcvad`) | detects speech start/end, cuts utterances |
 | STT | `faster-whisper` | small/medium depending on load (on the 4070) |
@@ -134,7 +134,7 @@ from Bot A; layer-1 user-ID filtering protects regardless).
 Player speaks (freely, among themselves)
    │
    ▼
-[Bot B] sink yields per-user PCM ──► resample 48k/stereo → 16k/mono
+[DMbot] sink yields per-user PCM ──► resample 48k/stereo → 16k/mono
    │                                 (Bot A's user-ID is filtered out!)
    ▼
 silero-vad cuts utterances ──► faster-whisper ──► transcript
@@ -164,25 +164,25 @@ Ollama ──► answer text, possibly with a test marker  <<TEST Perception +10
 piper-tts ──► <TEMP>/dm_<id>.wav   (OS temp dir, NOT /tmp — Windows!)
    │
    ▼
-httpx POST {wav_path} to Bot A /speak   (Bot B pauses VAD)
+httpx POST {wav_path} to Bot A /speak   (DMbot pauses VAD)
    │
    ▼
 [Bot A] plays the WAV ── and only responds when finished (blocking)
    │
    ▼
-[Bot B] return = "done" ──► VAD active again, buffer cleared, next turn
+[DMbot] return = "done" ──► VAD active again, buffer cleared, next turn
 ```
 
 ---
 
 ## 5. Feedback-loop protection (mandatory)
 
-Bot B also hears Bot A in the same channel — without protection it transcribes its own
+DMbot also hears Bot A in the same channel — without protection it transcribes its own
 DM voice. Two layers:
 
 1. **The sink filters out Bot A's user-ID entirely** (cleanest solution, primary).
-2. **Bot B pauses the VAD during the `/speak` call** — and because `/speak` blocks
-   until playback is finished, Bot B knows exactly when it may listen again
+2. **DMbot pauses the VAD during the `/speak` call** — and because `/speak` blocks
+   until playback is finished, DMbot knows exactly when it may listen again
    (belt and braces).
 
 ---
@@ -191,7 +191,7 @@ DM voice. Two layers:
 
 ### When does the DM speak?
 Core problem: with 2–5 people in voice, the bot does not know whether it is being
-addressed or whether you are just talking among yourselves. Solution in the MVP: Bot B
+addressed or whether you are just talking among yourselves. Solution in the MVP: DMbot
 **transcribes continuously** (with the user-ID filter) and **buffers** utterances per
 player, but **only answers on a button press** ("End turn" / "DM, respond"). That way
 the DM never talks over anyone, table talk stays out of the game, and it is naturally
@@ -202,7 +202,7 @@ turn, not the VAD.**
 > button. The button is the robust path to get there (see ADR 003 / Part 2 of the roadmap).
 
 ### Character registration (session start)
-Bot B gets the Discord user-ID via `voice-recv`, but it must know who plays which
+DMbot gets the Discord user-ID via `voice-recv`, but it must know who plays which
 character — otherwise it cannot address anyone and cannot know whose stats a roll uses.
 Flow: **guided and sequential.** The bot walks through the loaded characters ("Who
 plays **Brother Castor**? Press the button.") — the first click maps that user-ID to
@@ -302,7 +302,7 @@ A small declarative file (`data/systems/<system>.json`) describing the core mech
 ```
 Other systems are just other profiles (d20 roll-over vs DC; 2d6+mod PbtA; d6 success pool; …).
 
-### Generic engine (`bot_b/rules/engine.py`)
+### Generic engine (`dmbot/rules/engine.py`)
 Pure Python, fully decoupled from the LLM. Rolls dice (RNG **is always code**) and applies
 the active profile to produce success/degrees. Unit-tested against each profile (IM first).
 **Golden rule generalized:** dice *and* their resolution are code-driven via engine +
@@ -346,10 +346,10 @@ models, compare tone & speed.
 - **Latency chain:** hear → VAD → STT → LLM → TTS → bridge → playback adds up.
   Mitigation: LAN/Tailscale instead of cloud, smaller Whisper model, later
   sentence-by-sentence streaming TTS.
-- **Feedback loop:** without the user-ID filter, Bot B transcribes its own DM voice →
+- **Feedback loop:** without the user-ID filter, DMbot transcribes its own DM voice →
   mandatory mitigation.
 - **`discord-ext-voice-recv`:** less well-trodden than plain discord.py — the only real
-  research part, but isolated in Bot B.
+  research part, but isolated in DMbot.
 - **Two tokens/processes:** two bot applications, both must join the channel.
 - **VAD false triggers with 2–5 people:** push-to-talk as an emergency exit if needed.
 - **Remote Ollama reachability:** the colleague must be online & reachable; Tailscale
@@ -366,13 +366,13 @@ models, compare tone & speed.
 
 ## 12. Project structure (proposal)
 
-This is the **Bot B repo**. Bot A is **not** part of it — it lives in the separate music
-bot repo (`Pr0degie/musicbot`, branch `dungeon_master`); Bot B talks to it over HTTP per
+This is the **DMbot repo**. Bot A is **not** part of it — it lives in the separate music
+bot repo (`Pr0degie/musicbot`, branch `dungeon_master`); DMbot talks to it over HTTP per
 the contract in §3. Do not create a `bot_a_bridge/` folder here.
 
 ```
-cogitator/                 # = the Bot B repo
-├── bot_b/                 # the DM bot
+cogitator/                 # = the DMbot repo
+├── dmbot/                 # the DM bot
 │   ├── voice/             # recv, resample, VAD
 │   ├── stt/               # faster-whisper wrapper
 │   ├── tts/               # piper wrapper

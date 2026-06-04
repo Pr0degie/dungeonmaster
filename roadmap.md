@@ -9,7 +9,7 @@ rules — from a per-system profile it proposed from your PDFs. The **first camp
 WH40K / Imperium Maledictum in the Eisenhorn grimdark tone, but the DM is not tied to it.
 
 Every phase has a **verification gate**: only when the proof is delivered does it
-continue. (Order follows the "bridge first, then Bot B layer by layer" principle —
+continue. (Order follows the "bridge first, then DMbot layer by layer" principle —
 lowest risk first.)
 
 ---
@@ -55,7 +55,7 @@ sessions — after a model switch, re-run `/effort`.
 ### Phase 0 — Foundation & setup
 **Goal:** tools in place, model speaks German.
 - Create repo + project structure (see `architecture.md` §12).
-- Two Discord applications + tokens (Bot A exists, Bot B is new).
+- Two Discord applications + tokens (Bot A exists, DMbot is new).
 - Install Ollama locally on the 4070, pull models (`mistral-nemo`, `nomic-embed-text`).
 - Model taste test: Mistral Nemo 12B vs. alternatives with the same German Eisenhorn
   prompt; compare tone & speed → pick the primary model.
@@ -68,11 +68,11 @@ sessions — after a model switch, re-run `/effort`.
 - Add `POST /speak` (aiohttp) to the music bot: takes a WAV path, plays in the voice channel.
 - **`/speak` blocks until playback ends** — the return is the resume signal (no separate status).
 - **Verification:** `curl -X POST localhost:<PORT>/speak` with a test WAV → audible in the channel.
-  *(Proves Part 1 completely without Bot B.)*
+  *(Proves Part 1 completely without DMbot.)*
 
-### Phase 2 — Bot B scaffold: voice receive
+### Phase 2 — DMbot scaffold: voice receive
 **Goal:** raw audio arrives, Bot A's voice is filtered.
-- Bot B joins voice, `discord-ext-voice-recv` sink, log per-user PCM.
+- DMbot joins voice, `discord-ext-voice-recv` sink, log per-user PCM.
 - **Hard-filter Bot A's user-ID** (feedback protection layer 1).
 - **Windows:** provide the Opus DLL for voice / `discord.opus.load_opus(...)` if needed.
 - **Verification:** PCM frames appear in the log when speaking; Bot A's own audio output

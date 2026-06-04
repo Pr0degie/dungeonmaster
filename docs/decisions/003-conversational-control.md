@@ -14,7 +14,7 @@ use the right stats on a roll.
 
 ## Decision
 
-- **When the DM speaks:** Bot B transcribes continuously (with the user-ID filter) and
+- **When the DM speaks:** DMbot transcribes continuously (with the user-ID filter) and
   buffers utterances per player, but **only generates an answer on a button press**
   ("End turn" / "DM, respond"). VAD serves **only for segmentation**, not as a trigger.
 - **Registration:** guided and sequential — the bot walks through the loaded characters
