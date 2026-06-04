@@ -4,10 +4,10 @@ Living status document. A phase counts as done only when its **verification gate
 met and the proof is recorded here.
 
 ## Current focus
-Phase 5 — LLM wiring + DM persona. **Phases 0–4 are complete** (gates met). The voice→text
-pipeline works end to end: clean per-user utterances → faster-whisper (`medium`, GPU) → correct
-German transcripts in a colourised console. Next: feed buffered transcripts to Ollama and get a
-German DM answer in the campaign tone.
+Phase 6 — TTS + first full loop ⭐. **Phases 0–5 are complete** (gates met). The brain works:
+voice → text → buffered → `!dm` → `mistral-nemo` with the layered Eisenhorn persona → an
+atmospheric German DM answer (logged + posted to text). Next: speak that answer aloud (Piper →
+WAV → Bot A `/speak`) and measure the full speak-to-answer latency.
 
 ## Last session
 **Phase 3 — VAD segmentation — implemented (gate pending a live test).** Decided the stack at
@@ -27,17 +27,18 @@ segmenter state machine tested with a scripted fake model (clean cut=1, blip dro
 receive + DAVE/E2EE decrypt (ADR 006), Bot B→DMbot rename.
 
 ## Next concrete step
-Begin **Phase 5 — LLM wiring + DM persona** (read ADR 002 + ADR 005 first). Build `dmbot/llm/`:
-an Ollama client over `httpx` (already installed; host from `OLLAMA_HOST`, model `mistral-nemo`),
-plus prompt building. Author `prompts/dm_core_de.md` (generic GM persona, German) + a first
-Eisenhorn tone overlay. Buffer the per-channel transcripts and, on a trigger, send
-core+overlay+history → Ollama → log a German DM answer. **Gate:** a text/voice prompt yields an
-atmospheric German DM answer in the campaign tone. Level: **opusplan / high** (set on the dial).
+Begin **Phase 6 — TTS + first full loop ⭐** (read `architecture.md` §4; ADR 002 for the bridge).
+Build `dmbot/tts/` (Piper `de_DE-thorsten` → WAV in the OS temp dir, **not** `/tmp`) + a bridge
+client (`httpx` POST to Bot A `/speak`, blocking = resume). Wire the DM answer from `!dm` →
+Piper → `/speak` so it is spoken aloud; pause VAD during playback (feedback layer 2 is Phase 7,
+but the `/speak` call already blocks). **Gate:** speak → DM answers audibly; measure latency; no
+self-hearing. Needs the Piper voice (SETUP B5 — Tobi). Level: **opusplan / high**.
 
-_Carry-over from the Phase-4 session:_ the **confidence filter** is in but only tested on clean
-speech (it didn't drop real words) — watch the next live run for whether the "Vielen Dank…"
-phantoms are actually gone, and whether anything real gets dropped (tune `_NO_SPEECH_MAX` /
-`_LOGPROB_MIN` in `stt/transcriber.py`). The **ms latency display** also needs a restart to show.
+_Carry-overs:_ (1) **STT confidence filter** is live but only tested on clean speech — watch a
+live run for whether the "Vielen Dank…" phantoms are gone and nothing real is dropped (tune
+`_NO_SPEECH_MAX`/`_LOGPROB_MIN`). (2) **DM model/persona tuning** — try `gemma3:12b` vs
+`mistral-nemo` with the real persona; trim nemo's occasional meta-preamble. (3) The **ms latency
+display** + green console need a restart to show. (4) Live-test `!dm` (Tobi hasn't run it yet).
 
 ---
 
@@ -178,12 +179,21 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   Remaining: rare stock-phrase hallucinations on short/near-silent clips → now filtered by
   confidence. Stack: `faster-whisper 1.2.1`, `ctranslate2 4.7.2`, `nvidia-cudnn-cu12 9.23`.
 
-### ⬜ Phase 5 — LLM wiring + DM persona
-- [ ] Ollama client (httpx)
-- [ ] `prompts/dm_core_de.md` (generic GM persona, German) + first campaign tone overlay (Eisenhorn)
-- [ ] History per channel (in-memory)
+### ✅ Phase 5 — LLM wiring + DM persona
+- [x] Ollama client (`llm/client.py`, async httpx, `/api/chat`; host+model from config — ADR 002)
+- [x] `prompts/dm_core_de.md` (generic GM persona, German) + `campaign_tone_de.md` (Eisenhorn overlay) — layered loader `llm/persona.py` (ADR 005)
+- [x] `DMBrain` (`orchestrator.py`): per-channel history (in-memory) + lock-guarded player-line buffer
+- [x] Wired: voice transcripts buffer per channel; `!dm` / `!dm <Text>` triggers a turn → answer logged `🎭` + posted to the text channel
+- [x] Output hygiene for TTS: strip role labels/markdown; `stop` sequences + truncation so the model plays **one** DM turn and never fabricates player replies
 - **Gate:** text prompt → German DM answer in the campaign's tone.
-- **VERIFY EVIDENCE:** _(empty)_
+- **VERIFY EVIDENCE:** _Offline (2026-06-04), real Ollama + `mistral-nemo` + the real persona:_ a
+  German player line ("Ich öffne die schwere Eisentür…") yields an atmospheric grimdark DM answer
+  in Eisenhorn tone (flackernde Lumen, Rost/Weihrauch, ein Adept-NSC mit Stimme), addresses players
+  by name, ends with "Was tut ihr?"; a follow-up turn correctly uses the history. After hardening:
+  exactly one DM turn, no fabricated player lines, no "Spielleitung:"/markdown leakage.
+  _Open tuning (noted, not blocking):_ nemo occasionally adds a meta-preamble ("Ich beschreibe…")
+  and lets the setting drift with sparse context → re-run the Phase-0 **nemo vs gemma3:12b** taste
+  test with this persona; consider it in Phase 6 once TTS gives a feel for tone aloud.
 
 ### ⬜ Phase 6 — TTS + first full loop ⭐
 - [ ] Piper (`de_DE-thorsten`) → WAV (OS temp dir)
