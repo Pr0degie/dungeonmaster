@@ -14,6 +14,8 @@ ANSI colours are enabled on the Windows console via ``colorama.just_fix_windows_
 from __future__ import annotations
 
 import logging
+import shutil
+import textwrap
 import time
 from pathlib import Path
 
@@ -34,6 +36,12 @@ _BGREEN = "\033[92m"  # bright green, for emphasis (speaker names)
 _RED = "\033[91m"
 _YELLOW = "\033[93m"
 
+# Chat layout widths: "HH:MM:SS" + 2 spaces + a 12-wide name + 2 spaces → text starts at 24.
+_TS_W = 8
+_NAME_W = 12
+_GAP = "  "
+_INDENT = _TS_W + len(_GAP) + _NAME_W + len(_GAP)  # 24: where the message text begins
+
 
 class _ConsoleFormatter(logging.Formatter):
     """Green-themed console: transcripts as chat (green), warnings/errors highlighted."""
@@ -42,13 +50,21 @@ class _ConsoleFormatter(logging.Formatter):
         ts = time.strftime("%H:%M:%S", time.localtime(record.created))
         msg = record.getMessage()
 
-        if msg.startswith("📝"):  # "📝 Name: text" → a chat line
+        if msg.startswith("📝"):  # "📝 Name: text" → a chat line with hanging indent
             body = msg.split(" ", 1)[1] if " " in msg else msg
             name, _, text = body.partition(": ")
-            return (
-                f"{_DIM}{_GREEN}{ts}{_RESET}  "
-                f"{_BGREEN}{_BOLD}{name:>12}{_RESET}  {_GREEN}{text}{_RESET}"
+            name = name[:_NAME_W]
+            # Wrap the text to the terminal so continuation lines hang under the first word
+            # (indented to the text column) instead of starting at the left edge.
+            cols = shutil.get_terminal_size((100, 24)).columns
+            avail = max(20, cols - _INDENT - 1)
+            lines = textwrap.wrap(text, width=avail) or [""]
+            head = (
+                f"{_DIM}{_GREEN}{ts}{_RESET}{_GAP}"
+                f"{_BGREEN}{_BOLD}{name:>{_NAME_W}}{_RESET}{_GAP}{_GREEN}{lines[0]}{_RESET}"
             )
+            rest = [f"{' ' * _INDENT}{_GREEN}{ln}{_RESET}" for ln in lines[1:]]
+            return "\n".join([head, *rest])
 
         if msg.startswith("🗣"):  # utterance cut — secondary, dim green
             return f"{_DIM}{_GREEN}{ts}  {msg}{_RESET}"
