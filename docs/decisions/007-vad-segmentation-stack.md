@@ -75,3 +75,11 @@ rule #4 — the filter is never re-implemented or bypassed).
   resampler + segmenter per user, all sharing one loaded model. The HQ resampler's constant
   startup delay (first chunk may yield 0 samples) only shifts the timeline by a fixed offset —
   irrelevant for segmentation.
+- **Voice activation → silence must be injected (learned live).** Discord clients send *no*
+  RTP at all while a user is silent, so the segmenter never receives the trailing-silence
+  frames it needs to close an utterance — it hangs open until the next speech, merging
+  sentences. Fix: wrap `VadSink` in voice-recv's `SilenceGeneratorSink`, which fills
+  transmission gaps with synthetic silence frames (decoded PCM, no opus/DAVE); `write()`
+  routes those straight to the segmenter, bypassing decrypt/decode. Chosen over a self-managed
+  wall-clock close-timer because the library already solves it. The wrapper drives `write()`
+  from its own thread, so the sink is lock-guarded.

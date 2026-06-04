@@ -142,7 +142,13 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   scripted fake model — clean utterance cut=1, sub-250 ms blip dropped, mid-sentence pause
   <600 ms not split, real >600 ms gap splits into 2, flush mid-speech emits. Stack:
   `onnxruntime 1.26.0`, `soxr 1.1.0`, `numpy 2.4.6`, vendored silero v5 onnx (~2 MB).
-  _Live gate still open_ — needs a mic test (see Next concrete step).
+  _Live (2026-06-04):_ first live run surfaced **two bugs, both fixed + offline-reproduced:**
+  (1) silero v5 needs a **64-sample context** prepended (576-sample input, not bare 512) — bare
+  512 scored prob≈0 on clear speech (0/1874 frames), fixed → 1451/1874 voiced; (2) **voice
+  activation** means clients send no RTP while silent, so utterances never closed — fixed by
+  wrapping in `SilenceGeneratorSink` (injects silence; lock-guarded sink). After the fixes a
+  live utterance + WAV was produced. _Final gate still open_ — needs one clean confirming run
+  (one sentence ≈ one utterance, start/end correct) on the fixed build (see Next concrete step).
 
 ### ⬜ Phase 4 — STT (faster-whisper)
 - [ ] faster-whisper wrapper, transcript log
