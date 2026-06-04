@@ -4,9 +4,10 @@ Living status document. A phase counts as done only when its **verification gate
 met and the proof is recorded here.
 
 ## Current focus
-Phase 4 — STT (faster-whisper). **Phases 0–3 are complete** (gates met). The voice pipeline
-delivers clean per-user 16 kHz mono utterances (resample + silero-vad, ADR 007; live-confirmed
-2026-06-04). Next: turn each utterance into German text.
+Phase 4 — STT (faster-whisper), **code complete, German live gate pending**. Phases 0–3 are
+done. Utterances now flow to a faster-whisper worker thread → German text in the log; GPU load
+verified offline (cuda/float16, cuDNN via in-code `add_dll_directory`). Open: a live German mic
+test (transcript correct in the log).
 
 ## Last session
 **Phase 3 — VAD segmentation — implemented (gate pending a live test).** Decided the stack at
@@ -26,13 +27,12 @@ segmenter state machine tested with a scripted fake model (clean cut=1, blip dro
 receive + DAVE/E2EE decrypt (ADR 006), Bot B→DMbot rename.
 
 ## Next concrete step
-Begin **Phase 4 — STT (faster-whisper)**: feed each cut utterance (16 kHz mono s16le, the bytes
-`VadSink` already produces) to faster-whisper and log the German transcript. New module
-`dmbot/stt/` wrapping faster-whisper; replace the WAV-dump in `VoiceReceiveCog._on_utterance`
-with a transcribe-and-buffer step. **Windows:** the cuDNN/cuBLAS DLLs must be on `PATH` or GPU
-inference won't start (SETUP B3) — `docs/SETUP.md`; this is a Tobi step. **Gate:** a spoken
-German sentence appears correctly as text in the log. Read `architecture.md` §4 first;
-recommended level (`roadmap.md`): **opusplan / high** (set `/model` + `/effort` on the dial).
+**Run the Phase 4 German live gate** (Tobi): restart, `!j`, speak German sentences, confirm the
+`📝 <name>: <text>` lines in `logs/dmbot.log` are correct German. If accuracy is weak, set
+`WHISPER_MODEL=medium` (env) and retry — no code change. Then fill the Phase 4 `VERIFY EVIDENCE`
+and move to **Phase 5 — LLM wiring + DM persona** (Ollama via `httpx` — already installed;
+`prompts/dm_core_de.md` generic GM core + Eisenhorn tone overlay; ADR 002 + ADR 005). Level:
+**opusplan / high**.
 
 ---
 
@@ -153,11 +153,20 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   (silence injection), so separate sentences no longer merge. Stack live: `discord.py 2.7.1`,
   `discord-ext-voice-recv 0.5.2a179`, `onnxruntime 1.26.0`, `soxr 1.1.0`.
 
-### ⬜ Phase 4 — STT (faster-whisper)
-- [ ] faster-whisper wrapper, transcript log
-- [ ] Windows: cuDNN/cuBLAS DLLs on the `PATH`
+### 🔄 Phase 4 — STT (faster-whisper)  (code complete, German live gate pending)
+- [x] faster-whisper wrapper (`dmbot/stt/transcriber.py`): worker thread + queue (off the audio
+      path), 16k mono s16le → German text via `WhisperModel`, CPU-int8 fallback
+- [x] Windows cuDNN/cuBLAS: `os.add_dll_directory()` for the `nvidia-*-cu12` wheel `bin` dirs in
+      `stt/transcriber.py` — no manual `PATH` (SETUP B3 done)
+- [x] Wired into `VoiceReceiveCog`: `_on_utterance` → `transcriber.submit`; transcript logged
+      as `📝 <name>: <text>`; config via `WHISPER_MODEL/DEVICE/COMPUTE` env
+- [ ] **German live gate** — speak German, confirm correct transcript in the log
 - **Gate:** German sentence transcribed correctly.
-- **VERIFY EVIDENCE:** _(empty)_
+- **VERIFY EVIDENCE:** _Offline (2026-06-04):_ GPU load confirmed —
+  `faster-whisper 'small' loaded on cuda (float16)` via the in-code DLL registration; ~1.25 s to
+  transcribe 4 s of (English test) audio, model cached; clean transcript returned. Stack:
+  `faster-whisper 1.2.1`, `ctranslate2 4.7.2`, `nvidia-cudnn-cu12 9.23`, `nvidia-cublas-cu12 12.9`.
+  _German live gate still open_ — needs a mic test (production forces `language="de"`).
 
 ### ⬜ Phase 5 — LLM wiring + DM persona
 - [ ] Ollama client (httpx)

@@ -44,13 +44,18 @@ Runtime is **Windows** (see decision log D16). Check the items off.
       `curl http://localhost:11434/api/generate -d "{\"model\":\"mistral-nemo\",\"prompt\":\"Say something grim in German.\",\"stream\":false}"`
       → plausible German answer.
 
-### B3 — faster-whisper on GPU (the Windows stumbling block)
-- [ ] Provide **cuDNN/cuBLAS DLLs** matching your CUDA version — GPU inference won't start
-      otherwise. Two ways:
-  - convenient: the NVIDIA wheels into the venv (`uv add nvidia-cublas-cu12 nvidia-cudnn-cu12`)
-    and make sure their `bin`/DLLs are findable, **or**
-  - manual: put the DLLs on the `PATH` (or next to the running .exe / in the working dir).
-- [ ] **Budget time here** — this is empirically the most stubborn setup point.
+### B3 — faster-whisper on GPU (the Windows stumbling block) — ✅ DONE (2026-06-04)
+- [x] cuDNN/cuBLAS DLLs provided via the NVIDIA wheels
+      (`uv add faster-whisper nvidia-cublas-cu12 nvidia-cudnn-cu12`). Installed:
+      `faster-whisper 1.2.1`, `ctranslate2 4.7.2`, `nvidia-cudnn-cu12 9.23` (cuDNN 9, matches
+      ct2 4.7), `nvidia-cublas-cu12 12.9`.
+- [x] **No manual `PATH` editing needed.** `dmbot/stt/transcriber.py` registers the wheels'
+      `bin` dirs with `os.add_dll_directory()` *before* importing faster-whisper, so Windows
+      finds the DLLs. Verified: `faster-whisper 'small' loaded on cuda (float16)`,
+      ~1.25 s to transcribe 4 s of audio (model cached). If GPU init ever fails it auto-falls
+      back to CPU int8 (logged), so STT degrades instead of dying.
+- Tunable via env (no code change): `WHISPER_MODEL` (default `small`), `WHISPER_DEVICE`
+  (`cuda`), `WHISPER_COMPUTE` (`float16`). Bump to `medium` if German accuracy needs it.
 
 ### B4 — Discord (two bots)
 - [ ] **DMbot** new in the Discord Developer Portal: Application → Bot → copy the **token**.

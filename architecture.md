@@ -119,7 +119,7 @@ from Bot A; layer-1 user-ID filtering protects regardless).
 | Receive voice | `discord-ext-voice-recv` (+ `davey`) | real-time streaming sinks, per-user audio (48 kHz stereo). `davey` decrypts Discord's **DAVE/E2EE** layer on receive — calls are end-to-end encrypted (ADR 006) |
 | Resampling | `soxr` (streaming) | 48 kHz stereo → 16 kHz mono for VAD/STT, one `ResampleStream` per user (ADR 007) |
 | VAD/segmentation | `silero-vad` via `onnxruntime` | neural VAD run through onnxruntime (no torch), model vendored in-repo; cuts utterances on silence (ADR 007) |
-| STT | `faster-whisper` | small/medium depending on load (on the 4070) |
+| STT | `faster-whisper` (CTranslate2) | small/medium on the 4070 (GPU float16, CPU int8 fallback). cuDNN/cuBLAS via the `nvidia-*-cu12` wheels; DLLs registered in-code (`stt/transcriber.py`), no manual `PATH`. Runs on a worker thread off the audio path |
 | LLM | **Ollama** (local/5080) + `httpx` | DM system prompt + history + RAG context + JSON state |
 | Embeddings | `nomic-embed-text` via Ollama | for RAG (tiny, runs anywhere) |
 | RAG store | SQLite + vector (e.g. `sqlite-vec`) or ChromaDB | searchable PDF chunks |
