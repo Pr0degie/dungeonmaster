@@ -50,9 +50,11 @@ class VoiceReceiveCog(commands.Cog):
         whisper_model: str = "small",
         whisper_device: str = "cuda",
         whisper_compute: str = "float16",
+        dump_utterances: bool = False,
     ) -> None:
         self.bot = bot
         self._bot_a_user_id = bot_a_user_id
+        self._dump_utterances = dump_utterances
         self._utterance_counts: dict[int, int] = {}
         # STT worker (Phase 4): loads faster-whisper in its own thread, transcribes off the
         # audio path. Started here so a broken cuDNN surfaces at boot, not on first utterance.
@@ -65,20 +67,23 @@ class VoiceReceiveCog(commands.Cog):
         self._transcriber.start()
 
     def _on_utterance(self, user_id: int, name: str, pcm: bytes, duration_s: float) -> None:
-        """Per cut utterance (voice-recv reader / silence-gen thread): dump a WAV for
-        inspection and hand the PCM to the STT worker. Keep it light, never raise.
+        """Per cut utterance (voice-recv reader / silence-gen thread): hand the PCM to the STT
+        worker (and optionally dump a WAV for debugging). Keep it light, never raise.
         """
         n = self._utterance_counts.get(user_id, 0) + 1
         self._utterance_counts[user_id] = n
-        try:
-            path = _write_utterance_wav(name, n, pcm)
-        except Exception:
-            log.exception("failed to write utterance WAV")
-            path = "<unwritten>"
-        log.info(
-            "🗣 utterance #%d from %s — %.2fs (%d KiB) → %s",
-            n, name, duration_s, len(pcm) // 1024, path,
-        )
+        if self._dump_utterances:  # debug only — off by default so temp doesn't fill up
+            try:
+                path = _write_utterance_wav(name, n, pcm)
+            except Exception:
+                log.exception("failed to write utterance WAV")
+                path = "<unwritten>"
+            log.info(
+                "🗣 utterance #%d from %s — %.2fs (%d KiB) → %s",
+                n, name, duration_s, len(pcm) // 1024, path,
+            )
+        else:
+            log.info("🗣 utterance #%d from %s — %.2fs", n, name, duration_s)
         self._transcriber.submit(name, pcm)  # transcription happens on the STT worker thread
 
     def _on_transcript(self, name: str, text: str) -> None:

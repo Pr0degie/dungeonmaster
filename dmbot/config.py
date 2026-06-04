@@ -26,6 +26,7 @@ class Config:
     whisper_model: str
     whisper_device: str
     whisper_compute: str
+    dump_utterances: bool
 
     @classmethod
     def load(cls) -> "Config":
@@ -57,4 +58,8 @@ class Config:
             whisper_model=os.environ.get("WHISPER_MODEL", "small").strip(),
             whisper_device=os.environ.get("WHISPER_DEVICE", "cuda").strip(),
             whisper_compute=os.environ.get("WHISPER_COMPUTE", "float16").strip(),
+            # Debug aid only: dump each utterance as a WAV to the OS temp dir. Off by default
+            # — it clutters the disk; turn on (DM_DUMP_UTTERANCES=1) to inspect a clip.
+            dump_utterances=os.environ.get("DM_DUMP_UTTERANCES", "").strip().lower()
+            in ("1", "true", "yes", "on"),
         )

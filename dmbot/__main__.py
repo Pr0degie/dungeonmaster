@@ -61,6 +61,7 @@ class DMBot(commands.Bot):
                 whisper_model=self._config.whisper_model,
                 whisper_device=self._config.whisper_device,
                 whisper_compute=self._config.whisper_compute,
+                dump_utterances=self._config.dump_utterances,
             )
         )
 
