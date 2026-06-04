@@ -47,7 +47,7 @@ class VoiceReceiveCog(commands.Cog):
         bot: commands.Bot,
         *,
         bot_a_user_id: int | None = None,
-        whisper_model: str = "small",
+        whisper_model: str = "medium",
         whisper_device: str = "cuda",
         whisper_compute: str = "float16",
         dump_utterances: bool = False,

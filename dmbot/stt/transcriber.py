@@ -59,6 +59,13 @@ from faster_whisper import WhisperModel  # noqa: E402  (after the DLL-dir regist
 
 _I16_FULL_SCALE = 32768.0
 
+# Hallucination guard. On short/quiet clips Whisper invents stock phrases ("Vielen Dank
+# für's Zuhören", "Das war's für heute" …). Those segments fire when the model thinks the
+# audio is mostly non-speech (high no_speech_prob) or is low-confidence (low avg_logprob).
+# Drop them; thresholds tuned conservatively so real (even mumbled) speech is kept.
+_NO_SPEECH_MAX = 0.7   # drop a segment whose no_speech_prob exceeds this
+_LOGPROB_MIN = -1.0    # …or whose avg_logprob falls below this
+
 # Callback shape: (speaker_name, transcript_text, clip_seconds, transcribe_ms).
 OnTranscript = Callable[[str, str, float, float], None]
 
@@ -146,15 +153,35 @@ class Transcriber:
     def _transcribe_one(self, name: str, pcm: bytes, clip_s: float) -> None:
         # s16le mono → float32 [-1, 1), what faster-whisper expects as a raw array.
         audio = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / _I16_FULL_SCALE
-        # We already did VAD upstream, so don't run whisper's own VAD filter. transcribe()
-        # returns a generator — the real work happens as we consume it, so time the join.
+        # We already did VAD upstream, so don't run whisper's own VAD filter.
+        # condition_on_previous_text=False: each utterance is independent, and it stops a
+        # hallucination from priming the next. transcribe() returns a generator — the real
+        # work happens as we consume it, so time the join.
         t0 = time.perf_counter()
         segments, _info = self._model.transcribe(  # type: ignore[union-attr]
-            audio, language=self._language, vad_filter=False, beam_size=5
+            audio,
+            language=self._language,
+            vad_filter=False,
+            beam_size=5,
+            condition_on_previous_text=False,
         )
-        text = " ".join(seg.text.strip() for seg in segments).strip()
+        kept, dropped = [], []
+        for seg in segments:
+            seg_text = seg.text.strip()
+            if not seg_text:
+                continue
+            if seg.no_speech_prob > _NO_SPEECH_MAX or seg.avg_logprob < _LOGPROB_MIN:
+                dropped.append((seg_text, seg.no_speech_prob, seg.avg_logprob))
+                continue
+            kept.append(seg_text)
+        text = " ".join(kept).strip()
         latency_ms = (time.perf_counter() - t0) * 1000.0
+
+        if dropped:
+            log.debug(
+                "dropped %d low-confidence seg(s) from %s: %s", len(dropped), name, dropped
+            )
         if text:
             self._on_transcript(name, text, clip_s, latency_ms)
         else:
-            log.debug("empty transcript for a %s utterance (%d samples)", name, audio.size)
+            log.debug("no confident speech in a %s utterance (%d samples)", name, audio.size)

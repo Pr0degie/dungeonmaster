@@ -4,10 +4,10 @@ Living status document. A phase counts as done only when its **verification gate
 met and the proof is recorded here.
 
 ## Current focus
-Phase 4 — STT (faster-whisper), **code complete, German live gate pending**. Phases 0–3 are
-done. Utterances now flow to a faster-whisper worker thread → German text in the log; GPU load
-verified offline (cuda/float16, cuDNN via in-code `add_dll_directory`). Open: a live German mic
-test (transcript correct in the log).
+Phase 5 — LLM wiring + DM persona. **Phases 0–4 are complete** (gates met). The voice→text
+pipeline works end to end: clean per-user utterances → faster-whisper (`medium`, GPU) → correct
+German transcripts in a colourised console. Next: feed buffered transcripts to Ollama and get a
+German DM answer in the campaign tone.
 
 ## Last session
 **Phase 3 — VAD segmentation — implemented (gate pending a live test).** Decided the stack at
@@ -27,12 +27,17 @@ segmenter state machine tested with a scripted fake model (clean cut=1, blip dro
 receive + DAVE/E2EE decrypt (ADR 006), Bot B→DMbot rename.
 
 ## Next concrete step
-**Run the Phase 4 German live gate** (Tobi): restart, `!j`, speak German sentences, confirm the
-`📝 <name>: <text>` lines in `logs/dmbot.log` are correct German. If accuracy is weak, set
-`WHISPER_MODEL=medium` (env) and retry — no code change. Then fill the Phase 4 `VERIFY EVIDENCE`
-and move to **Phase 5 — LLM wiring + DM persona** (Ollama via `httpx` — already installed;
-`prompts/dm_core_de.md` generic GM core + Eisenhorn tone overlay; ADR 002 + ADR 005). Level:
-**opusplan / high**.
+Begin **Phase 5 — LLM wiring + DM persona** (read ADR 002 + ADR 005 first). Build `dmbot/llm/`:
+an Ollama client over `httpx` (already installed; host from `OLLAMA_HOST`, model `mistral-nemo`),
+plus prompt building. Author `prompts/dm_core_de.md` (generic GM persona, German) + a first
+Eisenhorn tone overlay. Buffer the per-channel transcripts and, on a trigger, send
+core+overlay+history → Ollama → log a German DM answer. **Gate:** a text/voice prompt yields an
+atmospheric German DM answer in the campaign tone. Level: **opusplan / high** (set on the dial).
+
+_Carry-over from the Phase-4 session:_ the **confidence filter** is in but only tested on clean
+speech (it didn't drop real words) — watch the next live run for whether the "Vielen Dank…"
+phantoms are actually gone, and whether anything real gets dropped (tune `_NO_SPEECH_MAX` /
+`_LOGPROB_MIN` in `stt/transcriber.py`). The **ms latency display** also needs a restart to show.
 
 ---
 
@@ -153,20 +158,25 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   (silence injection), so separate sentences no longer merge. Stack live: `discord.py 2.7.1`,
   `discord-ext-voice-recv 0.5.2a179`, `onnxruntime 1.26.0`, `soxr 1.1.0`.
 
-### 🔄 Phase 4 — STT (faster-whisper)  (code complete, German live gate pending)
+### ✅ Phase 4 — STT (faster-whisper)
 - [x] faster-whisper wrapper (`dmbot/stt/transcriber.py`): worker thread + queue (off the audio
       path), 16k mono s16le → German text via `WhisperModel`, CPU-int8 fallback
 - [x] Windows cuDNN/cuBLAS: `os.add_dll_directory()` for the `nvidia-*-cu12` wheel `bin` dirs in
       `stt/transcriber.py` — no manual `PATH` (SETUP B3 done)
 - [x] Wired into `VoiceReceiveCog`: `_on_utterance` → `transcriber.submit`; transcript logged
-      as `📝 <name>: <text>`; config via `WHISPER_MODEL/DEVICE/COMPUTE` env
-- [ ] **German live gate** — speak German, confirm correct transcript in the log
+      as `📝 <name> | <clip>·<ms> | <text>`; model via `WHISPER_MODEL/DEVICE/COMPUTE` env
+- [x] **`medium` is the default** (beat `small` clearly in the live German test)
+- [x] Hallucination guard: drop segments with high `no_speech_prob` / low `avg_logprob`
+      (kills the "Vielen Dank für's Zuhören" phantoms on short/quiet clips)
 - **Gate:** German sentence transcribed correctly.
-- **VERIFY EVIDENCE:** _Offline (2026-06-04):_ GPU load confirmed —
-  `faster-whisper 'small' loaded on cuda (float16)` via the in-code DLL registration; ~1.25 s to
-  transcribe 4 s of (English test) audio, model cached; clean transcript returned. Stack:
-  `faster-whisper 1.2.1`, `ctranslate2 4.7.2`, `nvidia-cudnn-cu12 9.23`, `nvidia-cublas-cu12 12.9`.
-  _German live gate still open_ — needs a mic test (production forces `language="de"`).
+- **VERIFY EVIDENCE:** _Live (2026-06-04):_ a ~16-min two-speaker session transcribed German
+  correctly throughout — long, complex, well-punctuated sentences (e.g. *"Nichtsdestotrotz steht
+  mir der Christoph, Markos Vater im Wege."*; a 60-word run captured verbatim). Players confirmed
+  in-channel: *"ihr habt's perfekt transkribiert"* + *"ging echt schnell"*. `medium` clearly beat
+  `small` (small mis-heard the quieter speaker; medium got him). GPU: `faster-whisper 'medium'
+  loaded on cuda (float16)` via in-code DLL registration; ~0.77 s to transcribe 8 s audio.
+  Remaining: rare stock-phrase hallucinations on short/near-silent clips → now filtered by
+  confidence. Stack: `faster-whisper 1.2.1`, `ctranslate2 4.7.2`, `nvidia-cudnn-cu12 9.23`.
 
 ### ⬜ Phase 5 — LLM wiring + DM persona
 - [ ] Ollama client (httpx)
@@ -211,6 +221,10 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 ---
 
 ## Part 2 — Beyond the MVP (backlog)
+- [ ] **Edit/review window before the DM speaks** — a toggleable human-in-the-loop step that
+      briefly intercepts the DM response (and optionally the transcript) so a player can read /
+      correct it before TTS. Off once trusted, so play flows. _Requested live by Pr0degie + Timo,
+      2026-06-04; fits Phase 7 (turn-taking) — keep it switchable, not a permanent gate._
 - [ ] GUI for the bot (session/turn/dice/sheets)
 - [ ] LLM finetuning (LoRA on session logs)
 - [ ] Streaming TTS (latency)
