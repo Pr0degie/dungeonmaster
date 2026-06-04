@@ -59,7 +59,10 @@ class VoiceReceiveCog(commands.Cog):
         dump_utterances: bool = False,
         ollama_host: str = "http://127.0.0.1:11434",
         ollama_model: str = "mistral-nemo",
+        tts_engine: str = "piper",
         tts_voice: str = "",
+        tts_speaker: str = "",
+        tts_device: str = "cpu",
         bridge_host: str = "127.0.0.1",
         bridge_port: int = 8765,
     ) -> None:
@@ -70,13 +73,18 @@ class VoiceReceiveCog(commands.Cog):
         self._active_vc_id: int | None = None  # the voice channel we buffer/answer for
         self._brain = DMBrain(OllamaClient(ollama_host, ollama_model))
         self._bridge = BridgeClient(bridge_host, bridge_port)
-        # Load the Piper voice once. If it's missing, keep running text-only (DM answers still
-        # post to the channel, just aren't spoken) instead of refusing to start.
+        # Load the TTS backend once. xtts is imported lazily so Piper users don't pull torch.
+        # If loading fails, keep running text-only (answers still post, just aren't spoken).
+        self._tts = None
         try:
-            self._tts: PiperTTS | None = PiperTTS(tts_voice) if tts_voice else PiperTTS()
+            if tts_engine == "xtts":
+                from ..tts.xtts import XttsTTS  # heavy import (torch) — only when selected
+
+                self._tts = XttsTTS(tts_speaker, device=tts_device)
+            else:
+                self._tts = PiperTTS(tts_voice) if tts_voice else PiperTTS()
         except Exception:
-            log.exception("Piper TTS unavailable — DM answers will not be spoken (see SETUP B5)")
-            self._tts = None
+            log.exception("TTS unavailable (%s) — DM answers won't be spoken", tts_engine)
         # STT worker (Phase 4): loads faster-whisper in its own thread, transcribes off the
         # audio path. Started here so a broken cuDNN surfaces at boot, not on first utterance.
         self._transcriber = Transcriber(
@@ -181,6 +189,29 @@ class VoiceReceiveCog(commands.Cog):
             return
         await self._speak(text, ctx.guild.id if ctx.guild else None)
         await ctx.send("🔊")
+
+    @commands.command(name="voice")
+    async def voice(self, ctx: commands.Context, *, name: str = "") -> None:
+        """Switch the XTTS speaker live: `!voice Dionisio Schuyler`. No arg → show current."""
+        if not hasattr(self._tts, "set_speaker"):
+            await ctx.send("Sprecher-Wechsel geht nur mit `TTS_ENGINE=xtts`.")
+            return
+        if not name:
+            await ctx.send(f"Aktueller Sprecher: **{self._tts.speaker}**")
+            return
+        if self._tts.set_speaker(name):
+            await ctx.send(f"Sprecher → **{name}**. Teste mit `!say …`.")
+        else:
+            await ctx.send(f"Unbekannter Sprecher `{name}`. Liste: `!voices`.")
+
+    @commands.command(name="voices")
+    async def voices(self, ctx: commands.Context) -> None:
+        """List the XTTS built-in speakers."""
+        if not hasattr(self._tts, "speakers"):
+            await ctx.send("Nur mit `TTS_ENGINE=xtts` verfügbar.")
+            return
+        names = ", ".join(self._tts.speakers())
+        await ctx.send(f"**XTTS-Sprecher:**\n{names[:1900]}")
 
     @commands.command(name="join", aliases=["j"])
     async def join(self, ctx: commands.Context) -> None:

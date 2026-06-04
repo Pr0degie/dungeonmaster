@@ -28,7 +28,10 @@ class Config:
     whisper_device: str
     whisper_compute: str
     dump_utterances: bool
+    tts_engine: str
     tts_voice: str
+    tts_speaker: str
+    tts_device: str
 
     @classmethod
     def load(cls) -> "Config":
@@ -66,7 +69,13 @@ class Config:
             # — it clutters the disk; turn on (DM_DUMP_UTTERANCES=1) to inspect a clip.
             dump_utterances=os.environ.get("DM_DUMP_UTTERANCES", "").strip().lower()
             in ("1", "true", "yes", "on"),
-            # TTS voice (Phase 6). Empty → the Piper wrapper's default
-            # (voices/de_DE-thorsten-medium.onnx). Override to swap the voice.
+            # TTS backend: "piper" (fast, fixed voice) or "xtts" (Coqui XTTS v2, picks one of
+            # ~58 built-in speakers, heavier). Phase 6.
+            tts_engine=os.environ.get("TTS_ENGINE", "piper").strip().lower(),
+            # Piper voice .onnx; empty → the wrapper's default (de_DE-thorsten-medium).
             tts_voice=os.environ.get("PIPER_VOICE", "").strip(),
+            # XTTS built-in speaker name (see voices/samples/_speakers.txt); empty → default.
+            tts_speaker=os.environ.get("TTS_SPEAKER", "").strip(),
+            # XTTS device: "cpu" (safe, slower) or "cuda" (fast, needs free VRAM).
+            tts_device=os.environ.get("TTS_DEVICE", "cpu").strip(),
         )

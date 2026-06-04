@@ -248,6 +248,12 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 ---
 
 ## Part 2 — Beyond the MVP (backlog)
+- [ ] **XTTS as its own process/service** — XTTS v2 (`coqui-tts`) is wired in-process as an
+      alternative TTS (`TTS_ENGINE=xtts`, picked speaker **Dionisio Schuyler**), but it drags the
+      torch/torchaudio/torchcodec stack into the bot venv and is slow on CPU (~1.5× realtime).
+      Move it behind a small local service (own venv, GPU once VRAM is freed) to keep DMbot lean
+      and get near-realtime synthesis. Until then it runs on CPU. _Tobi chose Dionisio 2026-06-04
+      after auditioning all 58 built-in speakers (samples in `voices/samples/`, pitch-ranked)._
 - [ ] **Edit/review window before the DM speaks** — a toggleable human-in-the-loop step that
       briefly intercepts the DM response (and optionally the transcript) so a player can read /
       correct it before TTS. Off once trusted, so play flows. _Requested live by Pr0degie + Timo,
