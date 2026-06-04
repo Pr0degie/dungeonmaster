@@ -27,12 +27,12 @@ segmenter state machine tested with a scripted fake model (clean cut=1, blip dro
 receive + DAVE/E2EE decrypt (ADR 006), Bot B→DMbot rename.
 
 ## Next concrete step
-Begin **Phase 6 — TTS + first full loop ⭐** (read `architecture.md` §4; ADR 002 for the bridge).
-Build `dmbot/tts/` (Piper `de_DE-thorsten` → WAV in the OS temp dir, **not** `/tmp`) + a bridge
-client (`httpx` POST to Bot A `/speak`, blocking = resume). Wire the DM answer from `!dm` →
-Piper → `/speak` so it is spoken aloud; pause VAD during playback (feedback layer 2 is Phase 7,
-but the `/speak` call already blocks). **Gate:** speak → DM answers audibly; measure latency; no
-self-hearing. Needs the Piper voice (SETUP B5 — Tobi). Level: **opusplan / high**.
+**Run the Phase 6 live full loop** (needs Tobi): start **Bot A** (music bot, `dungeon_master`
+branch) so its `/speak` bridge is up on `127.0.0.1:8765`, get **both** bots into the same voice
+channel, then DMbot `!j` → speak → `!dm` (or `!say <Text>`) and confirm the DM answer is
+**heard aloud**. Watch the `⏱ LLM` / `🔊 TTS` log lines for latency, and confirm no self-hearing
+(layer-1 should keep DMbot from transcribing Bot A). If `/speak` fails, `GET /health` first.
+Then fill the Phase 6 `VERIFY EVIDENCE` → **Phase 7** (turn-taking + VAD-pause layer 2).
 
 _Carry-overs:_ (1) **STT confidence filter** is live but only tested on clean speech — watch a
 live run for whether the "Vielen Dank…" phantoms are gone and nothing real is dropped (tune
@@ -195,11 +195,20 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   and lets the setting drift with sparse context → re-run the Phase-0 **nemo vs gemma3:12b** taste
   test with this persona; consider it in Phase 6 once TTS gives a feel for tone aloud.
 
-### ⬜ Phase 6 — TTS + first full loop ⭐
-- [ ] Piper (`de_DE-thorsten`) → WAV (OS temp dir)
-- [ ] httpx `POST` to `/speak`
+### 🔄 Phase 6 — TTS + first full loop ⭐  (code complete, live loop pending Bot A)
+- [x] Piper wrapper (`tts/piper.py`): `de_DE-thorsten-medium` → WAV in the OS temp dir
+      (`tempfile.gettempdir()`, not `/tmp`); loaded once, synth off the event loop
+- [x] Bridge client (`bridge.py`): async httpx `GET /health` + blocking `POST /speak`
+      (architecture §3 contract); WAV deleted after playback so temp doesn't fill
+- [x] Wired: `!dm` answer → Piper → `/speak` (spoken); `!say <Text>` smoke test; LLM + TTS
+      times logged (`⏱`, `🔊`). Piper missing → text-only, bot still runs
+- [ ] **Live full loop** — Bot A running + both bots in the channel; speak → DM answers audibly
 - **Gate:** speak → DM answers audibly; latency measured; no self-hearing.
-- **VERIFY EVIDENCE:** _(empty)_
+- **VERIFY EVIDENCE:** _Offline (2026-06-04):_ `piper-tts 1.4.2` installs clean on Windows/py3.12
+  (bundles espeak-ng), voice loads ~1.3 s, **~224 ms** to synthesise a 6 s German sentence →
+  valid 22050 Hz mono WAV (ffmpeg-playable). _Live loop still open_ — needs Bot A's `/speak`
+  bridge up (SETUP B5). No-self-hearing is covered by layer-1 (Bot A's user-ID filtered); the
+  VAD pause is layer 2 (Phase 7).
 
 ### ⬜ Phase 7 — Turn-taking & feedback protection layer 2
 - [ ] VAD pauses while Bot A speaks

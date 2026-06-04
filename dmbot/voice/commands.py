@@ -10,9 +10,11 @@ Foreign voice-recv wiring stays inside ``voice/`` (CLAUDE.md). Bot replies are G
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import tempfile
+import time
 import wave
 
 import discord
@@ -22,6 +24,8 @@ from .recv import VadSink
 from ..stt import Transcriber
 from ..llm.client import OllamaClient
 from ..orchestrator import DMBrain
+from ..tts.piper import PiperTTS
+from ..bridge import BridgeClient
 
 log = logging.getLogger(__name__)
 
@@ -55,6 +59,9 @@ class VoiceReceiveCog(commands.Cog):
         dump_utterances: bool = False,
         ollama_host: str = "http://127.0.0.1:11434",
         ollama_model: str = "mistral-nemo",
+        tts_voice: str = "",
+        bridge_host: str = "127.0.0.1",
+        bridge_port: int = 8765,
     ) -> None:
         self.bot = bot
         self._bot_a_user_id = bot_a_user_id
@@ -62,6 +69,14 @@ class VoiceReceiveCog(commands.Cog):
         self._utterance_counts: dict[int, int] = {}
         self._active_vc_id: int | None = None  # the voice channel we buffer/answer for
         self._brain = DMBrain(OllamaClient(ollama_host, ollama_model))
+        self._bridge = BridgeClient(bridge_host, bridge_port)
+        # Load the Piper voice once. If it's missing, keep running text-only (DM answers still
+        # post to the channel, just aren't spoken) instead of refusing to start.
+        try:
+            self._tts: PiperTTS | None = PiperTTS(tts_voice) if tts_voice else PiperTTS()
+        except Exception:
+            log.exception("Piper TTS unavailable — DM answers will not be spoken (see SETUP B5)")
+            self._tts = None
         # STT worker (Phase 4): loads faster-whisper in its own thread, transcribes off the
         # audio path. Started here so a broken cuDNN surfaces at boot, not on first utterance.
         self._transcriber = Transcriber(
@@ -105,6 +120,32 @@ class VoiceReceiveCog(commands.Cog):
     async def cog_unload(self) -> None:
         self._transcriber.stop()
         await self._brain.aclose()
+        await self._bridge.aclose()
+
+    async def _speak(self, text: str, guild_id: int | None) -> None:
+        """Synthesise ``text`` with Piper and play it via Bot A's /speak bridge.
+
+        Synthesis is blocking, so it runs in a thread. The WAV is deleted after playback so the
+        temp dir doesn't fill up. Bot A's audio is filtered by user-ID (feedback layer 1), so
+        DMbot does not transcribe its own DM voice even without pausing the VAD.
+        """
+        if self._tts is None:
+            return
+        try:
+            t0 = time.perf_counter()
+            wav = await asyncio.to_thread(self._tts.synthesize, text)
+            log.info("🔊 TTS %d ms → speaking", round((time.perf_counter() - t0) * 1000))
+        except Exception:
+            log.exception("TTS synthesis failed")
+            return
+        try:
+            if not await self._bridge.speak(wav, guild_id=guild_id):
+                log.warning("playback did not succeed — is Bot A in the voice channel?")
+        finally:
+            try:
+                os.remove(wav)
+            except OSError:
+                pass
 
     @commands.command(name="dm")
     async def dm(self, ctx: commands.Context, *, text: str = "") -> None:
@@ -117,7 +158,9 @@ class VoiceReceiveCog(commands.Cog):
             return
         try:
             async with ctx.typing():
+                t0 = time.perf_counter()
                 answer = await self._brain.respond(channel_id, extra_text=text or None)
+                llm_ms = round((time.perf_counter() - t0) * 1000)
         except Exception:
             log.exception("DM turn failed")
             await ctx.send("(Der Spielleiter schweigt — Fehler bei der Antwort, siehe Log.)")
@@ -126,7 +169,18 @@ class VoiceReceiveCog(commands.Cog):
             await ctx.send("(Nichts zu beantworten.)")
             return
         log.info("🎭 %s", answer)  # rendered prominently in the console
+        log.info("⏱ LLM %d ms", llm_ms)
         await ctx.send(answer)
+        await self._speak(answer, ctx.guild.id if ctx.guild else None)
+
+    @commands.command(name="say")
+    async def say(self, ctx: commands.Context, *, text: str) -> None:
+        """Speak arbitrary text through Piper + Bot A — a TTS/bridge smoke test."""
+        if self._tts is None:
+            await ctx.send("Keine Piper-Stimme geladen (siehe SETUP B5).")
+            return
+        await self._speak(text, ctx.guild.id if ctx.guild else None)
+        await ctx.send("🔊")
 
     @commands.command(name="join", aliases=["j"])
     async def join(self, ctx: commands.Context) -> None:

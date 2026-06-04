@@ -66,11 +66,16 @@ Runtime is **Windows** (see decision log D16). Check the items off.
       **Send Messages**, **Use Application Commands**.
 - [ ] Add both bots to the **same server** and, for testing, the **same voice channel**.
 
-### B5 — TTS voice (Piper)
-- [ ] **piper-tts** installed (`uv add piper-tts`).
-- [ ] Download a German voice (`.onnx` **and** `.onnx.json`), e.g. `de_DE-thorsten-medium`,
-      into a `voices/` folder. Optionally `thorsten_emotional` for comparison (listen test
-      in Phase 0).
+### B5 — TTS voice (Piper) — ✅ DONE (2026-06-04)
+- [x] **piper-tts** installed (`uv add piper-tts`, v1.4.2) — installs cleanly on Windows/py3.12
+      and **bundles its espeak-ng data**, so no separate phonemiser is needed.
+- [x] German voice `de_DE-thorsten-medium` (`.onnx` + `.onnx.json`) downloaded into `voices/`
+      (gitignored). Piper outputs **22050 Hz mono 16-bit** WAV; Bot A's ffmpeg plays it fine.
+      Verified: voice loads ~1.3 s, ~224 ms to synthesise a 6 s German sentence.
+- Swap the voice via `PIPER_VOICE=<path to .onnx>`; `thorsten_emotional` is worth a listen test.
+- **Still needs Tobi for the full loop:** Bot A (the music bot, `dungeon_master` branch) must be
+  **running with both bots in the same voice channel** so DMbot's `/speak` POST has somewhere to
+  play. The agent cannot start Bot A (separate repo/process).
 
 ### B6 — Audio/Opus (Windows)
 - [ ] **Opus DLL** ready for discord.py voice (send *and* receive need libopus); possibly

@@ -64,6 +64,9 @@ class DMBot(commands.Bot):
                 dump_utterances=self._config.dump_utterances,
                 ollama_host=self._config.ollama_host,
                 ollama_model=self._config.ollama_model,
+                tts_voice=self._config.tts_voice,
+                bridge_host=self._config.bridge_host,
+                bridge_port=self._config.bridge_port,
             )
         )
 

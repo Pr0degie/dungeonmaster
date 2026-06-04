@@ -28,6 +28,7 @@ class Config:
     whisper_device: str
     whisper_compute: str
     dump_utterances: bool
+    tts_voice: str
 
     @classmethod
     def load(cls) -> "Config":
@@ -65,4 +66,7 @@ class Config:
             # — it clutters the disk; turn on (DM_DUMP_UTTERANCES=1) to inspect a clip.
             dump_utterances=os.environ.get("DM_DUMP_UTTERANCES", "").strip().lower()
             in ("1", "true", "yes", "on"),
+            # TTS voice (Phase 6). Empty → the Piper wrapper's default
+            # (voices/de_DE-thorsten-medium.onnx). Override to swap the voice.
+            tts_voice=os.environ.get("PIPER_VOICE", "").strip(),
         )
