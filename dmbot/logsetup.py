@@ -1,7 +1,8 @@
 """Console + file logging for DMbot.
 
-The **console** is curated for reading during play: transcripts (``📝``) render as a
-per-speaker, colourised chat layout, and the high-frequency pipeline chatter (the ``PCM ⟳``
+The **console** is curated for reading during play: a green theme (dark "diff added-line"
+green) where transcripts (``📝``) render as a chat layout — speaker name in bright green, the
+line in green — and the high-frequency pipeline chatter (the ``PCM ⟳``
 heartbeats, faster-whisper's per-utterance ``Processing audio`` lines) is hidden from the
 console. The **file** (``logs/dmbot.log``) still gets *everything*, plain (no ANSI), UTF-8 —
 so it survives the window closing and stays greppable for debugging.
@@ -28,26 +29,14 @@ _LOG_FILE = Path(__file__).resolve().parent.parent / "logs" / "dmbot.log"
 _RESET = "\033[0m"
 _DIM = "\033[2m"
 _BOLD = "\033[1m"
-_GREY = "\033[90m"
+_GREEN = "\033[32m"   # the darker "diff added-line" green — the ambient theme colour
+_BGREEN = "\033[92m"  # bright green, for emphasis (speaker names)
 _RED = "\033[91m"
 _YELLOW = "\033[93m"
-_WHITE = "\033[97m"
-# Distinct, readable-on-black accents cycled per speaker.
-_SPEAKER_COLORS = (
-    "\033[96m",  # bright cyan
-    "\033[95m",  # bright magenta
-    "\033[94m",  # bright blue
-    "\033[92m",  # bright green
-    "\033[93m",  # bright yellow
-)
-
-
-def _speaker_color(name: str) -> str:
-    return _SPEAKER_COLORS[sum(map(ord, name)) % len(_SPEAKER_COLORS)]
 
 
 class _ConsoleFormatter(logging.Formatter):
-    """Colourise the console: transcripts as chat, warnings/errors highlighted, rest dim."""
+    """Green-themed console: transcripts as chat (green), warnings/errors highlighted."""
 
     def format(self, record: logging.LogRecord) -> str:
         ts = time.strftime("%H:%M:%S", time.localtime(record.created))
@@ -56,17 +45,19 @@ class _ConsoleFormatter(logging.Formatter):
         if msg.startswith("📝"):  # "📝 Name: text" → a chat line
             body = msg.split(" ", 1)[1] if " " in msg else msg
             name, _, text = body.partition(": ")
-            col = _speaker_color(name)
-            return f"{_DIM}{ts}{_RESET}  {col}{_BOLD}{name:>12}{_RESET}  {_WHITE}{text}{_RESET}"
+            return (
+                f"{_DIM}{_GREEN}{ts}{_RESET}  "
+                f"{_BGREEN}{_BOLD}{name:>12}{_RESET}  {_GREEN}{text}{_RESET}"
+            )
 
-        if msg.startswith("🗣"):  # utterance cut — secondary, dim
-            return f"{_DIM}{ts}  {msg}{_RESET}"
+        if msg.startswith("🗣"):  # utterance cut — secondary, dim green
+            return f"{_DIM}{_GREEN}{ts}  {msg}{_RESET}"
 
-        if record.levelno >= logging.WARNING:
+        if record.levelno >= logging.WARNING:  # keep these loud, not green
             col = _RED if record.levelno >= logging.ERROR else _YELLOW
             return f"{_DIM}{ts}{_RESET} {col}{record.levelname:<7} {record.name}{_RESET} | {col}{msg}{_RESET}"
 
-        return f"{_DIM}{ts}  {_GREY}{record.name}{_RESET} | {msg}"
+        return f"{_DIM}{_GREEN}{ts}  {record.name} | {msg}{_RESET}"
 
 
 class _ConsoleNoiseFilter(logging.Filter):
