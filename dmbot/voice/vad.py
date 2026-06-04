@@ -5,8 +5,10 @@ Turns a continuous 16 kHz mono stream into discrete **utterances** — the proje
 noise than the older GMM-based webrtcvad; we run it through **onnxruntime** so it needs no
 torch (ADR 007). The model is vendored at ``models/silero_vad.onnx``.
 
-The v5 ONNX model consumes fixed **512-sample windows** at 16 kHz (32 ms) plus a recurrent
-state, and emits a speech probability per window. :class:`UtteranceSegmenter` accumulates
+The v5 ONNX model advances in fixed **512-sample hops** at 16 kHz (32 ms); each hop is fed to
+the model together with a 64-sample **context** from the previous hop (576 samples total — the
+v5 contract; see ``_CONTEXT``) plus a recurrent state, and it emits a speech probability per
+hop. :class:`UtteranceSegmenter` accumulates
 windows while speech is active and, after enough trailing silence, emits the buffered audio
 as one utterance — with a little pre/post padding so word onsets and tails aren't clipped.
 
@@ -31,8 +33,13 @@ log = logging.getLogger(__name__)
 _MODEL_PATH = Path(__file__).parent / "models" / "silero_vad.onnx"
 
 _SR = 16_000
-_WINDOW = 512  # samples silero v5 expects per inference at 16 kHz
+_WINDOW = 512  # new samples per inference at 16 kHz (one 32 ms hop)
 _WINDOW_MS = 1000.0 * _WINDOW / _SR  # 32 ms
+# silero v5 prepends a context of the previous chunk's last samples to each window, so the
+# tensor it actually consumes is _CONTEXT + _WINDOW = 576 samples. Feeding a bare 512 silently
+# returns ~0 probability (the ONNX input shape is dynamic, so it doesn't error) — the lesson
+# from CLAUDE.md's "check the foreign lib's real contract".
+_CONTEXT = 64  # 64 for 16 kHz (would be 32 for 8 kHz)
 
 # Segmentation tuning. The thresholds mirror silero's own VADIterator defaults; the silence
 # window is widened a touch so a natural mid-sentence pause doesn't split one utterance.
@@ -70,13 +77,25 @@ class SileroVad:
         """Fresh zero recurrent state ([2, 1, 128], the v5 layout)."""
         return np.zeros((2, 1, 128), dtype=np.float32)
 
-    def __call__(self, window: np.ndarray, state: np.ndarray) -> tuple[float, np.ndarray]:
-        """Run one 512-sample window. Returns (speech_prob, new_state)."""
+    @staticmethod
+    def new_context() -> np.ndarray:
+        """Fresh zero context ([_CONTEXT] samples) prepended to the first window."""
+        return np.zeros(_CONTEXT, dtype=np.float32)
+
+    def __call__(
+        self, window: np.ndarray, state: np.ndarray, context: np.ndarray
+    ) -> tuple[float, np.ndarray, np.ndarray]:
+        """Run one 512-sample window with its 64-sample context.
+
+        Returns (speech_prob, new_state, new_context). The new context is the last
+        ``_CONTEXT`` samples of *this* window, carried into the next call (silero v5 contract).
+        """
+        x = np.concatenate((context, window))  # 64 + 512 = 576, what the model was trained on
         out, new_state = self._session.run(
             ["output", "stateN"],
-            {"input": window.reshape(1, -1), "state": state, "sr": self._sr},
+            {"input": x.reshape(1, -1), "state": state, "sr": self._sr},
         )
-        return float(out[0, 0]), new_state
+        return float(out[0, 0]), new_state, window[-_CONTEXT:].copy()
 
 
 class UtteranceSegmenter:
@@ -92,6 +111,7 @@ class UtteranceSegmenter:
         self._vad = vad
         self._on_utterance = on_utterance
         self._state = vad.new_state()
+        self._context = vad.new_context()
         self._tail = np.empty(0, dtype=np.float32)  # leftover (<512) samples between feeds
 
         self._pad_windows = max(1, round(_SPEECH_PAD_MS / _WINDOW_MS))
@@ -122,7 +142,7 @@ class UtteranceSegmenter:
         self._tail = np.empty(0, dtype=np.float32)
 
     def _process_window(self, window: np.ndarray) -> None:
-        prob, self._state = self._vad(window, self._state)
+        prob, self._state, self._context = self._vad(window, self._state, self._context)
 
         if not self._triggered:
             self._prebuf.append(window)
