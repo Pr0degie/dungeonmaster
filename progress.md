@@ -4,37 +4,48 @@ Living status document. A phase counts as done only when its **verification gate
 met and the proof is recorded here.
 
 ## Current focus
-**Phases 0–6 complete — the loop is PLAYABLE** ⭐ (speak → German DM answer, heard aloud, 2026-06-04).
-Two tracks next: (a) **latency tuning** — the DM turn took ~15 s, root-caused to VRAM pressure on
-the 12 GB 4070 (see Phase 6 evidence); mitigations in code, biggest lever is freeing whisper's
-VRAM. (b) **Phase 7** — turn-taking + feedback-protection layer 2 (pause VAD while Bot A speaks).
+**Phases 0–6 complete — the loop is PLAYABLE** ⭐ (speak → German DM answer in **Dionisio's**
+voice, heard aloud, 2026-06-04; `TTS_ENGINE=xtts` is set). Two tracks next, both about **speed**
+and then turn-taking: (a) cut latency by rebalancing the GPU (XTTS→cuda, whisper→CPU; the DM turn
+is ~8 s LLM + XTTS, and XTTS on CPU is ~1.5× realtime). (b) **Phase 7** — feedback layer 2.
 
 ## Last session
-**Phase 3 — VAD segmentation — implemented (gate pending a live test).** Decided the stack at
-phase start → **ADR 007**: silero-vad run via **onnxruntime** (no torch) + **soxr** streaming
-resampler; rejected the torch-backed silero pip package (golden rule #9) and webrtcvad (cruder,
-noise-prone). New deps `onnxruntime` + `soxr` + `numpy` (CPU-only); vendored the ~2 MB v5
-`silero_vad.onnx` at `dmbot/voice/models/`. New modules: `voice/resample.py` (`StereoResampler`,
-48k stereo → 16k mono, one `soxr.ResampleStream` per user) and `voice/vad.py` (`SileroVad` onnx
-session + `UtteranceSegmenter` streaming state machine: 512-sample/32 ms windows, hysteresis
-0.5/0.35, 600 ms silence closes, 250 ms min speech, 200 ms pad). Wired in via a new `_on_pcm`
-seam on `PcmLogSink`; `VadSink` subclasses it so the **layer-1 Bot A filter + DAVE-decrypt +
-Opus-decode are inherited unchanged** (golden rule #4). `!join` now starts `VadSink`; each cut
-utterance is logged and dumped as a 16 kHz mono WAV to the OS temp dir for inspection.
-**Offline-verified:** resample ratio ~16000/s; pure silence → 0 utterances (no false trigger);
-segmenter state machine tested with a scripted fake model (clean cut=1, blip dropped, mid-pause
-<600 ms not split, real split >600 ms=2, flush mid-speech emits). _Earlier (Phase 2):_ voice
-receive + DAVE/E2EE decrypt (ADR 006), Bot B→DMbot rename.
+**Big one — Phases 3, 4, 5 and 6 all completed; the voice DM loop is PLAYABLE.**
+
+- **Phase 3 (VAD):** `voice/resample.py` (soxr 48k stereo→16k mono per user) + `voice/vad.py`
+  (silero-vad via onnxruntime, no torch — **ADR 007**) + `UtteranceSegmenter`. Live bugs found &
+  fixed: silero v5 needs a **64-sample context** (576 input, not 512) and **voice-activation**
+  means clients send no RTP when silent → wrapped in `SilenceGeneratorSink` to inject silence so
+  utterances close. Gate met (one sentence ≈ one utterance, Tobi confirmed WAVs).
+- **Phase 4 (STT):** `stt/transcriber.py` — faster-whisper on a worker thread; cuDNN/cuBLAS via
+  nvidia wheels + in-code `add_dll_directory` (no manual PATH). **medium** beat small live →
+  default; confidence filter drops "Vielen Dank…" hallucinations. Gate met (correct German).
+- **Phase 5 (LLM + persona):** `llm/client.py` (async Ollama), `llm/persona.py` (layered core +
+  Eisenhorn overlay — **ADR 005**), `orchestrator.py` `DMBrain` (per-channel history + buffer).
+  `prompts/dm_core_de.md` + `campaign_tone_de.md` written. `!dm` / `!dm <Text>`. Output hygiene:
+  one turn, no fabricated player lines, `stop` sequences + sanitiser. Gate met.
+- **Phase 6 (TTS + full loop ⭐):** `tts/piper.py` + `bridge.py` (blocking `/speak`). Live loop
+  **audible** (player → nemo → Piper → Bot A). Bridge gotcha: Bot A had to be on the
+  `dungeon_master` branch (main has no DMBridge). Latency ~15 s → root-caused to **VRAM at
+  99.5 %**; added `keep_alive=30m` + `num_ctx=8192` (→ ~8 s).
+- **Voice (ADR 008):** Tobi disliked Piper's German voices → added **XTTS v2** as a selectable
+  backend (`TTS_ENGINE`), auditioned all 58 built-in speakers (pitch-ranked, `voices/samples/`),
+  chose **Dionisio Schuyler** (deep male). Now active in `.env` (`TTS_ENGINE=xtts`, CPU).
+- **UX:** colourised green console with chat-layout transcripts (hanging indent) + clip·ms
+  metrics; stopped dumping utterance WAVs to temp; `logs/dmbot.log` file logging.
 
 ## Next concrete step
-**First: cut the DM-turn latency** (it dominates play feel). After restarting on the new code
-(`num_ctx=8192` + `keep_alive=30m` are in), re-measure `⏱ LLM`. If still slow, free GPU memory:
-set `WHISPER_DEVICE=cpu` (+ `WHISPER_COMPUTE=int8`) **or** `WHISPER_MODEL=small` in `.env` to give
-nemo room (whisper-medium eats ~2.5 GB); check with `ollama ps` (want nemo 100% GPU, fast warm
-gen) and `nvidia-smi`. The clean long-term fix is Ollama on the 5080 via Tailscale (ADR 002).
-**Then Phase 7 — turn-taking + feedback layer 2:** pause the VAD while Bot A speaks (read ADR 003).
-Recommended level: **opusplan / high**. Also still open: DM model/persona tuning (nemo vs gemma3;
-trim the "Was siehst du?" role-inversion), and the STT confidence-filter live check.
+**Make it flotter (Tobi's explicit next-time goal).** Try the GPU rebalance in `.env`:
+`TTS_DEVICE=cuda` + `WHISPER_DEVICE=cpu` + `WHISPER_COMPUTE=int8` — frees whisper's ~2.5 GB so
+XTTS (Dionisio) runs near-realtime on the GPU next to nemo. Watch `nvidia-smi` / `ollama ps` for
+VRAM (nemo 9.5 GB + XTTS ~2 GB is tight on the 12 GB 4070); if it OOMs, fall back to whisper-CPU
++ XTTS-CPU, or offload Ollama to the 5080 via Tailscale (ADR 002). If CPU XTTS stays too slow,
+do the backlog item: **XTTS as its own GPU service**. **Then Phase 7** — feedback layer 2 (pause
+VAD while Bot A speaks; read ADR 003). Level: **opusplan / high**.
+
+_Also open (not blocking):_ DM model/persona tuning (nemo vs `gemma3:12b`; trim the occasional
+"Was siehst du?" role-inversion + meta-preamble); STT confidence-filter live check; the
+requested toggleable edit/review-window (Part 2 backlog).
 
 _Carry-overs:_ (1) **STT confidence filter** is live but only tested on clean speech — watch a
 live run for whether the "Vielen Dank…" phantoms are gone and nothing real is dropped (tune
@@ -75,6 +86,7 @@ create the next-numbered ADR.
 | D18 | System-agnostic engine | **Generic dice/resolution engine + per-system profile**; DM **proposes the profile from the PDF**, user confirms (MVP). Persona = generic GM + per-campaign tone overlay | Reusable across rulesets; "paste PDFs → DM knows what's played"; dice still code → ADR 005 |
 | D19 | DAVE/E2EE on voice receive | **Decrypt the DAVE layer via discord.py's `dave_session`** (keep E2EE; sink takes `wants_opus=True`, decrypts each frame before Opus-decode) | Discord calls are end-to-end encrypted; voice-recv only undoes transport → garbage. Declining DAVE is rejected (voice close 4017) → ADR 006 |
 | D20 | VAD segmentation stack | **silero-vad via `onnxruntime`** (no torch) + **`soxr`** streaming resampler; model vendored in-repo | Robust neural VAD without torch's ~GB weight; webrtcvad too noise-prone; soxr is the smallest correct resampler → ADR 007 |
+| D21 | TTS engine | **Piper default + XTTS v2 (`coqui-tts`) optional**, selectable via `TTS_ENGINE`; chose XTTS speaker **Dionisio Schuyler** | Piper's German voices were rejected; XTTS gives 58 voices + cloning (local, no cloud) at the cost of the torch stack + latency → ADR 008 |
 
 ### Phase → ADR map (read these when you enter the phase)
 
@@ -84,6 +96,7 @@ create the next-numbered ADR.
 | 1 — Bridge (done) | ADR 002 + `architecture.md` §3 (bridge contract) |
 | 2–4 — Voice / VAD / STT | **ADR 006** (DAVE/E2EE decrypt on receive) + **ADR 007** (VAD stack, Phase 3) + `architecture.md` §4–§5 (feedback protection) |
 | 5 — LLM wiring + persona | ADR 002 + ADR 005 (persona = generic core + campaign overlay) |
+| 6 — TTS + full loop | **ADR 008** (TTS engine: Piper + XTTS) + ADR 002 (bridge, VRAM) + `architecture.md` §3 (bridge contract) |
 | 6–7 — Full loop, turn-taking, registration | ADR 003 (conversational control, registration, turn-taking) |
 | 8 — Dice engine, IM profile, marker flow | ADR 005 (engine + profile) + ADR 004 (test marker, character data) + ADR 001 (IM specifics) |
 | 9 — Memory (JSON + recaps) | ADR 004 (character/state JSON) |
