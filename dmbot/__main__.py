@@ -88,7 +88,7 @@ class DMBot(commands.Bot):
 
 def main() -> None:
     config = Config.load()
-    setup_logging(config.log_level)
+    setup_logging(config.log_level, to_file=config.log_to_file)
     _ensure_opus()
     DMBot(config).run(config.discord_token, log_handler=None)
 

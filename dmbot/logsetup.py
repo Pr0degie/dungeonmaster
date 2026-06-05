@@ -92,12 +92,16 @@ class _ConsoleFormatter(logging.Formatter):
 
 
 class _ConsoleNoiseFilter(logging.Filter):
-    """Drop high-frequency chatter from the CONSOLE only (the file still records it)."""
+    """Keep the CONSOLE lean: only DMbot's own lines, plus any WARNING/ERROR from anywhere.
+
+    Third-party INFO chatter (TTS/coqui synthesizer, httpx requests, faster_whisper, discord) and
+    the 2 s PCM heartbeat are dropped from the console. The file handler (when enabled) has no
+    filter, so a debug run still records the full detail."""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        if record.name == "faster_whisper":
-            return False  # the per-utterance "Processing audio ..." line
-        return "PCM ⟳" not in record.getMessage()  # the 2 s heartbeat
+        if "PCM ⟳" in record.getMessage():
+            return False  # the 2 s per-user heartbeat
+        return record.levelno >= logging.WARNING or record.name.startswith("dmbot")
 
 
 class _UnpackErrorThrottle(logging.Filter):
@@ -134,8 +138,12 @@ class _UnpackErrorThrottle(logging.Filter):
         return False
 
 
-def setup_logging(level: str) -> Path:
-    """Install the console + file handlers on the root logger. Returns the log-file path."""
+def setup_logging(level: str, *, to_file: bool = False) -> Path | None:
+    """Install the console handler (always) and the file handler (only when ``to_file``).
+
+    The console is kept lean (see :class:`_ConsoleNoiseFilter`). The full-detail file log is
+    **off by default** — enable it with ``DM_LOG_FILE=1`` when you need to inspect a run after the
+    window closes. Returns the log-file path when file logging is on, else ``None``."""
     root = logging.getLogger()
     root.setLevel(getattr(logging, level, logging.INFO))
     for handler in list(root.handlers):  # idempotent across restarts/tests
@@ -146,18 +154,21 @@ def setup_logging(level: str) -> Path:
     console.addFilter(_ConsoleNoiseFilter())
     root.addHandler(console)
 
-    plain = logging.Formatter(
-        "%(asctime)s %(levelname)-7s %(name)s | %(message)s", datefmt="%H:%M:%S"
-    )
-    try:
-        _LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        file_h = logging.FileHandler(_LOG_FILE, mode="a", encoding="utf-8")
-        file_h.setFormatter(plain)
-        root.addHandler(file_h)
-    except OSError:
-        logging.getLogger("dmbot").warning(
-            "could not open log file %s — console only", _LOG_FILE, exc_info=True
+    log_file: Path | None = None
+    if to_file:
+        plain = logging.Formatter(
+            "%(asctime)s %(levelname)-7s %(name)s | %(message)s", datefmt="%H:%M:%S"
         )
+        try:
+            _LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+            file_h = logging.FileHandler(_LOG_FILE, mode="a", encoding="utf-8")
+            file_h.setFormatter(plain)
+            root.addHandler(file_h)
+            log_file = _LOG_FILE
+        except OSError:
+            logging.getLogger("dmbot").warning(
+                "could not open log file %s — console only", _LOG_FILE, exc_info=True
+            )
 
     # discord.py gateway/voice logs are noisy; keep them civil (console + file).
     logging.getLogger("discord").setLevel(logging.WARNING)
@@ -165,8 +176,8 @@ def setup_logging(level: str) -> Path:
     # Collapse the benign "Error unpacking packet" RTP-parse flood (alpha voice-recv bug).
     logging.getLogger("discord.ext.voice_recv.reader").addFilter(_UnpackErrorThrottle())
 
+    where = f"log file {log_file}" if log_file else "file logging off (set DM_LOG_FILE=1)"
     logging.getLogger("dmbot").info(
-        "=== DMbot starting (%s) — log file %s ===",
-        time.strftime("%Y-%m-%d %H:%M:%S"), _LOG_FILE,
+        "=== DMbot starting (%s) — %s ===", time.strftime("%Y-%m-%d %H:%M:%S"), where
     )
-    return _LOG_FILE
+    return log_file

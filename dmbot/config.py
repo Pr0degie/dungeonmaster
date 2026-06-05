@@ -25,6 +25,7 @@ class Config:
     bridge_secret: str
     bot_a_user_id: int | None
     log_level: str
+    log_to_file: bool
     whisper_model: str
     whisper_device: str
     whisper_compute: str
@@ -64,6 +65,10 @@ class Config:
             bridge_secret=os.environ.get("DM_BRIDGE_SECRET", "").strip(),
             bot_a_user_id=int(bot_a_raw) if bot_a_raw else None,
             log_level=os.environ.get("LOG_LEVEL", "INFO").strip().upper(),
+            # Full-detail file log (logs/dmbot.log). Off by default — the console stays lean and
+            # nothing is written to disk; set DM_LOG_FILE=1 to record a run for later inspection.
+            log_to_file=os.environ.get("DM_LOG_FILE", "").strip().lower()
+            in ("1", "true", "yes", "on"),
             # STT (Phase 4). Default to medium (GPU float16) — it clearly out-transcribed
             # small in live German testing and still fits next to Ollama on the 4070. Drop to
             # small via env if VRAM gets tight, or bump to large-v3 for max accuracy.
