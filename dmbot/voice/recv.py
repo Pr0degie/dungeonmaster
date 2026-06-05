@@ -53,6 +53,11 @@ _FLUSH_INTERVAL_S = 2.0
 # DAVE (Discord end-to-end voice encryption) media type for Opus audio frames.
 _MEDIA_AUDIO = davey.MediaType.audio
 
+# A DAVE-encrypted frame ends in the protocol's magic marker 0xFAFA (the sentinel that lets a
+# receiver recognise an E2EE frame; ADR 006). We use it only as a canary: if we ever get such
+# a frame but have no dave_session to decrypt it, the decrypt path has broken — warn, skip.
+_DAVE_MAGIC = b"\xfa\xfa"
+
 
 @dataclass
 class _UserTally:
@@ -80,6 +85,7 @@ class PcmLogSink(voice_recv.AudioSink):
         self._filtered_ids: set[int] = set()
         self._last_flush = time.monotonic()
         self._dave_active_logged = False
+        self._dave_missing_logged = False
         # write() is called from TWO threads once a SilenceGeneratorSink wraps us: the
         # voice-recv reader thread (real frames) and the silence-generator thread (synthetic
         # silence during transmission gaps). Serialize per-user state with one lock.
@@ -144,9 +150,26 @@ class PcmLogSink(voice_recv.AudioSink):
         # undoes the transport layer, so the frame is still E2EE-wrapped; decrypt it via
         # the dave_session discord.py established over MLS.
         ds = self._dave_session()
-        if ds is not None:
-            if not ds.ready:
-                return  # MLS group not established yet — can't decrypt; wait for it
+        if ds is None:
+            # No DAVE session handle. Normally that means a non-encrypted call and `opus` is
+            # plain Opus — decode it as before. But DAVE is effectively always on (Discord
+            # rejects opt-out, voice close 4017), so a missing handle on an *encrypted* frame
+            # means the decrypt path broke (discord.py internal moved — ADR 006). Detect that
+            # via the DAVE trailer magic and warn loudly + skip, instead of silently
+            # Opus-decoding ciphertext into a garbage transcript.
+            if opus.endswith(_DAVE_MAGIC):
+                if not self._dave_missing_logged:
+                    self._dave_missing_logged = True
+                    log.warning(
+                        "DAVE-encrypted frame received but no dave_session is reachable — "
+                        "the E2EE decrypt path is broken (discord.py internal moved? see "
+                        "ADR 006). Skipping encrypted frames; decoding them would yield "
+                        "garbage transcripts. Run the voice-stack preflight."
+                    )
+                return
+        elif not ds.ready:
+            return  # MLS group not established yet — can't decrypt; wait for it
+        else:
             try:
                 opus = ds.decrypt(user.id, _MEDIA_AUDIO, opus)
             except Exception:

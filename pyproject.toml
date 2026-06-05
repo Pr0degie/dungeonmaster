@@ -9,8 +9,15 @@ requires-python = ">=3.12"
 dependencies = [
     "colorama>=0.4.6",
     "coqui-tts>=0.27.5",
-    "discord-ext-voice-recv>=0.5.2a179",
-    "discord-py[voice]>=2.7.1",
+    # Voice-receive core is PINNED EXACTLY, not >=. The DAVE/E2EE decrypt reaches into a
+    # discord.py internal (`_connection.dave_session`, ADR 006) and voice-recv is an alpha
+    # whose sink callback signature can shift — a drift here yields a garbage transcript, not
+    # an error. Pinning keeps an unrelated `uv add`/`uv lock --upgrade` from moving the kernel.
+    # Bump these three together, deliberately, and re-run the preflight + live re-verify
+    # (dmbot/voice/preflight.py KNOWN_GOOD; the verified-stack table in ADR 006).
+    "davey==0.1.5",
+    "discord-ext-voice-recv==0.5.2a179",
+    "discord-py[voice]==2.7.1",
     "faster-whisper>=1.2.1",
     "numpy>=2.4.6",
     "nvidia-cublas-cu12>=12.9.2.10",

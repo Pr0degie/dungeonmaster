@@ -21,6 +21,7 @@ import discord
 from discord.ext import commands, voice_recv
 
 from .recv import VadSink
+from .preflight import check_dave_session, check_static
 from ..stt import Transcriber
 from ..llm.client import OllamaClient
 from ..orchestrator import DMBrain
@@ -67,6 +68,9 @@ class VoiceReceiveCog(commands.Cog):
         bridge_port: int = 8765,
     ) -> None:
         self.bot = bot
+        # Preflight the version-sensitive voice stack at boot, so a drift surfaces as a loud
+        # warning here instead of as a silent garbage transcript mid-session (ADR 006).
+        check_static()
         self._bot_a_user_id = bot_a_user_id
         self._dump_utterances = dump_utterances
         self._utterance_counts: dict[int, int] = {}
@@ -229,6 +233,9 @@ class VoiceReceiveCog(commands.Cog):
         vc: voice_recv.VoiceRecvClient = await channel.connect(
             cls=voice_recv.VoiceRecvClient
         )
+        # Confirm the live DAVE-decrypt path (ADR 006) is reachable on this client before we
+        # start listening — an early, explicit signal if a discord.py upgrade moved the internal.
+        check_dave_session(vc)
         # Wrap the VAD sink in voice-recv's SilenceGeneratorSink: Discord clients send no
         # packets at all while a user is silent (voice activation), so without injected silence
         # the segmenter never sees an utterance's trailing gap and can't close it. The wrapper

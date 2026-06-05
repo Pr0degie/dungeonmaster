@@ -301,11 +301,15 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   each); fine for a small table, revisit only if many idle users ever cost CPU.
 
 **Loose ends / housekeeping (from the Phase 2 session):**
-- `docs/pipeline-diagram.{md,mmd,png}` are present but **untracked** — deliberately left out of
-  commit `44e501d` (not authored in this session). Decide next time: keep + commit, or delete.
-- Voice stack is **version-sensitive**: the DAVE decrypt reaches into a discord.py internal
-  (`_connection.dave_session`) and the voice-recv sink is an alpha (`0.5.2a179`) — re-verify both
-  on any `discord.py` / `discord-ext-voice-recv` / `davey` upgrade (ADR 006).
+- ✅ `docs/pipeline-diagram.*` removed (Tobi, 2026-06-05) — no longer a loose end.
+- ✅ **Voice stack now safeguarded against silent breakage (2026-06-05).** The version
+  sensitivity (DAVE decrypt into `_connection.dave_session`; voice-recv alpha) is now caught,
+  not just documented: the three voice dists are pinned `==` in `pyproject.toml`;
+  `voice/preflight.py` checks versions + attribute paths at boot and the live `dave_session`
+  at join (loud warnings on drift); `recv.py` warns+skips a DAVE frame (magic `0xFAFA`) when no
+  session is reachable instead of decoding garbage; `tests/test_voice_stack.py` is the offline
+  canary (5/5 green). Verified-stack table added to ADR 006. **Still required on any upgrade:**
+  run the smoke test + a live re-verify, then bump `KNOWN_GOOD` + the pins + the ADR table.
 - DAVE decrypt skips frames received before the MLS group is `ready` (brief startup gap), and
   single-packet RTP jitter ("lost being flushed", sender voice-activation) is benign for STT.
 

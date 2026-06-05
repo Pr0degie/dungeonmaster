@@ -53,6 +53,30 @@ which voice-recv neglects to.
   (`voice_client._connection.dave_session`) and depends on `davey` being installed and on
   discord.py driving the MLS handshake. Re-verify on a discord.py/voice-recv/davey upgrade
   (kept isolated in `voice/recv.py`, per CLAUDE.md's "voice-recv is the only research part").
+  **Safeguards (added 2026-06-05) so a drift can't break this silently:**
+  - the three voice distributions are pinned `==` in `pyproject.toml` (not `>=`), so an
+    unrelated `uv add` / `uv lock --upgrade` can't move the kernel;
+  - `voice/preflight.py` runs at boot (`check_static` — versions + sink/DAVE attribute paths)
+    and at join (`check_dave_session` — the live `_connection.dave_session` handle), logging
+    loud warnings on any drift;
+  - `recv.py` detects a DAVE-encrypted frame (trailer magic `0xFAFA`) arriving with no
+    reachable `dave_session` and warns + skips, instead of Opus-decoding ciphertext to garbage;
+  - `tests/test_voice_stack.py` is the offline canary — run it after any dependency change.
+
+## Verified stack
+
+The exact set this receive path was verified against (live, 2026-06-04). Bumping any of these
+is a deliberate act: change `voice/preflight.py` `KNOWN_GOOD` + the `==` pins, run
+`tests/test_voice_stack.py`, re-verify a live session, then update this table.
+
+| Distribution | Verified version |
+|---|---|
+| `discord.py` (`discord-py[voice]`) | 2.7.1 |
+| `discord-ext-voice-recv` | 0.5.2a179 |
+| `davey` | 0.1.5 |
+| `onnxruntime` (VAD, ADR 007) | 1.26.0 |
+| `soxr` (resample, ADR 007) | 1.1.0 |
+| Opus | discord.py bundled DLL |
 - **Behaviour:** frames received before the MLS group is `ready`, or from a user not yet in
   the group, are skipped (brief startup gap). Single lost/late RTP packets still produce
   benign "lost being flushed" jitter warnings (sender-side voice-activation), quieted in logs.
