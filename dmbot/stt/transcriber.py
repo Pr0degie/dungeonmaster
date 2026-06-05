@@ -10,10 +10,11 @@ Two things matter here:
    non-blocking, results come back via the ``on_transcript`` callback. A single worker also
    serialises calls, which is what faster-whisper wants (the model isn't for concurrent use).
 
-2. **Windows CUDA DLLs.** faster-whisper → CTranslate2 needs cuDNN + cuBLAS DLLs that don't
-   ship with it. We get them from the ``nvidia-cudnn-cu12`` / ``nvidia-cublas-cu12`` wheels and
-   register their ``bin`` dirs with ``os.add_dll_directory`` *before* importing faster-whisper
-   (SETUP B3 — "are the cuDNN/cuBLAS DLLs on the PATH?"). If the GPU still won't init, we fall
+2. **Windows CUDA DLLs.** faster-whisper → CTranslate2 needs cuDNN + cuBLAS + cudart DLLs that
+   don't ship with it. We get them from the ``nvidia-cudnn-cu12`` / ``nvidia-cublas-cu12`` /
+   ``nvidia-cuda-runtime-cu12`` wheels and **preload them by full path** (plus register their
+   ``bin`` dirs) *before* importing faster-whisper — see ``_register_cuda_dll_dirs`` for why the
+   preload is needed on a box without a system CUDA install. If the GPU still won't init, we fall
    back to CPU int8 so STT degrades instead of dying.
 """
 
@@ -32,15 +33,40 @@ import numpy as np
 log = logging.getLogger(__name__)
 
 
-def _register_cuda_dll_dirs() -> None:
-    """Make the cuDNN/cuBLAS DLLs from the nvidia wheels findable (Windows only).
+# CUDA-12 DLLs that CTranslate2 (faster-whisper) needs, in dependency order: each DLL's
+# dependencies must be loaded before it (cudart ← cublasLt ← cublas; cudnn last). Globbed so the
+# exact minor-version suffix doesn't matter (cudart64_12.dll, cublas64_12.dll, cudnn64_9.dll, …).
+_CUDA_PRELOAD = (
+    ("nvidia.cuda_runtime", "cudart64_*.dll"),
+    ("nvidia.cublas", "cublasLt64_*.dll"),
+    ("nvidia.cublas", "cublas64_*.dll"),
+    ("nvidia.cudnn", "cudnn64_*.dll"),
+)
 
-    No-op off Windows (``os.add_dll_directory`` doesn't exist there) and harmless if the
-    wheels aren't installed — the GPU load simply fails and we fall back to CPU.
+
+def _register_cuda_dll_dirs() -> None:
+    """Make the cuDNN/cuBLAS/cudart DLLs from the nvidia wheels loadable (Windows only).
+
+    Two steps: register each wheel's ``bin`` dir (so a DLL's sibling deps resolve), then
+    **explicitly preload** the key CUDA-12 DLLs by full path with ``ctypes.WinDLL``.
+
+    The preload is the load-bearing part. ``os.add_dll_directory`` alone is not enough: on a box
+    with no system-wide CUDA on PATH, CTranslate2's own loader does not reliably search the added
+    user dirs, so ``cublas64_12.dll`` fails with "is not found or cannot be loaded" (hit on a
+    fresh RTX 5080 box, 2026-06-05; the dev 4070 only worked because it had a system CUDA toolkit
+    on PATH). Loading each DLL by full path up front puts it in the process, so CTranslate2's later
+    load-by-name resolves to the already-loaded module — no system CUDA needed.
+
+    No-op off Windows. Harmless if the wheels aren't installed — the GPU load simply fails and we
+    fall back to CPU int8.
     """
     if not hasattr(os, "add_dll_directory"):
         return
-    for pkg in ("nvidia.cudnn", "nvidia.cublas", "nvidia.cuda_runtime"):
+    import ctypes
+    import glob
+
+    bin_dirs: dict[str, str] = {}
+    for pkg in ("nvidia.cuda_runtime", "nvidia.cublas", "nvidia.cudnn"):
         try:
             spec = importlib.util.find_spec(pkg)
         except ModuleNotFoundError:
@@ -50,7 +76,19 @@ def _register_cuda_dll_dirs() -> None:
         bin_dir = os.path.join(spec.submodule_search_locations[0], "bin")
         if os.path.isdir(bin_dir):
             os.add_dll_directory(bin_dir)
+            bin_dirs[pkg] = bin_dir
             log.debug("registered CUDA DLL dir %s", bin_dir)
+
+    for pkg, pattern in _CUDA_PRELOAD:
+        bin_dir = bin_dirs.get(pkg)
+        if not bin_dir:
+            continue
+        for dll in glob.glob(os.path.join(bin_dir, pattern)):
+            try:
+                ctypes.WinDLL(dll)
+                log.debug("preloaded %s", os.path.basename(dll))
+            except OSError as exc:
+                log.warning("could not preload %s: %s", os.path.basename(dll), exc)
 
 
 _register_cuda_dll_dirs()  # MUST run before faster_whisper pulls in ctranslate2

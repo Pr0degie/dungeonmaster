@@ -24,9 +24,14 @@ Fixed end to end:
   (Blackwell, sm_120) — moved to cu130, which covers Ada (4070) + Blackwell (5080); re-verified
   on the 4070.)_ Then GPU whisper on the 5080 died at `encode()` with **`cublas64_12.dll cannot
   be loaded`**: `nvidia-cuda-runtime-cu12` (cudart64_12.dll, a cuBLAS dependency) was missing.
-  Added it as a win32 dep + registered its bin dir in `transcriber.py`; **verified a real
-  faster-whisper cuda transcription on the 4070**. Lesson: ctranslate2's CUDA-12 trio
-  (cublas + cudnn + **cudart**) must be self-complete, independent of torch's CUDA version.
+  Added it as a win32 dep. **But that alone still failed on the 5080** — root cause: `os.add_dll_directory`
+  is not enough, CTranslate2's loader doesn't reliably search the added user dirs, so it only worked
+  on the 4070 because that box has a **system CUDA toolkit (v12.3) on PATH**; the fresh 5080 box has
+  none. Fix: `transcriber._register_cuda_dll_dirs` now **preloads the CUDA-12 DLLs by full path**
+  (`ctypes.WinDLL`, in dep order cudart→cublasLt→cublas→cudnn). **Verified on the 4070 with the system
+  CUDA stripped from PATH** (simulating the 5080) — GPU whisper runs. Lesson: ctranslate2's CUDA-12
+  trio (cublas + cudnn + **cudart**) must be self-complete *and explicitly preloaded*, independent of
+  torch's CUDA version and of any system CUDA install.
 - **Resolver fix:** CUDA torch pins `nvidia-cudnn-cu12==9.10.2.21` on linux, clashing with
   faster-whisper's `>=9.23`. Resolved by locking **win32-only** (`environments = ["sys_platform
   == 'win32'"]`, legit per D16) + `requires-python` pinned to the 3.12 line + win32 markers on
