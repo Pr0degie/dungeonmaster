@@ -67,6 +67,7 @@ class DMBot(commands.Bot):
                 dm_num_predict=self._config.dm_num_predict,
                 dm_max_lines=self._config.dm_max_lines,
                 push_to_talk=self._config.push_to_talk,
+                pause_vad_while_speaking=self._config.pause_vad_while_speaking,
                 tts_engine=self._config.tts_engine,
                 tts_voice=self._config.tts_voice,
                 tts_speaker=self._config.tts_speaker,

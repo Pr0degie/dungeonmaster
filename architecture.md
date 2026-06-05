@@ -187,10 +187,15 @@ httpx POST {wav_path} to Bot A /speak   (DMbot pauses VAD)
 DMbot also hears Bot A in the same channel — without protection it transcribes its own
 DM voice. Two layers:
 
-1. **The sink filters out Bot A's user-ID entirely** (cleanest solution, primary).
-2. **DMbot pauses the VAD during the `/speak` call** — and because `/speak` blocks
-   until playback is finished, DMbot knows exactly when it may listen again
-   (belt and braces).
+1. **The sink filters out Bot A's user-ID entirely** (cleanest solution, primary —
+   **always on**, golden rule #4). This alone stops the DM from transcribing its own voice.
+2. **DMbot pauses the VAD during the `/speak` call** — belt and braces. Because `/speak`
+   blocks until playback is finished, DMbot knows exactly when it may listen again.
+   **Now opt-in and off by default** (`DM_PAUSE_VAD_WHILE_SPEAKING=0`, D25): with layer 1
+   already preventing self-transcription and the push-to-talk routing gate keeping
+   narration-time table talk out of the DM, pausing was redundant and stopped the table
+   from being transcribed during the DM's narration — which players wanted in the record.
+   Turn it on if mic-to-speaker bleed gets transcribed as a player during narration.
 
 ---
 

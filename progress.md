@@ -52,6 +52,11 @@ buttons (read ADR 005 + 004 + 001). Recommended dial for Phase 8: **Opus 4.8 / x
   transcript** `logs/transcript.log` (`DM_TRANSCRIPT_FILE=1`) — just the conversation (player lines
   incl. table talk + DM answers) with timestamps, separate from the debug log. Suite **22/22**.
   _Live-tested: layer 2 + push-to-talk + GPU whisper work; the persona/UI polish is NOT yet live-tested._
+- **Feedback layer 2 → opt-in, off by default (D25).** Tobi wanted the table to keep being
+  transcribed *while the DM speaks* (full record). Layer 1 (Bot-A user-ID filter) already blocks
+  self-transcription and the routing gate keeps narration table talk out of the DM, so the VAD pause
+  was redundant. Now `DM_PAUSE_VAD_WHILE_SPEAKING=0` by default; mechanism kept for mic-bleed cases.
+  `architecture.md` §5 updated; golden rule #4 (layer 1) unchanged.
 
 **(Earlier same day) GPU XTTS via CUDA torch + portable per-machine GPU profiles (non-Phase work, ADR 009).** The
 GPU rebalance (whisper→CPU, XTTS→cuda) crashed at first: the venv's torch was the **CPU-only**
@@ -174,6 +179,7 @@ create the next-numbered ADR.
 | D22 | GPU XTTS / portability | **CUDA torch from the `cu130` index** (`+cu130` builds; CUDA 13.0 covers Ada **and** Blackwell), device env-driven (`TTS_DEVICE`/`WHISPER_DEVICE`); same Windows-only lock for both boxes, XTTS auto-degrades to CPU | CPU-only torch made GPU XTTS impossible; cu130 gives the GPU build (RTF 0.34 verified) for both 4070 (sm_89) + 5080 (sm_120); win32-only lock dodges the cudnn pin clash; one repo runs 4070 dev + 5080 full-GPU → ADR 009 |
 | D23 | Bridge transport | **Hybrid `/speak`**: loopback → WAV path (unchanged); remote → WAV bytes + shared secret over Tailscale; Bot A plays its own copy | Lets DMbot + Bot A run on different machines without breaking the proven localhost path; partially relaxes D16/ADR 002 co-location for the bridge → ADR 010 |
 | D24 | STT latency | **GPU whisper** (`WHISPER_DEVICE=cuda`) **+ push-to-talk DM-routing gate** (shared Discord mic button; whole table always transcribed + logged, button gates only what reaches the DM, `DM_PUSH_TO_TALK=1`) | CPU whisper fell ~1.5 min behind; GPU + routing only the button-window speech to the DM keeps the full transcript record (Tobi's call) while cutting DM noise. Supersedes the 4070 "whisper on CPU" profile → ADR 011 |
+| D25 | Feedback layer 2 | **Pausing the VAD while Bot A speaks is now opt-in, off by default** (`DM_PAUSE_VAD_WHILE_SPEAKING=0`). Layer 1 (Bot-A user-ID filter) stays mandatory | Layer 1 already stops self-transcription and the push-to-talk routing gate keeps narration table talk out of the DM, so layer 2 was redundant and blocked transcription during the DM's narration — players wanted the table kept in the record. golden rule #4 (layer 1) unchanged; updates `architecture.md` §5 |
 
 ### Phase → ADR map (read these when you enter the phase)
 
@@ -321,12 +327,12 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   branch has no DMBridge → "All connection attempts failed").
 
 ### 🔄 Phase 7 — Turn-taking & feedback protection layer 2  (code done, live gate pending)
-- [x] VAD pauses while Bot A speaks — `VadSink.mute()/unmute()` (`voice/recv.py`); `_speak()` in
-      `voice/commands.py` mutes around the **blocking** `/speak` and unmutes in `finally` (D15: the
-      blocking return = Bot A went quiet, the exact resume point). `_on_pcm` drops every frame
-      while muted (incl. injected silence); `mute()` flushes in-progress utterances first so a
-      player's pre-DM speech is buffered for the next turn, not glued across the playback gap.
-      Belt-and-braces over the layer-1 user-ID filter; covers `!say` too.
+- [x] VAD pause while Bot A speaks — `VadSink.mute()/unmute()` (`voice/recv.py`); `_speak()` mutes
+      around the **blocking** `/speak` and unmutes in `finally` (D15: blocking return = Bot A quiet).
+      `mute()` flushes in-progress utterances first. **Now opt-in, off by default** (D25,
+      `DM_PAUSE_VAD_WHILE_SPEAKING=0`): redundant beside layer 1 + the routing gate, and it blocked
+      transcribing the table during narration — which players wanted recorded. Mechanism kept for
+      mic-bleed cases. Layer 1 (Bot-A user-ID filter) stays mandatory (golden rule #4).
 - [x] Session state per channel — cog keeps the `self._sink` handle (set on `!join`); `!leave`
       now `self._brain.reset(channel)` + drops the sink + clears the per-user counters, so a
       re-join starts a fresh session.

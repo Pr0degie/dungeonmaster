@@ -38,6 +38,7 @@ class Config:
     dm_num_predict: int
     dm_max_lines: int
     push_to_talk: bool
+    pause_vad_while_speaking: bool
 
     @classmethod
     def load(cls) -> "Config":
@@ -113,5 +114,11 @@ class Config:
             # the DM, tap to stop). Keeps the full transcript record while letting the table pick
             # what the DM hears. On by default; DM_PUSH_TO_TALK=0 routes everything to the DM.
             push_to_talk=os.environ.get("DM_PUSH_TO_TALK", "1").strip().lower()
+            in ("1", "true", "yes", "on"),
+            # Layer-2 feedback pause: pause the VAD while Bot A speaks. OFF by default so the table
+            # keeps being transcribed during the DM's narration — layer 1 (the Bot-A user-ID filter)
+            # still stops the DM transcribing its own voice. Set DM_PAUSE_VAD_WHILE_SPEAKING=1 to
+            # restore the pause (e.g. if mic-to-speaker bleed becomes a problem).
+            pause_vad_while_speaking=os.environ.get("DM_PAUSE_VAD_WHILE_SPEAKING", "0").strip().lower()
             in ("1", "true", "yes", "on"),
         )

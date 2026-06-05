@@ -64,6 +64,7 @@ class VoiceReceiveCog(commands.Cog):
         dm_num_predict: int = 220,
         dm_max_lines: int = 8,
         push_to_talk: bool = True,
+        pause_vad_while_speaking: bool = False,
         tts_engine: str = "piper",
         tts_voice: str = "",
         tts_speaker: str = "",
@@ -87,6 +88,9 @@ class VoiceReceiveCog(commands.Cog):
         # utterances captured while this is True are buffered for the DM. The mic button flips it.
         # With push-to-talk off it's always True (legacy: everything reaches the DM).
         self._dm_listening = not push_to_talk
+        # Layer-2 feedback pause (opt-in, off by default): pause the VAD while Bot A speaks. Off so
+        # the table keeps being transcribed during narration; layer 1 still blocks self-hearing.
+        self._pause_vad_while_speaking = pause_vad_while_speaking
         self._brain = DMBrain(
             OllamaClient(ollama_host, ollama_model),
             num_predict=dm_num_predict,
@@ -174,12 +178,15 @@ class VoiceReceiveCog(commands.Cog):
         except Exception:
             log.exception("TTS synthesis failed")
             return False
-        # Feedback protection layer 2 (ADR 003): pause the VAD/STT pipeline while Bot A plays the
-        # answer, so the DM never transcribes its own voice (belt-and-braces over the layer-1
-        # user-ID filter) and table talk over the narration isn't captured. /speak blocks until
-        # playback ends (D15), so unmuting in finally reopens the mic exactly when Bot A goes
-        # quiet. Snapshot the sink so a !leave mid-playback still unmutes the one we muted.
-        sink = self._sink
+        # Feedback protection layer 2 (ADR 003), now OPT-IN and off by default: pause the VAD while
+        # Bot A speaks. It's redundant in normal use — layer 1 (the Bot-A user-ID filter, golden
+        # rule #4, always on) already keeps the DM from transcribing its own voice, and the
+        # push-to-talk routing gate keeps narration-time table talk out of the DM. We default it off
+        # so the table keeps being transcribed (full transcript record) while the DM talks. Enable
+        # DM_PAUSE_VAD_WHILE_SPEAKING=1 to restore the pause. /speak blocks until playback ends
+        # (D15), so unmuting in finally reopens exactly when Bot A goes quiet; snapshot the sink so
+        # a !leave mid-playback still unmutes the one we muted.
+        sink = self._sink if self._pause_vad_while_speaking else None
         if sink is not None:
             sink.mute()
         try:
