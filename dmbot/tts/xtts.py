@@ -16,15 +16,34 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
+import wave
 
 os.environ.setdefault("COQUI_TOS_AGREED", "1")  # accept the model licence non-interactively
 
 from TTS.api import TTS  # noqa: E402 — heavy (torch); only imported when XTTS is selected
 
+from .textsplit import chunk_text  # noqa: E402
+
 log = logging.getLogger(__name__)
 
 _MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
 _DEFAULT_SPEAKER = "Dionisio Schuyler"
+
+_CHUNK_GAP_S = 0.15  # a little silence between re-joined chunks so they don't run together
+
+
+def _concat_wavs(parts: list[str], out_path: str, gap_s: float = _CHUNK_GAP_S) -> None:
+    """Concatenate same-format WAV files into ``out_path`` with a short silence between each."""
+    with wave.open(parts[0], "rb") as first:
+        params = first.getparams()
+    gap = b"\x00" * (int(params.framerate * gap_s) * params.sampwidth * params.nchannels)
+    with wave.open(out_path, "wb") as out:
+        out.setparams(params)
+        for i, part in enumerate(parts):
+            with wave.open(part, "rb") as w:
+                out.writeframes(w.readframes(w.getnframes()))
+            if i < len(parts) - 1:
+                out.writeframes(gap)
 
 
 def _resolve_device(requested: str) -> str:
@@ -94,10 +113,32 @@ class XttsTTS:
         return True
 
     def synthesize(self, text: str) -> str:
-        """Render ``text`` in the active speaker's voice to a fresh WAV; return its path."""
+        """Render ``text`` in the active speaker's voice to a fresh WAV; return its path.
+
+        Long answers are split into <240-char chunks (XTTS truncates a longer single chunk for
+        German) — each chunk is synthesised separately and the WAVs are concatenated."""
         fd, path = tempfile.mkstemp(prefix="dm_tts_", suffix=".wav")
         os.close(fd)
-        self._tts.tts_to_file(
-            text=text, speaker=self._speaker, language=self._language, file_path=path
-        )
+        chunks = chunk_text(text)
+        if len(chunks) <= 1:
+            self._tts.tts_to_file(
+                text=text, speaker=self._speaker, language=self._language, file_path=path
+            )
+            return path
+        parts: list[str] = []
+        try:
+            for chunk in chunks:
+                cfd, cpath = tempfile.mkstemp(prefix="dm_tts_part_", suffix=".wav")
+                os.close(cfd)
+                self._tts.tts_to_file(
+                    text=chunk, speaker=self._speaker, language=self._language, file_path=cpath
+                )
+                parts.append(cpath)
+            _concat_wavs(parts, path)
+        finally:
+            for part in parts:
+                try:
+                    os.remove(part)
+                except OSError:
+                    pass
         return path

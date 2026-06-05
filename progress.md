@@ -69,6 +69,17 @@ buttons (read ADR 005 + 004 + 001). Recommended dial for Phase 8: **Opus 4.8 / x
   _Open (F): player→character name mapping_ — the LLM confuses "SezBoss69" vs the character "Seskin"
   and mixes up who did what. Belongs to character registration (D13/ADR 003, Phase 8); a light alias
   map could help sooner.
+- **Fourth live session → audio bug + more persona.** **(J)** real bug: XTTS truncates a single
+  chunk >253 chars for German (the "bricht mitten im Satz ab" reports) — the wrapper now splits a
+  long answer into <240-char chunks (`tts/textsplit.py`, unit-tested) and concatenates the WAVs.
+  Persona: **(G)** attribute each action to the *named* player when several acted, not a vague
+  "du/dein"; **(H)** don't auto-advance — answer the immediate thing (esp. a perception question),
+  NPCs wait until the group reacts; **(I)** engage with *every* player action incl. provocative
+  ones, don't dodge/sanitise (model-dependent). Suite **29/29**.
+  _Open (K) — Phase-8 dice design input from the players:_ a real GM rolls **for** the player
+  ("ich würfle für Tobi auf Spurenlesen, Wert 6, Ziel 12 — nicht geschafft"); skill-check
+  **difficulty** must come from the system profile / rulebook, the LLM can't balance it on the fly.
+  Confirms "dice = code" (golden rule #2) — fold into ADR 005 / the engine when building Phase 8.
 
 **(Earlier same day) GPU XTTS via CUDA torch + portable per-machine GPU profiles (non-Phase work, ADR 009).** The
 GPU rebalance (whisper→CPU, XTTS→cuda) crashed at first: the venv's torch was the **CPU-only**
