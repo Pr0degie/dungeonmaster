@@ -5,13 +5,12 @@ met and the proof is recorded here.
 
 ## Current focus
 **Phases 0–6 complete — the loop is PLAYABLE** ⭐ (speak → German DM answer in **Dionisio's**
-voice, heard aloud). **XTTS on the GPU + portable across machines** (2026-06-05, ADR 009): CUDA
-torch (cu130) installed, RTF **0.34** (≈3× realtime). **Now confirmed working on BOTH boxes** —
-Tobi's 4070 (dev) and a colleague's RTX 5080 (full-GPU; XTTS cuda + whisper cuda, transcription
-clean after the cudart/preload fixes). The remaining latency lever is no longer TTS but the
-**LLM answer length** (a 24 s synth was a ~70 s monologue) + the ~8 s LLM turn — **this is the
-active task now.** After that: **Phase 7** — feedback layer 2 (pause VAD while Bot A speaks). The
-fragile voice-receive stack stays hardened (ADR 006); its benign RTP-unpack flood is now throttled.
+voice, heard aloud), and now **portable + hardened** after a long ops session (2026-06-05): XTTS on
+the GPU (cu130, RTF 0.34, ADR 009), runs on both the 4070 (dev) and a colleague's RTX 5080
+(full-GPU); answer length capped; prompt Ctrl+C shutdown; the bridge can now **split across
+machines** over Tailscale (ADR 010) while localhost stays unchanged; console log slimmed + file log
+opt-in. **Next up: Phase 7** — turn-taking & feedback layer 2 (pause VAD while Bot A speaks; read
+ADR 003). Recommended dial: **Opus 4.8 / xhigh**.
 
 ## Last session
 **GPU XTTS via CUDA torch + portable per-machine GPU profiles (non-Phase work, ADR 009).** The
@@ -53,30 +52,44 @@ Fixed end to end:
   another machine" section; `docs/SETUP.md` token-var line corrected (`DISCORD_TOKEN_DMBOT`, Bot A
   token lives in the music bot repo). Voice-stack smoke test re-run after the dep change: **5/5**.
 
+**Then (same session) — playability + ops polish:**
+- **XTTS is now the default engine** (Piper = fallback); D21 flipped once XTTS ran on GPU.
+- **Answer length capped** (`DM_NUM_PREDICT`, env, default 220) + sentence-trim on a cut turn +
+  persona tightened ("2–4 Sätze, keine Monologe") — XTTS-GPU made monologues the latency, not TTS.
+- **Prompt shutdown:** transcriber `stop()` drops its backlog + short join (daemon), run off the
+  loop in `cog_unload` → one Ctrl+C, no "heartbeat blocked" hang.
+- **Bridge debuggability:** `!say` reports playback failure instead of a false 🔊; `bridge.speak`
+  surfaces the bridge's real reason (401/404/409/unreachable). This pinned the colleague's issue to
+  Bot A not reachable / not in voice (not a WAV/path bug).
+- **Network bridge (ADR 010, D23):** hybrid `/speak` — loopback sends the WAV *path* (unchanged),
+  remote sends the WAV *bytes* + shared secret (`DM_BRIDGE_SECRET`) over Tailscale; Bot A plays its
+  own copy. **Both repos changed** (DMbot + the music bot's `cogs/dm_bridge.py`, its own commit).
+  Localhost path mode verified unchanged; the remote/Tailscale path is **implemented but not yet
+  live-tested** (they run both bots on one machine for now). Split-hosting documented in the README.
+- **Lean logging:** console shows only `dmbot.*` lines + WARN/ERROR (timestamps kept); the
+  full file log `logs/dmbot.log` is **off by default**, opt-in via `DM_LOG_FILE=1`; the benign
+  voice-recv unpack notice is kept off the console (file-only).
+
 _(Prior session — voice-stack hardening, ADR 006 — and Phases 3–6 (the playable loop) are captured
 in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 
 ## Next concrete step
-**Trim the DM answer length — the latency is now in the LLM, not TTS.** With XTTS on the GPU
-(RTF 0.34, ADR 009) a long synth means a long *answer*: a 24 s synth was a ~70 s monologue.
-Cap the DM turn (e.g. `num_predict` / prompt nudge for shorter turns) and trim nemo's meta-preamble
-("Ich beschreibe…") + occasional role-inversion ("Was siehst du?"). The ~8 s LLM turn is the other
-half — consider offloading Ollama to the 5080 via Tailscale (ADR 002). **Then Phase 7** — feedback
-layer 2 (pause VAD while Bot A speaks; read ADR 003). Level: **opusplan / high**.
+**Phase 7 — Turn-taking & feedback protection layer 2.** Read **ADR 003** first (phase-transition
+ritual). Build: **pause VAD / accept no new utterance while Bot A is speaking** (layer 2; layer 1 =
+the Bot-A user-ID filter is already in `recv.py`), and keep **session state per channel** clean.
+Gate: two people speak → DM reacts in order and does not transcribe its own audio. Dial:
+**Opus 4.8 / xhigh** (subtle async/state logic, quiet bugs — roadmap says don't skimp on effort).
 
-_5080 onboarding:_ the project is now portable — `uv sync` pulls CUDA torch (cu130), the 5080
-runs the all-GPU `.env` profile (whisper `cuda`/`float16` + XTTS `cuda`). README "Running on
-another machine" has the full flow; the only manual bits are the two Discord tokens + Ollama pull.
-
-_Also open (not blocking):_ DM model/persona tuning (nemo vs `gemma3:12b`; trim the occasional
-"Was siehst du?" role-inversion + meta-preamble); STT confidence-filter live check; the
-requested toggleable edit/review-window (Part 2 backlog).
-
-_Carry-overs:_ (1) **STT confidence filter** is live but only tested on clean speech — watch a
-live run for whether the "Vielen Dank…" phantoms are gone and nothing real is dropped (tune
-`_NO_SPEECH_MAX`/`_LOGPROB_MIN`). (2) **DM model/persona tuning** — try `gemma3:12b` vs
-`mistral-nemo` with the real persona; trim nemo's occasional meta-preamble. (3) The **ms latency
-display** + green console need a restart to show. (4) Live-test `!dm` (Tobi hasn't run it yet).
+_Carry-overs (verify in a live run, not code) — Tobi said he'll test these during development:_
+1. **Dialogue loop** end-to-end on the 5080 host: `!j` → speak → `!dm` answers aloud, and a 2nd
+   `!dm` keeps the per-channel history. (Fill Phase-6 evidence once confirmed on that box.)
+2. **Answer length** by ear — tune `DM_NUM_PREDICT` if turns feel long/clipped.
+3. **Prompt Ctrl+C shutdown** — confirm one Ctrl+C exits cleanly.
+4. **Remote/Tailscale bridge (ADR 010)** — implemented, **never live-tested**; do the two-machine
+   check in the README "Split hosting" section when they want it (currently both bots on one box).
+5. Older: STT confidence filter on noisy speech; `gemma3:12b` vs `mistral-nemo` persona taste test;
+   the toggleable edit/review window (Part 2 backlog). **Input bleed:** a player's stream audio
+   leaking into the mic gets transcribed — an input-discipline / future wake-word concern, not a bug.
 
 ---
 
