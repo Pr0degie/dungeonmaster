@@ -137,25 +137,27 @@ class VoiceReceiveCog(commands.Cog):
         await self._brain.aclose()
         await self._bridge.aclose()
 
-    async def _speak(self, text: str, guild_id: int | None) -> None:
-        """Synthesise ``text`` with Piper and play it via Bot A's /speak bridge.
+    async def _speak(self, text: str, guild_id: int | None) -> bool:
+        """Synthesise ``text`` and play it via Bot A's /speak bridge. Returns True if it played.
 
         Synthesis is blocking, so it runs in a thread. The WAV is deleted after playback so the
         temp dir doesn't fill up. Bot A's audio is filtered by user-ID (feedback layer 1), so
         DMbot does not transcribe its own DM voice even without pausing the VAD.
         """
         if self._tts is None:
-            return
+            return False
         try:
             t0 = time.perf_counter()
             wav = await asyncio.to_thread(self._tts.synthesize, text)
             log.info("🔊 TTS %d ms → speaking", round((time.perf_counter() - t0) * 1000))
         except Exception:
             log.exception("TTS synthesis failed")
-            return
+            return False
         try:
-            if not await self._bridge.speak(wav, guild_id=guild_id):
+            played = await self._bridge.speak(wav, guild_id=guild_id)
+            if not played:
                 log.warning("playback did not succeed — is Bot A in the voice channel?")
+            return played
         finally:
             try:
                 os.remove(wav)
@@ -192,10 +194,15 @@ class VoiceReceiveCog(commands.Cog):
     async def say(self, ctx: commands.Context, *, text: str) -> None:
         """Speak arbitrary text through Piper + Bot A — a TTS/bridge smoke test."""
         if self._tts is None:
-            await ctx.send("Keine Piper-Stimme geladen (siehe SETUP B5).")
+            await ctx.send("Keine TTS-Stimme geladen (siehe SETUP B5).")
             return
-        await self._speak(text, ctx.guild.id if ctx.guild else None)
-        await ctx.send("🔊")
+        if await self._speak(text, ctx.guild.id if ctx.guild else None):
+            await ctx.send("🔊")
+        else:
+            await ctx.send(
+                "Konnte nicht abspielen — läuft **Bot A** und ist es im selben Voice-Channel? "
+                "Prüfe `!vstatus`; Details im Log (`logs/dmbot.log`)."
+            )
 
     @commands.command(name="voice")
     async def voice(self, ctx: commands.Context, *, name: str = "") -> None:
