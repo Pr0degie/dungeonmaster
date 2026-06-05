@@ -71,6 +71,7 @@ class DMBot(commands.Bot):
                 tts_device=self._config.tts_device,
                 bridge_host=self._config.bridge_host,
                 bridge_port=self._config.bridge_port,
+                bridge_secret=self._config.bridge_secret,
             )
         )
 

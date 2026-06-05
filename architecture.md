@@ -39,9 +39,11 @@ Bot A → Discord → player. **Where the bots run is irrelevant to Discord** �
 his colleague do *not* need to be on the same network. The only internal links are
 DMbot → Ollama and DMbot → Bot A (the bridge).
 
-**Bot A and DMbot belong on the same machine.** The bridge passes a *file path* to the
-WAV — that only works with a shared filesystem. The only component that splits off
-cleanly is Ollama (JSON over HTTP, no path).
+**Bot A and DMbot run on the same machine by default** (the bridge passes a *file path* to the
+WAV — a shared filesystem). They can also be **split across machines over Tailscale**: when
+`DM_BRIDGE_HOST` is remote, DMbot sends the WAV *bytes* instead of a path and Bot A plays its own
+copy (hybrid transport, ADR 010 — relaxes this co-location for the bridge). Ollama splits off the
+same way (JSON over HTTP, no path).
 
 ### Development (MVP) — everything on one machine
 
@@ -85,24 +87,29 @@ generation). Then the LLM has the 16 GB card to itself; STT/TTS stay on the 4070
   the playback logic already exists.
 
 #### Bridge contract (what DMbot builds against)
-An `aiohttp` server, **localhost only**, on `DM_BRIDGE_HOST`:`DM_BRIDGE_PORT`
-(defaults `127.0.0.1:8765`, via the music bot's `config.py` / `.env`).
+An `aiohttp` server on `DM_BRIDGE_HOST`:`DM_BRIDGE_PORT` (defaults `127.0.0.1:8765`, via the music
+bot's `config.py` / `.env`). Localhost by default; bind a Tailscale/LAN IP for the split topology.
 
 - `GET /health` → `{"status":"ok","bot":"<name>"}` — liveness check.
-- `POST /speak` with JSON `{"path": "<abs WAV path>", "guild_id": <optional int>}`
-  → plays the WAV in the voice channel and **blocks until playback is finished**, then
-  responds `{"status":"played","path":...}`. Errors: `400` invalid json / missing path,
-  `404` file not found, `409` not connected to voice, `500` playback failed.
-  Calls are serialized by a lock (one utterance at a time); any running music is stopped
-  first. Playback uses `discord.FFmpegOpusAudio` (ffmpeg already a music-bot dependency).
+- `POST /speak` — **two transports** (ADR 010), both blocking until playback finishes:
+  - **path mode** (loopback): JSON `{"path": "<abs WAV path>", "guild_id": <optional int>}`
+    → plays from the shared disk, responds `{"status":"played","path":...}`.
+  - **bytes mode** (remote): raw body, `Content-Type: audio/wav`, headers `X-DM-Guild-Id` +
+    `X-DM-Secret` → Bot A writes the bytes to its own temp dir, plays, deletes; responds
+    `{"status":"played"}`.
+  Errors: `400` invalid/empty/unsupported, `401` secret mismatch (off-loopback), `404` file not
+  found (path mode), `409` not connected to voice, `413` too large, `500` write/playback failed.
+  Calls are serialized by a lock; any running music is stopped first. Playback uses
+  `discord.FFmpegOpusAudio` (ffmpeg already a music-bot dependency).
 - `!dm` — Discord command, shows bridge status (server, voice connection).
 
 **Signalling:** the blocking return is the *only* "done" signal — no callback, no shared
 state (matches D15; an earlier Bot-A→DMbot callback was removed as redundant).
 
-**DMbot's side of the contract:** write the TTS WAV to a real file on the shared
-filesystem (OS temp dir — same machine, Windows), then `POST` its path to
-`http://DM_BRIDGE_HOST:DM_BRIDGE_PORT/speak`. DMbot pauses its own VAD before the
+**DMbot's side of the contract:** write the TTS WAV to a real file (OS temp dir, Windows), then
+`POST` to `http://DM_BRIDGE_HOST:DM_BRIDGE_PORT/speak` — its *path* when the host is loopback
+(shared disk), or its *bytes* when the host is remote (ADR 010). DMbot deletes its WAV after the
+call returns. DMbot pauses its own VAD before the
 `await` and resumes after the response returns (it owns the loop, so it needs no push
 from Bot A; layer-1 user-ID filtering protects regardless).
 

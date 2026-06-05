@@ -22,6 +22,7 @@ class Config:
     ollama_model: str
     bridge_host: str
     bridge_port: int
+    bridge_secret: str
     bot_a_user_id: int | None
     log_level: str
     whisper_model: str
@@ -58,6 +59,9 @@ class Config:
             ollama_model=os.environ.get("OLLAMA_MODEL", "mistral-nemo").strip(),
             bridge_host=os.environ.get("DM_BRIDGE_HOST", "127.0.0.1").strip(),
             bridge_port=int(os.environ.get("DM_BRIDGE_PORT", "8765")),
+            # Shared secret for the cross-machine bridge. Empty = localhost path mode (no secret).
+            # Off-loopback the WAV is sent as bytes and this must match Bot A's DM_BRIDGE_SECRET.
+            bridge_secret=os.environ.get("DM_BRIDGE_SECRET", "").strip(),
             bot_a_user_id=int(bot_a_raw) if bot_a_raw else None,
             log_level=os.environ.get("LOG_LEVEL", "INFO").strip().upper(),
             # STT (Phase 4). Default to medium (GPU float16) — it clearly out-transcribed

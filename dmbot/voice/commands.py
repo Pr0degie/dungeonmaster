@@ -67,6 +67,7 @@ class VoiceReceiveCog(commands.Cog):
         tts_device: str = "cpu",
         bridge_host: str = "127.0.0.1",
         bridge_port: int = 8765,
+        bridge_secret: str = "",
     ) -> None:
         self.bot = bot
         # Preflight the version-sensitive voice stack at boot, so a drift surfaces as a loud
@@ -77,7 +78,7 @@ class VoiceReceiveCog(commands.Cog):
         self._utterance_counts: dict[int, int] = {}
         self._active_vc_id: int | None = None  # the voice channel we buffer/answer for
         self._brain = DMBrain(OllamaClient(ollama_host, ollama_model), num_predict=dm_num_predict)
-        self._bridge = BridgeClient(bridge_host, bridge_port)
+        self._bridge = BridgeClient(bridge_host, bridge_port, secret=bridge_secret)
         # Load the TTS backend once. xtts is imported lazily so Piper users don't pull torch.
         # If loading fails, keep running text-only (answers still post, just aren't spoken).
         self._tts = None
