@@ -66,13 +66,15 @@ Runtime is **Windows** (see decision log D16). Check the items off.
       full loop (speak → DM answers aloud) worked. **Bot A must run on its `dungeon_master`
       branch** (the bridge cog `cogs/dm_bridge.py` is only there; `main` → "connection refused").
 
-### B5 — TTS voice (Piper) — ✅ DONE (2026-06-04)
-- [x] **piper-tts** installed (`uv add piper-tts`, v1.4.2) — installs cleanly on Windows/py3.12
-      and **bundles its espeak-ng data**, so no separate phonemiser is needed.
-- [x] German voice `de_DE-thorsten-medium` (`.onnx` + `.onnx.json`) downloaded into `voices/`
-      (gitignored). Piper outputs **22050 Hz mono 16-bit** WAV; Bot A's ffmpeg plays it fine.
-      Verified: voice loads ~1.3 s, ~224 ms to synthesise a 6 s German sentence.
-- Swap the voice via `PIPER_VOICE=<path to .onnx>`; `thorsten_emotional` is worth a listen test.
+### B5 — TTS: XTTS (default) + Piper (fallback) — ✅ DONE (2026-06-04 / GPU 2026-06-05)
+- [x] **XTTS v2 is the default** (`TTS_ENGINE=xtts`, `coqui-tts`): ~58 German-capable speakers +
+      voice cloning, speaker **Dionisio Schuyler**. The model **downloads itself on first run**
+      (no manual file). Runs on GPU with the CUDA torch build (ADR 009, RTF ~0.34) and
+      **auto-degrades to CPU** if CUDA is absent or the GPU OOMs — never blocks startup.
+- [x] **Piper is the lean fallback** (`TTS_ENGINE=piper`, `piper-tts` v1.4.2): fast (~224 ms/
+      sentence), fixed German voice `de_DE-thorsten-medium` (`.onnx` + `.onnx.json`) in `voices/`
+      (gitignored), **bundles espeak-ng data** (no separate phonemiser). Outputs 22050 Hz mono
+      16-bit WAV; Bot A's ffmpeg plays it. Swap via `PIPER_VOICE=<path to .onnx>`.
 - **Still needs Tobi for the full loop:** Bot A (the music bot, `dungeon_master` branch) must be
   **running with both bots in the same voice channel** so DMbot's `/speak` POST has somewhere to
   play. The agent cannot start Bot A (separate repo/process).

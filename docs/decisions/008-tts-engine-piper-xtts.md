@@ -1,9 +1,14 @@
 # ADR 008 — TTS engine: Piper default + XTTS v2 optional
 
-- **Status:** Accepted
+- **Status:** Accepted (default engine flipped Piper→XTTS on 2026-06-05, see note below)
 - **Date:** 2026-06-04
 - **Refs:** decision log D21 in `progress.md`; `architecture.md` §3 (TTS row), §4; ADR 002
-  (local-only topology, VRAM); Phase 6 in `roadmap.md`/`progress.md`
+  (local-only topology, VRAM); ADR 009 (CUDA torch / GPU XTTS); Phase 6 in `roadmap.md`/`progress.md`
+
+> **Update 2026-06-05:** with XTTS now on the GPU (ADR 009) and torch a hard dep regardless,
+> **XTTS is the default engine** (`TTS_ENGINE` default `xtts`); Piper is the lean fallback when
+> XTTS won't load. The "Piper as the default" choice below is superseded on that one point only —
+> both engines and the rest of this ADR still stand.
 
 ## Context
 

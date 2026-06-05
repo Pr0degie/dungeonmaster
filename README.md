@@ -32,7 +32,7 @@ You speak ─► DMbot receives per-user audio (discord-ext-voice-recv, DAVE/E2E
             ▼
         Ollama (mistral-nemo) + layered German persona (GM core + Eisenhorn tone) → answer
             ▼
-        TTS (Piper or Coqui XTTS v2) → WAV  ──► POST /speak to Bot A ──► spoken aloud
+        TTS (Coqui XTTS v2 default, Piper fallback) → WAV  ──► POST /speak to Bot A ──► spoken aloud
 ```
 
 **Signature principle:** *dice = code, narration = LLM.* Dice rolls and their resolution are
@@ -94,7 +94,7 @@ Everything is env-driven (never hardcoded). Highlights — see [`.env.example`](
 
 - `OLLAMA_HOST` / `OLLAMA_MODEL` — LLM host + model (default local `mistral-nemo`)
 - `WHISPER_MODEL` / `WHISPER_DEVICE` / `WHISPER_COMPUTE` — STT (default `medium` / `cuda` / `float16`)
-- `TTS_ENGINE` — `piper` (fast, fixed voice) or `xtts` (Coqui XTTS v2, 58 voices + cloning)
+- `TTS_ENGINE` — `xtts` (Coqui XTTS v2, 58 voices + cloning — **default**) or `piper` (fast, lean fallback voice)
 - `TTS_SPEAKER` / `TTS_DEVICE` — XTTS speaker (default *Dionisio Schuyler*) and device
 - `BOT_A_USER_ID` — Bot A's user-ID, filtered from voice (feedback protection layer 1)
 

@@ -69,9 +69,11 @@ class Config:
             # — it clutters the disk; turn on (DM_DUMP_UTTERANCES=1) to inspect a clip.
             dump_utterances=os.environ.get("DM_DUMP_UTTERANCES", "").strip().lower()
             in ("1", "true", "yes", "on"),
-            # TTS backend: "piper" (fast, fixed voice) or "xtts" (Coqui XTTS v2, picks one of
-            # ~58 built-in speakers, heavier). Phase 6.
-            tts_engine=os.environ.get("TTS_ENGINE", "piper").strip().lower(),
+            # TTS backend: "xtts" (Coqui XTTS v2, ~58 speakers + cloning — the default, the voice
+            # we actually want) or "piper" (fast, fixed voice — the lean fallback if XTTS won't
+            # load). torch is a hard dep either way, and XTTS degrades to CPU rather than crashing
+            # (tts/xtts.py), so it's a safe default. Phase 6 / ADR 008.
+            tts_engine=os.environ.get("TTS_ENGINE", "xtts").strip().lower(),
             # Piper voice .onnx; empty → the wrapper's default (de_DE-thorsten-medium).
             tts_voice=os.environ.get("PIPER_VOICE", "").strip(),
             # XTTS built-in speaker name (see voices/samples/_speakers.txt); empty → default.

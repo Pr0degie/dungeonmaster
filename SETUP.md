@@ -18,7 +18,8 @@ Runtime is **Windows**, Python **3.12**, managed with **uv**.
   and both bots invited to the **same server / voice channel**.
 
 Details and one-time GPU/voice setup: [`docs/SETUP.md`](docs/SETUP.md) (cuDNN for faster-whisper
-is handled **in code** — no manual PATH; the Piper voice is in `voices/`, gitignored).
+is handled **in code** — no manual PATH; the default **XTTS** voice model downloads itself on
+first run, the optional Piper fallback voice lives in `voices/`, gitignored).
 
 ## 2. Install
 
@@ -40,8 +41,8 @@ Fill in at least `DISCORD_TOKEN_DMBOT`. Useful knobs (all optional, sensible def
 | `BOT_A_USER_ID` | — | Bot A's user-ID; filtered from voice (feedback layer 1) |
 | `OLLAMA_HOST` / `OLLAMA_MODEL` | `127.0.0.1:11434` / `mistral-nemo` | LLM host + model |
 | `WHISPER_MODEL` / `WHISPER_DEVICE` / `WHISPER_COMPUTE` | `medium` / `cuda` / `float16` | STT; use `cpu`/`int8` to free GPU VRAM |
-| `TTS_ENGINE` | `piper` | or `xtts` (Coqui XTTS v2, 58 voices + cloning) |
-| `TTS_SPEAKER` / `TTS_DEVICE` | *Dionisio Schuyler* / `cpu` | XTTS speaker + device |
+| `TTS_ENGINE` | `xtts` | Coqui XTTS v2 (58 voices + cloning) — the default; set `piper` for the fast, lean fallback voice |
+| `TTS_SPEAKER` / `TTS_DEVICE` | *Dionisio Schuyler* / `cpu` | XTTS speaker + device (`cuda` for GPU; auto-falls back to CPU) |
 | `DM_BRIDGE_HOST` / `DM_BRIDGE_PORT` | `127.0.0.1` / `8765` | Bot A's `/speak` bridge |
 
 ## 4. Run
@@ -66,8 +67,10 @@ Logs go to the console (green chat layout) **and** `logs/dmbot.log` (full detail
   Ollama on a second GPU via Tailscale (ADR 002).
 - **No sound:** are **both** bots in the voice channel? Is ffmpeg available to Bot A?
 - **Garbage transcript:** suspect the sample rate (must be 16 kHz mono) before the model.
-- **XTTS won't load:** it needs torch/torchaudio/torchcodec + `transformers<5`; `uv sync` pins
-  these. It's heavy and slow on CPU — Piper (`TTS_ENGINE=piper`) is the fast fallback.
+- **XTTS won't load (it's the default):** it needs torch/torchaudio/torchcodec + `transformers<5`;
+  `uv sync` pins these (CUDA build from the cu126 index for GPU). On CUDA-less boxes or an OOM it
+  auto-degrades to CPU (logged). If it still won't run, fall back to the lean voice with
+  `TTS_ENGINE=piper`.
 
 ## 6. Tests
 
