@@ -99,6 +99,8 @@ class _ConsoleNoiseFilter(logging.Filter):
     filter, so a debug run still records the full detail."""
 
     def filter(self, record: logging.LogRecord) -> bool:
+        if getattr(record, "_console_skip", False):
+            return False  # flagged file-only (benign voice-recv unpack notices)
         if "PCM ⟳" in record.getMessage():
             return False  # the 2 s per-user heartbeat
         return record.levelno >= logging.WARNING or record.name.startswith("dmbot")
@@ -126,6 +128,7 @@ class _UnpackErrorThrottle(logging.Filter):
         self._count += 1
         record.exc_info = None  # drop the (identical, noisy) traceback
         record.args = None
+        record._console_skip = True  # benign — keep it out of the lean console (file log only)
         if self._count == 1:
             record.msg = (
                 "voice-recv could not unpack an RTP packet (benign alpha jitter — the packet is "
