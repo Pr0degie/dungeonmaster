@@ -81,7 +81,11 @@ class VoiceReceiveCog(commands.Cog):
         self._utterance_counts: dict[int, int] = {}
         self._active_vc_id: int | None = None  # the voice channel we buffer/answer for
         self._sink: VadSink | None = None  # set on join; muted while Bot A speaks (layer 2)
-        self._push_to_talk = push_to_talk  # gate transcription behind the mic button (no backlog)
+        self._push_to_talk = push_to_talk
+        # Push-to-talk DM-routing gate: the whole table is always transcribed + logged, but only
+        # utterances captured while this is True are buffered for the DM. The mic button flips it.
+        # With push-to-talk off it's always True (legacy: everything reaches the DM).
+        self._dm_listening = not push_to_talk
         self._brain = DMBrain(
             OllamaClient(ollama_host, ollama_model),
             num_predict=dm_num_predict,
@@ -122,22 +126,28 @@ class VoiceReceiveCog(commands.Cog):
                 log.debug("dumped %s utterance #%d (%.2fs) → %s", name, n, duration_s, path)
             except Exception:
                 log.exception("failed to write utterance WAV")
-        # The metric (clip length · transcribe ms) is logged with the transcript once STT
-        # returns — see _on_transcript. clip length is passed through for that line.
-        self._transcriber.submit(name, pcm, duration_s)
+        # Tag the utterance with the DM-routing gate state NOW (when it was cut), so the routing
+        # decision reflects whether the button was engaged while it was spoken — not whenever the
+        # async transcript happens to come back. The metric (clip · transcribe ms) is logged with
+        # the transcript once STT returns (see _on_transcript).
+        self._transcriber.submit(name, pcm, duration_s, for_dm=self._dm_listening)
 
     def _on_transcript(
-        self, name: str, text: str, clip_s: float, latency_ms: float
+        self, name: str, text: str, clip_s: float, latency_ms: float, for_dm: bool
     ) -> None:
-        """STT result (on the STT worker thread). Phase-4 gate: the German text, with the
-        clip length and the transcription response time (ms) right next to it.
+        """STT result (on the STT worker thread). The German text with clip length + transcribe ms.
+
+        The whole table is logged (full transcript record); only ``for_dm`` lines are buffered for
+        the next DM turn — that is the push-to-talk gate (everything recorded, button picks what
+        the DM hears). A ``→DM`` marker on the metric shows which lines were routed.
         """
-        # "📝 name | clip·ms | text" — the console formatter renders the metric dim inline;
+        # "📝 name | clip·ms[ →DM] | text" — the console formatter renders the metric dim inline;
         # the file log keeps the same one-line, greppable form.
-        log.info("📝 %s | %.1fs·%dms | %s", name, clip_s, round(latency_ms), text)
-        # Buffer the line for the next DM turn (triggered by !dm). Runs on the STT thread;
-        # the brain's buffer is lock-guarded.
-        if self._active_vc_id is not None:
+        marker = " →DM" if for_dm else ""
+        log.info("📝 %s | %.1fs·%dms%s | %s", name, clip_s, round(latency_ms), marker, text)
+        # Buffer the line for the next DM turn (triggered by !dm) only when routed. Runs on the STT
+        # thread; the brain's buffer is lock-guarded.
+        if for_dm and self._active_vc_id is not None:
             self._brain.add_player_line(self._active_vc_id, name, text)
 
     async def cog_unload(self) -> None:
@@ -275,8 +285,7 @@ class VoiceReceiveCog(commands.Cog):
             bot_a_user_id=self._bot_a_user_id, on_utterance=self._on_utterance
         )
         self._sink = vad_sink  # keep the handle so _speak can mute it while Bot A talks (layer 2)
-        if self._push_to_talk:
-            vad_sink.set_listening(False)  # start quiet — the table opts in via the mic button
+        self._dm_listening = not self._push_to_talk  # fresh session: gate closed if push-to-talk
         sink = voice_recv.SilenceGeneratorSink(vad_sink)
         vc.listen(sink, after=self._on_listen_done)
         self._active_vc_id = channel.id  # buffer transcripts + answer for this channel
@@ -287,26 +296,30 @@ class VoiceReceiveCog(commands.Cog):
         )
         if self._push_to_talk:
             await ctx.send(
-                f"Beigetreten: **{channel.name}**. **Push-to-talk** ist an: tippt den Knopf unten, "
-                f"*bevor* ihr mit der Spielleitung redet, und nochmal, wenn ihr fertig seid "
-                f"(ein Tipp gilt für alle). Dann `!dm` für die Antwort. (Opus: {discord.opus.is_loaded()})",
-                view=MicToggleView(self.toggle_listening, listening=False),
+                f"Beigetreten: **{channel.name}**. Ich schreibe **alles** mit (Protokoll im Log), "
+                f"aber nur was im **Knopf-Fenster** gesagt wird, geht an die Spielleitung: tippt den "
+                f"Knopf *bevor* ihr mit ihr redet und nochmal, wenn ihr fertig seid (ein Tipp gilt "
+                f"für alle), dann `!dm`. (Opus: {discord.opus.is_loaded()})",
+                view=MicToggleView(self.toggle_listening, listening=self._dm_listening),
             )
         else:
             await ctx.send(
-                f"Beigetreten: **{channel.name}** — ich höre durchgehend zu. Sprecht, dann `!dm` für "
-                f"die Antwort der Spielleitung (oder `!dm <Text>`). (Opus: {discord.opus.is_loaded()})"
+                f"Beigetreten: **{channel.name}** — ich höre durchgehend zu, alles geht an die "
+                f"Spielleitung. Sprecht, dann `!dm` (oder `!dm <Text>`). (Opus: {discord.opus.is_loaded()})"
             )
 
     async def toggle_listening(self) -> bool:
-        """Flip the push-to-talk gate on the active sink; return the new listening state. Called by
-        the mic button (:class:`MicToggleView`)."""
-        if self._sink is None:
-            return False
-        new_state = not self._sink.listening
-        self._sink.set_listening(new_state)
-        log.info("push-to-talk → %s", "🎙 listening" if new_state else "⏸ paused")
-        return new_state
+        """Flip the push-to-talk DM-routing gate; return the new state. Called by the mic button.
+
+        Flushes the open utterance **before** flipping, so the trailing thing said right at the
+        press is cut now and tagged with the current gate state (on press-off it still counts as
+        DM; on press-on the pre-press fragment stays out of the DM). Transcription itself keeps
+        running either way — only DM routing toggles."""
+        if self._sink is not None:
+            self._sink.flush_open()  # cut + tag the trailing utterance under the OLD gate state
+        self._dm_listening = not self._dm_listening
+        log.info("push-to-talk → %s", "🎙 an die Spielleitung" if self._dm_listening else "⏸ nur Protokoll")
+        return self._dm_listening
 
     @commands.command(name="mic")
     async def mic(self, ctx: commands.Context) -> None:
@@ -315,7 +328,7 @@ class VoiceReceiveCog(commands.Cog):
             await ctx.send("Ich bin in keinem Voice-Channel — erst `!j`.")
             return
         await ctx.send(
-            "Push-to-talk:", view=MicToggleView(self.toggle_listening, listening=self._sink.listening)
+            "Push-to-talk:", view=MicToggleView(self.toggle_listening, listening=self._dm_listening)
         )
 
     @commands.command(name="leave")
@@ -336,6 +349,7 @@ class VoiceReceiveCog(commands.Cog):
         self._active_vc_id = None
         self._sink = None
         self._utterance_counts.clear()
+        self._dm_listening = not self._push_to_talk  # reset the routing gate for the next session
         await ctx.send("Voice-Channel verlassen.")
 
     @commands.command(name="vstatus")

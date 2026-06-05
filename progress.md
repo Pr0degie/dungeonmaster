@@ -164,7 +164,7 @@ create the next-numbered ADR.
 | D21 | TTS engine | **XTTS v2 (`coqui-tts`) default + Piper fallback**, selectable via `TTS_ENGINE`; XTTS speaker **Dionisio Schuyler**. _(Default flipped Piper→XTTS 2026-06-05 once XTTS ran on GPU.)_ | Piper's German voices were rejected; XTTS gives 58 voices + cloning (local, no cloud); torch is a hard dep regardless + XTTS degrades to CPU, so it's a safe default → ADR 008 + 009 |
 | D22 | GPU XTTS / portability | **CUDA torch from the `cu130` index** (`+cu130` builds; CUDA 13.0 covers Ada **and** Blackwell), device env-driven (`TTS_DEVICE`/`WHISPER_DEVICE`); same Windows-only lock for both boxes, XTTS auto-degrades to CPU | CPU-only torch made GPU XTTS impossible; cu130 gives the GPU build (RTF 0.34 verified) for both 4070 (sm_89) + 5080 (sm_120); win32-only lock dodges the cudnn pin clash; one repo runs 4070 dev + 5080 full-GPU → ADR 009 |
 | D23 | Bridge transport | **Hybrid `/speak`**: loopback → WAV path (unchanged); remote → WAV bytes + shared secret over Tailscale; Bot A plays its own copy | Lets DMbot + Bot A run on different machines without breaking the proven localhost path; partially relaxes D16/ADR 002 co-location for the bridge → ADR 010 |
-| D24 | STT latency | **GPU whisper** (`WHISPER_DEVICE=cuda`) **+ push-to-talk listen gate** (shared Discord mic button; bot transcribes only while engaged, `DM_PUSH_TO_TALK=1`) | CPU whisper + continuous transcription of all table talk fell ~1.5 min behind in real play; the gate kills the backlog at the source so GPU whisper fits even the 4070. Supersedes the 4070 "whisper on CPU" profile → ADR 011 |
+| D24 | STT latency | **GPU whisper** (`WHISPER_DEVICE=cuda`) **+ push-to-talk DM-routing gate** (shared Discord mic button; whole table always transcribed + logged, button gates only what reaches the DM, `DM_PUSH_TO_TALK=1`) | CPU whisper fell ~1.5 min behind; GPU + routing only the button-window speech to the DM keeps the full transcript record (Tobi's call) while cutting DM noise. Supersedes the 4070 "whisper on CPU" profile → ADR 011 |
 
 ### Phase → ADR map (read these when you enter the phase)
 
@@ -321,10 +321,11 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 - [x] Session state per channel — cog keeps the `self._sink` handle (set on `!join`); `!leave`
       now `self._brain.reset(channel)` + drops the sink + clears the per-user counters, so a
       re-join starts a fresh session.
-- [x] **Push-to-talk listen gate (D24/ADR 011)** — a shared Discord mic button (`discord_ui/mic.py`,
-      the project's first View) flips `VadSink.set_listening`; off by default at join so the bot
-      transcribes **only** while engaged. Kills the continuous-transcription backlog that put STT
-      ~1.5 min behind in real play. `!mic` re-posts the button; `DM_PUSH_TO_TALK=0` = legacy always-on.
+- [x] **Push-to-talk DM-routing gate (D24/ADR 011)** — a shared Discord mic button (`discord_ui/mic.py`,
+      the project's first View). The whole table is **always transcribed + logged** (full record,
+      Tobi wanted it — recap/memory groundwork); the button gates only **what reaches the DM**:
+      utterances are tagged `for_dm` when cut (carried through the STT worker) and only those are
+      buffered. `→DM` marks routed lines in the log. `!mic` re-posts; `DM_PUSH_TO_TALK=0` routes all.
 - [x] **Latency + quality fixes from the first live session** — GPU whisper (`WHISPER_DEVICE=cuda`,
       D24); buffer capped to recent `DM_MAX_LINES` (default 8) so table talk doesn't drown the action;
       persona sharpened (action-resolution as the top directive); `_sanitize`/`_strip_leading_label`

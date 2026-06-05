@@ -81,48 +81,22 @@ def test_unmute_resumes() -> None:
     assert 7 in sink._segmenters
 
 
-# --- push-to-talk listen gate (Phase 7) ------------------------------------------------------
+# --- push-to-talk: the sink always transcribes (full log); routing is gated in the cog ----------
 
-def test_on_pcm_dropped_when_not_listening() -> None:
-    """With the mic gate off, _on_pcm drops audio before building any pipeline (no backlog)."""
+def test_transcription_is_not_gated_by_push_to_talk() -> None:
+    """The sink transcribes the whole table continuously — the push-to-talk DM-routing gate lives
+    in the cog (commands._on_transcript), so the transcript log stays complete. The only sink-level
+    drop is layer-2 mute."""
     sink = _sink()
-    sink.set_listening(False)
     sink._on_pcm(7, "Alice", _PCM_20MS)
-    assert 7 not in sink._segmenters
+    assert 7 in sink._segmenters  # not dropped — recording everything
 
 
-def test_listening_defaults_on() -> None:
-    """Default is continuous (legacy) — the cog flips it off at join when push-to-talk is set."""
+def test_flush_open_flushes_all_segmenters() -> None:
+    """The cog calls flush_open() at the gate boundary so the trailing utterance is cut + tagged
+    under the gate state at the button press (not after the ~600 ms VAD gap)."""
     sink = _sink()
-    assert sink.listening is True
-    sink._on_pcm(7, "Alice", _PCM_20MS)
-    assert 7 in sink._segmenters
-
-
-def test_set_listening_off_flushes_open_utterance() -> None:
-    """Tapping the mic off captures the trailing utterance (flush) rather than dropping it."""
-    sink = _sink()
-    fake = _FakeSeg()
-    sink._segmenters[42] = fake
-    sink.set_listening(False)
-    assert sink.listening is False
-    assert fake.flushed == 1
-
-
-def test_set_listening_is_idempotent() -> None:
-    """Re-asserting the same state doesn't re-flush."""
-    sink = _sink()
-    fake = _FakeSeg()
-    sink._segmenters[42] = fake
-    sink.set_listening(False)
-    sink.set_listening(False)
-    assert fake.flushed == 1
-
-
-def test_mute_overrides_listening() -> None:
-    """Layer 2 wins: even mid push-to-talk, audio is dropped while Bot A speaks."""
-    sink = _sink()
-    sink.set_listening(True)
-    sink.mute()
-    sink._on_pcm(7, "Alice", _PCM_20MS)
-    assert 7 not in sink._segmenters
+    a, b = _FakeSeg(), _FakeSeg()
+    sink._segmenters[1], sink._segmenters[2] = a, b
+    sink.flush_open()
+    assert a.flushed == 1 and b.flushed == 1

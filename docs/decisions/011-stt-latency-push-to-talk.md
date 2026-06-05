@@ -20,10 +20,18 @@ DM reacted to player input **~1.5 minutes late**. Two causes, both confirmed in 
 
 ## Decision
 
-Cut STT latency two ways: **(a) move whisper back to the GPU** (`WHISPER_DEVICE=cuda`/float16), and
-**(b) add a push-to-talk listen gate** — a single shared Discord button (`discord_ui/mic.py`) that,
-when disengaged, makes `VadSink` drop all audio so nothing is transcribed until the table taps it
-on; tap again to stop (one tap for everyone). On by default (`DM_PUSH_TO_TALK=1`).
+Cut STT latency two ways: **(a) move whisper back to the GPU** (`WHISPER_DEVICE=cuda`/float16, ~5–8×
+faster per clip), and **(b) add a push-to-talk gate** — a single shared Discord button
+(`discord_ui/mic.py`). **The whole table is always transcribed and logged** (Tobi wanted the full
+conversation record — useful for recaps/memory, Phase 9); the button gates only **what reaches the
+DM**: utterances captured while it is engaged are buffered for `!dm`, the rest are log-only. Tap
+before talking to the DM, tap to stop (one tap for everyone). On by default (`DM_PUSH_TO_TALK=1`;
+`0` routes everything to the DM).
+
+The gate lives in the cog (`commands._on_transcript` buffers only `for_dm` lines), not in `VadSink`.
+Each utterance is tagged `for_dm` **when it is cut** (carried through the STT worker), and the button
+flushes the open utterance before flipping, so the routing reflects the gate state *while the words
+were spoken*, not whenever the async transcript returns.
 
 ## Alternatives
 
@@ -38,14 +46,18 @@ on; tap again to stop (one tap for everyone). On by default (`DM_PUSH_TO_TALK=1`
 
 ## Consequences
 
-- **Positive:** push-to-talk eliminates the backlog *at the source* — whisper rarely runs, so GPU
-  whisper fits even the 4070 next to nemo+XTTS, and the buffer only holds DM-directed speech (less
-  noise → more coherent, more responsive turns). The gate reuses the layer-2 drop path in `_on_pcm`
-  (`_muted or not _listening`); layer-2 mute still wins while Bot A speaks.
-- **Negative / binding:** play is now button-paced — forget to tap and the bot hears nothing
-  (the join message + `!mic` re-post mitigate). GPU whisper can OOM the 4070 if it does run under
-  full VRAM; the transcriber falls back to CPU int8, and `DM_PUSH_TO_TALK=0` restores the legacy
-  always-on mode. This is the first `discord_ui/` View — the pattern (a View calling back into the
-  cog) is the template for the Phase-8 dice/turn buttons.
-- **Later:** a wake word can replace the button without touching the gate (it just flips
-  `set_listening`); stopping the gate could optionally auto-trigger the `!dm` turn.
+- **Positive:** the full table transcript is preserved in the log (recaps/memory groundwork), while
+  the DM buffer only holds button-routed speech — less table-talk noise → more coherent, responsive
+  turns. The `→DM` marker on `📝` lines shows which were routed. GPU whisper is what makes
+  always-on transcription viable again (CPU was the bottleneck). Layer-2 mute still wins (Bot A's own
+  voice is never transcribed).
+- **Negative / binding:** because transcription is continuous again, the STT-backlog risk returns if
+  GPU whisper can't keep up with a busy table — GPU is 5–8× faster so it should, and **dropping a
+  stale backlog is the next lever** if it doesn't. GPU whisper can OOM the 4070 under full VRAM (nemo
+  + XTTS); the transcriber falls back to CPU int8. Play is button-paced for the DM — forget to tap
+  and nothing reaches the DM (the join message + `→DM` marker + `!mic` re-post mitigate);
+  `DM_PUSH_TO_TALK=0` routes everything. First `discord_ui/` View — the View→cog callback pattern is
+  the template for the Phase-8 dice/turn buttons.
+- **Later:** a wake word can replace the button (it just flips `self._dm_listening`); pressing the
+  gate off could optionally auto-trigger the `!dm` turn; and a stale-backlog drop covers the busy-
+  table case.

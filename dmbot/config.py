@@ -102,9 +102,10 @@ class Config:
             # the real action, so keep only the most recent N. 0 = unbounded. Lower = snappier
             # focus on the latest intent, higher = more table context per turn.
             dm_max_lines=int(os.environ.get("DM_MAX_LINES", "8")),
-            # Push-to-talk: gate transcription behind the Discord mic button (tap to talk to the
-            # DM, tap to stop), so the bot doesn't continuously transcribe table talk and fall
-            # minutes behind. On by default; set DM_PUSH_TO_TALK=0 for the legacy always-on mode.
+            # Push-to-talk: the whole table is always transcribed + logged, but only speech said
+            # while the Discord mic button is engaged is routed to the DM (tap before talking to
+            # the DM, tap to stop). Keeps the full transcript record while letting the table pick
+            # what the DM hears. On by default; DM_PUSH_TO_TALK=0 routes everything to the DM.
             push_to_talk=os.environ.get("DM_PUSH_TO_TALK", "1").strip().lower()
             in ("1", "true", "yes", "on"),
         )

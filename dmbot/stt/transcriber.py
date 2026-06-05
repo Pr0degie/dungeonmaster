@@ -104,8 +104,10 @@ _I16_FULL_SCALE = 32768.0
 _NO_SPEECH_MAX = 0.7   # drop a segment whose no_speech_prob exceeds this
 _LOGPROB_MIN = -1.0    # …or whose avg_logprob falls below this
 
-# Callback shape: (speaker_name, transcript_text, clip_seconds, transcribe_ms).
-OnTranscript = Callable[[str, str, float, float], None]
+# Callback shape: (speaker_name, transcript_text, clip_seconds, transcribe_ms, for_dm).
+# for_dm carries the push-to-talk routing decision made when the utterance was cut — the whole
+# table is transcribed + logged, but only for_dm lines are buffered for the DM (see commands.py).
+OnTranscript = Callable[[str, str, float, float, bool], None]
 
 
 class Transcriber:
@@ -140,9 +142,12 @@ class Transcriber:
         )
         self._thread.start()
 
-    def submit(self, name: str, pcm_s16le_mono_16k: bytes, clip_s: float) -> None:
-        """Hand one utterance to the worker (non-blocking). ``clip_s`` is its audio length."""
-        self._queue.put((name, pcm_s16le_mono_16k, clip_s))
+    def submit(
+        self, name: str, pcm_s16le_mono_16k: bytes, clip_s: float, *, for_dm: bool = False
+    ) -> None:
+        """Hand one utterance to the worker (non-blocking). ``clip_s`` is its audio length;
+        ``for_dm`` carries whether this utterance should reach the DM (push-to-talk gate)."""
+        self._queue.put((name, pcm_s16le_mono_16k, clip_s, for_dm))
 
     def stop(self) -> None:
         """Signal the worker to exit ASAP and wait briefly.
@@ -189,13 +194,13 @@ class Transcriber:
             item = self._queue.get()
             if item is None or self._stop.is_set():  # sentinel or shutdown → drop any backlog
                 break
-            name, pcm, clip_s = item
+            name, pcm, clip_s, for_dm = item
             try:
-                self._transcribe_one(name, pcm, clip_s)
+                self._transcribe_one(name, pcm, clip_s, for_dm)
             except Exception:
                 log.exception("transcription failed for %s", name)
 
-    def _transcribe_one(self, name: str, pcm: bytes, clip_s: float) -> None:
+    def _transcribe_one(self, name: str, pcm: bytes, clip_s: float, for_dm: bool) -> None:
         # s16le mono → float32 [-1, 1), what faster-whisper expects as a raw array.
         audio = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / _I16_FULL_SCALE
         # We already did VAD upstream, so don't run whisper's own VAD filter.
@@ -227,6 +232,6 @@ class Transcriber:
                 "dropped %d low-confidence seg(s) from %s: %s", len(dropped), name, dropped
             )
         if text:
-            self._on_transcript(name, text, clip_s, latency_ms)
+            self._on_transcript(name, text, clip_s, latency_ms, for_dm)
         else:
             log.debug("no confident speech in a %s utterance (%d samples)", name, audio.size)
