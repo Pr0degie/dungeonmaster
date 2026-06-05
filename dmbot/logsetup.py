@@ -100,6 +100,40 @@ class _ConsoleNoiseFilter(logging.Filter):
         return "PCM ⟳" not in record.getMessage()  # the 2 s heartbeat
 
 
+class _UnpackErrorThrottle(logging.Filter):
+    """Collapse discord-ext-voice-recv's "Error unpacking packet" flood (console + file).
+
+    The alpha voice-recv library can't parse some RTP one-byte extension headers
+    (``_parse_bede_header`` → ``struct.error``) and logs one ERROR *with traceback* per bad
+    packet. It is **benign** — that packet is dropped, audio keeps flowing — but it can torrent
+    hundreds of identical tracebacks in a second and bury everything else. We let the first one
+    through (so it's on record), then suppress the rest, emitting a running count every Nth so a
+    genuine escalation is still visible. Attached to the logger, so it covers all handlers."""
+
+    _N = 500
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._count = 0
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if "Error unpacking packet" not in record.getMessage():
+            return True
+        self._count += 1
+        record.exc_info = None  # drop the (identical, noisy) traceback
+        record.args = None
+        if self._count == 1:
+            record.msg = (
+                "voice-recv could not unpack an RTP packet (benign alpha jitter — the packet is "
+                "dropped, audio keeps flowing; further occurrences summarised, tracebacks hidden)"
+            )
+            return True
+        if self._count % self._N == 0:
+            record.msg = f"voice-recv has dropped {self._count} unparseable RTP packets (benign)"
+            return True
+        return False
+
+
 def setup_logging(level: str) -> Path:
     """Install the console + file handlers on the root logger. Returns the log-file path."""
     root = logging.getLogger()
@@ -128,6 +162,8 @@ def setup_logging(level: str) -> Path:
     # discord.py gateway/voice logs are noisy; keep them civil (console + file).
     logging.getLogger("discord").setLevel(logging.WARNING)
     logging.getLogger("discord.ext.voice_recv.opus").setLevel(logging.ERROR)
+    # Collapse the benign "Error unpacking packet" RTP-parse flood (alpha voice-recv bug).
+    logging.getLogger("discord.ext.voice_recv.reader").addFilter(_UnpackErrorThrottle())
 
     logging.getLogger("dmbot").info(
         "=== DMbot starting (%s) — log file %s ===",

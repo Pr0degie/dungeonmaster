@@ -31,7 +31,13 @@ Fixed end to end:
   (`ctypes.WinDLL`, in dep order cudart→cublasLt→cublas→cudnn). **Verified on the 4070 with the system
   CUDA stripped from PATH** (simulating the 5080) — GPU whisper runs. Lesson: ctranslate2's CUDA-12
   trio (cublas + cudnn + **cudart**) must be self-complete *and explicitly preloaded*, independent of
-  torch's CUDA version and of any system CUDA install.
+  torch's CUDA version and of any system CUDA install. **Result: the 5080 runs everything on GPU**
+  (XTTS cuda + whisper cuda), full voice receive + transcription confirmed by the colleague.
+- **Log noise tamed:** voice-recv's benign `Error unpacking packet` RTP-parse flood (alpha lib,
+  drops the odd packet, audio keeps flowing) is now throttled in `logsetup.py` — first occurrence
+  logged, then a running count every 500th, tracebacks suppressed (console + file).
+- **Diagnostic tool:** `tools/diag_stt.py` — one-shot CUDA/STT check (commit, wheels, DLL preload,
+  torch GPU, a real cuda transcription) for debugging a fresh box remotely.
 - **Resolver fix:** CUDA torch pins `nvidia-cudnn-cu12==9.10.2.21` on linux, clashing with
   faster-whisper's `>=9.23`. Resolved by locking **win32-only** (`environments = ["sys_platform
   == 'win32'"]`, legit per D16) + `requires-python` pinned to the 3.12 line + win32 markers on
