@@ -81,6 +81,7 @@ class VoiceReceiveCog(commands.Cog):
         self._utterance_counts: dict[int, int] = {}
         self._active_vc_id: int | None = None  # the voice channel we buffer/answer for
         self._sink: VadSink | None = None  # set on join; muted while Bot A speaks (layer 2)
+        self._mic_message: discord.Message | None = None  # the live mic button msg (kept at bottom)
         self._push_to_talk = push_to_talk
         # Push-to-talk DM-routing gate: the whole table is always transcribed + logged, but only
         # utterances captured while this is True are buffered for the DM. The mic button flips it.
@@ -219,6 +220,10 @@ class VoiceReceiveCog(commands.Cog):
         log.info("⏱ LLM %d ms", llm_ms)
         await ctx.send(answer)
         await self._speak(answer, ctx.guild.id if ctx.guild else None)
+        # Keep the mic button reachable: move it back to the bottom after the DM's message + speech
+        # pushed it up (players asked for this).
+        if self._push_to_talk and self._sink is not None:
+            await self._post_mic_button(ctx.channel)
 
     @commands.command(name="say")
     async def say(self, ctx: commands.Context, *, text: str) -> None:
@@ -299,9 +304,9 @@ class VoiceReceiveCog(commands.Cog):
                 f"Beigetreten: **{channel.name}**. Ich schreibe **alles** mit (Protokoll im Log), "
                 f"aber nur was im **Knopf-Fenster** gesagt wird, geht an die Spielleitung: tippt den "
                 f"Knopf *bevor* ihr mit ihr redet und nochmal, wenn ihr fertig seid (ein Tipp gilt "
-                f"für alle), dann `!dm`. (Opus: {discord.opus.is_loaded()})",
-                view=MicToggleView(self.toggle_listening, listening=self._dm_listening),
+                f"für alle), dann `!dm`. (Opus: {discord.opus.is_loaded()})"
             )
+            await self._post_mic_button(ctx.channel)
         else:
             await ctx.send(
                 f"Beigetreten: **{channel.name}** — ich höre durchgehend zu, alles geht an die "
@@ -321,15 +326,29 @@ class VoiceReceiveCog(commands.Cog):
         log.info("push-to-talk → %s", "🎙 an die Spielleitung" if self._dm_listening else "⏸ nur Protokoll")
         return self._dm_listening
 
+    async def _post_mic_button(self, channel) -> None:
+        """(Re)post the push-to-talk button at the bottom of the text channel, deleting the previous
+        one so it doesn't scroll out of reach as the DM talks (players asked for this). Best-effort —
+        a failed delete/post never breaks a turn."""
+        if self._mic_message is not None:
+            try:
+                await self._mic_message.delete()
+            except discord.HTTPException:
+                pass
+            self._mic_message = None
+        view = MicToggleView(self.toggle_listening, listening=self._dm_listening)
+        try:
+            self._mic_message = await channel.send("🎙 Push-to-talk:", view=view)
+        except discord.HTTPException:
+            log.warning("could not post the mic button", exc_info=True)
+
     @commands.command(name="mic")
     async def mic(self, ctx: commands.Context) -> None:
-        """Re-post the push-to-talk button (handy when it has scrolled out of view)."""
+        """Re-post the push-to-talk button at the bottom (handy if it scrolled out of view)."""
         if self._sink is None:
             await ctx.send("Ich bin in keinem Voice-Channel — erst `!j`.")
             return
-        await ctx.send(
-            "Push-to-talk:", view=MicToggleView(self.toggle_listening, listening=self._dm_listening)
-        )
+        await self._post_mic_button(ctx.channel)
 
     @commands.command(name="leave")
     async def leave(self, ctx: commands.Context) -> None:
@@ -350,6 +369,12 @@ class VoiceReceiveCog(commands.Cog):
         self._sink = None
         self._utterance_counts.clear()
         self._dm_listening = not self._push_to_talk  # reset the routing gate for the next session
+        if self._mic_message is not None:
+            try:
+                await self._mic_message.delete()
+            except discord.HTTPException:
+                pass
+            self._mic_message = None
         await ctx.send("Voice-Channel verlassen.")
 
     @commands.command(name="vstatus")

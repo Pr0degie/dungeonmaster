@@ -37,6 +37,25 @@ def test_sanitize_keeps_real_narration() -> None:
     assert _sanitize("Du öffnest die schwere Eisentür.") == "Du öffnest die schwere Eisentür."
 
 
+def test_sanitize_strips_trailing_meta_disclaimer() -> None:
+    # nemo's read-aloud disclaimer at the end of a turn must go.
+    assert (
+        _sanitize("Der Tech-Priester weicht zurück. (Bitte beachte, dass ich keine Repliken "
+                  "der Spielenden erfinde.)")
+        == "Der Tech-Priester weicht zurück."
+    )
+    assert (
+        _sanitize("Was tut ihr? (Die Spielleitung spricht die Spielenden mit Namen an.)")
+        == "Was tut ihr?"
+    )
+
+
+def test_sanitize_keeps_in_fiction_parenthetical() -> None:
+    # a genuine in-fiction aside has no meta-language — keep it.
+    text = "Du öffnest die Tür (ein Schuss fällt)."
+    assert _sanitize(text) == text
+
+
 class _FakeClient:
     """Captures the messages DMBrain forwards, returns a canned answer; no real Ollama call."""
 

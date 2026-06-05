@@ -27,6 +27,9 @@ except Exception:  # pragma: no cover
     pass
 
 _LOG_FILE = Path(__file__).resolve().parent.parent / "logs" / "dmbot.log"
+# A clean, human-readable session transcript — just the conversation (player lines + DM answers)
+# with timestamps, none of the debug chatter. Meant to be pasted whole to show "what went down".
+_TRANSCRIPT_FILE = Path(__file__).resolve().parent.parent / "logs" / "transcript.log"
 
 _RESET = "\033[0m"
 _DIM = "\033[2m"
@@ -141,7 +144,35 @@ class _UnpackErrorThrottle(logging.Filter):
         return False
 
 
-def setup_logging(level: str, *, to_file: bool = False) -> Path | None:
+class _TranscriptFilter(logging.Filter):
+    """Pass only the conversation lines — player transcripts (``📝``) and DM answers (``🎭``) —
+    so the transcript file stays a clean record of what was said, no debug chatter."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return msg.startswith("📝") or msg.startswith("🎭")
+
+
+class _TranscriptFormatter(logging.Formatter):
+    """Render one conversation line as ``HH:MM:SS  Speaker[ →DM]: text`` — timestamps kept, the
+    debug metric (clip·ms) dropped. The ``→DM`` marker shows what was routed to the DM."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        ts = time.strftime("%H:%M:%S", time.localtime(record.created))
+        msg = record.getMessage()
+        if msg.startswith("📝"):  # "📝 Name | clip·ms[ →DM] | text"
+            body = msg.split(" ", 1)[1] if " " in msg else msg
+            name, metric, text = (body.split(" | ", 2) + ["", ""])[:3]
+            marker = " →DM" if "→DM" in metric else ""
+            return f"{ts}  {name}{marker}: {text}"
+        # "🎭 <answer>" — the DM's turn
+        text = msg.split(" ", 1)[1] if " " in msg else msg
+        return f"{ts}  Spielleiter: {text}"
+
+
+def setup_logging(
+    level: str, *, to_file: bool = False, transcript_file: bool = False
+) -> Path | None:
     """Install the console handler (always) and the file handler (only when ``to_file``).
 
     The console is kept lean (see :class:`_ConsoleNoiseFilter`). The full-detail file log is
@@ -173,6 +204,20 @@ def setup_logging(level: str, *, to_file: bool = False) -> Path | None:
                 "could not open log file %s — console only", _LOG_FILE, exc_info=True
             )
 
+    transcript_path: Path | None = None
+    if transcript_file:
+        try:
+            _TRANSCRIPT_FILE.parent.mkdir(parents=True, exist_ok=True)
+            transcript_h = logging.FileHandler(_TRANSCRIPT_FILE, mode="a", encoding="utf-8")
+            transcript_h.setFormatter(_TranscriptFormatter())
+            transcript_h.addFilter(_TranscriptFilter())  # only 📝/🎭 — the conversation
+            root.addHandler(transcript_h)
+            transcript_path = _TRANSCRIPT_FILE
+        except OSError:
+            logging.getLogger("dmbot").warning(
+                "could not open transcript file %s", _TRANSCRIPT_FILE, exc_info=True
+            )
+
     # discord.py gateway/voice logs are noisy; keep them civil (console + file).
     logging.getLogger("discord").setLevel(logging.WARNING)
     logging.getLogger("discord.ext.voice_recv.opus").setLevel(logging.ERROR)
@@ -180,6 +225,8 @@ def setup_logging(level: str, *, to_file: bool = False) -> Path | None:
     logging.getLogger("discord.ext.voice_recv.reader").addFilter(_UnpackErrorThrottle())
 
     where = f"log file {log_file}" if log_file else "file logging off (set DM_LOG_FILE=1)"
+    if transcript_path:
+        where += f"; transcript {transcript_path}"
     logging.getLogger("dmbot").info(
         "=== DMbot starting (%s) — %s ===", time.strftime("%Y-%m-%d %H:%M:%S"), where
     )

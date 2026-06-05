@@ -42,7 +42,16 @@ buttons (read ADR 005 + 004 + 001). Recommended dial for Phase 8: **Opus 4.8 / x
   table talk) → **GPU whisper** + **push-to-talk button** so only DM-directed speech is transcribed;
   **(2) the DM answered AS a player** ("SezBoss69: …") → `_strip_leading_label` (the `\n<label>:` stop
   misses a leading label; `_cut_at_labels` skips position 0); **(3) preamble** → sanitized.
-  Suite **20/20**. _Live-tested: layer 2 works; the latency/PTT + tuning fixes are NOT yet live-tested._
+- **Second live session → playability polish (the players' requests).** Push-to-talk + GPU whisper
+  confirmed working live (`→DM` markers, ~100–1000 ms transcribe). Five fixes from their feedback:
+  **(1)** persona forbids the read-aloud meta-disclaimer + `_sanitize` strips a trailing meta
+  parenthetical ("(Bitte beachte…)"); **(2)** new persona section: NPCs in **third person**, no
+  "Tech-Priester:" script, never address a player AS the NPC; **(3)** vary the closing hook (not
+  always "Was tut ihr?"); **(4)** the mic button is **re-posted to the bottom** after each DM turn
+  (`_post_mic_button`, delete+resend) so it stops scrolling away; **(5)** a clean **session
+  transcript** `logs/transcript.log` (`DM_TRANSCRIPT_FILE=1`) — just the conversation (player lines
+  incl. table talk + DM answers) with timestamps, separate from the debug log. Suite **22/22**.
+  _Live-tested: layer 2 + push-to-talk + GPU whisper work; the persona/UI polish is NOT yet live-tested._
 
 **(Earlier same day) GPU XTTS via CUDA torch + portable per-machine GPU profiles (non-Phase work, ADR 009).** The
 GPU rebalance (whisper→CPU, XTTS→cuda) crashed at first: the venv's torch was the **CPU-only**

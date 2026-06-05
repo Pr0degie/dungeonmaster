@@ -32,6 +32,14 @@ _META_PREAMBLE = re.compile(
     r"^\s*als\s+(?:die\s+)?(?:spielleit(?:ung|er)|erzähler|gm|dm|game ?master)\b[^:\n]{0,60}:\s*",
     re.IGNORECASE,
 )
+# Small models echo their own instructions as a trailing parenthetical ("(Bitte beachte, dass ich
+# keine Repliken der Spielenden erfinde …)") that TTS would read aloud. Strip a trailing "(…)" only
+# when it carries meta-language, so a genuine in-fiction aside ("(ein Schuss fällt)") survives.
+_META_PAREN = re.compile(
+    r"\s*\((?=[^)]*\b(?:beachte|repliken|spielleit\w*|spielenden|figuren|erfinde\w*|entscheid\w*|"
+    r"transkri\w*|hinweis|anmerk\w*|na ?repl)\b)[^)]*\)\s*$",
+    re.IGNORECASE,
+)
 # Generic role labels small models like to keep talking as / for. Combined with the player
 # names this turn, they become both Ollama stop sequences and a post-hoc truncation guard
 # against the model fabricating player replies and playing several turns itself.
@@ -67,6 +75,7 @@ def _sanitize(text: str) -> str:
     text = text.replace("*", "").strip()  # drop markdown emphasis/bold
     text = _ROLE_LABEL.sub("", text).strip()  # drop a leading role label
     text = _META_PREAMBLE.sub("", text).strip()  # drop a leading "Als Spielleitung …:" preamble
+    text = _META_PAREN.sub("", text).strip()  # drop a trailing meta-disclaimer in parentheses
     return text
 
 

@@ -26,6 +26,7 @@ class Config:
     bot_a_user_id: int | None
     log_level: str
     log_to_file: bool
+    transcript_file: bool
     whisper_model: str
     whisper_device: str
     whisper_compute: str
@@ -70,6 +71,11 @@ class Config:
             # Full-detail file log (logs/dmbot.log). Off by default — the console stays lean and
             # nothing is written to disk; set DM_LOG_FILE=1 to record a run for later inspection.
             log_to_file=os.environ.get("DM_LOG_FILE", "").strip().lower()
+            in ("1", "true", "yes", "on"),
+            # Clean session transcript (logs/transcript.log) — just the conversation (player lines
+            # + DM answers) with timestamps, including table talk. Separate from the debug log so it
+            # stays pasteable as a record of what happened. On by default; DM_TRANSCRIPT_FILE=0 off.
+            transcript_file=os.environ.get("DM_TRANSCRIPT_FILE", "1").strip().lower()
             in ("1", "true", "yes", "on"),
             # STT (Phase 4). Default to medium (GPU float16) — it clearly out-transcribed
             # small in live German testing and still fits next to Ollama on the 4070. Drop to
