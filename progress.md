@@ -8,31 +8,29 @@ met and the proof is recorded here.
 voice, heard aloud, 2026-06-04; `TTS_ENGINE=xtts` is set). Two tracks next, both about **speed**
 and then turn-taking: (a) cut latency by rebalancing the GPU (XTTS→cuda, whisper→CPU; the DM turn
 is ~8 s LLM + XTTS, and XTTS on CPU is ~1.5× realtime). (b) **Phase 7** — feedback layer 2.
+The fragile voice-receive stack is now hardened against silent dependency drift (pins + preflight
++ canary + offline smoke test; see Last session and ADR 006).
 
 ## Last session
-**Big one — Phases 3, 4, 5 and 6 all completed; the voice DM loop is PLAYABLE.**
+**Voice-stack hardening (non-Phase work) — defend the project's most fragile surface against
+silent breakage.** The version-sensitivity flagged since Phase 2 (the DAVE decrypt reaches into a
+discord.py internal `_connection.dave_session`; `discord-ext-voice-recv` is an alpha) is now
+*actively* guarded, not just documented:
 
-- **Phase 3 (VAD):** `voice/resample.py` (soxr 48k stereo→16k mono per user) + `voice/vad.py`
-  (silero-vad via onnxruntime, no torch — **ADR 007**) + `UtteranceSegmenter`. Live bugs found &
-  fixed: silero v5 needs a **64-sample context** (576 input, not 512) and **voice-activation**
-  means clients send no RTP when silent → wrapped in `SilenceGeneratorSink` to inject silence so
-  utterances close. Gate met (one sentence ≈ one utterance, Tobi confirmed WAVs).
-- **Phase 4 (STT):** `stt/transcriber.py` — faster-whisper on a worker thread; cuDNN/cuBLAS via
-  nvidia wheels + in-code `add_dll_directory` (no manual PATH). **medium** beat small live →
-  default; confidence filter drops "Vielen Dank…" hallucinations. Gate met (correct German).
-- **Phase 5 (LLM + persona):** `llm/client.py` (async Ollama), `llm/persona.py` (layered core +
-  Eisenhorn overlay — **ADR 005**), `orchestrator.py` `DMBrain` (per-channel history + buffer).
-  `prompts/dm_core_de.md` + `campaign_tone_de.md` written. `!dm` / `!dm <Text>`. Output hygiene:
-  one turn, no fabricated player lines, `stop` sequences + sanitiser. Gate met.
-- **Phase 6 (TTS + full loop ⭐):** `tts/piper.py` + `bridge.py` (blocking `/speak`). Live loop
-  **audible** (player → nemo → Piper → Bot A). Bridge gotcha: Bot A had to be on the
-  `dungeon_master` branch (main has no DMBridge). Latency ~15 s → root-caused to **VRAM at
-  99.5 %**; added `keep_alive=30m` + `num_ctx=8192` (→ ~8 s).
-- **Voice (ADR 008):** Tobi disliked Piper's German voices → added **XTTS v2** as a selectable
-  backend (`TTS_ENGINE`), auditioned all 58 built-in speakers (pitch-ranked, `voices/samples/`),
-  chose **Dionisio Schuyler** (deep male). Now active in `.env` (`TTS_ENGINE=xtts`, CPU).
-- **UX:** colourised green console with chat-layout transcripts (hanging indent) + clip·ms
-  metrics; stopped dumping utterance WAVs to temp; `logs/dmbot.log` file logging.
+- **Pins:** `davey`, `discord-ext-voice-recv`, `discord-py[voice]` pinned `==` in `pyproject.toml`
+  (were `>=`) so an unrelated `uv add` / `uv lock --upgrade` can't move the voice kernel.
+- **Preflight** (`dmbot/voice/preflight.py`): `check_static` (versions + sink/DAVE attribute paths)
+  at cog boot, `check_dave_session` (live `_connection.dave_session`) at join — loud WARNING on drift.
+- **Canary** (`recv.py`): a DAVE frame (trailer magic `0xFAFA`) arriving with no reachable
+  `dave_session` → warn once + skip, instead of Opus-decoding ciphertext into a garbage transcript.
+- **Offline smoke test** (`tests/test_voice_stack.py`): versions, attr paths, resample→VAD, silero
+  load — runs under pytest or `uv run python tests/test_voice_stack.py`; **5/5 green**.
+- **Docs:** ADR 006 extended (safeguards + verified-stack table); `progress.md` housekeeping updated.
+- Committed straight to `main` (`ce7a0e2`) and pushed. **Upgrade ritual** is now: bump
+  `preflight.KNOWN_GOOD` + the `==` pins + the ADR-006 table together, run the smoke test, re-verify live.
+
+_(Prior session — Phases 3–6, the playable voice loop — is captured in each phase's VERIFY EVIDENCE
+below.)_
 
 ## Next concrete step
 **Make it flotter (Tobi's explicit next-time goal).** Try the GPU rebalance in `.env`:
