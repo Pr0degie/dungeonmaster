@@ -129,14 +129,24 @@ Tailscale/firewall blocking · `409` = Bot A not in the voice channel.
 
 ## Discord commands
 
+Prefix is `!`. Type them in any text channel the bot can read.
+
 | Command | Does |
 |---|---|
-| `!join` / `!j` | DMbot joins your voice channel and starts listening |
-| `!leave` | leave the voice channel |
-| `!dm [text]` | run a DM turn — answers the buffered speech, or the given text — and speaks it |
-| `!say <text>` | speak arbitrary text (TTS/bridge smoke test) |
-| `!voice <name>` / `!voices` | switch / list XTTS speakers (only with `TTS_ENGINE=xtts`) |
-| `!vstatus` | connection / listening / Opus state |
+| `!join` / `!j` | DMbot joins your voice channel and starts listening (the whole table is transcribed to the log) |
+| `!leave` | leave the voice channel and end the session (clears its buffer + history) |
+| `!dm [text]` | run a DM turn — answers the speech routed to the DM (or the given `text`) — and speaks it aloud |
+| `!redo` / `!r` | re-run the **last** DM turn with the same input — for when the DM misunderstood |
+| `!mic` | re-post the push-to-talk button at the bottom of the chat (if it scrolled away) |
+| `!say <text>` | speak arbitrary text aloud — a TTS + bridge smoke test |
+| `!voice [name]` | switch the XTTS speaker (no name → show current); only with `TTS_ENGINE=xtts` |
+| `!voices` | list the XTTS built-in speakers; only with `TTS_ENGINE=xtts` |
+| `!vstatus` | show connection / listening / Opus state |
+
+> **Push-to-talk** (default `DM_PUSH_TO_TALK=1`): tap the **🎙 button** posted on `!join` *before*
+> you speak to the DM and again when you're done — only that speech reaches the DM, while the whole
+> table is still transcribed to `logs/transcript.log`. One tap counts for everyone. `!mic` brings
+> the button back if it scrolled out of view.
 
 ## Configuration (`.env`)
 
