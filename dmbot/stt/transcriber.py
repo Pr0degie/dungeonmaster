@@ -129,6 +129,7 @@ class Transcriber:
         self._queue: queue.Queue = queue.Queue()
         self._thread: threading.Thread | None = None
         self._model: WhisperModel | None = None
+        self._stop = threading.Event()  # set on shutdown so the worker exits promptly
 
     def start(self) -> None:
         """Start the worker thread (it loads the model in the background)."""
@@ -144,10 +145,16 @@ class Transcriber:
         self._queue.put((name, pcm_s16le_mono_16k, clip_s))
 
     def stop(self) -> None:
-        """Signal the worker to drain and exit."""
-        self._queue.put(None)  # sentinel
+        """Signal the worker to exit ASAP and wait briefly.
+
+        Sets a flag so the worker abandons any queued backlog instead of transcribing it all
+        first, and wakes its blocking ``get()`` with a sentinel. The join is short — the thread
+        is a daemon, so a transcription still mid-flight after the timeout dies with the process.
+        This keeps Ctrl+C shutdown prompt instead of blocking for the whole queue."""
+        self._stop.set()
+        self._queue.put(None)  # wake the blocking get()
         if self._thread is not None:
-            self._thread.join(timeout=10)
+            self._thread.join(timeout=2)
             self._thread = None
 
     def _load_model(self) -> WhisperModel:
@@ -180,7 +187,7 @@ class Transcriber:
 
         while True:
             item = self._queue.get()
-            if item is None:
+            if item is None or self._stop.is_set():  # sentinel or shutdown → drop any backlog
                 break
             name, pcm, clip_s = item
             try:

@@ -131,7 +131,9 @@ class VoiceReceiveCog(commands.Cog):
             self._brain.add_player_line(self._active_vc_id, name, text)
 
     async def cog_unload(self) -> None:
-        self._transcriber.stop()
+        # stop() does a (short) thread.join — run it off the event loop so the gateway heartbeat
+        # keeps beating during shutdown (otherwise Ctrl+C logs "voice heartbeat blocked").
+        await asyncio.to_thread(self._transcriber.stop)
         await self._brain.aclose()
         await self._bridge.aclose()
 
