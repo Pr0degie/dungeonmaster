@@ -27,6 +27,27 @@ _MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
 _DEFAULT_SPEAKER = "Dionisio Schuyler"
 
 
+def _resolve_device(requested: str) -> str:
+    """Honour ``requested`` but degrade to CPU if CUDA is unusable, never crash.
+
+    Mirrors the STT transcriber's degrade-don't-die policy. A ``cuda`` request on a
+    CPU-only torch build (or a machine with no GPU) otherwise raises "Torch not compiled
+    with CUDA enabled" and takes the whole TTS path down — the DM goes mute. Falling back
+    means the SAME ``.env`` (``TTS_DEVICE=cuda``) is safe on the GPU box and the dev box.
+    """
+    if requested == "cuda":
+        import torch  # already loaded via TTS.api above; cheap here
+
+        if not torch.cuda.is_available():
+            log.warning(
+                "TTS_DEVICE=cuda requested but torch has no CUDA (build=%s) — falling back "
+                "to CPU. Install a CUDA torch build for GPU synthesis (see architecture.md §3).",
+                torch.version.cuda,
+            )
+            return "cpu"
+    return requested
+
+
 class XttsTTS:
     """A loaded XTTS v2 model fixed to one built-in speaker. ``synthesize`` per DM answer."""
 
@@ -38,7 +59,20 @@ class XttsTTS:
         language: str = "de",
     ) -> None:
         self._language = language
-        self._tts = TTS(_MODEL).to(device)
+        device = _resolve_device(device)
+        try:
+            self._tts = TTS(_MODEL).to(device)
+        except Exception:
+            # GPU load can still fail past the CUDA check — most often VRAM/OOM next to nemo.
+            # Degrade to CPU rather than leaving the DM mute.
+            if device == "cpu":
+                raise
+            log.warning(
+                "XTTS load on %s failed (likely VRAM/OOM) — retrying on CPU", device,
+                exc_info=True,
+            )
+            device = "cpu"
+            self._tts = TTS(_MODEL).to(device)
         available = list(self._tts.speakers)
         self._speaker = speaker if speaker in available else _DEFAULT_SPEAKER
         if speaker and speaker not in available:

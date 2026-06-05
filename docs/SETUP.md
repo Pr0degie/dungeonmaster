@@ -17,8 +17,10 @@ Runtime is **Windows** (see decision log D16). Check the items off.
   - this `docs/SETUP.md`
 - [ ] **`.gitignore`** with at least: `.env`, `data/`, `__pycache__/`, `.venv/`, `*.wav`,
       model/voice files.
-- [ ] **`.env`** (do NOT commit) for the two bot tokens + config:
-      `DMBOT_TOKEN=…`, `BOT_A_TOKEN=…`, `OLLAMA_HOST=http://localhost:11434`.
+- [ ] **`.env`** (do NOT commit) — copy `.env.example`. This repo's `.env` holds **only
+      DMbot's** token + config: `DISCORD_TOKEN_DMBOT=…`, `BOT_A_USER_ID=…`,
+      `OLLAMA_HOST=http://localhost:11434`. **Bot A's token lives in the music bot's own repo**,
+      not here (two-bot isolation).
 
 > From here the session ritual applies: the agent reads `CLAUDE.md` → `progress.md` →
 > the latest ADR and does the handshake.

@@ -123,7 +123,7 @@ from Bot A; layer-1 user-ID filtering protects regardless).
 | LLM | **Ollama** (local/5080) + `httpx` | DM system prompt + history + RAG context + JSON state |
 | Embeddings | `nomic-embed-text` via Ollama | for RAG (tiny, runs anywhere) |
 | RAG store | SQLite + vector (e.g. `sqlite-vec`) or ChromaDB | searchable PDF chunks |
-| TTS | `piper-tts` **or** `coqui-tts` (XTTS v2) | Piper: fast, fixed German voice (`de_DE-thorsten`) → WAV. XTTS: ~58 built-in speakers + voice cloning, much richer but heavy (**pulls torch/torchaudio/torchcodec**, transformers pinned <5) and slow on CPU (~1.5× realtime) — runs only when `TTS_ENGINE=xtts`; GPU needs VRAM freed first. Selectable per `TTS_ENGINE` (golden rule #9: the torch stack is the cost of XTTS) |
+| TTS | `piper-tts` **or** `coqui-tts` (XTTS v2) | Piper: fast, fixed German voice (`de_DE-thorsten`) → WAV. XTTS: ~58 built-in speakers + voice cloning, much richer but heavy (**pulls torch/torchaudio/torchcodec — from the CUDA `cu126` index** so XTTS runs on the GPU, not the CPU-only default build; transformers pinned <5) — runs only when `TTS_ENGINE=xtts`; device per `TTS_DEVICE` (cuda/cpu), auto-degrades to CPU if CUDA is absent or OOMs. Selectable per `TTS_ENGINE` (golden rule #9: the CUDA torch stack is the cost of GPU XTTS → ADR 009) |
 | Bridge client | `httpx`/`aiohttp` | `POST` to Bot A `/speak` |
 
 ---

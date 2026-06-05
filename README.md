@@ -52,6 +52,31 @@ bot on its `dungeon_master` branch, in the same voice channel). Full step-by-ste
 **[`SETUP.md`](SETUP.md)**; the external prerequisites the bot can't install itself are in
 [`docs/SETUP.md`](docs/SETUP.md).
 
+## Running on another machine (e.g. a second GPU box)
+
+The project is two processes plus Ollama, all local. To bring it up on a fresh Windows + NVIDIA
+machine:
+
+1. **Clone both repos.** This one (DMbot) and the music bot, `Pr0degie/musicbot` on branch
+   `dungeon_master` (Bot A — the `/speak` mouth). DMbot can't speak without Bot A running.
+2. **Install per repo:** `uv sync` in each. DMbot pulls a **CUDA torch** build from the cu126
+   index automatically (needs an NVIDIA GPU + recent driver; a box without a usable GPU degrades
+   XTTS to CPU). The lock is Windows-only.
+3. **Two Discord bot tokens.** A bot token allows only one live connection, so either (a) reuse
+   the existing two tokens *while the other machine's instances are off*, or (b) create two new
+   Discord bot applications (DMbot + Bot A) with voice intents and invite both to the server.
+   DMbot's token → `DISCORD_TOKEN_DMBOT` in this repo's `.env`; Bot A's token → the music bot's
+   own `.env`. Set `BOT_A_USER_ID` to Bot A's user-ID (feedback protection).
+4. **Ollama:** install, then `ollama pull mistral-nemo` and `ollama pull nomic-embed-text`.
+   Or point `OLLAMA_HOST` at a machine that already has them.
+5. **Pick the GPU profile** in `.env` (see [`.env.example`](.env.example)):
+   - **16 GB+ (e.g. RTX 5080) — everything on GPU:** `WHISPER_DEVICE=cuda` `WHISPER_COMPUTE=float16` `TTS_DEVICE=cuda`
+   - **12 GB (e.g. RTX 4070):** `WHISPER_DEVICE=cpu` `WHISPER_COMPUTE=int8` `TTS_DEVICE=cuda` (whisper on CPU frees VRAM for XTTS)
+6. **Start order:** Ollama (service) → Bot A (music bot) → DMbot (`uv run python -m dmbot` or
+   `start_dmbot.bat`). Both bots `!join` the same voice channel, then `!dm` runs a turn.
+
+XTTS downloads its model on first run; the Piper voice is optional (only if `TTS_ENGINE=piper`).
+
 ## Discord commands
 
 | Command | Does |

@@ -5,41 +5,48 @@ met and the proof is recorded here.
 
 ## Current focus
 **Phases 0–6 complete — the loop is PLAYABLE** ⭐ (speak → German DM answer in **Dionisio's**
-voice, heard aloud, 2026-06-04; `TTS_ENGINE=xtts` is set). Two tracks next, both about **speed**
-and then turn-taking: (a) cut latency by rebalancing the GPU (XTTS→cuda, whisper→CPU; the DM turn
-is ~8 s LLM + XTTS, and XTTS on CPU is ~1.5× realtime). (b) **Phase 7** — feedback layer 2.
-The fragile voice-receive stack is now hardened against silent dependency drift (pins + preflight
-+ canary + offline smoke test; see Last session and ADR 006).
+voice, heard aloud). **XTTS now runs on the GPU** (2026-06-05, ADR 009): CUDA torch installed,
+verified live RTF **0.34** (≈3× realtime, vs ~1.9 on CPU). The remaining latency lever is no
+longer TTS but the **LLM answer length** (a 24 s synth was a ~70 s monologue) + the ~8 s LLM turn.
+Next: (a) trim DM answer length / persona meta-preamble; (b) **Phase 7** — feedback layer 2
+(pause VAD while Bot A speaks). The fragile voice-receive stack stays hardened (ADR 006).
 
 ## Last session
-**Voice-stack hardening (non-Phase work) — defend the project's most fragile surface against
-silent breakage.** The version-sensitivity flagged since Phase 2 (the DAVE decrypt reaches into a
-discord.py internal `_connection.dave_session`; `discord-ext-voice-recv` is an alpha) is now
-*actively* guarded, not just documented:
+**GPU XTTS via CUDA torch + portable per-machine GPU profiles (non-Phase work, ADR 009).** The
+GPU rebalance (whisper→CPU, XTTS→cuda) crashed at first: the venv's torch was the **CPU-only**
+build, so `TTS_DEVICE=cuda` raised `Torch not compiled with CUDA enabled` and left the DM mute.
+Fixed end to end:
 
-- **Pins:** `davey`, `discord-ext-voice-recv`, `discord-py[voice]` pinned `==` in `pyproject.toml`
-  (were `>=`) so an unrelated `uv add` / `uv lock --upgrade` can't move the voice kernel.
-- **Preflight** (`dmbot/voice/preflight.py`): `check_static` (versions + sink/DAVE attribute paths)
-  at cog boot, `check_dave_session` (live `_connection.dave_session`) at join — loud WARNING on drift.
-- **Canary** (`recv.py`): a DAVE frame (trailer magic `0xFAFA`) arriving with no reachable
-  `dave_session` → warn once + skip, instead of Opus-decoding ciphertext into a garbage transcript.
-- **Offline smoke test** (`tests/test_voice_stack.py`): versions, attr paths, resample→VAD, silero
-  load — runs under pytest or `uv run python tests/test_voice_stack.py`; **5/5 green**.
-- **Docs:** ADR 006 extended (safeguards + verified-stack table); `progress.md` housekeeping updated.
-- Committed straight to `main` (`ce7a0e2`) and pushed. **Upgrade ritual** is now: bump
-  `preflight.KNOWN_GOOD` + the `==` pins + the ADR-006 table together, run the smoke test, re-verify live.
+- **CUDA torch:** `torch`/`torchaudio`/`torchcodec` now pulled from the PyTorch **cu126** index
+  (`[tool.uv.sources]` + `[[tool.uv.index]]`). Verified live: `torch 2.12.0+cu126`,
+  `cuda available: True`, XTTS `loaded on cuda`, RTF **0.34** (≈3× realtime; CPU was ~1.9).
+- **Resolver fix:** CUDA torch pins `nvidia-cudnn-cu12==9.10.2.21` on linux, clashing with
+  faster-whisper's `>=9.23`. Resolved by locking **win32-only** (`environments = ["sys_platform
+  == 'win32'"]`, legit per D16) + `requires-python` pinned to the 3.12 line + win32 markers on
+  the cudnn/cublas wheels. Lock is now Windows-only.
+- **Robust device:** `dmbot/tts/xtts.py` `_resolve_device` + load-time fallback → XTTS degrades to
+  CPU (warns, never crashes) when CUDA is absent or the GPU OOMs. Same `.env` is portable.
+- **httpx bug:** found `httpx` was an **undeclared direct dep** (used by `llm/client.py` +
+  `bridge.py`); the dep churn dropped it. Now declared `httpx>=0.28.1`.
+- **Profiles + docs:** `.env` = 4070 dev profile; `.env.example` documents both (4070 dev / 5080
+  full-GPU); `architecture.md` §3 updated; **ADR 009** written; README gained a "Running on
+  another machine" section; `docs/SETUP.md` token-var line corrected (`DISCORD_TOKEN_DMBOT`, Bot A
+  token lives in the music bot repo). Voice-stack smoke test re-run after the dep change: **5/5**.
 
-_(Prior session — Phases 3–6, the playable voice loop — is captured in each phase's VERIFY EVIDENCE
-below.)_
+_(Prior session — voice-stack hardening, ADR 006 — and Phases 3–6 (the playable loop) are captured
+in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 
 ## Next concrete step
-**Make it flotter (Tobi's explicit next-time goal).** Try the GPU rebalance in `.env`:
-`TTS_DEVICE=cuda` + `WHISPER_DEVICE=cpu` + `WHISPER_COMPUTE=int8` — frees whisper's ~2.5 GB so
-XTTS (Dionisio) runs near-realtime on the GPU next to nemo. Watch `nvidia-smi` / `ollama ps` for
-VRAM (nemo 9.5 GB + XTTS ~2 GB is tight on the 12 GB 4070); if it OOMs, fall back to whisper-CPU
-+ XTTS-CPU, or offload Ollama to the 5080 via Tailscale (ADR 002). If CPU XTTS stays too slow,
-do the backlog item: **XTTS as its own GPU service**. **Then Phase 7** — feedback layer 2 (pause
-VAD while Bot A speaks; read ADR 003). Level: **opusplan / high**.
+**Trim the DM answer length — the latency is now in the LLM, not TTS.** With XTTS on the GPU
+(RTF 0.34, ADR 009) a long synth means a long *answer*: a 24 s synth was a ~70 s monologue.
+Cap the DM turn (e.g. `num_predict` / prompt nudge for shorter turns) and trim nemo's meta-preamble
+("Ich beschreibe…") + occasional role-inversion ("Was siehst du?"). The ~8 s LLM turn is the other
+half — consider offloading Ollama to the 5080 via Tailscale (ADR 002). **Then Phase 7** — feedback
+layer 2 (pause VAD while Bot A speaks; read ADR 003). Level: **opusplan / high**.
+
+_5080 onboarding:_ the project is now portable — `uv sync` pulls CUDA torch (cu126), the 5080
+runs the all-GPU `.env` profile (whisper `cuda`/`float16` + XTTS `cuda`). README "Running on
+another machine" has the full flow; the only manual bits are the two Discord tokens + Ollama pull.
 
 _Also open (not blocking):_ DM model/persona tuning (nemo vs `gemma3:12b`; trim the occasional
 "Was siehst du?" role-inversion + meta-preamble); STT confidence-filter live check; the
@@ -85,6 +92,7 @@ create the next-numbered ADR.
 | D19 | DAVE/E2EE on voice receive | **Decrypt the DAVE layer via discord.py's `dave_session`** (keep E2EE; sink takes `wants_opus=True`, decrypts each frame before Opus-decode) | Discord calls are end-to-end encrypted; voice-recv only undoes transport → garbage. Declining DAVE is rejected (voice close 4017) → ADR 006 |
 | D20 | VAD segmentation stack | **silero-vad via `onnxruntime`** (no torch) + **`soxr`** streaming resampler; model vendored in-repo | Robust neural VAD without torch's ~GB weight; webrtcvad too noise-prone; soxr is the smallest correct resampler → ADR 007 |
 | D21 | TTS engine | **Piper default + XTTS v2 (`coqui-tts`) optional**, selectable via `TTS_ENGINE`; chose XTTS speaker **Dionisio Schuyler** | Piper's German voices were rejected; XTTS gives 58 voices + cloning (local, no cloud) at the cost of the torch stack + latency → ADR 008 |
+| D22 | GPU XTTS / portability | **CUDA torch from the `cu126` index** (`+cu126` builds), device env-driven (`TTS_DEVICE`/`WHISPER_DEVICE`); same Windows-only lock for both boxes, XTTS auto-degrades to CPU | CPU-only torch made GPU XTTS impossible; cu126 gives the GPU build (RTF 0.34 verified); win32-only lock dodges the cudnn pin clash; one repo runs 4070 dev + 5080 full-GPU → ADR 009 |
 
 ### Phase → ADR map (read these when you enter the phase)
 

@@ -2,7 +2,10 @@
 name = "cogitator"
 version = "0.0.0"
 description = "Cogitator — a local, system-agnostic AI game master for tabletop RPGs (DMbot: the DM brain)."
-requires-python = ">=3.12"
+# Pinned to the 3.12 line: it's the project runtime (CLAUDE.md), and it keeps the universal
+# resolver from forking a 3.13 split where CUDA torch's linux cudnn pin (==9.10.2.21) clashes
+# with faster-whisper's win32 cudnn (>=9.23). We never run 3.13 here.
+requires-python = ">=3.12,<3.13"
 # Dependencies are added per-phase with `uv add` (see the model/effort + phase plan in
 # roadmap.md). Phase 0 needs none — it is install + config + smoke test only.
 # New heavy deps must be justified in the commit/PR and architecture.md §3 (golden rule #9).
@@ -19,9 +22,13 @@ dependencies = [
     "discord-ext-voice-recv==0.5.2a179",
     "discord-py[voice]==2.7.1",
     "faster-whisper>=1.2.1",
+    "httpx>=0.28.1",
     "numpy>=2.4.6",
-    "nvidia-cublas-cu12>=12.9.2.10",
-    "nvidia-cudnn-cu12>=9.23.0.39",
+    # faster-whisper's CUDA DLLs, needed only on the Windows runtime (D16) — the transcriber
+    # registers their wheel bin dirs via os.add_dll_directory. Marked win32-only so they don't
+    # collide with the cudnn version that CUDA torch pins on linux (torch wants ==9.10.2.21 there).
+    "nvidia-cublas-cu12>=12.9.2.10 ; sys_platform == 'win32'",
+    "nvidia-cudnn-cu12>=9.23.0.39 ; sys_platform == 'win32'",
     "onnxruntime>=1.26.0",
     "piper-tts>=1.4.2",
     "python-dotenv>=1.2.2",
@@ -35,3 +42,25 @@ dependencies = [
 [tool.uv]
 # This is an application, not an installable library — no build backend needed.
 package = false
+
+# Windows-only runtime (D16): both target boxes (4070 dev, 5080 full-GPU) run Windows. Locking
+# only for win32 keeps the universal resolver from considering CUDA torch's linux-only cudnn pin
+# (==9.10.2.21), which would otherwise clash with faster-whisper's win32 cudnn (>=9.23).
+environments = ["sys_platform == 'win32'"]
+
+# CUDA torch (heavy dep, golden rule #9 — justified in architecture.md §3 + ADR 009).
+# Default PyPI ships torch as a CPU-only build (torch X.Y.Z+cpu), so XTTS could only ever
+# run on the CPU (~1.5x realtime, multi-second sentences). Pulling torch/torchaudio/torchcodec
+# from PyTorch's CUDA index gives the +cuXXX builds so XTTS runs on the GPU. The SAME lock
+# works on both target boxes (4070 dev, 5080 full-GPU); a machine without a usable GPU degrades
+# to CPU at runtime (dmbot/tts/xtts.py _resolve_device). cu126 is the index that carries
+# torch 2.12.0 for Windows/cp312; bump together with the torch pin if torch moves.
+[[tool.uv.index]]
+name = "pytorch-cuda"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cuda" }
+torchaudio = { index = "pytorch-cuda" }
+torchcodec = { index = "pytorch-cuda" }
