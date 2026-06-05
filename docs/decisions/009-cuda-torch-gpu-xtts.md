@@ -1,9 +1,16 @@
 # ADR 009 — CUDA torch for GPU XTTS (per-machine GPU profiles)
 
-- **Status:** Accepted
+- **Status:** Accepted (index corrected cu126→cu130 on 2026-06-05, see note below)
 - **Date:** 2026-06-05
 - **Refs:** decision log D21 in `progress.md` (TTS engine) + D16 (Windows runtime); ADR 008
   (Piper + XTTS); ADR 002 (local topology, VRAM, 4070 vs 5080); `architecture.md` §3 (TTS row)
+
+> **Update 2026-06-05:** initially shipped on the **cu126** index (verified on the 4070). A
+> colleague's **RTX 5080 (Blackwell, sm_120)** then failed — cu126 torch tops out at sm_90. Moved
+> the index to **cu130** (CUDA 13.0), which carries the same torch 2.12.0 and supports **both** Ada
+> (sm_89, 4070) and Blackwell (sm_120, 5080); re-verified on the 4070 (real CUDA matmul). cu128 was
+> rejected — it only has torch up to 2.11.0 for Windows/cp312. Lesson: pick the CUDA index by the
+> *newest* GPU that must run it, not the dev box.
 
 ## Context
 
@@ -17,9 +24,9 @@ enabled`: the venv's torch was the **CPU-only** build (`torch 2.12.0+cpu`, `torc
 
 ## Decision
 
-Pull `torch` / `torchaudio` / `torchcodec` from PyTorch's **CUDA `cu126` index** (the index that
+Pull `torch` / `torchaudio` / `torchcodec` from PyTorch's **CUDA `cu130` index** (CUDA 13.0,
 carries torch 2.12.0 for Windows/cp312) via `[tool.uv.sources]` + `[[tool.uv.index]]`, so the
-venv gets the `+cu126` builds. Device stays **env-driven** (`TTS_DEVICE`, `WHISPER_DEVICE`,
+venv gets the `+cu130` builds. Device stays **env-driven** (`TTS_DEVICE`, `WHISPER_DEVICE`,
 `WHISPER_COMPUTE`); the **same lock** serves both machines, switched only by `.env` profile. XTTS
 **degrades to CPU** (never crashes) when CUDA is absent or the GPU OOMs (`dmbot/tts/xtts.py
 _resolve_device` + a load-time fallback), mirroring the STT transcriber's policy.
@@ -37,8 +44,8 @@ _resolve_device` + a load-time fallback), mirroring the STT transcriber's policy
 ## Consequences
 
 - **Positive:** XTTS runs on the GPU — verified live RTF **0.34** (≈3× faster than realtime) vs
-  ~1.9 on CPU; `torch.cuda.is_available() == True` (cu126, RTX 4070). The same `uv sync` brings up
-  the 5080 box.
+  ~1.9 on CPU; `torch.cuda.is_available() == True` (cu130, RTX 4070, CC 8.9). The same `uv sync`
+  brings up the 5080 box (Blackwell, CC 12.0).
 - **Per-machine GPU profiles** (same code, only `.env` differs; documented in `.env.example`):
   4070 dev = whisper `cpu`/`int8` + XTTS `cuda` (whisper on CPU frees VRAM for XTTS next to nemo);
   5080 = whisper `cuda`/`float16` + XTTS `cuda` (all three on the 16 GB GPU).
@@ -51,5 +58,5 @@ _resolve_device` + a load-time fallback), mirroring the STT transcriber's policy
 - **Heavy dep (golden rule #9):** the CUDA torch wheel is ~2.4 GB. `httpx` was found to be an
   **undeclared direct dependency** (used by `llm/client.py` + `bridge.py`, previously only
   transitive) and is now declared — the dep churn would otherwise have dropped it and broken boot.
-- **Binding / follow-up:** bump the `cu126` index together with the torch version if torch moves;
+- **Binding / follow-up:** bump the `cu130` index together with the torch version if torch moves;
   the separate-GPU-service refactor (ADR 008 follow-up) still stands as the lean end-state.

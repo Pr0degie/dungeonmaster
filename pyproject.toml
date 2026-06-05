@@ -53,11 +53,12 @@ environments = ["sys_platform == 'win32'"]
 # run on the CPU (~1.5x realtime, multi-second sentences). Pulling torch/torchaudio/torchcodec
 # from PyTorch's CUDA index gives the +cuXXX builds so XTTS runs on the GPU. The SAME lock
 # works on both target boxes (4070 dev, 5080 full-GPU); a machine without a usable GPU degrades
-# to CPU at runtime (dmbot/tts/xtts.py _resolve_device). cu126 is the index that carries
-# torch 2.12.0 for Windows/cp312; bump together with the torch pin if torch moves.
+# to CPU at runtime (dmbot/tts/xtts.py _resolve_device). **cu130** (CUDA 13.0) carries torch
+# 2.12.0 for Windows/cp312 AND supports both Ada (4070, sm_89) and **Blackwell (5080, sm_120)** —
+# cu126 tops out at sm_90 and fails on the 5080. Bump together with the torch pin if torch moves.
 [[tool.uv.index]]
 name = "pytorch-cuda"
-url = "https://download.pytorch.org/whl/cu126"
+url = "https://download.pytorch.org/whl/cu130"
 explicit = true
 
 [tool.uv.sources]

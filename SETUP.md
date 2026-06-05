@@ -68,7 +68,7 @@ Logs go to the console (green chat layout) **and** `logs/dmbot.log` (full detail
 - **No sound:** are **both** bots in the voice channel? Is ffmpeg available to Bot A?
 - **Garbage transcript:** suspect the sample rate (must be 16 kHz mono) before the model.
 - **XTTS won't load (it's the default):** it needs torch/torchaudio/torchcodec + `transformers<5`;
-  `uv sync` pins these (CUDA build from the cu126 index for GPU). On CUDA-less boxes or an OOM it
+  `uv sync` pins these (CUDA build from the cu130 index for GPU — covers Ada + Blackwell). On CUDA-less boxes or an OOM it
   auto-degrades to CPU (logged). If it still won't run, fall back to the lean voice with
   `TTS_ENGINE=piper`.
 

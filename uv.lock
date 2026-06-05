@@ -186,9 +186,9 @@ requires-dist = [
     { name = "piper-tts", specifier = ">=1.4.2" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "soxr", specifier = ">=1.1.0" },
-    { name = "torch", specifier = ">=2.12.0", index = "https://download.pytorch.org/whl/cu126" },
-    { name = "torchaudio", specifier = ">=2.11.0", index = "https://download.pytorch.org/whl/cu126" },
-    { name = "torchcodec", specifier = ">=0.14.0", index = "https://download.pytorch.org/whl/cu126" },
+    { name = "torch", specifier = ">=2.12.0", index = "https://download.pytorch.org/whl/cu130" },
+    { name = "torchaudio", specifier = ">=2.11.0", index = "https://download.pytorch.org/whl/cu130" },
+    { name = "torchcodec", specifier = ">=0.14.0", index = "https://download.pytorch.org/whl/cu130" },
     { name = "transformers", specifier = "<5" },
 ]
 
@@ -1155,8 +1155,8 @@ wheels = [
 
 [[package]]
 name = "torch"
-version = "2.12.0+cu126"
-source = { registry = "https://download.pytorch.org/whl/cu126" }
+version = "2.12.0+cu130"
+source = { registry = "https://download.pytorch.org/whl/cu130" }
 dependencies = [
     { name = "filelock", marker = "sys_platform == 'win32'" },
     { name = "fsspec", marker = "sys_platform == 'win32'" },
@@ -1167,23 +1167,23 @@ dependencies = [
     { name = "typing-extensions", marker = "sys_platform == 'win32'" },
 ]
 wheels = [
-    { url = "https://download-r2.pytorch.org/whl/cu126/torch-2.12.0%2Bcu126-cp312-cp312-win_amd64.whl", hash = "sha256:194f5bd0721b968e769777b8ab4dbe51dd7ffdfdf295db045093b94a1b9765bb", upload-time = "2026-05-12T23:28:57Z" },
+    { url = "https://download-r2.pytorch.org/whl/cu130/torch-2.12.0%2Bcu130-cp312-cp312-win_amd64.whl", hash = "sha256:24e75a0c3ea4243067d7560955f2eef6466e9365de7dd4a3a4b8693c9ac4bccf", upload-time = "2026-05-12T23:50:41Z" },
 ]
 
 [[package]]
 name = "torchaudio"
-version = "2.11.0+cu126"
-source = { registry = "https://download.pytorch.org/whl/cu126" }
+version = "2.11.0+cu130"
+source = { registry = "https://download.pytorch.org/whl/cu130" }
 wheels = [
-    { url = "https://download-r2.pytorch.org/whl/cu126/torchaudio-2.11.0%2Bcu126-cp312-cp312-win_amd64.whl", hash = "sha256:ca5b7815c6952c79c65dce9a78eb96be8b73a8b291f82ca473812a910cdc9fbc", upload-time = "2026-03-23T15:50:21Z" },
+    { url = "https://download-r2.pytorch.org/whl/cu130/torchaudio-2.11.0%2Bcu130-cp312-cp312-win_amd64.whl", hash = "sha256:f74949f9ace1e4a6cf9468bdb3211b9cfa0af6ea348125471ac71c8621d6c77d", upload-time = "2026-03-23T15:50:26Z" },
 ]
 
 [[package]]
 name = "torchcodec"
-version = "0.14.0+cu126"
-source = { registry = "https://download.pytorch.org/whl/cu126" }
+version = "0.14.0+cu130"
+source = { registry = "https://download.pytorch.org/whl/cu130" }
 wheels = [
-    { url = "https://download.pytorch.org/whl/cu126/torchcodec-0.14.0%2Bcu126-cp312-cp312-win_amd64.whl", hash = "sha256:468335d21f4119b75838cc4cf551b243b5867b48671178bfe07c112d7dacdf9f", upload-time = "2026-06-03T12:39:02Z" },
+    { url = "https://download.pytorch.org/whl/cu130/torchcodec-0.14.0%2Bcu130-cp312-cp312-win_amd64.whl", hash = "sha256:9ee5e1575078d220632ad33d854a928c6546324cb3942bf67e1438487c62d612", upload-time = "2026-06-03T12:39:05Z" },
 ]
 
 [[package]]

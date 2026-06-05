@@ -17,9 +17,12 @@ GPU rebalance (whisper→CPU, XTTS→cuda) crashed at first: the venv's torch wa
 build, so `TTS_DEVICE=cuda` raised `Torch not compiled with CUDA enabled` and left the DM mute.
 Fixed end to end:
 
-- **CUDA torch:** `torch`/`torchaudio`/`torchcodec` now pulled from the PyTorch **cu126** index
-  (`[tool.uv.sources]` + `[[tool.uv.index]]`). Verified live: `torch 2.12.0+cu126`,
+- **CUDA torch:** `torch`/`torchaudio`/`torchcodec` now pulled from the PyTorch **cu130** index
+  (CUDA 13.0; `[tool.uv.sources]` + `[[tool.uv.index]]`). Verified live: `torch 2.12.0+cu130`,
   `cuda available: True`, XTTS `loaded on cuda`, RTF **0.34** (≈3× realtime; CPU was ~1.9).
+  _(Started on cu126, but that tops out at sm_90 and failed on a colleague's **RTX 5080**
+  (Blackwell, sm_120) — moved to cu130, which covers Ada (4070) + Blackwell (5080); re-verified
+  on the 4070.)_
 - **Resolver fix:** CUDA torch pins `nvidia-cudnn-cu12==9.10.2.21` on linux, clashing with
   faster-whisper's `>=9.23`. Resolved by locking **win32-only** (`environments = ["sys_platform
   == 'win32'"]`, legit per D16) + `requires-python` pinned to the 3.12 line + win32 markers on
@@ -44,7 +47,7 @@ Cap the DM turn (e.g. `num_predict` / prompt nudge for shorter turns) and trim n
 half — consider offloading Ollama to the 5080 via Tailscale (ADR 002). **Then Phase 7** — feedback
 layer 2 (pause VAD while Bot A speaks; read ADR 003). Level: **opusplan / high**.
 
-_5080 onboarding:_ the project is now portable — `uv sync` pulls CUDA torch (cu126), the 5080
+_5080 onboarding:_ the project is now portable — `uv sync` pulls CUDA torch (cu130), the 5080
 runs the all-GPU `.env` profile (whisper `cuda`/`float16` + XTTS `cuda`). README "Running on
 another machine" has the full flow; the only manual bits are the two Discord tokens + Ollama pull.
 
@@ -92,7 +95,7 @@ create the next-numbered ADR.
 | D19 | DAVE/E2EE on voice receive | **Decrypt the DAVE layer via discord.py's `dave_session`** (keep E2EE; sink takes `wants_opus=True`, decrypts each frame before Opus-decode) | Discord calls are end-to-end encrypted; voice-recv only undoes transport → garbage. Declining DAVE is rejected (voice close 4017) → ADR 006 |
 | D20 | VAD segmentation stack | **silero-vad via `onnxruntime`** (no torch) + **`soxr`** streaming resampler; model vendored in-repo | Robust neural VAD without torch's ~GB weight; webrtcvad too noise-prone; soxr is the smallest correct resampler → ADR 007 |
 | D21 | TTS engine | **XTTS v2 (`coqui-tts`) default + Piper fallback**, selectable via `TTS_ENGINE`; XTTS speaker **Dionisio Schuyler**. _(Default flipped Piper→XTTS 2026-06-05 once XTTS ran on GPU.)_ | Piper's German voices were rejected; XTTS gives 58 voices + cloning (local, no cloud); torch is a hard dep regardless + XTTS degrades to CPU, so it's a safe default → ADR 008 + 009 |
-| D22 | GPU XTTS / portability | **CUDA torch from the `cu126` index** (`+cu126` builds), device env-driven (`TTS_DEVICE`/`WHISPER_DEVICE`); same Windows-only lock for both boxes, XTTS auto-degrades to CPU | CPU-only torch made GPU XTTS impossible; cu126 gives the GPU build (RTF 0.34 verified); win32-only lock dodges the cudnn pin clash; one repo runs 4070 dev + 5080 full-GPU → ADR 009 |
+| D22 | GPU XTTS / portability | **CUDA torch from the `cu130` index** (`+cu130` builds; CUDA 13.0 covers Ada **and** Blackwell), device env-driven (`TTS_DEVICE`/`WHISPER_DEVICE`); same Windows-only lock for both boxes, XTTS auto-degrades to CPU | CPU-only torch made GPU XTTS impossible; cu130 gives the GPU build (RTF 0.34 verified) for both 4070 (sm_89) + 5080 (sm_120); win32-only lock dodges the cudnn pin clash; one repo runs 4070 dev + 5080 full-GPU → ADR 009 |
 
 ### Phase → ADR map (read these when you enter the phase)
 

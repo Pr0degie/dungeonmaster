@@ -59,9 +59,9 @@ machine:
 
 1. **Clone both repos.** This one (DMbot) and the music bot, `Pr0degie/musicbot` on branch
    `dungeon_master` (Bot A — the `/speak` mouth). DMbot can't speak without Bot A running.
-2. **Install per repo:** `uv sync` in each. DMbot pulls a **CUDA torch** build from the cu126
-   index automatically (needs an NVIDIA GPU + recent driver; a box without a usable GPU degrades
-   XTTS to CPU). The lock is Windows-only.
+2. **Install per repo:** `uv sync` in each. DMbot pulls a **CUDA torch** build from the cu130
+   index automatically (CUDA 13.0 — covers Ada *and* Blackwell, e.g. RTX 40xx/50xx; needs an
+   NVIDIA GPU + recent driver; a box without a usable GPU degrades XTTS to CPU). Lock is Windows-only.
 3. **Two Discord bot tokens.** A bot token allows only one live connection, so either (a) reuse
    the existing two tokens *while the other machine's instances are off*, or (b) create two new
    Discord bot applications (DMbot + Bot A) with voice intents and invite both to the server.
