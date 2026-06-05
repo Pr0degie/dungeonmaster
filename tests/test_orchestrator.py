@@ -56,6 +56,45 @@ def test_sanitize_keeps_in_fiction_parenthetical() -> None:
     assert _sanitize(text) == text
 
 
+def test_sanitize_strips_meta_preamble_with_and_without_colon() -> None:
+    # nemo opens with "Als Spielleitung beschreibe ich …" in several shapes — all must go.
+    assert _sanitize("Als Spielleitung beschreibe ich: Du siehst eine Tür.") == "Du siehst eine Tür."
+    assert (
+        _sanitize("Als Spielleitung beschreibe ich eine dunkle Gasse, in der ihr steht.")
+        == "Eine dunkle Gasse, in der ihr steht."
+    )
+    out = _sanitize("Als Spielleitung beschreibe ich die Szene, wie der Mann näher kommt.")
+    assert "Als Spielleitung" not in out and out[0].isupper()
+
+
+def test_redo_reruns_last_turn_without_stacking_history() -> None:
+    class _SeqClient:
+        def __init__(self) -> None:
+            self.n = 0
+
+        async def chat(self, system, messages, options=None) -> str:
+            self.n += 1
+            return f"Antwort {self.n}"
+
+        async def aclose(self) -> None:
+            pass
+
+    brain = DMBrain(_SeqClient())
+    ch = 1
+    brain.add_player_line(ch, "Timo", "Ich öffne die Tür.")
+    assert asyncio.run(brain.respond(ch)) == "Antwort 1"
+    hist_len = len(brain._history[ch])
+
+    assert asyncio.run(brain.redo(ch)) == "Antwort 2"  # fresh generation, same input
+    assert len(brain._history[ch]) == hist_len  # replaced the last turn, not stacked
+    assert brain._history[ch][-2]["content"] == "Timo: Ich öffne die Tür."
+    assert brain._history[ch][-1]["content"] == "Antwort 2"
+
+
+def test_redo_without_prior_turn_returns_none() -> None:
+    assert asyncio.run(DMBrain(_FakeClient()).redo(999)) is None
+
+
 class _FakeClient:
     """Captures the messages DMBrain forwards, returns a canned answer; no real Ollama call."""
 

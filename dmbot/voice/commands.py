@@ -232,6 +232,29 @@ class VoiceReceiveCog(commands.Cog):
         if self._push_to_talk and self._sink is not None:
             await self._post_mic_button(ctx.channel)
 
+    @commands.command(name="redo", aliases=["r"])
+    async def redo(self, ctx: commands.Context) -> None:
+        """Re-run the last DM turn with the same input — for when the DM misunderstood. Alias: !r"""
+        channel_id = self._active_vc_id if self._active_vc_id is not None else ctx.channel.id
+        try:
+            async with ctx.typing():
+                t0 = time.perf_counter()
+                answer = await self._brain.redo(channel_id)
+                llm_ms = round((time.perf_counter() - t0) * 1000)
+        except Exception:
+            log.exception("DM redo failed")
+            await ctx.send("(Fehler beim Neu-Erzählen, siehe Log.)")
+            return
+        if not answer:
+            await ctx.send("Nichts zum Wiederholen — erst eine Runde mit `!dm` spielen.")
+            return
+        log.info("🎭 %s", answer)
+        log.info("⏱ LLM %d ms (redo)", llm_ms)
+        await ctx.send(answer)
+        await self._speak(answer, ctx.guild.id if ctx.guild else None)
+        if self._push_to_talk and self._sink is not None:
+            await self._post_mic_button(ctx.channel)
+
     @commands.command(name="say")
     async def say(self, ctx: commands.Context, *, text: str) -> None:
         """Speak arbitrary text through Piper + Bot A — a TTS/bridge smoke test."""

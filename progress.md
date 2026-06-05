@@ -57,6 +57,18 @@ buttons (read ADR 005 + 004 + 001). Recommended dial for Phase 8: **Opus 4.8 / x
   self-transcription and the routing gate keeps narration table talk out of the DM, so the VAD pause
   was redundant. Now `DM_PAUSE_VAD_WHILE_SPEAKING=0` by default; mechanism kept for mic-bleed cases.
   `architecture.md` §5 updated; golden rule #4 (layer 1) unchanged.
+- **Third live session → more persona/quality fixes.** From the transcript: **(A)** the
+  "Als Spielleitung beschreibe ich …" preamble was *still* there — my `_META_PREAMBLE` only matched
+  the colon form; rewrote it to strip the colon-less shapes too ("… beschreibe ich die Szene, wie …",
+  "… eine dunkle Gasse …") and re-capitalise. **(B)** persona: the DM is **not** in the party — say
+  "ihr/euch", never "wir/uns/ich" inside the scene (it kept writing "auf uns zu", "sehen wir").
+  **(C)** ask "Was tut ihr?" only when something open is presented, never every turn, never with
+  action suggestions. **(D)** no content warnings / lectures / setting commentary (turn 1 produced an
+  LGBTQ disclaimer). **(E)** new **`!redo`/`!r`** — re-run the last DM turn with the same input
+  (DMBrain.redo, replaces the last history pair) for when the DM misunderstood. Suite **25/25**.
+  _Open (F): player→character name mapping_ — the LLM confuses "SezBoss69" vs the character "Seskin"
+  and mixes up who did what. Belongs to character registration (D13/ADR 003, Phase 8); a light alias
+  map could help sooner.
 
 **(Earlier same day) GPU XTTS via CUDA torch + portable per-machine GPU profiles (non-Phase work, ADR 009).** The
 GPU rebalance (whisper→CPU, XTTS→cuda) crashed at first: the venv's torch was the **CPU-only**
