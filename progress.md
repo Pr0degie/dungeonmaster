@@ -22,7 +22,11 @@ Fixed end to end:
   `cuda available: True`, XTTS `loaded on cuda`, RTF **0.34** (≈3× realtime; CPU was ~1.9).
   _(Started on cu126, but that tops out at sm_90 and failed on a colleague's **RTX 5080**
   (Blackwell, sm_120) — moved to cu130, which covers Ada (4070) + Blackwell (5080); re-verified
-  on the 4070.)_
+  on the 4070.)_ Then GPU whisper on the 5080 died at `encode()` with **`cublas64_12.dll cannot
+  be loaded`**: `nvidia-cuda-runtime-cu12` (cudart64_12.dll, a cuBLAS dependency) was missing.
+  Added it as a win32 dep + registered its bin dir in `transcriber.py`; **verified a real
+  faster-whisper cuda transcription on the 4070**. Lesson: ctranslate2's CUDA-12 trio
+  (cublas + cudnn + **cudart**) must be self-complete, independent of torch's CUDA version.
 - **Resolver fix:** CUDA torch pins `nvidia-cudnn-cu12==9.10.2.21` on linux, clashing with
   faster-whisper's `>=9.23`. Resolved by locking **win32-only** (`environments = ["sys_platform
   == 'win32'"]`, legit per D16) + `requires-python` pinned to the 3.12 line + win32 markers on

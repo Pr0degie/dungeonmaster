@@ -24,10 +24,14 @@ dependencies = [
     "faster-whisper>=1.2.1",
     "httpx>=0.28.1",
     "numpy>=2.4.6",
-    # faster-whisper's CUDA DLLs, needed only on the Windows runtime (D16) — the transcriber
-    # registers their wheel bin dirs via os.add_dll_directory. Marked win32-only so they don't
-    # collide with the cudnn version that CUDA torch pins on linux (torch wants ==9.10.2.21 there).
+    # faster-whisper's CUDA-12 DLLs (ctranslate2), needed only on the Windows runtime (D16) — the
+    # transcriber registers their wheel bin dirs via os.add_dll_directory. Marked win32-only so
+    # they don't collide with the cudnn version CUDA torch pins on linux (==9.10.2.21 there).
+    # cudart (cuda-runtime) is REQUIRED: cublas64_12.dll depends on cudart64_12.dll — without it
+    # GPU whisper fails with "cublas64_12.dll cannot be loaded". Keep this CUDA-12 trio complete
+    # and independent of torch's CUDA version (torch is on cu130 / CUDA 13).
     "nvidia-cublas-cu12>=12.9.2.10 ; sys_platform == 'win32'",
+    "nvidia-cuda-runtime-cu12>=12.9.79 ; sys_platform == 'win32'",
     "nvidia-cudnn-cu12>=9.23.0.39 ; sys_platform == 'win32'",
     "onnxruntime>=1.26.0",
     "piper-tts>=1.4.2",

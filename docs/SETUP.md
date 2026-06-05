@@ -47,10 +47,13 @@ Runtime is **Windows** (see decision log D16). Check the items off.
       → plausible German answer.
 
 ### B3 — faster-whisper on GPU (the Windows stumbling block) — ✅ DONE (2026-06-04)
-- [x] cuDNN/cuBLAS DLLs provided via the NVIDIA wheels
-      (`uv add faster-whisper nvidia-cublas-cu12 nvidia-cudnn-cu12`). Installed:
-      `faster-whisper 1.2.1`, `ctranslate2 4.7.2`, `nvidia-cudnn-cu12 9.23` (cuDNN 9, matches
-      ct2 4.7), `nvidia-cublas-cu12 12.9`.
+- [x] cuDNN/cuBLAS/cudart DLLs provided via the NVIDIA wheels
+      (`uv add faster-whisper nvidia-cublas-cu12 nvidia-cuda-runtime-cu12 nvidia-cudnn-cu12`).
+      Installed: `faster-whisper 1.2.1`, `ctranslate2 4.7.2`, `nvidia-cudnn-cu12 9.23` (cuDNN 9,
+      matches ct2 4.7), `nvidia-cublas-cu12 12.9`, **`nvidia-cuda-runtime-cu12 12.9`**. The
+      **cudart** wheel is required: `cublas64_12.dll` depends on `cudart64_12.dll`, so without it
+      GPU whisper dies at `encode()` with "cublas64_12.dll cannot be loaded" (hit on the 5080 box,
+      2026-06-05, once torch moved to CUDA 13 / cu130 — the CUDA-12 trio must be self-complete).
 - [x] **No manual `PATH` editing needed.** `dmbot/stt/transcriber.py` registers the wheels'
       `bin` dirs with `os.add_dll_directory()` *before* importing faster-whisper, so Windows
       finds the DLLs. Verified: `faster-whisper 'small' loaded on cuda (float16)`,

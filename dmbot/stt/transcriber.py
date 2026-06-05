@@ -40,7 +40,7 @@ def _register_cuda_dll_dirs() -> None:
     """
     if not hasattr(os, "add_dll_directory"):
         return
-    for pkg in ("nvidia.cudnn", "nvidia.cublas"):
+    for pkg in ("nvidia.cudnn", "nvidia.cublas", "nvidia.cuda_runtime"):
         try:
             spec = importlib.util.find_spec(pkg)
         except ModuleNotFoundError:
