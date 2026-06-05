@@ -99,8 +99,11 @@ Runtime is **Windows** (see decision log D16). Check the items off.
 
 ## C. Only needed later (not for the MVP)
 
-- [ ] **Tailscale** (Personal plan, free) — only if Ollama later moves to the colleague's
-      5080 (ADR 002). Unnecessary for local development on the 4070.
+- [ ] **Tailscale** (Personal plan, free) — needed for the **split-hosting** setup (Bot A on one
+      machine, DMbot on another; the bridge then sends WAV bytes over the tailnet, ADR 010) and/or
+      if Ollama moves to the 5080 (ADR 002). Both machines sign into the **same tailnet**; set
+      `DM_BRIDGE_HOST`/`DM_BRIDGE_SECRET` per the README "Split hosting" section. Unnecessary when
+      both bots run on one machine (localhost path mode).
 - [ ] **Finalize the character JSON schema** — prerequisite for Phase 8 (ADR 004), but not
       a Phase 0 concern yet.
 

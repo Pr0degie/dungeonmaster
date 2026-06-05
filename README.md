@@ -77,6 +77,56 @@ machine:
 
 XTTS downloads its model on first run; the Piper voice is optional (only if `TTS_ENGINE=piper`).
 
+## Split hosting: the two bots on two machines (over Tailscale)
+
+By default both bots run on one machine (path bridge over the shared disk). They can also be
+**split across two machines** — e.g. **Bot A (the music bot) on machine A, DMbot on machine B** —
+so the heavy AI (XTTS + Whisper) runs on the box with the better GPU while the other just plays
+audio. DMbot then sends the WAV **bytes** to Bot A over the network instead of a file path
+(hybrid bridge, ADR 010). Concrete example used here: **Bot A on the 4070 box, DMbot on the 5080
+box.**
+
+**Prerequisites**
+- Pull both repos on their machines (DMbot `main`, music bot `dungeon_master`) and `uv sync` each.
+- Each bot runs as a **single instance** of its own Discord app: machine A runs **only** Bot A,
+  machine B runs **only** DMbot (one live connection per token — don't run a second copy of either).
+- Both bots invited to the **same server**; both join the **same voice channel** (each from its
+  own machine — Discord is in the cloud).
+
+**1. Network — Tailscale (or LAN)**
+- *Same home network?* Skip Tailscale: use the host's LAN IP (`ipconfig` → `192.168.x.x`).
+- *Different networks?* Install **Tailscale** (https://tailscale.com/download/windows, free
+  Personal plan) on **both** machines and **sign both into the same tailnet**. Get the host's IP
+  with `tailscale ip -4` (a `100.x.y.z`); verify with `tailscale ping <ip>` from the other machine.
+
+**2. `.env` on the Bot A machine** (the music bot repo) — bind off-localhost + set a secret:
+```
+DM_BRIDGE_HOST=0.0.0.0          # listen on the Tailscale/LAN interface, not just localhost
+DM_BRIDGE_PORT=8765
+DM_BRIDGE_SECRET=<choose-a-token>
+```
+Restart Bot A; its log must show `[DMBridge] HTTP-Server läuft auf 0.0.0.0:8765`. Allow `python`
+through the Windows firewall (private network) if prompted.
+
+**3. `.env` on the DMbot machine** (this repo) — point at Bot A + the same secret:
+```
+DM_BRIDGE_HOST=<Bot A machine's Tailscale/LAN IP>
+DM_BRIDGE_PORT=8765
+DM_BRIDGE_SECRET=<same-token-as-above>
+```
+Plus the GPU profile for that box (see above) and `BOT_A_USER_ID` = Bot A's user-ID.
+
+**4. Verify** from the DMbot machine:
+```
+curl http://<Bot A IP>:8765/health     # → {"status":"ok","bot":"..."}
+```
+Then both bots join the voice channel and `!dm` / `!say <text>` should speak. Failure hints in
+DMbot's log: `401` = secret mismatch · `unreachable` = Bot A not bound off-localhost or
+Tailscale/firewall blocking · `409` = Bot A not in the voice channel.
+
+> Localhost is unchanged: leave `DM_BRIDGE_HOST=127.0.0.1` and `DM_BRIDGE_SECRET=` empty to run
+> both bots on one machine (path mode, no secret).
+
 ## Discord commands
 
 | Command | Does |
