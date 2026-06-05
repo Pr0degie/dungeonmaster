@@ -4,13 +4,16 @@ Living status document. A phase counts as done only when its **verification gate
 met and the proof is recorded here.
 
 ## Current focus
-**Phases 0–6 complete — the loop is PLAYABLE** ⭐ (speak → German DM answer in **Dionisio's**
-voice, heard aloud), portable + hardened (XTTS GPU cu130, split-host bridge ADR 010). **Phase 7
-is code-complete (2026-06-05): feedback protection layer 2** — the VAD/STT pipeline is now muted
-while Bot A speaks (`VadSink.mute()` around the blocking `/speak`), plus a clean per-channel
-session reset on `!leave`. Unit tests 10/10. **Only the LIVE gate is left** (two speakers, no
-feedback loop — manual, Tobi runs it). **After that: Phase 8** — dice engine + IM profile + turn
-buttons (read ADR 005 + 004 + 001). Recommended dial for Phase 8: **Opus 4.8 / xhigh**.
+**Phases 0–7 complete — PLAYABLE and turn-managed** ⭐. Phase 7 (turn-taking + feedback) is
+**live-validated** over four real multi-player sessions (2026-06-05/06): push-to-talk routing,
+feedback layer 1, GPU whisper, transcription during DM speech — all working. Most of this session
+was **playtest-driven quality tuning** from the players' wishes (read off `transcript.log`): killed
+the "Als Spielleitung beschreibe ich" preamble, fixed POV (ihr/euch, not wir/uns), named action
+attribution, no auto-advance, no read-aloud disclaimers, varied hooks, `!redo`, mic button anchored
+to the bottom, and an XTTS chunking fix for the mid-sentence audio cut-off. **Next: Phase 8** — dice
+engine + IM profile + turn buttons (read ADR 005 + 004 + 001). Recommended dial: **Opus 4.8 / xhigh**.
+The remaining persona drift is **model-limited** (nemo) — the gemma3:12b taste test is the quality
+lever to try alongside.
 
 ## Last session
 **Phase 7 (feedback layer 2) implemented + a music-bot bridge race fixed (2026-06-05, later).**
@@ -142,17 +145,19 @@ _(Prior session — voice-stack hardening, ADR 006 — and Phases 3–6 (the pla
 in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 
 ## Next concrete step
-**Run the Phase 7 LIVE gate, then start Phase 8.** First: live-test layer 2 (both bots in a voice
-channel, two speakers, `!dm` — confirm no self-transcription / feedback turn while Bot A narrates,
-and capture resumes after; details in the Phase-7 VERIFY EVIDENCE). Restart the **music bot** first
-so commit `82393da` (the `dm_speaking` bridge fix) is live. Fill the VERIFY EVIDENCE once it passes,
-then flip Phase 7 to ✅.
+**Phase 8 — dice engine, system profile & turn-order buttons.** Phase 7 is live-validated; this is
+the next phase. Phase-transition ritual: read **ADR 005** (generic engine + profile) + **ADR 004**
+(test marker, character JSON) + **ADR 001** (IM specifics) before implementing. Build the
+deterministic core (`rules/engine.py` + the first profile `data/systems/imperium_maledictum.json`,
+**pytest, fixed seed**) — golden rule #2: dice = code, never the LLM. The players already sketched
+the contract (open item K): a real GM rolls **for** the player and the **difficulty comes from the
+profile/rulebook**, not the LLM. The `discord_ui/mic.py` View→cog pattern is the template for the
+dice/turn buttons. Dial: **Opus 4.8 / xhigh**.
 
-Then **Phase 8 — dice engine, system profile & turn-order buttons.** Phase-transition ritual: read
-**ADR 005** (generic engine + profile) + **ADR 004** (test marker, character JSON) + **ADR 001** (IM
-specifics) before implementing. This is the deterministic core (`rules/engine.py` + the first
-profile `data/systems/imperium_maledictum.json`, **pytest, fixed seed**) — golden rule #2: dice =
-code, never the LLM. Dial: **Opus 4.8 / xhigh**.
+**In parallel — the gemma3:12b taste test** (quick, high-leverage): set `OLLAMA_MODEL=gemma3:12b`
+(pull it first) and replay a scene. Most of the residual persona drift (action attribution, not
+dodging provocative input, POV) is nemo's weakness, not the prompt — gemma3 may follow the sharpened
+persona better. If it does, flip the default; if not, the persona is already as tight as it gets.
 
 _Carry-overs (verify in a live run, not code) — Tobi said he'll test these during development:_
 1. **Dialogue loop** end-to-end on the 5080 host: `!j` → speak → `!dm` answers aloud, and a 2nd
@@ -349,7 +354,7 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   (ADR 002). Bridge fix this session: Bot A had to be on the `dungeon_master` branch (the `main`
   branch has no DMBridge → "All connection attempts failed").
 
-### 🔄 Phase 7 — Turn-taking & feedback protection layer 2  (code done, live gate pending)
+### ✅ Phase 7 — Turn-taking & feedback protection layer 2  (live-validated)
 - [x] VAD pause while Bot A speaks — `VadSink.mute()/unmute()` (`voice/recv.py`); `_speak()` mutes
       around the **blocking** `/speak` and unmutes in `finally` (D15: blocking return = Bot A quiet).
       `mute()` flushes in-progress utterances first. **Now opt-in, off by default** (D25,
@@ -372,12 +377,16 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 - [x] **Unit tests** (deterministic parts): `tests/test_feedback_layer2.py` (mute + listen gate)
       + `tests/test_orchestrator.py` (sanitize, label strip, buffer cap). **20/20 green.**
 - **Gate:** two people speak → orderly reaction, no feedback loop.
-- **VERIFY EVIDENCE:** _Code + unit tests done (2026-06-05); awaiting the LIVE gate (real-time audio
-  is manual per CLAUDE.md)._ To fill: in a voice channel with **both bots**, two people speak → `!dm`
-  → while Bot A narrates, confirm (a) the DM is **not** re-transcribed (no `📝 Spielleiter…`, no
-  feedback turn) and (b) talking over the narration produces **no** `📝` lines during playback, then
-  capture resumes after. Watch `logs/dmbot.log` (`DM_LOG_FILE=1`). Reaction order: two buffered
-  lines answered in the order spoken.
+- **VERIFY EVIDENCE:** _Live, four real multi-player sessions (2026-06-05/06, 3 players: Timo,
+  Sezgin/SezBoss69, Pr0degie)._ Confirmed in the transcripts: multiple speakers captured per-user;
+  **push-to-talk routing works** — only button-window speech carries the `→DM` marker and reaches
+  the DM, the rest is log-only (`push-to-talk → 🎙 an die Spielleitung` / `⏸ nur Protokoll`);
+  **no feedback loop** — Bot A filtered every turn (`layer-1: filtering out EarRape`), the DM never
+  re-transcribed its own voice; the DM answers the routed lines **in order**; players confirmed
+  "transkribiert er unsre Zeug trotzdem noch" while the DM spoke (layer-2 opt-out working). GPU
+  whisper kept up (~100–1000 ms/clip). Quality tuning (preamble, POV, no-advance, TTS chunking) was
+  done from these transcripts and is in the unit suite (**29/29**) — but is **persona/model-limited**
+  (nemo); residual drift is the gemma3 lever, not a Phase-7 gate failure.
 
 ### ⬜ Phase 8 — Dice engine, system profile & turn-order buttons
 - [ ] `rules/engine.py` — generic dice + resolution engine (profile-driven) **+ unit tests**
@@ -424,6 +433,19 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 ---
 
 ## Open questions / to clarify
+
+**From the Phase-7 playtests (2026-06-06) — carry into Phase 8 / quality work:**
+- **(gemma3) Persona drift is model-limited.** nemo still mis-attributes who did what, dodges
+  provocative in-fiction input, and occasionally slips POV — despite a sharpened persona. **Try
+  `gemma3:12b`** (taste test, see Next step) before assuming the prompt is at fault.
+- **(F) Player → character name mapping.** The LLM confuses the Discord name ("SezBoss69") with the
+  character ("Seskin") and muddles who acted. Belongs to character registration (D13/ADR 003,
+  Phase 8); a light alias map (display-name → character) injected into the prompt could help sooner.
+- **(K) Dice/skill-check design (Phase 8).** Players want the GM to roll **for** them and the
+  **difficulty to come from the system profile/rulebook**, not be improvised by the LLM — exactly
+  "dice = code". Fold into ADR 005 / `rules/engine.py` when building Phase 8.
+- **Latency grows with context** as history accumulates; the 20-turn cap helps but recaps (Phase 9)
+  are the real fix. Watch; don't act yet.
 
 **Only empirical, to decide in Phase 0 (try it, not design):**
 - ✅ **Model:** decided — **mistral-nemo** as primary (taste test 2026-06-04 vs gemma3:12b /
