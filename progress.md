@@ -5,11 +5,13 @@ met and the proof is recorded here.
 
 ## Current focus
 **Phases 0–6 complete — the loop is PLAYABLE** ⭐ (speak → German DM answer in **Dionisio's**
-voice, heard aloud). **XTTS now runs on the GPU** (2026-06-05, ADR 009): CUDA torch installed,
-verified live RTF **0.34** (≈3× realtime, vs ~1.9 on CPU). The remaining latency lever is no
-longer TTS but the **LLM answer length** (a 24 s synth was a ~70 s monologue) + the ~8 s LLM turn.
-Next: (a) trim DM answer length / persona meta-preamble; (b) **Phase 7** — feedback layer 2
-(pause VAD while Bot A speaks). The fragile voice-receive stack stays hardened (ADR 006).
+voice, heard aloud). **XTTS on the GPU + portable across machines** (2026-06-05, ADR 009): CUDA
+torch (cu130) installed, RTF **0.34** (≈3× realtime). **Now confirmed working on BOTH boxes** —
+Tobi's 4070 (dev) and a colleague's RTX 5080 (full-GPU; XTTS cuda + whisper cuda, transcription
+clean after the cudart/preload fixes). The remaining latency lever is no longer TTS but the
+**LLM answer length** (a 24 s synth was a ~70 s monologue) + the ~8 s LLM turn — **this is the
+active task now.** After that: **Phase 7** — feedback layer 2 (pause VAD while Bot A speaks). The
+fragile voice-receive stack stays hardened (ADR 006); its benign RTP-unpack flood is now throttled.
 
 ## Last session
 **GPU XTTS via CUDA torch + portable per-machine GPU profiles (non-Phase work, ADR 009).** The

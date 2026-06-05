@@ -32,6 +32,7 @@ class Config:
     tts_voice: str
     tts_speaker: str
     tts_device: str
+    dm_num_predict: int
 
     @classmethod
     def load(cls) -> "Config":
@@ -80,4 +81,9 @@ class Config:
             tts_speaker=os.environ.get("TTS_SPEAKER", "").strip(),
             # XTTS device: "cpu" (safe, slower) or "cuda" (fast, needs free VRAM).
             tts_device=os.environ.get("TTS_DEVICE", "cpu").strip(),
+            # Hard cap on a DM turn's length (Ollama num_predict, ~tokens). The persona already
+            # asks for 2–5 sentences, but the model overruns into minute-long monologues; this is
+            # the deterministic ceiling. ~220 ≈ a few spoken sentences. Tune by ear: lower = snappier
+            # turns, higher = more room. The orchestrator trims a capped turn to its last full sentence.
+            dm_num_predict=int(os.environ.get("DM_NUM_PREDICT", "220")),
         )

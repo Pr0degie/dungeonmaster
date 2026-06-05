@@ -60,6 +60,7 @@ class VoiceReceiveCog(commands.Cog):
         dump_utterances: bool = False,
         ollama_host: str = "http://127.0.0.1:11434",
         ollama_model: str = "mistral-nemo",
+        dm_num_predict: int = 220,
         tts_engine: str = "piper",
         tts_voice: str = "",
         tts_speaker: str = "",
@@ -75,7 +76,7 @@ class VoiceReceiveCog(commands.Cog):
         self._dump_utterances = dump_utterances
         self._utterance_counts: dict[int, int] = {}
         self._active_vc_id: int | None = None  # the voice channel we buffer/answer for
-        self._brain = DMBrain(OllamaClient(ollama_host, ollama_model))
+        self._brain = DMBrain(OllamaClient(ollama_host, ollama_model), num_predict=dm_num_predict)
         self._bridge = BridgeClient(bridge_host, bridge_port)
         # Load the TTS backend once. xtts is imported lazily so Piper users don't pull torch.
         # If loading fails, keep running text-only (answers still post, just aren't spoken).

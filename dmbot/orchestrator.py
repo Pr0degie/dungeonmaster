@@ -49,11 +49,29 @@ def _sanitize(text: str) -> str:
     return text
 
 
+# Sentence-ending punctuation, optionally followed by a closing quote/bracket.
+_SENTENCE_END = re.compile(r"[.!?…](?:[\"»”’)\]]+)?(?=\s|$)")
+
+
+def _trim_to_last_sentence(text: str) -> str:
+    """If a turn was cut mid-sentence (it hit the ``num_predict`` cap), drop the dangling
+    fragment so TTS doesn't read half a sentence aloud. Only trims when there *is* a complete
+    sentence to fall back to and real text follows it; a fully-punctuated answer is unchanged."""
+    ends = list(_SENTENCE_END.finditer(text))
+    if not ends:
+        return text  # nothing to fall back to — leave it rather than nuke the whole turn
+    last = ends[-1].end()
+    return text[:last].strip() if text[last:].strip() else text
+
+
 class DMBrain:
     """Per-channel history + a pending-player-lines buffer, driving one Ollama client."""
 
-    def __init__(self, client: OllamaClient, *, max_history_turns: int = 20) -> None:
+    def __init__(
+        self, client: OllamaClient, *, max_history_turns: int = 20, num_predict: int = 220
+    ) -> None:
         self._client = client
+        self._num_predict = num_predict  # hard cap on a turn's length (spoken aloud — keep it tight)
         self._max_messages = max_history_turns * 2  # a turn = one user + one assistant message
         self._history: dict[int, list[dict[str, str]]] = {}
         self._buffer: dict[int, list[tuple[str, str]]] = {}
@@ -95,9 +113,10 @@ class DMBrain:
         # Stop the model before it starts a new speaker line (a fabricated player reply or a
         # second DM turn); the cut + sanitize are the safety net if a stop slips through.
         labels = [name for name, _ in lines] + _ROLE_LABELS
-        options = {"stop": [f"\n{label}:" for label in labels]}
+        options = {"stop": [f"\n{label}:" for label in labels], "num_predict": self._num_predict}
         raw = await self._client.chat(load_system_prompt(), messages, options=options)
         answer = _sanitize(_cut_at_labels(raw, labels)) or _sanitize(raw)
+        answer = _trim_to_last_sentence(answer)  # clean ending if the num_predict cap cut it off
 
         history.append({"role": "user", "content": user_msg})
         history.append({"role": "assistant", "content": answer})
