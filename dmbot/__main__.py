@@ -65,6 +65,8 @@ class DMBot(commands.Bot):
                 ollama_host=self._config.ollama_host,
                 ollama_model=self._config.ollama_model,
                 dm_num_predict=self._config.dm_num_predict,
+                dm_max_lines=self._config.dm_max_lines,
+                push_to_talk=self._config.push_to_talk,
                 tts_engine=self._config.tts_engine,
                 tts_voice=self._config.tts_voice,
                 tts_speaker=self._config.tts_speaker,

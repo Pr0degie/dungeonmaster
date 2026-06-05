@@ -35,6 +35,8 @@ class Config:
     tts_speaker: str
     tts_device: str
     dm_num_predict: int
+    dm_max_lines: int
+    push_to_talk: bool
 
     @classmethod
     def load(cls) -> "Config":
@@ -95,4 +97,14 @@ class Config:
             # the deterministic ceiling. ~220 ≈ a few spoken sentences. Tune by ear: lower = snappier
             # turns, higher = more room. The orchestrator trims a capped turn to its last full sentence.
             dm_num_predict=int(os.environ.get("DM_NUM_PREDICT", "220")),
+            # Cap on how many buffered player lines a !dm turn sends. Continuous transcription
+            # (no wake word) piles up table talk + jokes between turns; sending all of it drowns
+            # the real action, so keep only the most recent N. 0 = unbounded. Lower = snappier
+            # focus on the latest intent, higher = more table context per turn.
+            dm_max_lines=int(os.environ.get("DM_MAX_LINES", "8")),
+            # Push-to-talk: gate transcription behind the Discord mic button (tap to talk to the
+            # DM, tap to stop), so the bot doesn't continuously transcribe table talk and fall
+            # minutes behind. On by default; set DM_PUSH_TO_TALK=0 for the legacy always-on mode.
+            push_to_talk=os.environ.get("DM_PUSH_TO_TALK", "1").strip().lower()
+            in ("1", "true", "yes", "on"),
         )

@@ -5,15 +5,46 @@ met and the proof is recorded here.
 
 ## Current focus
 **Phases 0–6 complete — the loop is PLAYABLE** ⭐ (speak → German DM answer in **Dionisio's**
-voice, heard aloud), and now **portable + hardened** after a long ops session (2026-06-05): XTTS on
-the GPU (cu130, RTF 0.34, ADR 009), runs on both the 4070 (dev) and a colleague's RTX 5080
-(full-GPU); answer length capped; prompt Ctrl+C shutdown; the bridge can now **split across
-machines** over Tailscale (ADR 010) while localhost stays unchanged; console log slimmed + file log
-opt-in. **Next up: Phase 7** — turn-taking & feedback layer 2 (pause VAD while Bot A speaks; read
-ADR 003). Recommended dial: **Opus 4.8 / xhigh**.
+voice, heard aloud), portable + hardened (XTTS GPU cu130, split-host bridge ADR 010). **Phase 7
+is code-complete (2026-06-05): feedback protection layer 2** — the VAD/STT pipeline is now muted
+while Bot A speaks (`VadSink.mute()` around the blocking `/speak`), plus a clean per-channel
+session reset on `!leave`. Unit tests 10/10. **Only the LIVE gate is left** (two speakers, no
+feedback loop — manual, Tobi runs it). **After that: Phase 8** — dice engine + IM profile + turn
+buttons (read ADR 005 + 004 + 001). Recommended dial for Phase 8: **Opus 4.8 / xhigh**.
 
 ## Last session
-**GPU XTTS via CUDA torch + portable per-machine GPU profiles (non-Phase work, ADR 009).** The
+**Phase 7 (feedback layer 2) implemented + a music-bot bridge race fixed (2026-06-05, later).**
+- **Bridge race (music-bot repo, own commit `82393da`).** A `!dm` turn ran fully (STT→LLM→TTS) but
+  Bot A returned `HTTP 500 'playback failed'` (`ClientException: Already playing audio.`). Root
+  cause: the music cog's `after_playing` auto-advances the queue on **any** track end — including
+  the bridge's own `vc.stop()` — so two `play()` owners fought over the voice client. Fix: a shared
+  `bot.dm_speaking` flag — `dm_bridge._play_file` sets it (finally-cleared) around playback, and
+  `music.play_next` bails while it's set (at the top + again right before `vc.play()`, re-queuing the
+  popped track). Diagnosis came straight from `logs/dmbot.log` (now opt-in `DM_LOG_FILE=1`) + the
+  music bot's `bot.log`. _Tobi must restart the music bot to load it._
+- **Phase 7 — turn-taking & feedback protection layer 2 (this repo).** `VadSink.mute()/unmute()`
+  pause the whole segmentation pipeline while Bot A speaks; `voice/commands._speak` mutes around the
+  blocking `/speak` and unmutes in `finally`. `mute()` flushes open utterances so pre-DM speech is
+  buffered, not glued across the gap. `!leave` now resets per-channel session state
+  (`DMBrain.reset` + sink/counters). New `tests/test_feedback_layer2.py`. _(No new ADR — this
+  implements ADR 003's existing layer-2 mandate, no fresh trade-off.)_ **Live-tested by Tobi: layer 2
+  works (no feedback).**
+- **Playability tuning — players' input now drives the narration more (Phase-5 open tuning).** Live
+  play showed nemo drifting: it set atmosphere and continued its own thread instead of resolving the
+  stated action, and opened every turn with a "Als Spielleitung beschreibe ich:" preamble. Two
+  levers (Tobi picked both): (1) **persona sharpened** — new top section "Worauf du reagierst"
+  makes resolving the latest action the primary directive + forbids the preamble; (2) **buffer
+  noise cut** — `DMBrain` now forwards only the most recent `DM_MAX_LINES` (default 8) so table
+  talk between !dm presses doesn't drown the action. Plus `_sanitize` strips the preamble as a net.
+  _Still open: the nemo-vs-gemma3:12b taste test._
+- **First live session → the criticism-driven fixes (D24/ADR 011).** Read `logs/dmbot.log` of a real
+  4-player run. Findings + fixes: **(1) STT ~1.5 min behind** (unbounded queue + CPU whisper + all
+  table talk) → **GPU whisper** + **push-to-talk button** so only DM-directed speech is transcribed;
+  **(2) the DM answered AS a player** ("SezBoss69: …") → `_strip_leading_label` (the `\n<label>:` stop
+  misses a leading label; `_cut_at_labels` skips position 0); **(3) preamble** → sanitized.
+  Suite **20/20**. _Live-tested: layer 2 works; the latency/PTT + tuning fixes are NOT yet live-tested._
+
+**(Earlier same day) GPU XTTS via CUDA torch + portable per-machine GPU profiles (non-Phase work, ADR 009).** The
 GPU rebalance (whisper→CPU, XTTS→cuda) crashed at first: the venv's torch was the **CPU-only**
 build, so `TTS_DEVICE=cuda` raised `Torch not compiled with CUDA enabled` and left the DM mute.
 Fixed end to end:
@@ -74,11 +105,17 @@ _(Prior session — voice-stack hardening, ADR 006 — and Phases 3–6 (the pla
 in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 
 ## Next concrete step
-**Phase 7 — Turn-taking & feedback protection layer 2.** Read **ADR 003** first (phase-transition
-ritual). Build: **pause VAD / accept no new utterance while Bot A is speaking** (layer 2; layer 1 =
-the Bot-A user-ID filter is already in `recv.py`), and keep **session state per channel** clean.
-Gate: two people speak → DM reacts in order and does not transcribe its own audio. Dial:
-**Opus 4.8 / xhigh** (subtle async/state logic, quiet bugs — roadmap says don't skimp on effort).
+**Run the Phase 7 LIVE gate, then start Phase 8.** First: live-test layer 2 (both bots in a voice
+channel, two speakers, `!dm` — confirm no self-transcription / feedback turn while Bot A narrates,
+and capture resumes after; details in the Phase-7 VERIFY EVIDENCE). Restart the **music bot** first
+so commit `82393da` (the `dm_speaking` bridge fix) is live. Fill the VERIFY EVIDENCE once it passes,
+then flip Phase 7 to ✅.
+
+Then **Phase 8 — dice engine, system profile & turn-order buttons.** Phase-transition ritual: read
+**ADR 005** (generic engine + profile) + **ADR 004** (test marker, character JSON) + **ADR 001** (IM
+specifics) before implementing. This is the deterministic core (`rules/engine.py` + the first
+profile `data/systems/imperium_maledictum.json`, **pytest, fixed seed**) — golden rule #2: dice =
+code, never the LLM. Dial: **Opus 4.8 / xhigh**.
 
 _Carry-overs (verify in a live run, not code) — Tobi said he'll test these during development:_
 1. **Dialogue loop** end-to-end on the 5080 host: `!j` → speak → `!dm` answers aloud, and a 2nd
@@ -127,6 +164,7 @@ create the next-numbered ADR.
 | D21 | TTS engine | **XTTS v2 (`coqui-tts`) default + Piper fallback**, selectable via `TTS_ENGINE`; XTTS speaker **Dionisio Schuyler**. _(Default flipped Piper→XTTS 2026-06-05 once XTTS ran on GPU.)_ | Piper's German voices were rejected; XTTS gives 58 voices + cloning (local, no cloud); torch is a hard dep regardless + XTTS degrades to CPU, so it's a safe default → ADR 008 + 009 |
 | D22 | GPU XTTS / portability | **CUDA torch from the `cu130` index** (`+cu130` builds; CUDA 13.0 covers Ada **and** Blackwell), device env-driven (`TTS_DEVICE`/`WHISPER_DEVICE`); same Windows-only lock for both boxes, XTTS auto-degrades to CPU | CPU-only torch made GPU XTTS impossible; cu130 gives the GPU build (RTF 0.34 verified) for both 4070 (sm_89) + 5080 (sm_120); win32-only lock dodges the cudnn pin clash; one repo runs 4070 dev + 5080 full-GPU → ADR 009 |
 | D23 | Bridge transport | **Hybrid `/speak`**: loopback → WAV path (unchanged); remote → WAV bytes + shared secret over Tailscale; Bot A plays its own copy | Lets DMbot + Bot A run on different machines without breaking the proven localhost path; partially relaxes D16/ADR 002 co-location for the bridge → ADR 010 |
+| D24 | STT latency | **GPU whisper** (`WHISPER_DEVICE=cuda`) **+ push-to-talk listen gate** (shared Discord mic button; bot transcribes only while engaged, `DM_PUSH_TO_TALK=1`) | CPU whisper + continuous transcription of all table talk fell ~1.5 min behind in real play; the gate kills the backlog at the source so GPU whisper fits even the 4070. Supersedes the 4070 "whisper on CPU" profile → ADR 011 |
 
 ### Phase → ADR map (read these when you enter the phase)
 
@@ -137,7 +175,7 @@ create the next-numbered ADR.
 | 2–4 — Voice / VAD / STT | **ADR 006** (DAVE/E2EE decrypt on receive) + **ADR 007** (VAD stack, Phase 3) + `architecture.md` §4–§5 (feedback protection) |
 | 5 — LLM wiring + persona | ADR 002 + ADR 005 (persona = generic core + campaign overlay) |
 | 6 — TTS + full loop | **ADR 008** (TTS engine: Piper + XTTS) + ADR 002 (bridge, VRAM) + `architecture.md` §3 (bridge contract) |
-| 6–7 — Full loop, turn-taking, registration | ADR 003 (conversational control, registration, turn-taking) |
+| 6–7 — Full loop, turn-taking, registration | ADR 003 (conversational control, registration, turn-taking) + **ADR 011** (STT latency: push-to-talk gate) |
 | 8 — Dice engine, IM profile, marker flow | ADR 005 (engine + profile) + ADR 004 (test marker, character data) + ADR 001 (IM specifics) |
 | 9 — Memory (JSON + recaps) | ADR 004 (character/state JSON) |
 | 10 — RAG + profile bootstrap | ADR 005 (profile bootstrap) |
@@ -246,9 +284,11 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   in Eisenhorn tone (flackernde Lumen, Rost/Weihrauch, ein Adept-NSC mit Stimme), addresses players
   by name, ends with "Was tut ihr?"; a follow-up turn correctly uses the history. After hardening:
   exactly one DM turn, no fabricated player lines, no "Spielleitung:"/markdown leakage.
-  _Open tuning (noted, not blocking):_ nemo occasionally adds a meta-preamble ("Ich beschreibe…")
-  and lets the setting drift with sparse context → re-run the Phase-0 **nemo vs gemma3:12b** taste
-  test with this persona; consider it in Phase 6 once TTS gives a feel for tone aloud.
+  _Tuning (2026-06-05, after live play):_ nemo added a "Als Spielleitung beschreibe ich:" preamble
+  and drifted off the players' actions → **mitigated** — persona sharpened (top "Worauf du
+  reagierst" directive), buffer capped to the recent `DM_MAX_LINES`, `_sanitize` strips the
+  preamble (`tests/test_orchestrator.py`). _Still open:_ the **nemo vs gemma3:12b** taste test with
+  this persona, if the tone/responsiveness still needs more.
 
 ### ✅ Phase 6 — TTS + first full loop ⭐  (PLAYABLE)
 - [x] Piper wrapper (`tts/piper.py`): `de_DE-thorsten-medium` → WAV in the OS temp dir
@@ -271,11 +311,34 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   (ADR 002). Bridge fix this session: Bot A had to be on the `dungeon_master` branch (the `main`
   branch has no DMBridge → "All connection attempts failed").
 
-### ⬜ Phase 7 — Turn-taking & feedback protection layer 2
-- [ ] VAD pauses while Bot A speaks
-- [ ] Session state per channel
+### 🔄 Phase 7 — Turn-taking & feedback protection layer 2  (code done, live gate pending)
+- [x] VAD pauses while Bot A speaks — `VadSink.mute()/unmute()` (`voice/recv.py`); `_speak()` in
+      `voice/commands.py` mutes around the **blocking** `/speak` and unmutes in `finally` (D15: the
+      blocking return = Bot A went quiet, the exact resume point). `_on_pcm` drops every frame
+      while muted (incl. injected silence); `mute()` flushes in-progress utterances first so a
+      player's pre-DM speech is buffered for the next turn, not glued across the playback gap.
+      Belt-and-braces over the layer-1 user-ID filter; covers `!say` too.
+- [x] Session state per channel — cog keeps the `self._sink` handle (set on `!join`); `!leave`
+      now `self._brain.reset(channel)` + drops the sink + clears the per-user counters, so a
+      re-join starts a fresh session.
+- [x] **Push-to-talk listen gate (D24/ADR 011)** — a shared Discord mic button (`discord_ui/mic.py`,
+      the project's first View) flips `VadSink.set_listening`; off by default at join so the bot
+      transcribes **only** while engaged. Kills the continuous-transcription backlog that put STT
+      ~1.5 min behind in real play. `!mic` re-posts the button; `DM_PUSH_TO_TALK=0` = legacy always-on.
+- [x] **Latency + quality fixes from the first live session** — GPU whisper (`WHISPER_DEVICE=cuda`,
+      D24); buffer capped to recent `DM_MAX_LINES` (default 8) so table talk doesn't drown the action;
+      persona sharpened (action-resolution as the top directive); `_sanitize`/`_strip_leading_label`
+      kill the "Als Spielleitung beschreibe ich:" preamble and a leaked leading "Name:" (the DM was
+      answering **as** a player — `tests/test_orchestrator.py`).
+- [x] **Unit tests** (deterministic parts): `tests/test_feedback_layer2.py` (mute + listen gate)
+      + `tests/test_orchestrator.py` (sanitize, label strip, buffer cap). **20/20 green.**
 - **Gate:** two people speak → orderly reaction, no feedback loop.
-- **VERIFY EVIDENCE:** _(empty)_
+- **VERIFY EVIDENCE:** _Code + unit tests done (2026-06-05); awaiting the LIVE gate (real-time audio
+  is manual per CLAUDE.md)._ To fill: in a voice channel with **both bots**, two people speak → `!dm`
+  → while Bot A narrates, confirm (a) the DM is **not** re-transcribed (no `📝 Spielleiter…`, no
+  feedback turn) and (b) talking over the narration produces **no** `📝` lines during playback, then
+  capture resumes after. Watch `logs/dmbot.log` (`DM_LOG_FILE=1`). Reaction order: two buffered
+  lines answered in the order spoken.
 
 ### ⬜ Phase 8 — Dice engine, system profile & turn-order buttons
 - [ ] `rules/engine.py` — generic dice + resolution engine (profile-driven) **+ unit tests**

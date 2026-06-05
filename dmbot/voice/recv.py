@@ -255,6 +255,12 @@ class VadSink(PcmLogSink):
         self._on_utterance = on_utterance
         self._resamplers: dict[int, StereoResampler] = {}
         self._segmenters: dict[int, UtteranceSegmenter] = {}
+        self._muted = False  # feedback protection layer 2: True while Bot A speaks (ADR 003)
+        # Push-to-talk gate: when False, drop all audio (don't segment/transcribe). The cog flips
+        # this from a Discord button so the table only transcribes speech meant for the DM —
+        # killing the continuous-transcription backlog. Default True = continuous (legacy) mode;
+        # the cog sets it False at join when push-to-talk is enabled.
+        self._listening = True
 
     def _pipeline_for(
         self, user_id: int, name: str
@@ -272,10 +278,63 @@ class VadSink(PcmLogSink):
         return self._resamplers[user_id], seg
 
     def _on_pcm(self, user_id: int, name: str, pcm: bytes) -> None:  # holds self._lock
+        # Drop audio for two independent reasons:
+        #  - _muted: feedback protection layer 2 (ADR 003) — Bot A is speaking, so we segment
+        #    nothing (not even injected silence) and the DM never transcribes its own voice.
+        #  - not _listening: push-to-talk is disengaged — the table isn't addressing the DM, so we
+        #    skip the speech entirely (no backlog from continuous table talk).
+        # Either way the gate that engaged flushed any open utterance, so the segmenters resume
+        # clean rather than gluing speech across the gap.
+        if self._muted or not self._listening:
+            return
         resampler, seg = self._pipeline_for(user_id, name)
         mono16 = resampler.feed(pcm)
         if mono16.size:
             seg.feed(mono16)
+
+    def _flush_all_locked(self) -> None:
+        """Flush every per-user segmenter — emit any in-progress utterance, then reset to clean.
+        Caller must hold ``self._lock``. Shared by the mute and push-to-talk gates so a gate
+        engaging captures the trailing speech instead of gluing it across the silent gap."""
+        for seg in self._segmenters.values():
+            try:
+                seg.flush()
+            except Exception:
+                log.exception("segmenter flush failed")
+
+    def mute(self) -> None:
+        """Pause segmentation while Bot A speaks (feedback layer 2, ADR 003).
+
+        Called from the event loop around the blocking ``/speak``. Flushes any in-progress
+        utterance first so a player's pre-DM speech is captured (buffered for the next turn)
+        instead of being glued across the DM's playback gap to whatever they say afterwards;
+        thereafter :meth:`_on_pcm` drops every frame until :meth:`unmute`. Idempotent.
+        """
+        with self._lock:
+            if self._muted:
+                return
+            self._muted = True
+            self._flush_all_locked()
+
+    def unmute(self) -> None:
+        """Resume segmentation once Bot A has finished speaking (ADR 003)."""
+        with self._lock:
+            self._muted = False
+
+    def set_listening(self, on: bool) -> None:
+        """Push-to-talk gate: ``True`` = transcribe, ``False`` = drop all audio. Toggled from the
+        Discord mic button. Turning it **off** flushes the open utterance so the last thing said
+        before the press is captured, not lost; turning it on resumes from a clean state."""
+        with self._lock:
+            if on == self._listening:
+                return
+            self._listening = on
+            if not on:  # mic off — capture the trailing utterance, then go quiet
+                self._flush_all_locked()
+
+    @property
+    def listening(self) -> bool:
+        return self._listening
 
     def cleanup(self) -> None:
         # The wrapping SilenceGeneratorSink is cleaned up first (walk_children yields the root

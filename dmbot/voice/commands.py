@@ -27,6 +27,7 @@ from ..llm.client import OllamaClient
 from ..orchestrator import DMBrain
 from ..tts.piper import PiperTTS
 from ..bridge import BridgeClient
+from ..discord_ui.mic import MicToggleView
 
 log = logging.getLogger(__name__)
 
@@ -61,6 +62,8 @@ class VoiceReceiveCog(commands.Cog):
         ollama_host: str = "http://127.0.0.1:11434",
         ollama_model: str = "mistral-nemo",
         dm_num_predict: int = 220,
+        dm_max_lines: int = 8,
+        push_to_talk: bool = True,
         tts_engine: str = "piper",
         tts_voice: str = "",
         tts_speaker: str = "",
@@ -77,7 +80,13 @@ class VoiceReceiveCog(commands.Cog):
         self._dump_utterances = dump_utterances
         self._utterance_counts: dict[int, int] = {}
         self._active_vc_id: int | None = None  # the voice channel we buffer/answer for
-        self._brain = DMBrain(OllamaClient(ollama_host, ollama_model), num_predict=dm_num_predict)
+        self._sink: VadSink | None = None  # set on join; muted while Bot A speaks (layer 2)
+        self._push_to_talk = push_to_talk  # gate transcription behind the mic button (no backlog)
+        self._brain = DMBrain(
+            OllamaClient(ollama_host, ollama_model),
+            num_predict=dm_num_predict,
+            max_buffer_lines=dm_max_lines,
+        )
         self._bridge = BridgeClient(bridge_host, bridge_port, secret=bridge_secret)
         # Load the TTS backend once. xtts is imported lazily so Piper users don't pull torch.
         # If loading fails, keep running text-only (answers still post, just aren't spoken).
@@ -154,12 +163,22 @@ class VoiceReceiveCog(commands.Cog):
         except Exception:
             log.exception("TTS synthesis failed")
             return False
+        # Feedback protection layer 2 (ADR 003): pause the VAD/STT pipeline while Bot A plays the
+        # answer, so the DM never transcribes its own voice (belt-and-braces over the layer-1
+        # user-ID filter) and table talk over the narration isn't captured. /speak blocks until
+        # playback ends (D15), so unmuting in finally reopens the mic exactly when Bot A goes
+        # quiet. Snapshot the sink so a !leave mid-playback still unmutes the one we muted.
+        sink = self._sink
+        if sink is not None:
+            sink.mute()
         try:
             played = await self._bridge.speak(wav, guild_id=guild_id)
             if not played:
                 log.warning("playback did not succeed — is Bot A in the voice channel?")
             return played
         finally:
+            if sink is not None:
+                sink.unmute()
             try:
                 os.remove(wav)
             except OSError:
@@ -255,17 +274,48 @@ class VoiceReceiveCog(commands.Cog):
         vad_sink = VadSink(
             bot_a_user_id=self._bot_a_user_id, on_utterance=self._on_utterance
         )
+        self._sink = vad_sink  # keep the handle so _speak can mute it while Bot A talks (layer 2)
+        if self._push_to_talk:
+            vad_sink.set_listening(False)  # start quiet — the table opts in via the mic button
         sink = voice_recv.SilenceGeneratorSink(vad_sink)
         vc.listen(sink, after=self._on_listen_done)
         self._active_vc_id = channel.id  # buffer transcripts + answer for this channel
 
         log.info(
-            "joined voice '%s' (id=%s) and started VAD pipeline (16k mono + silero)",
-            channel.name, channel.id,
+            "joined voice '%s' (id=%s) and started VAD pipeline (16k mono + silero, push_to_talk=%s)",
+            channel.name, channel.id, self._push_to_talk,
         )
+        if self._push_to_talk:
+            await ctx.send(
+                f"Beigetreten: **{channel.name}**. **Push-to-talk** ist an: tippt den Knopf unten, "
+                f"*bevor* ihr mit der Spielleitung redet, und nochmal, wenn ihr fertig seid "
+                f"(ein Tipp gilt für alle). Dann `!dm` für die Antwort. (Opus: {discord.opus.is_loaded()})",
+                view=MicToggleView(self.toggle_listening, listening=False),
+            )
+        else:
+            await ctx.send(
+                f"Beigetreten: **{channel.name}** — ich höre durchgehend zu. Sprecht, dann `!dm` für "
+                f"die Antwort der Spielleitung (oder `!dm <Text>`). (Opus: {discord.opus.is_loaded()})"
+            )
+
+    async def toggle_listening(self) -> bool:
+        """Flip the push-to-talk gate on the active sink; return the new listening state. Called by
+        the mic button (:class:`MicToggleView`)."""
+        if self._sink is None:
+            return False
+        new_state = not self._sink.listening
+        self._sink.set_listening(new_state)
+        log.info("push-to-talk → %s", "🎙 listening" if new_state else "⏸ paused")
+        return new_state
+
+    @commands.command(name="mic")
+    async def mic(self, ctx: commands.Context) -> None:
+        """Re-post the push-to-talk button (handy when it has scrolled out of view)."""
+        if self._sink is None:
+            await ctx.send("Ich bin in keinem Voice-Channel — erst `!j`.")
+            return
         await ctx.send(
-            f"Beigetreten: **{channel.name}** — ich höre zu. Sprecht, dann `!dm` für die "
-            f"Antwort der Spielleitung (oder `!dm <Text>`). (Opus: {discord.opus.is_loaded()})"
+            "Push-to-talk:", view=MicToggleView(self.toggle_listening, listening=self._sink.listening)
         )
 
     @commands.command(name="leave")
@@ -278,7 +328,14 @@ class VoiceReceiveCog(commands.Cog):
         if isinstance(vc, voice_recv.VoiceRecvClient) and vc.is_listening():
             vc.stop_listening()
         await vc.disconnect()
+        # End the session cleanly: forget this channel's buffered lines + history, drop the sink
+        # handle and the per-user counters, so a later !join starts a fresh session (session
+        # state is per channel, ADR 003).
+        if self._active_vc_id is not None:
+            self._brain.reset(self._active_vc_id)
         self._active_vc_id = None
+        self._sink = None
+        self._utterance_counts.clear()
         await ctx.send("Voice-Channel verlassen.")
 
     @commands.command(name="vstatus")
