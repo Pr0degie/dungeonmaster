@@ -39,17 +39,34 @@ class BridgeClient:
             return None
 
     async def speak(self, wav_path: str, *, guild_id: int | None = None) -> bool:
-        """POST the WAV path and wait for playback to finish. Returns True if it played."""
+        """POST the WAV path and wait for playback to finish. Returns True if it played.
+
+        On failure, log the bridge's *own* reason (its JSON ``error``) plus a hint, so the cause
+        is obvious instead of a generic failure: connection refused = Bot A not running; 404 =
+        Bot A can't see the WAV; 409 = Bot A isn't in the voice channel.
+        """
         payload: dict = {"path": wav_path}
         if guild_id is not None:
             payload["guild_id"] = guild_id
         try:
             resp = await self._client.post(f"{self._base}/speak", json=payload)
-            resp.raise_for_status()
-            return resp.json().get("status") == "played"
         except httpx.HTTPError as exc:
-            log.error("bridge /speak failed (%s) for %s", exc, wav_path)
+            log.error(
+                "bridge /speak unreachable (%s) — is Bot A running on %s?", exc, self._base
+            )
             return False
+        if resp.status_code == 200:
+            return resp.json().get("status") == "played"
+        try:
+            reason = resp.json().get("error", resp.text)
+        except ValueError:
+            reason = resp.text
+        hint = {
+            404: " — Bot A can't find the WAV (both bots on the same machine / shared temp dir?)",
+            409: " — Bot A is not in the voice channel; make Bot A join it too (not just DMbot)",
+        }.get(resp.status_code, "")
+        log.error("bridge /speak refused: HTTP %s %r%s", resp.status_code, reason, hint)
+        return False
 
     async def aclose(self) -> None:
         await self._client.aclose()
