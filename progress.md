@@ -9,11 +9,13 @@ met and the proof is recorded here.
 feedback layer 1, GPU whisper, transcription during DM speech — all working. Most of this session
 was **playtest-driven quality tuning** from the players' wishes (read off `transcript.log`): killed
 the "Als Spielleitung beschreibe ich" preamble, fixed POV (ihr/euch, not wir/uns), named action
-attribution, no auto-advance, no read-aloud disclaimers, varied hooks, `!redo`, mic button anchored
-to the bottom, and an XTTS chunking fix for the mid-sentence audio cut-off. **Next: Phase 8** — dice
-engine + IM profile + turn buttons (read ADR 005 + 004 + 001). Recommended dial: **Opus 4.8 / xhigh**.
-The remaining persona drift is **model-limited** (nemo) — the gemma3:12b taste test is the quality
-lever to try alongside.
+attribution, no auto-advance / "goldene Mitte", no read-aloud disclaimers, varied hooks, `!redo`,
+mic button anchored to the bottom, an XTTS chunking fix for the mid-sentence audio cut-off, and —
+the players' top request — **releasing the mic button now auto-runs the DM turn** (waits for the
+just-said speech to transcribe first; no `!dm`). **Next: Phase 8** — dice engine + IM profile + turn
+buttons (read ADR 005 + 004 + 001). Recommended dial: **Opus 4.8 / xhigh**. The remaining persona
+drift is **model-limited** (nemo) — the gemma3:12b taste test is the quality lever to try alongside
+(Tobi: **deferred, not now**).
 
 ## Last session
 **Phase 7 (feedback layer 2) implemented + a music-bot bridge race fixed (2026-06-05, later).**

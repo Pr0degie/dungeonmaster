@@ -58,6 +58,7 @@ were spoken*, not whenever the async transcript returns.
   and nothing reaches the DM (the join message + `→DM` marker + `!mic` re-post mitigate);
   `DM_PUSH_TO_TALK=0` routes everything. First `discord_ui/` View — the View→cog callback pattern is
   the template for the Phase-8 dice/turn buttons.
-- **Later:** a wake word can replace the button (it just flips `self._dm_listening`); pressing the
-  gate off could optionally auto-trigger the `!dm` turn; and a stale-backlog drop covers the busy-
-  table case.
+- **Later / done:** pressing the gate off auto-triggers the DM turn — **now implemented**
+  (`DM_BUTTON_AUTOSEND=1`, waits on `Transcriber.wait_idle` so the last utterance is included). A wake
+  word can still replace the button later (it just flips `self._dm_listening`); a stale-backlog drop
+  covers the busy-table case if continuous transcription ever falls behind.
