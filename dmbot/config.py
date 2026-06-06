@@ -39,6 +39,7 @@ class Config:
     dm_max_lines: int
     push_to_talk: bool
     pause_vad_while_speaking: bool
+    button_autosend: bool
 
     @classmethod
     def load(cls) -> "Config":
@@ -120,5 +121,9 @@ class Config:
             # still stops the DM transcribing its own voice. Set DM_PAUSE_VAD_WHILE_SPEAKING=1 to
             # restore the pause (e.g. if mic-to-speaker bleed becomes a problem).
             pause_vad_while_speaking=os.environ.get("DM_PAUSE_VAD_WHILE_SPEAKING", "0").strip().lower()
+            in ("1", "true", "yes", "on"),
+            # Releasing the mic button auto-runs the DM turn (no separate !dm). On by default; the
+            # turn first waits for the just-said utterances to transcribe. DM_BUTTON_AUTOSEND=0 off.
+            button_autosend=os.environ.get("DM_BUTTON_AUTOSEND", "1").strip().lower()
             in ("1", "true", "yes", "on"),
         )

@@ -65,6 +65,7 @@ class VoiceReceiveCog(commands.Cog):
         dm_max_lines: int = 8,
         push_to_talk: bool = True,
         pause_vad_while_speaking: bool = False,
+        button_autosend: bool = True,
         tts_engine: str = "piper",
         tts_voice: str = "",
         tts_speaker: str = "",
@@ -91,6 +92,9 @@ class VoiceReceiveCog(commands.Cog):
         # Layer-2 feedback pause (opt-in, off by default): pause the VAD while Bot A speaks. Off so
         # the table keeps being transcribed during narration; layer 1 still blocks self-hearing.
         self._pause_vad_while_speaking = pause_vad_while_speaking
+        # Release the mic button → auto-run the DM turn (no separate !dm). On by default; the turn
+        # waits for the just-said utterances to transcribe first. DM_BUTTON_AUTOSEND=0 disables it.
+        self._button_autosend = push_to_talk and button_autosend
         self._brain = DMBrain(
             OllamaClient(ollama_host, ollama_model),
             num_predict=dm_num_predict,
@@ -202,6 +206,32 @@ class VoiceReceiveCog(commands.Cog):
             except OSError:
                 pass
 
+    async def _send_with_retry(self, channel, content: str):
+        """Send a message, retrying once on a transient Discord 5xx (e.g. the 503 seen mid-session)."""
+        try:
+            return await channel.send(content)
+        except discord.HTTPException as exc:
+            if (getattr(exc, "status", 0) or 0) < 500:
+                raise
+            log.warning("Discord send failed (HTTP %s) — retrying once", getattr(exc, "status", "?"))
+            await asyncio.sleep(1.0)
+            try:
+                return await channel.send(content)
+            except discord.HTTPException:
+                log.warning("Discord send retry also failed — dropping the message", exc_info=True)
+                return None
+
+    async def _deliver_answer(self, channel, guild_id: int | None, answer: str, llm_ms: int,
+                              *, redo: bool = False) -> None:
+        """Log, post (5xx-resilient), speak, and re-anchor the mic button — shared by all turns."""
+        log.info("🎭 %s", answer)  # rendered prominently in the console
+        log.info("⏱ LLM %d ms%s", llm_ms, " (redo)" if redo else "")
+        await self._send_with_retry(channel, answer)
+        await self._speak(answer, guild_id)
+        # Keep the mic button reachable: move it back to the bottom after the message + speech.
+        if self._push_to_talk and self._sink is not None:
+            await self._post_mic_button(channel)
+
     @commands.command(name="dm")
     async def dm(self, ctx: commands.Context, *, text: str = "") -> None:
         """Run a DM turn. `!dm` answers the buffered voice lines; `!dm <Text>` answers text."""
@@ -223,14 +253,7 @@ class VoiceReceiveCog(commands.Cog):
         if not answer:
             await ctx.send("(Nichts zu beantworten.)")
             return
-        log.info("🎭 %s", answer)  # rendered prominently in the console
-        log.info("⏱ LLM %d ms", llm_ms)
-        await ctx.send(answer)
-        await self._speak(answer, ctx.guild.id if ctx.guild else None)
-        # Keep the mic button reachable: move it back to the bottom after the DM's message + speech
-        # pushed it up (players asked for this).
-        if self._push_to_talk and self._sink is not None:
-            await self._post_mic_button(ctx.channel)
+        await self._deliver_answer(ctx.channel, ctx.guild.id if ctx.guild else None, answer, llm_ms)
 
     @commands.command(name="redo", aliases=["r"])
     async def redo(self, ctx: commands.Context) -> None:
@@ -248,12 +271,37 @@ class VoiceReceiveCog(commands.Cog):
         if not answer:
             await ctx.send("Nichts zum Wiederholen — erst eine Runde mit `!dm` spielen.")
             return
-        log.info("🎭 %s", answer)
-        log.info("⏱ LLM %d ms (redo)", llm_ms)
-        await ctx.send(answer)
-        await self._speak(answer, ctx.guild.id if ctx.guild else None)
-        if self._push_to_talk and self._sink is not None:
-            await self._post_mic_button(ctx.channel)
+        await self._deliver_answer(
+            ctx.channel, ctx.guild.id if ctx.guild else None, answer, llm_ms, redo=True
+        )
+
+    async def _auto_dm_turn(self, channel, guild_id: int | None) -> None:
+        """Auto-trigger a DM turn when the mic button is released (push-to-talk). Waits for the
+        just-said utterances to finish transcribing (so the last thing said is included), then
+        answers if anything was routed to the DM. Silent no-op when nothing was — no nagging."""
+        channel_id = self._active_vc_id if self._active_vc_id is not None else channel.id
+        await asyncio.to_thread(self._transcriber.wait_idle, 4.0)  # let the final utterance land
+        if self._brain.pending_count(channel_id) == 0:
+            return
+        try:
+            t0 = time.perf_counter()
+            answer = await self._brain.respond(channel_id)
+            llm_ms = round((time.perf_counter() - t0) * 1000)
+        except Exception:
+            log.exception("DM turn failed (auto)")
+            await self._send_with_retry(channel, "(Der Spielleiter schweigt — Fehler, siehe Log.)")
+            return
+        if answer:
+            await self._deliver_answer(channel, guild_id, answer, llm_ms)
+
+    async def _on_mic_stop(self, interaction: discord.Interaction) -> None:
+        """Mic button released → optionally run the DM turn automatically (players asked for this)."""
+        if not self._button_autosend:
+            return
+        try:
+            await self._auto_dm_turn(interaction.channel, interaction.guild_id)
+        except Exception:
+            log.exception("auto DM turn after mic release failed")
 
     @commands.command(name="say")
     async def say(self, ctx: commands.Context, *, text: str) -> None:
@@ -330,11 +378,16 @@ class VoiceReceiveCog(commands.Cog):
             channel.name, channel.id, self._push_to_talk,
         )
         if self._push_to_talk:
+            close = (
+                "wenn ihr fertig seid – **dann antwortet die Spielleitung automatisch** (kein `!dm` nötig)"
+                if self._button_autosend
+                else "wenn ihr fertig seid (ein Tipp gilt für alle), dann `!dm`"
+            )
             await ctx.send(
                 f"Beigetreten: **{channel.name}**. Ich schreibe **alles** mit (Protokoll im Log), "
                 f"aber nur was im **Knopf-Fenster** gesagt wird, geht an die Spielleitung: tippt den "
-                f"Knopf *bevor* ihr mit ihr redet und nochmal, wenn ihr fertig seid (ein Tipp gilt "
-                f"für alle), dann `!dm`. (Opus: {discord.opus.is_loaded()})"
+                f"Knopf *bevor* ihr mit ihr redet und nochmal, {close}. "
+                f"(Opus: {discord.opus.is_loaded()})"
             )
             await self._post_mic_button(ctx.channel)
         else:
@@ -366,7 +419,9 @@ class VoiceReceiveCog(commands.Cog):
             except discord.HTTPException:
                 pass
             self._mic_message = None
-        view = MicToggleView(self.toggle_listening, listening=self._dm_listening)
+        view = MicToggleView(
+            self.toggle_listening, listening=self._dm_listening, on_stop=self._on_mic_stop
+        )
         try:
             self._mic_message = await channel.send("🎙 Push-to-talk:", view=view)
         except discord.HTTPException:

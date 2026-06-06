@@ -83,6 +83,15 @@ lever to try alongside.
   ("ich würfle für Tobi auf Spurenlesen, Wert 6, Ziel 12 — nicht geschafft"); skill-check
   **difficulty** must come from the system profile / rulebook, the LLM can't balance it on the fly.
   Confirms "dice = code" (golden rule #2) — fold into ADR 005 / the engine when building Phase 8.
+- **Fifth live session → mic-button auto-send (L) + polish.** Persona fixes confirmed working
+  (clean answers, no preamble, good POV, NSCs in 3rd person — players: "beste Story die wir je
+  hatten"). Built their most-repeated request: **releasing the mic button now auto-runs the DM
+  turn** (`DM_BUTTON_AUTOSEND=1`) — no separate `!dm` — and it **waits for the just-said utterances
+  to finish transcribing** first (new `Transcriber.wait_idle`), fixing the "it answered in the next
+  message instead" race. **(M)** persona balance: lead the scene actively (introduce NSCs/events that
+  follow from the group's actions) without railroading — counterweight to the "don't auto-advance"
+  rule. **(N)** transient Discord `503` on send (seen mid-session) now retried once (`_send_with_retry`).
+  Suite **29/29**.
 
 **(Earlier same day) GPU XTTS via CUDA torch + portable per-machine GPU profiles (non-Phase work, ADR 009).** The
 GPU rebalance (whisper→CPU, XTTS→cuda) crashed at first: the venv's torch was the **CPU-only**

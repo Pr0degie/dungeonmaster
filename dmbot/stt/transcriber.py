@@ -132,6 +132,10 @@ class Transcriber:
         self._thread: threading.Thread | None = None
         self._model: WhisperModel | None = None
         self._stop = threading.Event()  # set on shutdown so the worker exits promptly
+        # In-flight accounting so the cog can wait for just-submitted utterances to finish
+        # transcribing before an auto-triggered DM turn (push-to-talk button release).
+        self._pending = 0
+        self._idle = threading.Condition()
 
     def start(self) -> None:
         """Start the worker thread (it loads the model in the background)."""
@@ -147,7 +151,16 @@ class Transcriber:
     ) -> None:
         """Hand one utterance to the worker (non-blocking). ``clip_s`` is its audio length;
         ``for_dm`` carries whether this utterance should reach the DM (push-to-talk gate)."""
+        with self._idle:
+            self._pending += 1
         self._queue.put((name, pcm_s16le_mono_16k, clip_s, for_dm))
+
+    def wait_idle(self, timeout: float = 3.0) -> bool:
+        """Block until every submitted utterance has been transcribed (or ``timeout`` s elapse).
+        Used before an auto-triggered DM turn so the last thing said is in the buffer. Returns True
+        if it drained in time."""
+        with self._idle:
+            return self._idle.wait_for(lambda: self._pending == 0, timeout=timeout)
 
     def stop(self) -> None:
         """Signal the worker to exit ASAP and wait briefly.
@@ -199,6 +212,10 @@ class Transcriber:
                 self._transcribe_one(name, pcm, clip_s, for_dm)
             except Exception:
                 log.exception("transcription failed for %s", name)
+            finally:
+                with self._idle:
+                    self._pending = max(0, self._pending - 1)
+                    self._idle.notify_all()
 
     def _transcribe_one(self, name: str, pcm: bytes, clip_s: float, for_dm: bool) -> None:
         # s16le mono → float32 [-1, 1), what faster-whisper expects as a raw array.

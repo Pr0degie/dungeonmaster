@@ -145,8 +145,9 @@ Prefix is `!`. Type them in any text channel the bot can read.
 
 > **Push-to-talk** (default `DM_PUSH_TO_TALK=1`): tap the **🎙 button** posted on `!join` *before*
 > you speak to the DM and again when you're done — only that speech reaches the DM, while the whole
-> table is still transcribed to `logs/transcript.log`. One tap counts for everyone. `!mic` brings
-> the button back if it scrolled out of view.
+> table is still transcribed to `logs/transcript.log`. One tap counts for everyone. Releasing the
+> button **auto-runs the DM turn** (no `!dm` needed; `DM_BUTTON_AUTOSEND=0` to disable) — it waits
+> for the just-said speech to transcribe first. `!mic` brings the button back if it scrolled away.
 
 ## Configuration (`.env`)
 
