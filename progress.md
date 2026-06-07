@@ -4,9 +4,11 @@ Living status document. A phase counts as done only when its **verification gate
 met and the proof is recorded here.
 
 ## Current focus
-**Phases 0–7 complete + Phase 8 code-complete** ⭐. Phases 0–7 are live-validated (the DM is playable
-and turn-managed). **Phase 8 (dice engine, IM profile, marker flow, turn-order buttons) is now built
-and unit-proven (suite 63/63), live gate pending.** The deterministic core honours "dice = code":
+**Phases 0–7 complete + Phase 8 code-complete & rulebook-verified** ⭐. Phases 0–7 are live-validated
+(the DM is playable and turn-managed). **Phase 8 (dice engine, IM profile, marker flow, turn-order
+buttons) is built, unit-proven (suite 64/64) and the IM numbers are verified against the bought Core
+Rulebook** (converted via the new `tools/pdf_to_md.py`); only the live Discord gate is pending. The
+deterministic core honours "dice = code":
 the LLM requests a test by *naming* a skill + a difficulty *word* (`<<TEST Wahrnehmung Schwer für
 Tobi>>`), and the generic engine resolves the target (skill value from the character JSON + the
 difficulty modifier from the profile ladder), rolls, computes the success level, and feeds the
@@ -452,7 +454,7 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   seeded RNG (success/fail boundaries, SL tens-difference, crit/fumble on doubles, auto-bands, the
   d100-as-"00" case) and the full marker→resolve→roll path verified end to end against the real IM
   profile + example party (`<<TEST Wahrnehmung Schwer für Tobi>>` → Mortn, Wahrnehmung 44 − Schwer 20 =
-  target 24 → roll 42 → "Fehlschlag, 2 EG"). **Suite 63/63.** _Pending (Tobi, live Discord run):_ click a
+  target 24 → roll 42 → "Fehlschlag, 2 EG"). **Suite 64/64.** _Pending (Tobi, live Discord run):_ click a
   dice button in-channel and confirm the posted result + degrees, that a DM `<<TEST>>` auto-posts a
   button and the consequence is narrated, and that `!turn` rotates over the voice members.
 
@@ -468,6 +470,13 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 - [ ] Profile bootstrap: DM proposes a draft system profile from the rulebook → user confirms → saved
 - **Gate:** a concrete rule question answered correctly from the PDF; a fresh ruleset yields a working profile.
 - **VERIFY EVIDENCE:** _(empty)_
+- _Groundwork done:_ `tools/pdf_to_md.py` (`pymupdf4llm`) converts a rulebook PDF → Markdown
+  (`data/pdfs/md/`, gitignored) as the ingestion front-end. The bought IM Core Rulebook is already
+  converted. **Tool decision (Tobi 2026-06-07):** stay with `pymupdf4llm` until Phase 10 *or* until it
+  causes problems; only then benchmark vs **Marker / Docling / MinerU** (ML+OCR, GPU — better on
+  image/table-heavy pages) and, if switching, add a `--backend` flag rather than a second script. Note:
+  IM tables can be **embedded images** (the Difficulty Table was) — `pymupdf4llm` does no real OCR, so
+  table extraction is the thing to spot-check when building ingestion.
 
 ---
 
