@@ -105,11 +105,11 @@ The dice engine, `!test` and the unit tests already run against an **example par
       `aliases` map (Discord display name → character name, e.g. `"SezBoss69": "Seskin"` — this is
       what fixes the model confusing player/character names). The channel id is the **voice** channel's
       id (right-click → Copy ID with Developer Mode on).
-- [ ] **Sanity-check the IM difficulty ladder + SL/crit numbers** in
-      `data/systems/imperium_maledictum.json` against the **Imperium Maledictum rulebook**. They're a
-      plausible WFRP-/d100-lineage default (flagged in the file's `_note`), not yet verified — edit the
-      numbers there if the rulebook differs. (Phase 10's RAG profile bootstrap will later propose these
-      from the PDF automatically.)
+- [x] **IM difficulty ladder + SL/auto-band numbers verified** against the Core Rulebook (2026-06-07,
+      via `tools/pdf_to_md.py` on the bought PDF) and corrected in
+      `data/systems/imperium_maledictum.json` (see its `_note`). Nothing more to do here unless you want
+      to tweak labels. (Phase 10's RAG profile bootstrap will later propose such profiles from the PDF
+      automatically.)
 
 ---
 

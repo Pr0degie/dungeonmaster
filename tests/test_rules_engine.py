@@ -83,19 +83,20 @@ def test_double_on_failure_is_a_fumble() -> None:
     assert not r.success and r.fumble and not r.critical and r.degrees == -1
 
 
-def test_auto_success_band_overrides_a_miss() -> None:
-    r = engine.resolve_test(_IM, 1, _Seq(3))  # 3 > 1 would fail, but 3 ≤ 5 → forced success
-    assert r.success and r.auto
+def test_auto_success_band_is_marginal() -> None:
+    r = engine.resolve_test(_IM, 1, _Seq(3))  # 3 > 1 would fail, but 3 ≤ 5 → forced Marginal success
+    assert r.success and r.auto and r.degrees == 0 and not r.critical
 
 
-def test_auto_fail_band_overrides_a_hit() -> None:
-    r = engine.resolve_test(_IM, 99, _Seq(98))  # 98 ≤ 99 would pass, but 98 ≥ 96 → forced fail
-    assert not r.success and r.auto
+def test_auto_fail_band_is_marginal() -> None:
+    r = engine.resolve_test(_IM, 99, _Seq(98))  # 98 ≤ 99 would pass, but 98 ≥ 96 → forced Marginal fail
+    assert not r.success and r.auto and r.degrees == 0 and not r.fumble
 
 
-def test_hundred_is_a_double_and_renders_as_00() -> None:
-    r = engine.resolve_test(_IM, 50, _Seq(100))  # 100 > 50 fail, double, auto-fail band
-    assert not r.success and r.fumble and r.auto
+def test_hundred_renders_as_00_and_is_marginal_auto_fail() -> None:
+    # 100 ("00") is always in the auto-fail band, so it's a Marginal Failure — no fumble (IM p.188).
+    r = engine.resolve_test(_IM, 50, _Seq(100))
+    assert not r.success and r.auto and not r.fumble and r.degrees == 0
     assert "00" in engine.describe_result_de(r, skill="Wahrnehmung", character="Tobi")
 
 

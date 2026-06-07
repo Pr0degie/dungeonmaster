@@ -25,8 +25,12 @@ validate `data/systems/<system>.json`, difficulty-ladder lookup), `engine.py` (s
 doubles, 01–05 / 96–00 auto-bands; `describe_result_de`), `characters.py` (lean character JSON store +
 alias map + pure `resolve_target`: skill value + difficulty → target, all in code), `marker.py`
 (tolerant `<<TEST …>>` parser, strips markers, fallback to a manual button). First profile
-`data/systems/imperium_maledictum.json` (1d100 roll-under, ladder, d10/d5 — numbers flagged to verify
-vs the rulebook in Phase 10) + an example party `data/sessions/_example/characters.json`. Two new
+`data/systems/imperium_maledictum.json` (1d100 roll-under, ladder, auto-bands) + an example party
+`data/sessions/_example/characters.json`. **The IM numbers were then verified against the bought Core
+Rulebook** (converted via the new `tools/pdf_to_md.py`): the Difficulty Table (Very Easy +60 … Very
+Hard −30), SL = tens-difference, 01–05/96–00 auto-bands as Marginal (engine now sets SL 0 + no
+crit/fumble on an auto result), crit/fumble-on-doubles is IM's combat rule, damage = weapon + SL (the
+inherited d10/d5 guess was wrong — corrected). Two new
 Discord views (`discord_ui/dice.py` + `turnorder.py`) on the `mic.py` View→cog pattern, new commands
 `!roll`/`!test`/`!turn`, `DM_SYSTEM` env. Orchestrator extended: it extracts markers (before the
 sentence-trim, which would otherwise eat a trailing marker), surfaces pending tests, feeds rolled
@@ -179,9 +183,9 @@ unit-proven (63/63); the gate needs a real run: `!j`, then **(a)** `!test Wahrne
 that makes the DM emit `<<TEST …>>` → confirm a dice button auto-appears and, after the click, the DM
 narrates the consequence; **(c)** `!turn` → confirm the order rotates over the voice members. Fill the
 Phase-8 `VERIFY EVIDENCE` once seen live, flip it to ✅. _Setup before the run:_ transfer the real party
-sheets into `data/sessions/<voice-channel-id>/characters.json` (else the example party stands in) and
-sanity-check the IM difficulty ladder in `data/systems/imperium_maledictum.json` against the rulebook
-(see `docs/SETUP.md`). **Then Phase 9 — memory (JSON state + recaps):** read ADR 004 first; HP/wounds
+sheets into `data/sessions/<voice-channel-id>/characters.json` (else the example party stands in). _(The
+IM difficulty ladder/SL/auto-bands are already verified against the bought rulebook — see the profile
+`_note`.)_ **Then Phase 9 — memory (JSON state + recaps):** read ADR 004 first; HP/wounds
 advance deterministically in code, recaps by the LLM. Dial: **Opus 4.8 / xhigh**.
 
 **In parallel — the gemma3:12b taste test** (quick, high-leverage): set `OLLAMA_MODEL=gemma3:12b`
@@ -424,9 +428,12 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
       Dice parser (`XdY±N`, `d5`), `resolve_test` via a resolver registry (IM `roll_under` first), SL =
       tens-difference, crit/fumble on doubles, 01–05 / 96–00 auto-bands, `describe_result_de` (the
       "🎲 Tobi auf Wahrnehmung … — Erfolg, 2 EG" line that feeds back into the prompt).
-- [x] `data/systems/imperium_maledictum.json` — first hand-written profile (1d100 roll-under, SL,
-      d10/d5) + a **difficulty ladder** (name → modifier) + aliases. Loader/validator `rules/profile.py`.
-      _Numbers flagged in a `_note` to verify against the rulebook (Phase 10)._
+- [x] `data/systems/imperium_maledictum.json` — first hand-written profile (1d100 roll-under, SL =
+      tens-difference) + the **difficulty ladder** (name → modifier) + aliases. Loader/validator
+      `rules/profile.py`. **Numbers now VERIFIED against the IM Core Rulebook** (Difficulty Table p.188,
+      Success Levels, Automatic Success/Failure) — ladder Very Easy +60 … Very Hard −30, auto-bands
+      01–05/96–00 (Marginal → SL 0), crit/fumble-on-doubles noted as IM's combat rule, damage =
+      weapon Damage + SL (not d10/d5). Done via `tools/pdf_to_md.py` on the bought PDF (2026-06-07).
 - [x] `rules/characters.py` — lean character JSON store (schema follows the profile) + display-name→
       character **alias map** (fixes F) + pure `resolve_target` (skill value + difficulty → target, all
       in code). Example party `data/sessions/_example/characters.json` ships so it runs out of the box.
@@ -498,7 +505,7 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 - ✅ **(K) Dice/skill-check design — realised in Phase 8 (ADR 012).** The GM rolls **for** the player
   and the difficulty number comes from the profile ladder, never the LLM: marker names a skill +
   difficulty *word* → `rules/characters.resolve_target` (skill value + ladder modifier) → engine.
-  _Verify live; sanity-check the IM ladder vs the rulebook (Phase 10 RAG bootstrap will confirm)._
+  _The IM ladder/SL/auto-bands are verified against the bought rulebook (2026-06-07); verify the live feel._
 - **Latency grows with context** as history accumulates; the 20-turn cap helps but recaps (Phase 9)
   are the real fix. Watch; don't act yet.
 

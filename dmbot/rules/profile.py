@@ -40,7 +40,7 @@ class SystemProfile:
     crit: str = ""
     auto_success_max: int = 0   # rolls <= this always succeed (0 = no band). IM: 5.
     auto_fail_min: int = 0      # rolls >= this always fail (0 = no band). IM: 96.
-    damage: dict[str, str] = field(default_factory=dict)
+    damage: "str | dict" = ""   # free-text ("weapon_damage + SL") or structured, per architecture §9
     character_schema: dict = field(default_factory=dict)
     raw: dict = field(default_factory=dict)  # full source dict, for forward-compat reads
 
@@ -65,7 +65,7 @@ class SystemProfile:
             crit=data.get("crit", ""),
             auto_success_max=int(data.get("auto_success_max", 0)),
             auto_fail_min=int(data.get("auto_fail_min", 0)),
-            damage=dict(data.get("damage", {}) or {}),
+            damage=data.get("damage", "") or "",
             character_schema=dict(data.get("character_schema", {}) or {}),
             raw=dict(data),
         )

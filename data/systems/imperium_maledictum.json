@@ -7,38 +7,42 @@
   "degrees": "tens_difference",
   "default_difficulty": "Herausfordernd",
   "difficulty_ladder": {
-    "Sehr einfach": 60,
-    "Einfach": 40,
-    "Durchschnittlich": 20,
+    "Sehr leicht": 60,
+    "Leicht": 40,
+    "Routine": 20,
     "Herausfordernd": 0,
     "Schwierig": -10,
     "Schwer": -20,
     "Sehr schwer": -30
   },
   "difficulty_aliases": {
-    "trivial": "Sehr einfach",
-    "leicht": "Einfach",
-    "normal": "Durchschnittlich",
-    "mittel": "Durchschnittlich",
-    "standard": "Herausfordernd",
+    "very easy": "Sehr leicht",
+    "trivial": "Sehr leicht",
+    "sehr einfach": "Sehr leicht",
+    "easy": "Leicht",
+    "einfach": "Leicht",
+    "routine": "Routine",
+    "gewöhnlich": "Routine",
+    "challenging": "Herausfordernd",
+    "normal": "Herausfordernd",
+    "mittel": "Herausfordernd",
     "fordernd": "Herausfordernd",
+    "difficult": "Schwierig",
     "knifflig": "Schwierig",
+    "hard": "Schwer",
     "hart": "Schwer",
-    "sehr hart": "Sehr schwer",
+    "very hard": "Sehr schwer",
     "brutal": "Sehr schwer"
   },
   "crit": "doubles",
   "auto_success_max": 5,
   "auto_fail_min": 96,
-  "damage": {
-    "default": "1d10",
-    "half": "1d5"
-  },
+  "damage": "weapon_damage + SL (reduced by armour on the hit location)",
   "character_schema": {
     "characteristics": ["WS", "BS", "Str", "Tgh", "Ag", "Int", "Per", "Wil", "Fel"],
     "resource": "wounds",
     "skills": "list"
   },
-  "_note": "Hand-written first profile (ADR 005, Phase 8). The difficulty ladder, SL rule, crit/auto-band thresholds and damage dice follow the WFRP4e/d100 lineage IM is built on, but were NOT yet verified against the IM rulebook PDF (RAG lands in Phase 10). VERIFY these numbers against the rulebook and edit here — the engine reads them from this file, nothing is hardcoded.",
-  "_source": "to-verify: Imperium Maledictum core rulebook (Cubicle 7)"
+  "_note": "VERIFIED against the Imperium Maledictum Core Rulebook (Cubicle 7), Rules chapter: the Difficulty Table (p.188; Very Easy +60 / Easy +40 / Routine +20 / Challenging +0 / Difficult -10 / Hard -20 / Very Hard -30 — the ladder labels here are the German play-language names mapping to those rungs, with the English names + synonyms as aliases), Success Levels (SL = tens digit of the Skill incl. difficulty minus tens digit of the result), and Automatic Success/Failure (01-05 always succeed, 96-00 always fail, both Marginal). NOTE: crit/fumble on doubles is IM's COMBAT rule (a double on a Melee/Ranged attack Test with positive SL = Critical; on a failure = Fumble) — the engine flags doubles on every test, the GM applies it in combat. Damage = weapon Damage + SL, not a die roll.",
+  "_source": "Imperium Maledictum Core Rulebook (Cubicle 7) — Rules: Difficulty Table p.188, Success Levels p.187, Automatic Success and Failure p.188, Criticals/Fumbles p.213, Dealing Damage p.214"
 }

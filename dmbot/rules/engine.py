@@ -100,8 +100,9 @@ def resolve_roll_under(profile: SystemProfile, target: int, rng: random.Random |
         success, auto = True, True
     elif profile.auto_fail_min and face >= profile.auto_fail_min:
         success, auto = False, True
-    degrees = _tens(target) - _tens(face) if profile.degrees == "tens_difference" else 0
-    double = profile.crit == "doubles" and _is_double(face)
+    # Auto-band results are a "Marginal Success/Failure": SL 0, and no crit/fumble (IM p.188).
+    degrees = 0 if auto else (_tens(target) - _tens(face) if profile.degrees == "tens_difference" else 0)
+    double = not auto and profile.crit == "doubles" and _is_double(face)
     return TestResult(
         roll=face, target=target, success=success, degrees=degrees,
         critical=double and success, fumble=double and not success,

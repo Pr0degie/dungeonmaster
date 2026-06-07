@@ -63,9 +63,14 @@ number comes from, whether character stats exist yet, and how to seed turn order
 - **Binding:** the profile must carry a `difficulty_ladder` + `default_difficulty`; the character
   JSON schema follows the active profile (D12); the persona now documents the marker grammar and
   the allowed difficulty words.
-- **To verify against the rulebook (Phase 10 RAG bootstrap):** the IM difficulty ladder, SL rule,
-  crit/auto-band thresholds and damage dice are a plausible WFRP-/d100-lineage **default**, not yet
-  confirmed against the IM PDF. They live in `data/systems/imperium_maledictum.json` (a `_note`
-  flags this) and are trivially editable — nothing is hardcoded.
+- **Verified against the rulebook (2026-06-07):** the IM Core Rulebook was converted with the new
+  `tools/pdf_to_md.py` and the profile numbers confirmed/corrected against it — Difficulty Table
+  (Very Easy +60 … Very Hard −30), SL = tens-difference, Automatic Success/Failure 01–05/96–00 as
+  *Marginal* (engine now sets SL 0 + suppresses crit/fumble on an auto result). Two corrections:
+  crit/fumble-on-doubles is IM's **combat** rule (a double on a Melee/Ranged attack Test with
+  positive SL = Critical; on a failure = Fumble) — flagged, not silently universal; and damage is
+  **weapon Damage + SL**, not the inherited d10/d5 guess. Everything still lives in the editable
+  profile JSON — nothing hardcoded. (Phase 10's RAG bootstrap will later propose such profiles
+  from the PDF automatically.)
 - **Prerequisite (human):** transfer the real party's sheets into `characters.json` once
   (`docs/SETUP.md`); until then the example party stands in.

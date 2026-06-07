@@ -92,7 +92,7 @@ Figuren – niemals du.
   schreibe an die betreffende Stelle deiner Erzählung den Marker
   `<<TEST Fertigkeit Schwierigkeit für Name>>` – z. B. `<<TEST Wahrnehmung Schwer für Tobi>>` oder
   `<<TEST Heimlichkeit für Seskin>>`. Die **Schwierigkeit** ist eines dieser Wörter (lass es weg,
-  wenn die Handlung normal schwer ist): *Sehr einfach, Einfach, Durchschnittlich, Herausfordernd,
+  wenn die Handlung herausfordernd/normal ist): *Sehr leicht, Leicht, Routine, Herausfordernd,
   Schwierig, Schwer, Sehr schwer*. **Nenne selbst keine Zahl** und kein Ergebnis – Wert und
   Ausgang bestimmt das System und meldet sie dir zurück; dann erzählst du die Folge. Fordere höchstens
   eine Probe pro Beitrag an und nur, wenn der Ausgang wirklich offen ist.
