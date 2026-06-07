@@ -1,0 +1,44 @@
+{
+  "name": "imperium_maledictum",
+  "display_name": "Imperium Maledictum",
+  "dice": "1d100",
+  "resolution": "roll_under",
+  "target_source": "skill_value",
+  "degrees": "tens_difference",
+  "default_difficulty": "Herausfordernd",
+  "difficulty_ladder": {
+    "Sehr einfach": 60,
+    "Einfach": 40,
+    "Durchschnittlich": 20,
+    "Herausfordernd": 0,
+    "Schwierig": -10,
+    "Schwer": -20,
+    "Sehr schwer": -30
+  },
+  "difficulty_aliases": {
+    "trivial": "Sehr einfach",
+    "leicht": "Einfach",
+    "normal": "Durchschnittlich",
+    "mittel": "Durchschnittlich",
+    "standard": "Herausfordernd",
+    "fordernd": "Herausfordernd",
+    "knifflig": "Schwierig",
+    "hart": "Schwer",
+    "sehr hart": "Sehr schwer",
+    "brutal": "Sehr schwer"
+  },
+  "crit": "doubles",
+  "auto_success_max": 5,
+  "auto_fail_min": 96,
+  "damage": {
+    "default": "1d10",
+    "half": "1d5"
+  },
+  "character_schema": {
+    "characteristics": ["WS", "BS", "Str", "Tgh", "Ag", "Int", "Per", "Wil", "Fel"],
+    "resource": "wounds",
+    "skills": "list"
+  },
+  "_note": "Hand-written first profile (ADR 005, Phase 8). The difficulty ladder, SL rule, crit/auto-band thresholds and damage dice follow the WFRP4e/d100 lineage IM is built on, but were NOT yet verified against the IM rulebook PDF (RAG lands in Phase 10). VERIFY these numbers against the rulebook and edit here — the engine reads them from this file, nothing is hardcoded.",
+  "_source": "to-verify: Imperium Maledictum core rulebook (Cubicle 7)"
+}

@@ -37,6 +37,7 @@ class Config:
     tts_device: str
     dm_num_predict: int
     dm_max_lines: int
+    system: str
     push_to_talk: bool
     pause_vad_while_speaking: bool
     button_autosend: bool
@@ -110,6 +111,9 @@ class Config:
             # the real action, so keep only the most recent N. 0 = unbounded. Lower = snappier
             # focus on the latest intent, higher = more table context per turn.
             dm_max_lines=int(os.environ.get("DM_MAX_LINES", "8")),
+            # Active system profile (Phase 8): which data/systems/<name>.json the rules engine
+            # applies. IM is the first hand-written profile; other systems are other profiles.
+            system=os.environ.get("DM_SYSTEM", "imperium_maledictum").strip(),
             # Push-to-talk: the whole table is always transcribed + logged, but only speech said
             # while the Discord mic button is engaged is routed to the DM (tap before talking to
             # the DM, tap to stop). Keeps the full transcript record while letting the table pick

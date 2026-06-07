@@ -138,6 +138,9 @@ Prefix is `!`. Type them in any text channel the bot can read.
 | `!dm [text]` | run a DM turn — answers the speech routed to the DM (or the given `text`) — and speaks it aloud |
 | `!redo` / `!r` | re-run the **last** DM turn with the same input — for when the DM misunderstood |
 | `!mic` | re-post the push-to-talk button at the bottom of the chat (if it scrolled away) |
+| `!roll <dice>` | roll raw dice through the engine (`!roll 1d100`, `!roll 2d10+3`) — a smoke test |
+| `!test <skill> [difficulty] [für name]` | request a test → posts a 🎲 button; the engine rolls + resolves it (`!test Wahrnehmung Schwer für Tobi`) |
+| `!turn` / `!order` | show / rotate the turn order ("whose turn"), seeded from the voice channel |
 | `!say <text>` | speak arbitrary text aloud — a TTS + bridge smoke test |
 | `!voice [name]` | switch the XTTS speaker (no name → show current); only with `TTS_ENGINE=xtts` |
 | `!voices` | list the XTTS built-in speakers; only with `TTS_ENGINE=xtts` |
@@ -148,6 +151,14 @@ Prefix is `!`. Type them in any text channel the bot can read.
 > table is still transcribed to `logs/transcript.log`. One tap counts for everyone. Releasing the
 > button **auto-runs the DM turn** (no `!dm` needed; `DM_BUTTON_AUTOSEND=0` to disable) — it waits
 > for the just-said speech to transcribe first. `!mic` brings the button back if it scrolled away.
+
+> **Dice (Phase 8):** when a roll is due, the DM writes a marker `<<TEST <skill> <difficulty> für
+> <name>>>` and DMbot posts a 🎲 button. Clicking it rolls **in code** (never the LLM): the target is
+> the character's skill value (from `data/sessions/<channel>/characters.json`) plus the difficulty
+> modifier from the active system profile (`data/systems/<DM_SYSTEM>.json`, default
+> `imperium_maledictum`), and the result feeds back so the DM narrates the consequence. You can also
+> trigger one by hand with `!test`. Put your party's stats + a display-name→character alias map in the
+> characters JSON (an example ships under `data/sessions/_example/`).
 
 ## Configuration (`.env`)
 

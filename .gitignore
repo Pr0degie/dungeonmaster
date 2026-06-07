@@ -26,7 +26,7 @@ voices/
 # Logs (pipeline PCM/transcript/debug logs)
 *.log
 
-# Generated data — system profiles, PDFs, session state, vector store (not hand-edited).
+# Generated data — PDFs, real session state, vector store (not hand-edited).
 # Ignore the contents, but keep the directory skeleton via .gitkeep so a fresh clone has
 # the structure to write into.
 data/**
@@ -36,6 +36,11 @@ data/**
 !data/sessions/
 !data/vectordb/
 !data/**/.gitkeep
+# …but DO track hand-written/checked-in fixtures (ADR 005/012): the hand-written system profiles
+# and the example party. Real per-channel session state (data/sessions/<id>/) stays ignored.
+!data/systems/*.json
+!data/sessions/_example/
+!data/sessions/_example/*.json
 
 # Agent / editor / OS cruft
 .claude/**

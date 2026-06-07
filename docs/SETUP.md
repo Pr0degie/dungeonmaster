@@ -95,6 +95,22 @@ Runtime is **Windows** (see decision log D16). Check the items off.
 - [ ] **Character sheets** ready — you transfer these later (Phase 8/9) once into the
       character JSON (shape follows the system profile); they do **not** go into RAG.
 
+### B8 — Phase 8: real party stats + verify the IM rules (human-only steps)
+The dice engine, `!test` and the unit tests already run against an **example party**
+(`data/sessions/_example/characters.json`). To play with your real characters and correct rolls:
+- [ ] **Transfer the real sheets once into JSON.** Copy the example to
+      `data/sessions/<voice-channel-id>/characters.json` (the cog prefers the channel-specific file
+      at `!join`, else falls back to the example) and fill in each character's `characteristics`,
+      `skills` (the values the engine rolls against), `wounds`/`max_wounds`, and the
+      `aliases` map (Discord display name → character name, e.g. `"SezBoss69": "Seskin"` — this is
+      what fixes the model confusing player/character names). The channel id is the **voice** channel's
+      id (right-click → Copy ID with Developer Mode on).
+- [ ] **Sanity-check the IM difficulty ladder + SL/crit numbers** in
+      `data/systems/imperium_maledictum.json` against the **Imperium Maledictum rulebook**. They're a
+      plausible WFRP-/d100-lineage default (flagged in the file's `_note`), not yet verified — edit the
+      numbers there if the rulebook differs. (Phase 10's RAG profile bootstrap will later propose these
+      from the PDF automatically.)
+
 ---
 
 ## C. Only needed later (not for the MVP)

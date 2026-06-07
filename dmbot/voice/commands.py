@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import random
 import tempfile
 import time
 import wave
@@ -28,6 +29,15 @@ from ..orchestrator import DMBrain
 from ..tts.piper import PiperTTS
 from ..bridge import BridgeClient
 from ..discord_ui.mic import MicToggleView
+from ..discord_ui.dice import DiceTestView
+from ..discord_ui.turnorder import TurnOrderView
+from ..rules import engine, profile as profile_mod
+from ..rules.profile import ProfileError, SystemProfile
+from ..rules.characters import CharacterStore, resolve_target
+from ..rules.marker import TestRequest, extract_tests
+
+# Repo data dir (data/systems is the profile root; sessions/ sits beside it).
+_DATA_DIR = profile_mod.systems_dir().parent
 
 log = logging.getLogger(__name__)
 
@@ -63,6 +73,7 @@ class VoiceReceiveCog(commands.Cog):
         ollama_model: str = "mistral-nemo",
         dm_num_predict: int = 220,
         dm_max_lines: int = 8,
+        system: str = "imperium_maledictum",
         push_to_talk: bool = True,
         pause_vad_while_speaking: bool = False,
         button_autosend: bool = True,
@@ -95,8 +106,27 @@ class VoiceReceiveCog(commands.Cog):
         # Release the mic button → auto-run the DM turn (no separate !dm). On by default; the turn
         # waits for the just-said utterances to transcribe first. DM_BUTTON_AUTOSEND=0 disables it.
         self._button_autosend = push_to_talk and button_autosend
+        # Rules engine (Phase 8): load the active system profile (data/systems/<system>.json). A
+        # missing/broken profile must not down the bot — log loudly and run rules-less (no dice).
+        self._profile: SystemProfile | None = None
+        try:
+            self._profile = profile_mod.load(system)
+            log.info("loaded system profile %r (%s, %s)", self._profile.name,
+                     self._profile.dice, self._profile.resolution)
+        except ProfileError:
+            log.exception("no usable system profile %r — running without the dice engine", system)
+        # Characters: start from the example party so !test/!roll work out of the box; !join prefers
+        # a channel-specific data/sessions/<id>/characters.json if present. Engine rolls (RNG) here.
+        self._characters: CharacterStore | None = self._load_characters(None)
+        self._rng = random.Random()  # production RNG (tests pass their own seeded Random)
+        # Turn order ("whose turn"), seeded from the voice-channel members at !join (keyed by the
+        # active voice-channel id, like the brain's buffers). The view rotates the index.
+        self._turn_order: dict[int, list[str]] = {}
+        self._turn_index: dict[int, int] = {}
+        self._turn_message: discord.Message | None = None
         self._brain = DMBrain(
             OllamaClient(ollama_host, ollama_model),
+            profile=self._profile,
             num_predict=dm_num_predict,
             max_buffer_lines=dm_max_lines,
         )
@@ -206,17 +236,18 @@ class VoiceReceiveCog(commands.Cog):
             except OSError:
                 pass
 
-    async def _send_with_retry(self, channel, content: str):
+    async def _send_with_retry(self, channel, content: str, *, view: discord.ui.View | None = None):
         """Send a message, retrying once on a transient Discord 5xx (e.g. the 503 seen mid-session)."""
+        kwargs = {"view": view} if view is not None else {}
         try:
-            return await channel.send(content)
+            return await channel.send(content, **kwargs)
         except discord.HTTPException as exc:
             if (getattr(exc, "status", 0) or 0) < 500:
                 raise
             log.warning("Discord send failed (HTTP %s) — retrying once", getattr(exc, "status", "?"))
             await asyncio.sleep(1.0)
             try:
-                return await channel.send(content)
+                return await channel.send(content, **kwargs)
             except discord.HTTPException:
                 log.warning("Discord send retry also failed — dropping the message", exc_info=True)
                 return None
@@ -228,6 +259,9 @@ class VoiceReceiveCog(commands.Cog):
         log.info("⏱ LLM %d ms%s", llm_ms, " (redo)" if redo else "")
         await self._send_with_retry(channel, answer)
         await self._speak(answer, guild_id)
+        # A test the DM requested via <<TEST …>> → post its dice button (before the mic re-anchor
+        # so the mic button stays at the very bottom).
+        await self._post_pending_dice(channel)
         # Keep the mic button reachable: move it back to the bottom after the message + speech.
         if self._push_to_talk and self._sink is not None:
             await self._post_mic_button(channel)
@@ -303,6 +337,180 @@ class VoiceReceiveCog(commands.Cog):
         except Exception:
             log.exception("auto DM turn after mic release failed")
 
+    # ----- Phase 8: dice engine, marker flow & turn order --------------------------------
+
+    def _brain_channel(self, channel) -> int:
+        """The id the brain/turn-state are keyed by — the active voice channel, text channel as
+        fallback (matches the existing !dm/!redo convention)."""
+        return self._active_vc_id if self._active_vc_id is not None else channel.id
+
+    def _load_characters(self, channel_id: int | None) -> CharacterStore:
+        """Load the party JSON: a channel-specific sheet if present, else the example party.
+        A missing file yields an empty store (the engine then rolls without a target)."""
+        sessions = _DATA_DIR / "sessions"
+        if channel_id is not None:
+            specific = sessions / str(channel_id) / "characters.json"
+            if specific.is_file():
+                log.info("loaded characters from %s", specific)
+                return CharacterStore.load(specific)
+        return CharacterStore.load(sessions / "_example" / "characters.json")
+
+    async def _run_and_deliver(self, channel, guild_id: int | None) -> None:
+        """Run a DM turn and deliver it — used after a dice roll feeds its result back in so the
+        DM narrates the consequence (architecture §9)."""
+        try:
+            t0 = time.perf_counter()
+            answer = await self._brain.respond(self._brain_channel(channel))
+            llm_ms = round((time.perf_counter() - t0) * 1000)
+        except Exception:
+            log.exception("DM turn failed (after roll)")
+            await self._send_with_retry(channel, "(Der Spielleiter schweigt — Fehler, siehe Log.)")
+            return
+        if answer:
+            await self._deliver_answer(channel, guild_id, answer, llm_ms)
+
+    async def _post_pending_dice(self, channel) -> None:
+        """Post a dice button for each test the last DM turn requested via a <<TEST …>> marker."""
+        if self._profile is None:
+            return
+        for req in self._brain.take_pending_tests(self._brain_channel(channel)):
+            await self._post_dice_button(channel, req)
+
+    async def _post_dice_button(self, channel, req: TestRequest) -> None:
+        """Resolve a test request (skill value + difficulty → target, all in code) and post its button."""
+        skill = req.skill or "Probe"
+        resolved = resolve_target(
+            self._profile, self._characters, skill=skill,
+            target_name=req.target_name, difficulty=req.difficulty, modifier=req.modifier,
+        )
+        who = (resolved.character.name if resolved.character else req.target_name) or "Gruppe"
+        if resolved.difficulty:
+            diff = resolved.difficulty
+        elif req.modifier is not None:
+            diff = f"{req.modifier:+d}"
+        else:
+            diff = ""
+        label = f"{who} würfelt: {skill}" + (f" ({diff})" if diff else "")
+        note = "" if req.parsed else " (unklarer Marker — manuell prüfen)"
+        await self._send_with_retry(
+            channel, f"🎲 Probe angefordert{note}:",
+            view=DiceTestView(label, self._make_dice_roll(channel, req, resolved)),
+        )
+
+    def _make_dice_roll(self, channel, req: TestRequest, resolved):
+        """Build the roll callback for a dice button: the engine rolls + resolves, the message is
+        replaced with the result, and it's fed back so the DM narrates the consequence."""
+        skill = req.skill or "Probe"
+        who = resolved.character.name if resolved.character else req.target_name
+
+        async def _roll(interaction: discord.Interaction) -> None:
+            if resolved.target is None:  # no character/skill value — roll, ask them to compare
+                d = engine.roll(self._profile.dice, self._rng)
+                line = f"🎲 {skill}: {d.total} — kein hinterlegter Wert, vergleicht mit eurem Bogen."
+            else:
+                result = engine.resolve_test(self._profile, resolved.target, self._rng)
+                line = engine.describe_result_de(
+                    result, skill=skill, character=who, difficulty=resolved.difficulty
+                )
+            log.info("🎲 %s", line)
+            try:
+                await interaction.message.edit(content=line, view=None)  # show result, drop button
+            except discord.HTTPException:
+                await self._send_with_retry(channel, line)
+            self._brain.add_test_result(self._brain_channel(channel), line)
+            await self._run_and_deliver(channel, channel.guild.id if channel.guild else None)
+
+        return _roll
+
+    def _build_turn_order(self, voice_channel) -> list[str]:
+        """Seed the turn order from a voice channel's human members (Bot A + bots filtered),
+        preferring each player's character name via the alias map (open item F)."""
+        names: list[str] = []
+        for m in voice_channel.members:
+            if m.bot or (self._bot_a_user_id and m.id == self._bot_a_user_id):
+                continue
+            char = self._characters.get(m.display_name) if self._characters else None
+            names.append(char.name if char else m.display_name)
+        return names
+
+    def _render_turn(self, key: int) -> str:
+        order = self._turn_order.get(key, [])
+        if not order:
+            return "Keine Teilnehmer erfasst — tretet dem Voice-Channel bei und nutzt `!turn`."
+        i = self._turn_index.get(key, 0) % len(order)
+        seq = " → ".join(f"**{n}**" if j == i else n for j, n in enumerate(order))
+        return f"🗡 Dran: **{order[i]}**\n{seq}"
+
+    def _turn_step(self, key: int, step: int) -> None:
+        order = self._turn_order.get(key, [])
+        if order:
+            self._turn_index[key] = (self._turn_index.get(key, 0) + step) % len(order)
+
+    async def _post_turn_order(self, channel) -> None:
+        """(Re)post the turn-order panel, deleting the previous one so it doesn't duplicate."""
+        key = self._active_vc_id
+        if key is None:
+            await self._send_with_retry(channel, "Ich bin in keinem Voice-Channel — erst `!j`.")
+            return
+        if self._turn_message is not None:
+            try:
+                await self._turn_message.delete()
+            except discord.HTTPException:
+                pass
+            self._turn_message = None
+
+        async def advance() -> None:
+            self._turn_step(key, +1)
+
+        async def back() -> None:
+            self._turn_step(key, -1)
+
+        view = TurnOrderView(advance, back, lambda: self._render_turn(key))
+        self._turn_message = await self._send_with_retry(channel, self._render_turn(key), view=view)
+
+    @commands.command(name="roll")
+    async def roll(self, ctx: commands.Context, *, dice: str = "1d100") -> None:
+        """Roll raw dice through the engine: `!roll 1d100`, `!roll 2d10+3`. A smoke test."""
+        try:
+            result = engine.roll(dice, self._rng)
+        except engine.DiceError:
+            await ctx.send(f"Unverständlicher Würfelausdruck `{dice}` — z. B. `1d100`, `2d10+3`.")
+            return
+        detail = ""
+        if result.dice:
+            parts = "+".join(str(d) for d in result.dice)
+            if result.modifier:
+                parts += f"{result.modifier:+d}"
+            detail = f" ({parts})"
+        await ctx.send(f"🎲 `{dice}` → **{result.total}**{detail}")
+
+    @commands.command(name="test")
+    async def test(self, ctx: commands.Context, *, spec: str = "") -> None:
+        """Manually request a test: `!test Wahrnehmung Schwer für Tobi`. Posts a dice button."""
+        if self._profile is None:
+            await ctx.send("Keine Würfel-Engine geladen (Systemprofil fehlt) — siehe Log.")
+            return
+        if not spec.strip():
+            await ctx.send("Nutzung: `!test <Fertigkeit> [Schwierigkeit] [für <Name>]`.")
+            return
+        _, reqs = extract_tests(f"<<TEST {spec}>>", self._profile)
+        if not reqs:
+            await ctx.send("Konnte daraus keine Probe lesen.")
+            return
+        await self._post_dice_button(ctx.channel, reqs[0])
+
+    @commands.command(name="turn", aliases=["order"])
+    async def turn(self, ctx: commands.Context) -> None:
+        """Show / rotate the turn order ('whose turn'). Rebuilds it from the voice channel. Alias: !order"""
+        if self._active_vc_id is None:
+            await ctx.send("Ich bin in keinem Voice-Channel — erst `!j`.")
+            return
+        vc = ctx.voice_client
+        if vc is not None and getattr(vc, "channel", None) is not None:
+            self._turn_order[self._active_vc_id] = self._build_turn_order(vc.channel)
+            self._turn_index.setdefault(self._active_vc_id, 0)
+        await self._post_turn_order(ctx.channel)
+
     @commands.command(name="say")
     async def say(self, ctx: commands.Context, *, text: str) -> None:
         """Speak arbitrary text through Piper + Bot A — a TTS/bridge smoke test."""
@@ -372,6 +580,12 @@ class VoiceReceiveCog(commands.Cog):
         sink = voice_recv.SilenceGeneratorSink(vad_sink)
         vc.listen(sink, after=self._on_listen_done)
         self._active_vc_id = channel.id  # buffer transcripts + answer for this channel
+        # Phase 8: load this channel's party (else the example), wire the "who plays whom" alias
+        # hint into the prompt (open item F), and seed the turn order from the voice members.
+        self._characters = self._load_characters(channel.id)
+        self._brain.set_alias_hint(channel.id, self._characters.alias_hint_de())
+        self._turn_order[channel.id] = self._build_turn_order(channel)
+        self._turn_index[channel.id] = 0
 
         log.info(
             "joined voice '%s' (id=%s) and started VAD pipeline (16k mono + silero, push_to_talk=%s)",
@@ -389,12 +603,14 @@ class VoiceReceiveCog(commands.Cog):
                 f"Knopf *bevor* ihr mit ihr redet und nochmal, {close}. "
                 f"(Opus: {discord.opus.is_loaded()})"
             )
+            await self._post_turn_order(ctx.channel)  # before the mic button so mic stays at bottom
             await self._post_mic_button(ctx.channel)
         else:
             await ctx.send(
                 f"Beigetreten: **{channel.name}** — ich höre durchgehend zu, alles geht an die "
                 f"Spielleitung. Sprecht, dann `!dm` (oder `!dm <Text>`). (Opus: {discord.opus.is_loaded()})"
             )
+            await self._post_turn_order(ctx.channel)
 
     async def toggle_listening(self) -> bool:
         """Flip the push-to-talk DM-routing gate; return the new state. Called by the mic button.
@@ -450,16 +666,20 @@ class VoiceReceiveCog(commands.Cog):
         # state is per channel, ADR 003).
         if self._active_vc_id is not None:
             self._brain.reset(self._active_vc_id)
+            self._turn_order.pop(self._active_vc_id, None)
+            self._turn_index.pop(self._active_vc_id, None)
         self._active_vc_id = None
         self._sink = None
         self._utterance_counts.clear()
         self._dm_listening = not self._push_to_talk  # reset the routing gate for the next session
-        if self._mic_message is not None:
-            try:
-                await self._mic_message.delete()
-            except discord.HTTPException:
-                pass
-            self._mic_message = None
+        for msg_attr in ("_mic_message", "_turn_message"):
+            msg = getattr(self, msg_attr)
+            if msg is not None:
+                try:
+                    await msg.delete()
+                except discord.HTTPException:
+                    pass
+                setattr(self, msg_attr, None)
         await ctx.send("Voice-Channel verlassen.")
 
     @commands.command(name="vstatus")

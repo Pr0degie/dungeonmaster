@@ -1,0 +1,36 @@
+{
+  "_note": "EXAMPLE party for Imperium Maledictum so the dice engine, !test and the unit tests run out of the box. Replace the values with the real sheets (ADR 004: transfer each sheet ONCE into JSON). At !join the cog prefers data/sessions/<channel_id>/characters.json if present, else falls back to this example. The 'aliases' map (Discord display name -> character) fixes the model confusing player and character names (open item F).",
+  "system": "imperium_maledictum",
+  "characters": [
+    {
+      "name": "Seskin",
+      "characteristics": { "WS": 40, "BS": 35, "Str": 38, "Tgh": 42, "Ag": 45, "Int": 33, "Per": 48, "Wil": 36, "Fel": 30 },
+      "skills": { "Wahrnehmung": 48, "Heimlichkeit": 52, "Spurenlesen": 41, "Nahkampf": 45, "Fernkampf": 35 },
+      "wounds": 11, "max_wounds": 11,
+      "inventory": ["Laspistole", "Kampfmesser", "Vox-Caster"],
+      "conditions": []
+    },
+    {
+      "name": "Vask",
+      "characteristics": { "WS": 48, "BS": 42, "Str": 46, "Tgh": 45, "Ag": 38, "Int": 30, "Per": 35, "Wil": 40, "Fel": 28 },
+      "skills": { "Nahkampf": 55, "Einschüchtern": 47, "Athletik": 44, "Wahrnehmung": 35 },
+      "wounds": 14, "max_wounds": 14,
+      "inventory": ["Kettenschwert", "Flak-Rüstung"],
+      "conditions": []
+    },
+    {
+      "name": "Mortn",
+      "characteristics": { "WS": 30, "BS": 33, "Str": 28, "Tgh": 32, "Ag": 36, "Int": 52, "Per": 44, "Wil": 48, "Fel": 41 },
+      "skills": { "Wissen": 54, "Überreden": 46, "Wahrnehmung": 44, "Medizin": 38, "Heimlichkeit": 33 },
+      "wounds": 9, "max_wounds": 9,
+      "inventory": ["Daten-Slate", "Auspex", "Laspistole"],
+      "conditions": []
+    }
+  ],
+  "aliases": {
+    "SezBoss69": "Seskin",
+    "Timo": "Vask",
+    "Pr0degie": "Mortn",
+    "Tobi": "Mortn"
+  }
+}

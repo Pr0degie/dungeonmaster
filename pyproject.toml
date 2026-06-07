@@ -35,6 +35,12 @@ dependencies = [
     "nvidia-cudnn-cu12>=9.23.0.39 ; sys_platform == 'win32'",
     "onnxruntime>=1.26.0",
     "piper-tts>=1.4.2",
+    # PDF -> Markdown for RAG ingestion (golden rule #9): 40k rulebooks are multi-column +
+    # table-heavy, and naive extraction scrambles the reading order into "layout garbage"
+    # (CLAUDE.md). pymupdf4llm (on PyMuPDF) reconstructs reading order + renders tables, so the
+    # Phase-10 ingestion chunks clean text. Used only by the offline helper tools/pdf_to_md.py,
+    # not the bot runtime. PyMuPDF is a C-extension (not torch-heavy); architecture.md §3.
+    "pymupdf4llm>=1.27.2.3",
     "python-dotenv>=1.2.2",
     "soxr>=1.1.0",
     "torch>=2.12.0",

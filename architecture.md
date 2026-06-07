@@ -129,6 +129,7 @@ from Bot A; layer-1 user-ID filtering protects regardless).
 | STT | `faster-whisper` (CTranslate2) | small/medium on the 4070 (GPU float16, CPU int8 fallback). cuDNN/cuBLAS via the `nvidia-*-cu12` wheels; DLLs registered in-code (`stt/transcriber.py`), no manual `PATH`. Runs on a worker thread off the audio path |
 | LLM | **Ollama** (local/5080) + `httpx` | DM system prompt + history + RAG context + JSON state |
 | Embeddings | `nomic-embed-text` via Ollama | for RAG (tiny, runs anywhere) |
+| PDF→Markdown (ingestion prep) | `pymupdf4llm` (on PyMuPDF) | **offline** step: converts a legally-owned rulebook PDF to clean Markdown (reconstructs reading order, renders tables) so RAG chunks aren't multi-column layout garbage (CLAUDE.md). CLI `tools/pdf_to_md.py` → `data/pdfs/md/`, **not** the bot runtime; feeds Phase-10 ingestion (golden rule #9) |
 | RAG store | SQLite + vector (e.g. `sqlite-vec`) or ChromaDB | searchable PDF chunks |
 | TTS | `coqui-tts` (XTTS v2) **default**, `piper-tts` fallback | XTTS (default): ~58 built-in speakers + voice cloning, rich but heavy (**pulls torch/torchaudio/torchcodec — from the CUDA `cu130` index** (covers Ada + Blackwell) so it runs on the GPU, not the CPU-only build; transformers pinned <5); device per `TTS_DEVICE` (cuda/cpu), auto-degrades to CPU if CUDA is absent or OOMs. Piper: fast, lean, fixed German voice (`de_DE-thorsten`) → WAV — the fallback when XTTS won't load. Selectable per `TTS_ENGINE` (golden rule #9: the CUDA torch stack is the cost of GPU XTTS → ADR 009) |
 | Bridge client | `httpx`/`aiohttp` | `POST` to Bot A `/speak` |
@@ -303,6 +304,10 @@ A small declarative file (`data/systems/<system>.json`) describing the core mech
   "resolution": "roll_under",        // roll_under | roll_over | pool | sum_vs_target | ...
   "target_source": "skill_value",    // where the target number comes from
   "degrees": "tens_difference",      // how degrees/levels of success are computed
+  "difficulty_ladder": {             // difficulty NAME → modifier (the number lives here, not in the LLM)
+    "Einfach": 40, "Herausfordernd": 0, "Schwer": -20, "Sehr schwer": -30
+  },
+  "default_difficulty": "Herausfordernd",
   "advantage": "flip_d100",          // optional, system-specific
   "damage": "d10/d5 + modifiers",    // free-text or structured, optional
   "character_schema": {              // which stat/skill/resource fields a character has
@@ -328,12 +333,22 @@ and the DM knows what's played" for the *mechanics*. IM is simply the first prof
 produced (or seeded) this way.
 
 ### How a test is requested
-The LLM emits a machine-readable **marker**, e.g. `<<TEST Perception +10>>`. The
-orchestrator detects it, shows a dice button to the right player, the engine rolls per the
-active profile and computes the result, which feeds back into the next prompt (the DM
-narrates the consequence). A bracketed marker is more reliable for a 12B model than strict
-JSON. **Fallback:** if parsing fails, the DM states the test in plain text and you roll
-manually via button — no break in flow. See ADR 004 + ADR 005.
+The LLM emits a machine-readable **marker**, e.g. `<<TEST Wahrnehmung Schwer für Tobi>>`. The
+orchestrator (`rules/marker.py`) detects it, strips it from the spoken text, and shows a dice
+button to the right player; the engine rolls per the active profile and computes the result,
+which feeds back into the next prompt (the DM narrates the consequence). A bracketed marker is
+more reliable for a 12B model than strict JSON.
+
+**The difficulty is a *word*, not a number — "dice = code" (golden rule #2):** the LLM picks a
+rung from the profile's `difficulty_ladder` (e.g. *Schwer*); the engine looks up the modifier
+(−20). The **target** is then resolved entirely in code: `target = skill value (character JSON,
+`rules/characters.py`) + difficulty modifier (profile ladder)`. The LLM supplies neither number —
+it only *names* the skill and how hard it feels. The GM thus rolls **for** the player (the table's
+request, ADR 012). An explicit `±N` in the marker is accepted as a manual override.
+
+**Fallback:** an unparseable `<<TEST …>>` is still stripped and yields a generic manual button;
+if no character/skill value is on file the engine rolls the die and asks the player to compare
+against their sheet — no break in flow. See ADR 004 + ADR 005 + ADR 012.
 
 ---
 

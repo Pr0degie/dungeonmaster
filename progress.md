@@ -4,21 +4,38 @@ Living status document. A phase counts as done only when its **verification gate
 met and the proof is recorded here.
 
 ## Current focus
-**Phases 0–7 complete — PLAYABLE and turn-managed** ⭐. Phase 7 (turn-taking + feedback) is
-**live-validated** over four real multi-player sessions (2026-06-05/06): push-to-talk routing,
-feedback layer 1, GPU whisper, transcription during DM speech — all working. Most of this session
-was **playtest-driven quality tuning** from the players' wishes (read off `transcript.log`): killed
-the "Als Spielleitung beschreibe ich" preamble, fixed POV (ihr/euch, not wir/uns), named action
-attribution, no auto-advance / "goldene Mitte", no read-aloud disclaimers, varied hooks, `!redo`,
-mic button anchored to the bottom, an XTTS chunking fix for the mid-sentence audio cut-off, and —
-the players' top request — **releasing the mic button now auto-runs the DM turn** (waits for the
-just-said speech to transcribe first; no `!dm`). **Next: Phase 8** — dice engine + IM profile + turn
-buttons (read ADR 005 + 004 + 001). Recommended dial: **Opus 4.8 / xhigh**. The remaining persona
-drift is **model-limited** (nemo) — the gemma3:12b taste test is the quality lever to try alongside
+**Phases 0–7 complete + Phase 8 code-complete** ⭐. Phases 0–7 are live-validated (the DM is playable
+and turn-managed). **Phase 8 (dice engine, IM profile, marker flow, turn-order buttons) is now built
+and unit-proven (suite 63/63), live gate pending.** The deterministic core honours "dice = code":
+the LLM requests a test by *naming* a skill + a difficulty *word* (`<<TEST Wahrnehmung Schwer für
+Tobi>>`), and the generic engine resolves the target (skill value from the character JSON + the
+difficulty modifier from the profile ladder), rolls, computes the success level, and feeds the
+result back so the DM narrates the consequence. A minimal character store + display-name→character
+alias map were pulled in (the GM rolls *for* the player — open item K — and the alias map fixes
+open item F); turn order is seeded from the voice channel. **Next: Tobi live-tests the Phase-8 gate
+in Discord** (click a dice button, confirm result+degrees, `!turn` rotates), then Phase 9 (memory).
+Recommended dial: **Opus 4.8 / xhigh**. The gemma3:12b taste test stays the model-side quality lever
 (Tobi: **deferred, not now**).
 
 ## Last session
-**Phase 7 (feedback layer 2) implemented + a music-bot bridge race fixed (2026-06-05, later).**
+**Phase 8 built — dice engine, IM profile, marker flow, turn-order buttons (2026-06-07).** The whole
+deterministic core, decoupled from the LLM (golden rule #2). New `dmbot/rules/`: `profile.py` (load +
+validate `data/systems/<system>.json`, difficulty-ladder lookup), `engine.py` (seeded-RNG dice parser
++ `resolve_test` via a resolver registry — IM `roll_under` first; SL = tens-difference, crit/fumble on
+doubles, 01–05 / 96–00 auto-bands; `describe_result_de`), `characters.py` (lean character JSON store +
+alias map + pure `resolve_target`: skill value + difficulty → target, all in code), `marker.py`
+(tolerant `<<TEST …>>` parser, strips markers, fallback to a manual button). First profile
+`data/systems/imperium_maledictum.json` (1d100 roll-under, ladder, d10/d5 — numbers flagged to verify
+vs the rulebook in Phase 10) + an example party `data/sessions/_example/characters.json`. Two new
+Discord views (`discord_ui/dice.py` + `turnorder.py`) on the `mic.py` View→cog pattern, new commands
+`!roll`/`!test`/`!turn`, `DM_SYSTEM` env. Orchestrator extended: it extracts markers (before the
+sentence-trim, which would otherwise eat a trailing marker), surfaces pending tests, feeds rolled
+results back into the next turn, and appends a who-plays-whom alias hint to the prompt (fixes F). The
+players' contract (K) is realised: the GM rolls **for** the player and the difficulty number comes from
+the profile, never the LLM. **Decisions D26 → ADR 012.** **Suite 63/63 green** (34 new tests). _Live
+Discord gate (dice button, turn rotation) pending Tobi._
+
+**(Earlier) Phase 7 (feedback layer 2) implemented + a music-bot bridge race fixed (2026-06-05, later).**
 - **Bridge race (music-bot repo, own commit `82393da`).** A `!dm` turn ran fully (STT→LLM→TTS) but
   Bot A returned `HTTP 500 'playback failed'` (`ClientException: Already playing audio.`). Root
   cause: the music cog's `after_playing` auto-advances the queue on **any** track end — including
@@ -156,14 +173,16 @@ _(Prior session — voice-stack hardening, ADR 006 — and Phases 3–6 (the pla
 in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 
 ## Next concrete step
-**Phase 8 — dice engine, system profile & turn-order buttons.** Phase 7 is live-validated; this is
-the next phase. Phase-transition ritual: read **ADR 005** (generic engine + profile) + **ADR 004**
-(test marker, character JSON) + **ADR 001** (IM specifics) before implementing. Build the
-deterministic core (`rules/engine.py` + the first profile `data/systems/imperium_maledictum.json`,
-**pytest, fixed seed**) — golden rule #2: dice = code, never the LLM. The players already sketched
-the contract (open item K): a real GM rolls **for** the player and the **difficulty comes from the
-profile/rulebook**, not the LLM. The `discord_ui/mic.py` View→cog pattern is the template for the
-dice/turn buttons. Dial: **Opus 4.8 / xhigh**.
+**Live-test the Phase-8 gate in Discord (Tobi), then Phase 9 (memory).** Phase 8 is code-complete and
+unit-proven (63/63); the gate needs a real run: `!j`, then **(a)** `!test Wahrnehmung Schwer für Tobi`
+→ click the dice button → confirm the posted result + degrees match the engine; **(b)** speak a line
+that makes the DM emit `<<TEST …>>` → confirm a dice button auto-appears and, after the click, the DM
+narrates the consequence; **(c)** `!turn` → confirm the order rotates over the voice members. Fill the
+Phase-8 `VERIFY EVIDENCE` once seen live, flip it to ✅. _Setup before the run:_ transfer the real party
+sheets into `data/sessions/<voice-channel-id>/characters.json` (else the example party stands in) and
+sanity-check the IM difficulty ladder in `data/systems/imperium_maledictum.json` against the rulebook
+(see `docs/SETUP.md`). **Then Phase 9 — memory (JSON state + recaps):** read ADR 004 first; HP/wounds
+advance deterministically in code, recaps by the LLM. Dial: **Opus 4.8 / xhigh**.
 
 **In parallel — the gemma3:12b taste test** (quick, high-leverage): set `OLLAMA_MODEL=gemma3:12b`
 (pull it first) and replay a scene. Most of the residual persona drift (action attribution, not
@@ -219,6 +238,7 @@ create the next-numbered ADR.
 | D23 | Bridge transport | **Hybrid `/speak`**: loopback → WAV path (unchanged); remote → WAV bytes + shared secret over Tailscale; Bot A plays its own copy | Lets DMbot + Bot A run on different machines without breaking the proven localhost path; partially relaxes D16/ADR 002 co-location for the bridge → ADR 010 |
 | D24 | STT latency | **GPU whisper** (`WHISPER_DEVICE=cuda`) **+ push-to-talk DM-routing gate** (shared Discord mic button; whole table always transcribed + logged, button gates only what reaches the DM, `DM_PUSH_TO_TALK=1`) | CPU whisper fell ~1.5 min behind; GPU + routing only the button-window speech to the DM keeps the full transcript record (Tobi's call) while cutting DM noise. Supersedes the 4070 "whisper on CPU" profile → ADR 011 |
 | D25 | Feedback layer 2 | **Pausing the VAD while Bot A speaks is now opt-in, off by default** (`DM_PAUSE_VAD_WHILE_SPEAKING=0`). Layer 1 (Bot-A user-ID filter) stays mandatory | Layer 1 already stops self-transcription and the push-to-talk routing gate keeps narration table talk out of the DM, so layer 2 was redundant and blocked transcription during the DM's narration — players wanted the table kept in the record. golden rule #4 (layer 1) unchanged; updates `architecture.md` §5 |
+| D26 | Phase-8 dice flow | **Difficulty is a ladder *word*, resolved to a number in code** (`<<TEST Wahrnehmung Schwer für Tobi>>` → profile maps *Schwer* → −20; `±N` only as manual override). **Minimal character JSON + alias map pulled into Phase 8** (GM rolls *for* the player; alias map also fixes F). **Turn order seeded from the voice channel.** | Honours "dice = code" / open item K (the number lives in the profile/character data, not the LLM); the lean party JSON is cheap and is the heart of K; the alias map quietly fixes F; the voice channel is a zero-setup turn-order source (full registration, ADR 003, stays deferred) → ADR 012 |
 
 ### Phase → ADR map (read these when you enter the phase)
 
@@ -230,7 +250,7 @@ create the next-numbered ADR.
 | 5 — LLM wiring + persona | ADR 002 + ADR 005 (persona = generic core + campaign overlay) |
 | 6 — TTS + full loop | **ADR 008** (TTS engine: Piper + XTTS) + ADR 002 (bridge, VRAM) + `architecture.md` §3 (bridge contract) |
 | 6–7 — Full loop, turn-taking, registration | ADR 003 (conversational control, registration, turn-taking) + **ADR 011** (STT latency: push-to-talk gate) |
-| 8 — Dice engine, IM profile, marker flow | ADR 005 (engine + profile) + ADR 004 (test marker, character data) + ADR 001 (IM specifics) |
+| 8 — Dice engine, IM profile, marker flow | ADR 005 (engine + profile) + ADR 004 (test marker, character data) + ADR 001 (IM specifics) + **ADR 012** (difficulty ladder, character store, marker grammar) |
 | 9 — Memory (JSON + recaps) | ADR 004 (character/state JSON) |
 | 10 — RAG + profile bootstrap | ADR 005 (profile bootstrap) |
 
@@ -399,13 +419,35 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   done from these transcripts and is in the unit suite (**29/29**) — but is **persona/model-limited**
   (nemo); residual drift is the gemma3 lever, not a Phase-7 gate failure.
 
-### ⬜ Phase 8 — Dice engine, system profile & turn-order buttons
-- [ ] `rules/engine.py` — generic dice + resolution engine (profile-driven) **+ unit tests**
-- [ ] `data/systems/imperium_maledictum.json` — first profile, hand-written (1d100, roll-under, SL, d10/d5)
-- [ ] Text-channel view with buttons + "whose turn it is"
-- [ ] LLM requests a test via marker → engine rolls per active profile → back into context
+### 🔄 Phase 8 — Dice engine, system profile & turn-order buttons  (code-complete, live gate pending)
+- [x] `rules/engine.py` — generic dice + resolution engine (profile-driven, seeded RNG) **+ unit tests**.
+      Dice parser (`XdY±N`, `d5`), `resolve_test` via a resolver registry (IM `roll_under` first), SL =
+      tens-difference, crit/fumble on doubles, 01–05 / 96–00 auto-bands, `describe_result_de` (the
+      "🎲 Tobi auf Wahrnehmung … — Erfolg, 2 EG" line that feeds back into the prompt).
+- [x] `data/systems/imperium_maledictum.json` — first hand-written profile (1d100 roll-under, SL,
+      d10/d5) + a **difficulty ladder** (name → modifier) + aliases. Loader/validator `rules/profile.py`.
+      _Numbers flagged in a `_note` to verify against the rulebook (Phase 10)._
+- [x] `rules/characters.py` — lean character JSON store (schema follows the profile) + display-name→
+      character **alias map** (fixes F) + pure `resolve_target` (skill value + difficulty → target, all
+      in code). Example party `data/sessions/_example/characters.json` ships so it runs out of the box.
+- [x] `rules/marker.py` — tolerant `<<TEST skill [difficulty|±N] [für name]>>` parser; strips markers
+      from the spoken text; unparseable marker → generic manual button (ADR 004 fallback).
+- [x] Text-channel views (`discord_ui/dice.py` + `turnorder.py`, the `mic.py` View→cog pattern):
+      dice button rolls via the engine + narrates the consequence; turn-order rotates over the voice
+      members. New commands `!roll` / `!test` / `!turn`(`!order`); `DM_SYSTEM` env.
+- [x] LLM marker flow wired: persona documents the marker + difficulty words; orchestrator extracts
+      tests (before the sentence-trim), posts a dice button per test, feeds the result back so the next
+      DM turn narrates the outcome.
+- [x] **Unit tests (deterministic core):** `tests/test_rules_engine.py`, `test_profile.py`,
+      `test_marker.py`, `test_characters.py`. **Suite 63/63 green** (34 new + 29 existing).
 - **Gate:** button roll correct (result + degrees for the profile); turn order rotates; tests green.
-- **VERIFY EVIDENCE:** _(empty)_
+- **VERIFY EVIDENCE:** _Code + unit level (2026-06-07):_ the engine's correctness is unit-proven with a
+  seeded RNG (success/fail boundaries, SL tens-difference, crit/fumble on doubles, auto-bands, the
+  d100-as-"00" case) and the full marker→resolve→roll path verified end to end against the real IM
+  profile + example party (`<<TEST Wahrnehmung Schwer für Tobi>>` → Mortn, Wahrnehmung 44 − Schwer 20 =
+  target 24 → roll 42 → "Fehlschlag, 2 EG"). **Suite 63/63.** _Pending (Tobi, live Discord run):_ click a
+  dice button in-channel and confirm the posted result + degrees, that a DM `<<TEST>>` auto-posts a
+  button and the consequence is narrated, and that `!turn` rotates over the voice members.
 
 ### ⬜ Phase 9 — Memory (JSON + recaps)
 - [ ] JSON world state + deterministic advancement
@@ -449,12 +491,14 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 - **(gemma3) Persona drift is model-limited.** nemo still mis-attributes who did what, dodges
   provocative in-fiction input, and occasionally slips POV — despite a sharpened persona. **Try
   `gemma3:12b`** (taste test, see Next step) before assuming the prompt is at fault.
-- **(F) Player → character name mapping.** The LLM confuses the Discord name ("SezBoss69") with the
-  character ("Seskin") and muddles who acted. Belongs to character registration (D13/ADR 003,
-  Phase 8); a light alias map (display-name → character) injected into the prompt could help sooner.
-- **(K) Dice/skill-check design (Phase 8).** Players want the GM to roll **for** them and the
-  **difficulty to come from the system profile/rulebook**, not be improvised by the LLM — exactly
-  "dice = code". Fold into ADR 005 / `rules/engine.py` when building Phase 8.
+- ✅ **(F) Player → character name mapping — addressed in Phase 8 (ADR 012).** The character JSON
+  carries a display-name→character **alias map**, injected as a light prompt hint
+  (`CharacterStore.alias_hint_de`), and turn order shows character names. _Verify live whether nemo
+  actually stops confusing them; a fuller fix is still character registration (D13/ADR 003)._
+- ✅ **(K) Dice/skill-check design — realised in Phase 8 (ADR 012).** The GM rolls **for** the player
+  and the difficulty number comes from the profile ladder, never the LLM: marker names a skill +
+  difficulty *word* → `rules/characters.resolve_target` (skill value + ladder modifier) → engine.
+  _Verify live; sanity-check the IM ladder vs the rulebook (Phase 10 RAG bootstrap will confirm)._
 - **Latency grows with context** as history accumulates; the 20-turn cap helps but recaps (Phase 9)
   are the real fix. Watch; don't act yet.
 

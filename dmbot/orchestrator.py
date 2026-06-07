@@ -17,6 +17,8 @@ import threading
 
 from .llm.client import OllamaClient
 from .llm.persona import load_system_prompt
+from .rules.marker import TestRequest, extract_tests
+from .rules.profile import SystemProfile
 
 log = logging.getLogger(__name__)
 
@@ -116,11 +118,16 @@ class DMBrain:
         self,
         client: OllamaClient,
         *,
+        profile: SystemProfile | None = None,
         max_history_turns: int = 20,
         num_predict: int = 220,
         max_buffer_lines: int = 8,
     ) -> None:
         self._client = client
+        # Active system profile (Phase 8). When set, DM answers are scanned for <<TEST …>> markers
+        # (rules/marker), which are stripped from the spoken text and surfaced as pending tests.
+        # None → no dice flow (pre-Phase-8 behaviour, kept for the existing unit tests).
+        self._profile = profile
         self._num_predict = num_predict  # hard cap on a turn's length (spoken aloud — keep it tight)
         self._max_messages = max_history_turns * 2  # a turn = one user + one assistant message
         # Continuous transcription (no wake word) buffers table talk + jokes between !dm presses;
@@ -129,6 +136,14 @@ class DMBrain:
         self._max_buffer_lines = max_buffer_lines
         self._history: dict[int, list[dict[str, str]]] = {}
         self._buffer: dict[int, list[tuple[str, str]]] = {}
+        # Pending dice tests parsed from the last DM turn (per channel) — the cog drains these and
+        # posts a dice button for each. Test results fed back in (engine roll → narrate consequence)
+        # are buffered here and prepended to the next turn, exempt from the player-line cap.
+        self._pending_tests: dict[int, list[TestRequest]] = {}
+        self._test_results: dict[int, list[str]] = {}
+        # A light "who plays whom" hint (display name → character) appended to the system prompt,
+        # so the model stops confusing player and character names (open item F). Set per channel.
+        self._alias_hint: dict[int, str] = {}
         # The last turn's (user_msg, labels) per channel, so !redo can re-generate it when the DM
         # misunderstood — same input, a fresh answer that replaces the last one in history.
         self._last_turn: dict[int, tuple[str, list[str]]] = {}
@@ -167,17 +182,22 @@ class DMBrain:
         if extra_text:
             lines.append(("Spieler", extra_text.strip()))
         lines = [(n, t) for n, t in lines if t]
-        if not lines:
+        # Dice results from clicked tests feed the consequence narration even with no player line.
+        results = self._drain_test_results(channel_id)
+        if not lines and not results:
             return None
 
-        user_msg = "\n".join(f"{name}: {text}" for name, text in lines)
+        # Result lines (engine rolls) lead, then the player lines — both as context for this turn.
+        parts = [f"[Würfel] {r}" for r in results]
+        parts += [f"{name}: {text}" for name, text in lines]
+        user_msg = "\n".join(parts)
         # Labels (player names this turn + generic roles) become Ollama stop sequences and the
         # post-hoc truncation guard against the model fabricating replies / playing several turns.
         labels = [name for name, _ in lines] + _ROLE_LABELS
         self._last_turn[channel_id] = (user_msg, labels)
 
         history = self._history.setdefault(channel_id, [])
-        answer = await self._generate(user_msg, labels, history)
+        answer = await self._generate(channel_id, user_msg, labels, history)
         self._append_turn(history, user_msg, answer)
         return answer
 
@@ -196,19 +216,35 @@ class DMBrain:
             and history[-2]["role"] == "user"
         ):
             del history[-2:]  # drop the turn we're redoing so it isn't duplicated
-        answer = await self._generate(user_msg, labels, history)
+        self._pending_tests.pop(channel_id, None)  # the redo supersedes the old turn's test markers
+        answer = await self._generate(channel_id, user_msg, labels, history)
         self._append_turn(history, user_msg, answer)
         return answer
 
     async def _generate(
-        self, user_msg: str, labels: list[str], history_prefix: list[dict[str, str]]
+        self,
+        channel_id: int,
+        user_msg: str,
+        labels: list[str],
+        history_prefix: list[dict[str, str]],
     ) -> str:
-        """One LLM call for ``user_msg`` on top of ``history_prefix`` → a sanitised DM answer."""
+        """One LLM call for ``user_msg`` on top of ``history_prefix`` → a sanitised DM answer.
+
+        With an active profile, ``<<TEST …>>`` markers are extracted **before** the last-sentence
+        trim (the trim would otherwise drop a trailing marker) and surfaced as pending tests."""
+        system = load_system_prompt()
+        hint = self._alias_hint.get(channel_id)
+        if hint:
+            system = f"{system}\n\n{hint}"
         messages = [*history_prefix, {"role": "user", "content": user_msg}]
         options = {"stop": [f"\n{label}:" for label in labels], "num_predict": self._num_predict}
-        raw = await self._client.chat(load_system_prompt(), messages, options=options)
+        raw = await self._client.chat(system, messages, options=options)
         answer = _sanitize(_cut_at_labels(raw, labels)) or _sanitize(raw)
         answer = _strip_leading_label(answer, labels)  # kill a leaked leading "Name:"/"DM:" label
+        if self._profile is not None:
+            answer, tests = extract_tests(answer, self._profile)  # strip markers, collect requests
+            if tests:
+                self._pending_tests.setdefault(channel_id, []).extend(tests)
         return _trim_to_last_sentence(answer)  # clean ending if the num_predict cap cut it off
 
     def _append_turn(self, history: list[dict[str, str]], user_msg: str, answer: str) -> None:
@@ -217,12 +253,34 @@ class DMBrain:
         if len(history) > self._max_messages:  # keep the tail; recaps will cover the rest later
             del history[: len(history) - self._max_messages]
 
+    def take_pending_tests(self, channel_id: int) -> list[TestRequest]:
+        """Return and clear the dice tests the last DM turn requested (cog posts the buttons)."""
+        return self._pending_tests.pop(channel_id, [])
+
+    def add_test_result(self, channel_id: int, line: str) -> None:
+        """Buffer a rolled test result (a German summary line) to feed the next turn so the DM
+        narrates its consequence (architecture §9: 'back into the next prompt')."""
+        self._test_results.setdefault(channel_id, []).append(line)
+
+    def _drain_test_results(self, channel_id: int) -> list[str]:
+        return self._test_results.pop(channel_id, [])
+
+    def set_alias_hint(self, channel_id: int, hint: str) -> None:
+        """Set (or clear, with '') the 'who plays whom' hint appended to this channel's prompt."""
+        if hint:
+            self._alias_hint[channel_id] = hint
+        else:
+            self._alias_hint.pop(channel_id, None)
+
     def reset(self, channel_id: int) -> None:
         """Forget a channel's history and pending lines (e.g. new session)."""
         with self._lock:
             self._buffer.pop(channel_id, None)
         self._history.pop(channel_id, None)
         self._last_turn.pop(channel_id, None)
+        self._pending_tests.pop(channel_id, None)
+        self._test_results.pop(channel_id, None)
+        self._alias_hint.pop(channel_id, None)
 
     async def aclose(self) -> None:
         await self._client.aclose()
