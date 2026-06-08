@@ -11,12 +11,14 @@ thread and read on the event loop, so the buffer is lock-guarded.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import threading
 
 from .llm.client import OllamaClient
 from .llm.persona import load_system_prompt
+from .llm.roll_router import classifier_schema, classifier_system, to_test_request
 from .rules.marker import TestRequest, extract_tests
 from .rules.profile import SystemProfile
 
@@ -167,6 +169,10 @@ class DMBrain:
         # The last turn's (user_msg, labels) per channel, so !redo can re-generate it when the DM
         # misunderstood — same input, a fresh answer that replaces the last one in history.
         self._last_turn: dict[int, tuple[str, list[str]]] = {}
+        # The last player action (name, text) consumed per channel — the roll-detection router
+        # (ADR 014) classifies it after the narration turn. None when a turn had no player line
+        # (e.g. a test-result feedback turn), so the router skips it.
+        self._last_action: dict[int, tuple[str, str] | None] = {}
         self._lock = threading.Lock()  # buffer written from STT thread, read on event loop
 
     def add_player_line(self, channel_id: int, name: str, text: str) -> None:
@@ -206,6 +212,10 @@ class DMBrain:
         results = self._drain_test_results(channel_id)
         if not lines and not results:
             return None
+
+        # Remember the latest player action for the roll-detection router (ADR 014); None on a
+        # results-only turn so the router doesn't re-fire on a stale action after a dice roll.
+        self._last_action[channel_id] = lines[-1] if lines else None
 
         # Result lines (engine rolls) lead, then the player lines — both as context for this turn.
         parts = [f"[Würfel] {r}" for r in results]
@@ -281,6 +291,38 @@ class DMBrain:
         """Return and clear the dice tests the last DM turn requested (cog posts the buttons)."""
         return self._pending_tests.pop(channel_id, [])
 
+    def last_action(self, channel_id: int) -> tuple[str, str] | None:
+        """The latest player action (display-name, text) the last turn answered, or None — the
+        roll-detection router (ADR 014) classifies this. None on a results-only turn."""
+        return self._last_action.get(channel_id)
+
+    async def classify_test(
+        self, *, action: str, character: str | None, skills: list[str]
+    ) -> TestRequest | None:
+        """Roll-detection router (ADR 014): a separate, stateless, constrained-JSON LLM call that
+        decides whether ``action`` needs a test and which skill/difficulty — instead of trusting the
+        narration model's inline marker. ``skills`` constrains the choice to the acting character's
+        sheet. Returns a TestRequest (target_name = ``character``) or None. Never raises."""
+        if self._profile is None or not action.strip():
+            return None
+        difficulties = list(self._profile.difficulty_ladder)
+        schema = classifier_schema(skills, difficulties)
+        system = classifier_system(
+            skills, difficulties, self._profile.display_name or self._profile.name
+        )
+        try:
+            raw = await self._client.chat(
+                system,
+                [{"role": "user", "content": f"Spieler-Handlung: {action}"}],
+                options={"temperature": 0, "num_predict": 80},
+                format=schema,
+            )
+            data = json.loads(raw)
+        except Exception:
+            log.exception("roll-router classification failed")
+            return None
+        return to_test_request(data, character=character)
+
     def add_test_result(self, channel_id: int, line: str) -> None:
         """Buffer a rolled test result (a German summary line) to feed the next turn so the DM
         narrates its consequence (architecture §9: 'back into the next prompt')."""
@@ -304,6 +346,7 @@ class DMBrain:
         self._last_turn.pop(channel_id, None)
         self._pending_tests.pop(channel_id, None)
         self._test_results.pop(channel_id, None)
+        self._last_action.pop(channel_id, None)
         self._alias_hint.pop(channel_id, None)
 
     async def aclose(self) -> None:

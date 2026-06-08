@@ -51,10 +51,13 @@ class OllamaClient:
         messages: list[dict[str, str]],
         *,
         options: dict | None = None,
+        format: dict | str | None = None,
     ) -> str:
         """Send a system prompt + role-tagged messages, return the assistant's text.
 
         ``messages`` is the running history as ``[{"role": "user"|"assistant", "content": …}]``.
+        ``format`` (a JSON schema dict or ``"json"``) constrains the output via Ollama's structured
+        outputs — used by the roll-detection router (ADR 014) to force a tiny valid-JSON verdict.
         Raises ``httpx.HTTPError`` on transport/HTTP failure (the caller decides what to tell
         the players).
         """
@@ -65,6 +68,8 @@ class OllamaClient:
             "messages": [{"role": "system", "content": system}, *messages],
             "options": {**_DEFAULT_OPTIONS, **(options or {})},
         }
+        if format is not None:
+            payload["format"] = format
         resp = await self._client.post(f"{self._host}/api/chat", json=payload)
         resp.raise_for_status()
         data = resp.json()

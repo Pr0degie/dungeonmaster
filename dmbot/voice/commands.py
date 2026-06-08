@@ -80,6 +80,7 @@ class VoiceReceiveCog(commands.Cog):
         push_to_talk: bool = True,
         pause_vad_while_speaking: bool = False,
         button_autosend: bool = True,
+        roll_router: bool = False,
         tts_engine: str = "piper",
         tts_voice: str = "",
         tts_speaker: str = "",
@@ -109,6 +110,9 @@ class VoiceReceiveCog(commands.Cog):
         # Release the mic button → auto-run the DM turn (no separate !dm). On by default; the turn
         # waits for the just-said utterances to transcribe first. DM_BUTTON_AUTOSEND=0 disables it.
         self._button_autosend = push_to_talk and button_autosend
+        # Roll-detection router (ADR 014): classify the player's action in a separate constrained call
+        # and post the dice button, instead of relying on the model's inline <<TEST>> (kept as fallback).
+        self._roll_router = roll_router
         # Rules engine (Phase 8): load the active system profile (data/systems/<system>.json). A
         # missing/broken profile must not down the bot — log loudly and run rules-less (no dice).
         self._profile: SystemProfile | None = None
@@ -285,8 +289,11 @@ class VoiceReceiveCog(commands.Cog):
         await self._send_with_retry(channel, answer)
         await self._speak(answer, guild_id)
         # A test the DM requested via <<TEST …>> → post its dice button (before the mic re-anchor
-        # so the mic button stays at the very bottom).
-        await self._post_pending_dice(channel)
+        # so the mic button stays at the very bottom). With the roll-router on (ADR 014), if the
+        # model emitted no inline marker this turn, classify the action and post one anyway.
+        posted = await self._post_pending_dice(channel)
+        if self._roll_router and not posted:
+            await self._post_router_dice(channel)
         # Keep the mic button reachable: move it back to the bottom after the message + speech.
         if self._push_to_talk and self._sink is not None:
             await self._post_mic_button(channel)
@@ -511,11 +518,35 @@ class VoiceReceiveCog(commands.Cog):
         if answer:
             await self._deliver_answer(channel, guild_id, answer, llm_ms)
 
-    async def _post_pending_dice(self, channel) -> None:
-        """Post a dice button for each test the last DM turn requested via a <<TEST …>> marker."""
+    async def _post_pending_dice(self, channel) -> int:
+        """Post a dice button for each test the last DM turn requested via a <<TEST …>> marker.
+        Returns how many were posted (so the roll-router only fills in when the model emitted none)."""
         if self._profile is None:
+            return 0
+        reqs = self._brain.take_pending_tests(self._brain_channel(channel))
+        for req in reqs:
+            await self._post_dice_button(channel, req)
+        return len(reqs)
+
+    async def _post_router_dice(self, channel) -> None:
+        """Roll-detection router (ADR 014): classify the latest player action in a separate
+        constrained-JSON call and post a dice button if it needs a test. Skips silently when there's
+        no player action this turn (e.g. a post-roll narration) or no matching character."""
+        if self._profile is None or self._characters is None:
             return
-        for req in self._brain.take_pending_tests(self._brain_channel(channel)):
+        action = self._brain.last_action(self._brain_channel(channel))
+        if not action:
+            return
+        name, text = action
+        char = self._characters.get(name)
+        if char is None:
+            return
+        # Constrain the classifier to this character's sheet: skills first, then any same-named
+        # governing characteristic (skill_value falls back to those).
+        skills = list(char.skills) + [c for c in char.characteristics if c not in char.skills]
+        req = await self._brain.classify_test(action=text, character=char.name, skills=skills)
+        if req is not None:
+            log.info("🎲 router: '%s' → %s (%s)", text[:50], req.skill, req.difficulty or "Standard")
             await self._post_dice_button(channel, req)
 
     async def _post_dice_button(self, channel, req: TestRequest) -> None:

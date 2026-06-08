@@ -76,6 +76,7 @@ class DMBot(commands.Bot):
                 push_to_talk=self._config.push_to_talk,
                 pause_vad_while_speaking=self._config.pause_vad_while_speaking,
                 button_autosend=self._config.button_autosend,
+                roll_router=self._config.roll_router,
                 tts_engine=self._config.tts_engine,
                 tts_voice=self._config.tts_voice,
                 tts_speaker=self._config.tts_speaker,
