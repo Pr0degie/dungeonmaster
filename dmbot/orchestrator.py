@@ -36,7 +36,10 @@ _META_PREAMBLE = re.compile(
     r"^\s*als\s+(?:die\s+)?(?:spielleit(?:ung|er)|erzähler|gm|dm|game ?master)\s+"
     r"(?:beschreib\w*|schilder\w*|erzähl\w*|sag\w*|gebe?)\s+ich\b"
     r"(?:\s+(?:dir|euch|die\s+szene|eine\s+szene|folgende\s+szene))?"
-    r"\s*[:,]?\s*(?:wie|dass|in\s+der|in\s+dem)?\s*",
+    # zero+ connector words ("so", "wie", "folgendermaßen", …), each maybe after a ":"/"," — so
+    # "… beschreibe ich die Szene so:" strips fully instead of leaving a stray "So:" (seen live).
+    r"(?:\s*[:,]?\s*(?:so|folgenderma(?:ß|ss)en|wie\s+folgt|wie|dass|in\s+der|in\s+dem))*"
+    r"\s*[:,]?\s*",
     re.IGNORECASE,
 )
 # Small models echo their own instructions as a trailing parenthetical ("(Bitte beachte, dass ich
@@ -45,6 +48,14 @@ _META_PREAMBLE = re.compile(
 _META_PAREN = re.compile(
     r"\s*\((?=[^)]*\b(?:beachte|repliken|spielleit\w*|spielenden|figuren|erfinde\w*|entscheid\w*|"
     r"transkri\w*|hinweis|anmerk\w*|na ?repl)\b)[^)]*\)\s*$",
+    re.IGNORECASE,
+)
+# nemo ends almost every turn with a generic "Was tut ihr?" / "Was tust du?" prompt despite the
+# persona asking it not to. Strip a *trailing* generic action-prompt question (a real mid-scene
+# question or an NPC's question doesn't match these verbs and survives).
+_TRAILING_PROMPT = re.compile(
+    r"\s*Was\s+(?:tust\s+du|tut\s+ihr|macht\s+ihr|unternehmt\s+ihr|"
+    r"(?:möchtet|wollt|werdet)\s+ihr(?:\s+tun)?)\b[^?]*\?\s*$",
     re.IGNORECASE,
 )
 # Generic role labels small models like to keep talking as / for. Combined with the player
@@ -88,11 +99,20 @@ def _strip_meta_preamble(text: str) -> str:
     return rest[0].upper() + rest[1:] if rest else text
 
 
+def _strip_trailing_prompt(text: str) -> str:
+    """Drop a trailing generic "Was tut ihr?"/"Was tust du?" closing question — nemo tacks one on
+    almost every turn despite the persona. Only the *trailing* generic form goes (a real mid-scene
+    or NPC question survives), and never strips the answer down to nothing."""
+    stripped = _TRAILING_PROMPT.sub("", text).strip()
+    return stripped or text
+
+
 def _sanitize(text: str) -> str:
     text = text.replace("*", "").strip()  # drop markdown emphasis/bold
     text = _ROLE_LABEL.sub("", text).strip()  # drop a leading role label
     text = _strip_meta_preamble(text)  # drop a leading "Als Spielleitung beschreibe ich …" preamble
     text = _META_PAREN.sub("", text).strip()  # drop a trailing meta-disclaimer in parentheses
+    text = _strip_trailing_prompt(text)  # drop a repetitive trailing "Was tut ihr?" closer
     return text
 
 
@@ -239,6 +259,10 @@ class DMBrain:
         messages = [*history_prefix, {"role": "user", "content": user_msg}]
         options = {"stop": [f"\n{label}:" for label in labels], "num_predict": self._num_predict}
         raw = await self._client.chat(system, messages, options=options)
+        # Debug aid (lands in debug.log only — 🪵 is filtered off the console + terminal mirror):
+        # the raw LLM output BEFORE marker-stripping, so we can see whether the model emitted a
+        # <<TEST …>> marker at all (the prime suspect when the dice-marker flow doesn't fire).
+        log.info("🪵 LLM roh: %s", raw.replace("\n", " ⏎ "))
         answer = _sanitize(_cut_at_labels(raw, labels)) or _sanitize(raw)
         answer = _strip_leading_label(answer, labels)  # kill a leaked leading "Name:"/"DM:" label
         if self._profile is not None:

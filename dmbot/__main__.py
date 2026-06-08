@@ -13,8 +13,12 @@ Windows (SETUP B6) so incoming Opus can be decoded to PCM.
 
 from __future__ import annotations
 
+import itertools
 import logging
 import signal
+import sys
+import threading
+import time
 
 import discord
 from discord.ext import commands
@@ -98,12 +102,22 @@ _RED = "\033[91m"
 _RESET = "\033[0m"
 
 
+def _animate_shutdown() -> None:
+    """Animate 'Shutting down' with cycling dots on one line (carriage-return) so the operator sees
+    the teardown is progressing, not hung. Runs in a daemon thread → killed when the process exits."""
+    for dots in itertools.cycle(("   ", ".  ", ".. ", "...")):
+        sys.stdout.write(f"\r{_RED}Shutting down{dots}{_RESET}")
+        sys.stdout.flush()
+        time.sleep(0.3)
+
+
 def _install_sigint_guard() -> None:
     """Two-stage Ctrl+C: the **first** press asks ("Quit?") and keeps running, the **second**
     shuts down. discord.py 2.7.1's ``run()`` installs no SIGINT handler (verified), so ours stays
     in effect; the second press raises ``KeyboardInterrupt``, which ``run()`` catches and tears
     down cleanly (``cog_unload`` → transcriber/brain/bridge close). Avoids killing a session on a
-    single fat-fingered Ctrl+C.
+    single fat-fingered Ctrl+C. The second press also starts an animated 'Shutting down…' line so
+    the (sometimes second-long) teardown visibly does something rather than looking frozen.
     """
     armed = {"v": False}
 
@@ -112,7 +126,9 @@ def _install_sigint_guard() -> None:
             armed["v"] = True
             print(f"\n{_YELLOW}Quit? Nochmal Strg+C zum Beenden.{_RESET}", flush=True)
             return
-        print(f"\n{_RED}Shutting down …{_RESET}", flush=True)
+        sys.stdout.write(f"\n{_RED}Shutting down{_RESET}")  # instant paint; the thread animates the dots
+        sys.stdout.flush()
+        threading.Thread(target=_animate_shutdown, daemon=True).start()
         raise KeyboardInterrupt
 
     signal.signal(signal.SIGINT, _handler)

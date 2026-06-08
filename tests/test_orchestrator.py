@@ -65,6 +65,20 @@ def test_sanitize_strips_meta_preamble_with_and_without_colon() -> None:
     )
     out = _sanitize("Als Spielleitung beschreibe ich die Szene, wie der Mann näher kommt.")
     assert "Als Spielleitung" not in out and out[0].isupper()
+    # "… beschreibe ich die Szene so:" must strip fully, not leave a stray "So:" (seen live).
+    assert (
+        _sanitize("Als Spielleitung beschreibe ich die Szene so:\n\nDu betrittst die Halle.")
+        == "Du betrittst die Halle."
+    )
+
+
+def test_sanitize_strips_trailing_action_prompt() -> None:
+    # nemo ends almost every turn with "Was tut ihr?"/"Was tust du?" despite the persona — strip it.
+    assert _sanitize("Du bemerkst einen Tech-Priester.\n\nWas tust du?") == "Du bemerkst einen Tech-Priester."
+    assert _sanitize("Die Tür fällt zu. Was tut ihr jetzt?") == "Die Tür fällt zu."
+    # a real mid-scene question and an NPC's question survive — only the generic closer goes
+    assert _sanitize("Ihr hört einen Schrei. Was war das? Was tut ihr?") == "Ihr hört einen Schrei. Was war das?"
+    assert _sanitize('Der Wächter fragt: "Wer seid ihr?"') == 'Der Wächter fragt: "Wer seid ihr?"'
 
 
 def test_redo_reruns_last_turn_without_stacking_history() -> None:

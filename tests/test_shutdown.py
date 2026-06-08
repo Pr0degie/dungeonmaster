@@ -6,10 +6,13 @@ import signal
 
 import pytest
 
+import dmbot.__main__ as m
 from dmbot.__main__ import _install_sigint_guard
 
 
-def test_two_stage_ctrl_c(capsys):
+def test_two_stage_ctrl_c(capsys, monkeypatch):
+    # Stub the animation so the 2nd press doesn't spawn the real infinite dot-animation thread.
+    monkeypatch.setattr(m, "_animate_shutdown", lambda: None)
     previous = signal.getsignal(signal.SIGINT)
     try:
         _install_sigint_guard()
@@ -19,7 +22,7 @@ def test_two_stage_ctrl_c(capsys):
         handler(signal.SIGINT, None)  # 1st press → arm, no exit
         assert "Quit?" in capsys.readouterr().out
 
-        with pytest.raises(KeyboardInterrupt):  # 2nd press → shut down
+        with pytest.raises(KeyboardInterrupt):  # 2nd press → shut down (paints "Shutting down")
             handler(signal.SIGINT, None)
         assert "Shutting down" in capsys.readouterr().out
     finally:

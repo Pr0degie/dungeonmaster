@@ -127,8 +127,11 @@ class _ConsoleNoiseFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         if getattr(record, "_console_skip", False):
             return False  # flagged file-only (benign voice-recv unpack notices)
-        if "PCM ⟳" in record.getMessage():
+        msg = record.getMessage()
+        if "PCM ⟳" in msg:
             return False  # the 2 s per-user heartbeat
+        if "🪵" in msg:
+            return False  # raw-LLM debug line — debug.log only, off the console + terminal mirror
         return record.levelno >= logging.WARNING or record.name.startswith("dmbot")
 
 
