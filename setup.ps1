@@ -13,6 +13,7 @@
 #    .\setup.ps1 -StartBot        # run the bot when setup succeeds
 #    .\setup.ps1 -SkipOllama      # skip the LLM steps (e.g. remote Ollama)
 #    .\setup.ps1 -SkipSync        # skip 'uv sync' (deps already installed)
+#    .\setup.ps1 -Prefetch        # also pre-download the STT + XTTS models (several GB)
 # ============================================================================
 
 [CmdletBinding()]
@@ -20,6 +21,7 @@ param(
     [switch]$StartBot,    # launch DMbot after a successful setup
     [switch]$SkipOllama,  # skip pulling/warming the local LLM models
     [switch]$SkipSync,    # skip 'uv sync' (dependency install)
+    [switch]$Prefetch,    # pre-download the STT (faster-whisper) + XTTS model weights
     [switch]$NoInstallUv  # do NOT auto-install uv if it's missing (just fail)
 )
 
@@ -187,6 +189,23 @@ if ($SkipOllama) {
             Write-Warn "Could not reach $ollamaHost - is the Ollama service running? ($($_.Exception.Message))"
         }
     }
+}
+
+# ============================================================================
+#  6. Model prefetch (optional) - removes the first-run download wait
+# ============================================================================
+Write-Section "Model prefetch"
+if ($Prefetch) {
+    if ($SkipSync) { Write-Warn "-SkipSync was set - prefetch needs the deps; run without -SkipSync if this fails." }
+    Write-Info "Pre-downloading STT + XTTS weights on CPU (first run pulls several GB) ..."
+    uv run python -m tools.prefetch_models
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warn "Prefetch reported a problem - not fatal, the bot downloads on first use instead."
+    } else {
+        Write-Ok "Models cached - the first DM turn won't wait on a download."
+    }
+} else {
+    Write-Info "Skipped (pass -Prefetch to pre-download STT + XTTS now; else they fetch on first use)."
 }
 
 # ============================================================================

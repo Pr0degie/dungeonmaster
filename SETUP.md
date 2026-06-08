@@ -31,6 +31,8 @@ for you — installs `uv`, runs `uv sync`, creates `.env`, and pulls/warms the l
 powershell -ExecutionPolicy Bypass -File .\setup.ps1
 # .\setup.ps1 -StartBot     # also launch the bot when setup succeeds
 # .\setup.ps1 -SkipOllama   # skip the LLM steps (e.g. remote Ollama host)
+# .\setup.ps1 -Prefetch     # pre-download the STT + XTTS models (several GB) so the
+#                           # first DM turn doesn't wait; otherwise they fetch on first use
 ```
 
 **Manual** (what the script automates):
