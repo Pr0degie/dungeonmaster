@@ -71,8 +71,9 @@ class Config:
             bridge_secret=os.environ.get("DM_BRIDGE_SECRET", "").strip(),
             bot_a_user_id=int(bot_a_raw) if bot_a_raw else None,
             log_level=os.environ.get("LOG_LEVEL", "INFO").strip().upper(),
-            # Full-detail file log (logs/dmbot.log). Off by default — the console stays lean and
-            # nothing is written to disk; set DM_LOG_FILE=1 to record a run for later inspection.
+            # Debug file logs (logs/terminal.log = plain console mirror; logs/debug.log = fuller,
+            # heartbeat-collapsed, pasteable). Off by default — the console stays lean and nothing is
+            # written to disk; set DM_LOG_FILE=1 to record a run for later inspection.
             log_to_file=os.environ.get("DM_LOG_FILE", "").strip().lower()
             in ("1", "true", "yes", "on"),
             # Clean session transcript (logs/transcript.log) — just the conversation (player lines

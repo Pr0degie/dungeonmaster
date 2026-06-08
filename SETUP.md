@@ -55,7 +55,9 @@ Fill in at least `DISCORD_TOKEN_DMBOT`. Useful knobs (all optional, sensible def
 3. In Discord: `!j` → speak → `!dm` (or `!say <text>`). The DM answers **aloud**.
 
 Logs go to the console — kept lean (DMbot's own lines + any warnings/errors, with timestamps).
-The full-detail file `logs/dmbot.log` is **off by default**; set `DM_LOG_FILE=1` to record a run.
+File logging is **off by default**; set `DM_LOG_FILE=1` to record a run as two pasteable files:
+`logs/terminal.log` (plain mirror of the console) and `logs/debug.log` (fuller detail + tracebacks,
+heartbeat flood collapsed).
 
 ## 5. Troubleshooting (gotchas we actually hit)
 

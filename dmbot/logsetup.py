@@ -2,10 +2,16 @@
 
 The **console** is curated for reading during play: a green theme (dark "diff added-line"
 green) where transcripts (``📝``) render as a chat layout — speaker name in bright green, the
-line in green — and the high-frequency pipeline chatter (the ``PCM ⟳``
-heartbeats, faster-whisper's per-utterance ``Processing audio`` lines) is hidden from the
-console. The **file** (``logs/dmbot.log``) still gets *everything*, plain (no ANSI), UTF-8 —
-so it survives the window closing and stays greppable for debugging.
+line in green — and the high-frequency pipeline chatter (the ``PCM ⟳`` heartbeats,
+faster-whisper's per-utterance lines) is hidden from the console.
+
+Two **files** (both opt-in via ``DM_LOG_FILE=1``, UTF-8, both kept token-light so they can be
+pasted whole when debugging):
+- ``logs/terminal.log`` — a plain (no-ANSI) **mirror of exactly what the console shows**.
+- ``logs/debug.log`` — **more** detail for debugging (third-party INFO like the ``httpx`` request
+  lines, full tracebacks), but the 2 s ``PCM ⟳`` heartbeat flood is collapsed to ~one-in-N so it
+  stays small. This replaces the old single ``dmbot.log`` (which kept the heartbeat torrent and was
+  unpasteable).
 
 ANSI colours are enabled on the Windows console via ``colorama.just_fix_windows_console()``
 (turns on virtual-terminal processing for the conhost that ``start_dmbot.bat`` opens).
@@ -14,6 +20,7 @@ ANSI colours are enabled on the Windows console via ``colorama.just_fix_windows_
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 import textwrap
 import time
@@ -26,10 +33,14 @@ try:  # enable ANSI on the Windows console; harmless elsewhere / if missing
 except Exception:  # pragma: no cover
     pass
 
-_LOG_FILE = Path(__file__).resolve().parent.parent / "logs" / "dmbot.log"
+_LOGS_DIR = Path(__file__).resolve().parent.parent / "logs"
+# Two opt-in debugging files (DM_LOG_FILE=1): a plain mirror of the console, and a fuller-but-
+# -reduced debug log (heartbeat flood collapsed) — both pasteable without eating tokens.
+_TERMINAL_FILE = _LOGS_DIR / "terminal.log"
+_DEBUG_FILE = _LOGS_DIR / "debug.log"
 # A clean, human-readable session transcript — just the conversation (player lines + DM answers)
 # with timestamps, none of the debug chatter. Meant to be pasted whole to show "what went down".
-_TRANSCRIPT_FILE = Path(__file__).resolve().parent.parent / "logs" / "transcript.log"
+_TRANSCRIPT_FILE = _LOGS_DIR / "transcript.log"
 
 _RESET = "\033[0m"
 _DIM = "\033[2m"
@@ -94,6 +105,18 @@ class _ConsoleFormatter(logging.Formatter):
         return f"{_DIM}{_GREEN}{ts}  {record.name} | {msg}{_RESET}"
 
 
+_ANSI_RE = re.compile(r"\033\[[0-9;]*m")
+
+
+class _PlainMirrorFormatter(_ConsoleFormatter):
+    """The exact console layout with ANSI colour stripped — a faithful, plain mirror for the file
+    ``logs/terminal.log``. Reuses the console formatter so the file shows literally what the terminal
+    showed, just without the escape codes."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        return _ANSI_RE.sub("", super().format(record))
+
+
 class _ConsoleNoiseFilter(logging.Filter):
     """Keep the CONSOLE lean: only DMbot's own lines, plus any WARNING/ERROR from anywhere.
 
@@ -142,6 +165,25 @@ class _UnpackErrorThrottle(logging.Filter):
             record.msg = f"voice-recv has dropped {self._count} unparseable RTP packets (benign)"
             return True
         return False
+
+
+class _HeartbeatThrottle(logging.Filter):
+    """Collapse the 2 s ``PCM ⟳`` per-user heartbeat in the DEBUG file: keep the first, then one in
+    every N. "Is audio still flowing?" stays answerable without the heartbeat torrenting hundreds of
+    near-identical lines (the thing that made the old full log unpasteable). The console + the
+    terminal mirror drop it entirely (``_ConsoleNoiseFilter``); this keeps a thinned trace in debug.log."""
+
+    _N = 30  # ~once a minute at the 2 s cadence
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._count = 0
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if "PCM ⟳" not in record.getMessage():
+            return True
+        self._count += 1
+        return self._count == 1 or self._count % self._N == 0
 
 
 class _TranscriptFilter(logging.Filter):
@@ -194,14 +236,23 @@ def setup_logging(
             "%(asctime)s %(levelname)-7s %(name)s | %(message)s", datefmt="%H:%M:%S"
         )
         try:
-            _LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-            file_h = logging.FileHandler(_LOG_FILE, mode="a", encoding="utf-8")
-            file_h.setFormatter(plain)
-            root.addHandler(file_h)
-            log_file = _LOG_FILE
+            _LOGS_DIR.mkdir(parents=True, exist_ok=True)
+            # 1) terminal.log — a plain (no-ANSI) mirror of exactly what the console shows: the
+            #    curated, lean view (dmbot.* + WARNING/ERROR; no PCM heartbeat, no third-party INFO).
+            term_h = logging.FileHandler(_TERMINAL_FILE, mode="a", encoding="utf-8")
+            term_h.setFormatter(_PlainMirrorFormatter())
+            term_h.addFilter(_ConsoleNoiseFilter())
+            root.addHandler(term_h)
+            # 2) debug.log — fuller detail for debugging (third-party INFO like httpx + tracebacks),
+            #    but the PCM heartbeat flood is collapsed (one-in-N) so it stays token-light/pasteable.
+            debug_h = logging.FileHandler(_DEBUG_FILE, mode="a", encoding="utf-8")
+            debug_h.setFormatter(plain)
+            debug_h.addFilter(_HeartbeatThrottle())
+            root.addHandler(debug_h)
+            log_file = _DEBUG_FILE
         except OSError:
             logging.getLogger("dmbot").warning(
-                "could not open log file %s — console only", _LOG_FILE, exc_info=True
+                "could not open log files in %s — console only", _LOGS_DIR, exc_info=True
             )
 
     transcript_path: Path | None = None
@@ -224,7 +275,10 @@ def setup_logging(
     # Collapse the benign "Error unpacking packet" RTP-parse flood (alpha voice-recv bug).
     logging.getLogger("discord.ext.voice_recv.reader").addFilter(_UnpackErrorThrottle())
 
-    where = f"log file {log_file}" if log_file else "file logging off (set DM_LOG_FILE=1)"
+    where = (
+        f"logs: {_TERMINAL_FILE.name} (terminal mirror) + {_DEBUG_FILE.name} (reduced debug)"
+        if log_file else "file logging off (set DM_LOG_FILE=1)"
+    )
     if transcript_path:
         where += f"; transcript {transcript_path}"
     logging.getLogger("dmbot").info(

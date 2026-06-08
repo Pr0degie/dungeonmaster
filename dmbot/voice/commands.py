@@ -678,7 +678,7 @@ class VoiceReceiveCog(commands.Cog):
         else:
             await ctx.send(
                 "Konnte nicht abspielen — läuft **Bot A** und ist es im selben Voice-Channel? "
-                "Prüfe `!vstatus`; Details im Log (`logs/dmbot.log`)."
+                "Prüfe `!vstatus`; Details im Log (`logs/debug.log`)."
             )
 
     @commands.command(name="voice")
