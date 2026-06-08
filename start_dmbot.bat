@@ -40,6 +40,34 @@ if not exist ".env" (
     exit /b 1
 )
 
+REM ============================================================
+REM  Make sure the LLM is ready BEFORE the bot needs it, so a not-running Ollama can't
+REM  fail a DM turn mid-game (the "All connection attempts failed" traceback) and the first
+REM  turn isn't a ~15 s cold load. Only for a LOCAL OLLAMA_HOST: a remote host (e.g. the 5080
+REM  over Tailscale, ADR 002) is that machine's responsibility, so we never start one here.
+REM  Read host/model from .env; fall back to the code defaults.
+set "OLLAMA_HOST_CFG=http://127.0.0.1:11434"
+for /f "tokens=1,* delims==" %%A in ('findstr /b /c:"OLLAMA_HOST=" ".env"') do set "OLLAMA_HOST_CFG=%%B"
+set "OLLAMA_MODEL_CFG=mistral-nemo"
+for /f "tokens=1,* delims==" %%A in ('findstr /b /c:"OLLAMA_MODEL=" ".env"') do set "OLLAMA_MODEL_CFG=%%B"
+
+where ollama >nul 2>nul
+if errorlevel 1 (
+    echo [!] 'ollama' not on PATH - skipping the LLM warm-up. Make sure your LLM host is reachable.
+    goto after_ollama
+)
+echo %OLLAMA_HOST_CFG% | findstr /i "127.0.0.1 localhost" >nul
+if errorlevel 1 (
+    echo [i] OLLAMA_HOST is remote ^(%OLLAMA_HOST_CFG%^) - not starting a local Ollama.
+    goto after_ollama
+)
+echo Warming up Ollama ^(starts the daemon if needed, loads %OLLAMA_MODEL_CFG% - may take ~15s on a cold start^)...
+REM 'ollama list' boots the Windows Ollama app if it isn't already running.
+ollama list >nul 2>nul
+REM One tiny generation loads the model into VRAM so the first DM turn is instant.
+ollama run %OLLAMA_MODEL_CFG% "ok" >nul 2>nul
+:after_ollama
+
 echo Starting DMbot ...  (press Ctrl+C to stop)
 echo Project: %CD%
 echo.

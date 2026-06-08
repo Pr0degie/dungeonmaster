@@ -37,7 +37,7 @@
   "crit": "doubles",
   "auto_success_max": 5,
   "auto_fail_min": 96,
-  "damage": "weapon_damage + SL (reduced by armour on the hit location)",
+  "damage": "Waffenschaden + EG (reduziert durch Rüstung an der Trefferzone)",
   "character_schema": {
     "characteristics": ["WS", "BS", "Str", "Tgh", "Ag", "Int", "Per", "Wil", "Fel"],
     "resource": "wounds",

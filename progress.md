@@ -20,6 +20,29 @@ Recommended dial: **Opus 4.8 / xhigh**. The gemma3:12b taste test stays the mode
 (Tobi: **deferred, not now**).
 
 ## Last session
+**Ops/UX polish during the Phase-8 live test (2026-06-08).** Tobi started the Phase-8 gate; the dice
+math verified perfectly live (5 rolls, targets/SL/auto-bands/doubles-crit all correct against the
+example party), but every post-roll narration failed with `httpx.ConnectError` — **Ollama simply
+wasn't running** (not a bug; an external process). Built around that + two requested features:
+- **Ollama can't silently be down anymore.** `start_dmbot.bat` now warms a **local** Ollama before
+  launch (`ollama list` boots the daemon, `ollama run <model>` loads it — skipped for a remote
+  `OLLAMA_HOST`), and a new boot **preflight** (`dmbot/llm/preflight.py`, wired in `__main__`) pings
+  the host + checks the model is pulled, logging a clear error instead of a mid-game traceback.
+- **Two-stage Ctrl+C** (`__main__._install_sigint_guard`): first press prints `Quit?` and keeps
+  running, second prints `Shutting down …` and raises `KeyboardInterrupt` so discord.py's `run()`
+  tears down cleanly (verified discord.py 2.7.1 installs no SIGINT handler of its own).
+- **Pause control (D27 / ADR 013):** one shared `_paused` freeze, driven by **Esc in the terminal**
+  (Variante A, animated `rich` box) **and** a **Discord ⏸ button** (Variante C, status embed). Pause
+  mutes the VAD/STT pipeline + blocks all DM turns; resume reverses both. New dep `rich`. New
+  `discord_ui/pause.py`, `!pausebutton`, `paused=` in `!vstatus`.
+- **`!rules` / `!regeln`:** paged (◀/▶) Discord embed of the **active system's essentials**, derived
+  from the profile (`rules/summary.py` + `discord_ui/rules.py`) so it stays system-agnostic — how a
+  test works, the difficulty ladder, SL/auto-bands/crit, damage. Localised the IM profile's `damage`
+  field to German (free-text, display-only).
+- **Cosmetic:** dropped the double `🎲 🎲` in the dice log line (`commands.py`).
+- **Suite 74/74** (new: `test_llm_preflight`, `test_shutdown`, `test_pause`, `test_rules_summary`).
+  _All four features need Tobi's live click-through (terminal Esc + Discord buttons + the freeze)._
+
 **Phase 8 built — dice engine, IM profile, marker flow, turn-order buttons (2026-06-07).** The whole
 deterministic core, decoupled from the LLM (golden rule #2). New `dmbot/rules/`: `profile.py` (load +
 validate `data/systems/<system>.json`, difficulty-ladder lookup), `engine.py` (seeded-RNG dice parser
@@ -244,6 +267,7 @@ create the next-numbered ADR.
 | D23 | Bridge transport | **Hybrid `/speak`**: loopback → WAV path (unchanged); remote → WAV bytes + shared secret over Tailscale; Bot A plays its own copy | Lets DMbot + Bot A run on different machines without breaking the proven localhost path; partially relaxes D16/ADR 002 co-location for the bridge → ADR 010 |
 | D24 | STT latency | **GPU whisper** (`WHISPER_DEVICE=cuda`) **+ push-to-talk DM-routing gate** (shared Discord mic button; whole table always transcribed + logged, button gates only what reaches the DM, `DM_PUSH_TO_TALK=1`) | CPU whisper fell ~1.5 min behind; GPU + routing only the button-window speech to the DM keeps the full transcript record (Tobi's call) while cutting DM noise. Supersedes the 4070 "whisper on CPU" profile → ADR 011 |
 | D25 | Feedback layer 2 | **Pausing the VAD while Bot A speaks is now opt-in, off by default** (`DM_PAUSE_VAD_WHILE_SPEAKING=0`). Layer 1 (Bot-A user-ID filter) stays mandatory | Layer 1 already stops self-transcription and the push-to-talk routing gate keeps narration table talk out of the DM, so layer 2 was redundant and blocked transcription during the DM's narration — players wanted the table kept in the record. golden rule #4 (layer 1) unchanged; updates `architecture.md` §5 |
+| D27 | Pause control | **One shared `_paused` freeze, driven by the terminal Esc key (Variante A, animated `rich` box) AND a Discord ⏸ button (Variante C, status embed).** Pause mutes the VAD/STT pipeline + blocks all DM turns; resume reverses it | Tobi wanted both controls + a visible state, and a real freeze (not "keep transcribing"); reuses the layer-2 `mute()/unmute()`; new light dep `rich`; first half of the "Edit/Review window" backlog (same human-in-the-loop gate) → ADR 013 |
 | D26 | Phase-8 dice flow | **Difficulty is a ladder *word*, resolved to a number in code** (`<<TEST Wahrnehmung Schwer für Tobi>>` → profile maps *Schwer* → −20; `±N` only as manual override). **Minimal character JSON + alias map pulled into Phase 8** (GM rolls *for* the player; alias map also fixes F). **Turn order seeded from the voice channel.** | Honours "dice = code" / open item K (the number lives in the profile/character data, not the LLM); the lean party JSON is cheap and is the heart of K; the alias map quietly fixes F; the voice channel is a zero-setup turn-order source (full registration, ADR 003, stays deferred) → ADR 012 |
 
 ### Phase → ADR map (read these when you enter the phase)
@@ -491,6 +515,11 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
       briefly intercepts the DM response (and optionally the transcript) so a player can read /
       correct it before TTS. Off once trusted, so play flows. _Requested live by Pr0degie + Timo,
       2026-06-04; fits Phase 7 (turn-taking) — keep it switchable, not a permanent gate._
+      _Groundwork done (2026-06-08, D27/ADR 013):_ the **pause control** (Esc + Discord ⏸ button →
+      one `_paused` freeze) is the same human-in-the-loop gate; a review step can hook the same flag.
+- [x] **Pause control (Esc + Discord ⏸ button)** — done 2026-06-08 (D27/ADR 013). Esc in the DMbot
+      terminal *and* a Discord button flip one shared freeze (mute VAD/STT + block DM turns);
+      animated `rich` box in the terminal, status embed in Discord. _Live test pending Tobi._
 - [ ] GUI for the bot (session/turn/dice/sheets)
 - [ ] LLM finetuning (LoRA on session logs)
 - [ ] Streaming TTS (latency)

@@ -14,11 +14,13 @@ Windows (SETUP B6) so incoming Opus can be decoded to PCM.
 from __future__ import annotations
 
 import logging
+import signal
 
 import discord
 from discord.ext import commands
 
 from .config import Config
+from .llm.preflight import check_ollama
 from .logsetup import setup_logging
 from .voice.commands import VoiceReceiveCog
 
@@ -91,12 +93,41 @@ class DMBot(commands.Bot):
         log.error("command error in %r: %r", getattr(ctx, "command", None), error)
 
 
+_YELLOW = "\033[93m"
+_RED = "\033[91m"
+_RESET = "\033[0m"
+
+
+def _install_sigint_guard() -> None:
+    """Two-stage Ctrl+C: the **first** press asks ("Quit?") and keeps running, the **second**
+    shuts down. discord.py 2.7.1's ``run()`` installs no SIGINT handler (verified), so ours stays
+    in effect; the second press raises ``KeyboardInterrupt``, which ``run()`` catches and tears
+    down cleanly (``cog_unload`` → transcriber/brain/bridge close). Avoids killing a session on a
+    single fat-fingered Ctrl+C.
+    """
+    armed = {"v": False}
+
+    def _handler(signum, frame) -> None:
+        if not armed["v"]:
+            armed["v"] = True
+            print(f"\n{_YELLOW}Quit? Nochmal Strg+C zum Beenden.{_RESET}", flush=True)
+            return
+        print(f"\n{_RED}Shutting down …{_RESET}", flush=True)
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGINT, _handler)
+
+
 def main() -> None:
     config = Config.load()
     setup_logging(
         config.log_level, to_file=config.log_to_file, transcript_file=config.transcript_file
     )
     _ensure_opus()
+    # Surface a down/misconfigured LLM host at boot (clear log line) instead of a cryptic
+    # httpx.ConnectError mid-game. Best-effort: the bot still starts either way.
+    check_ollama(config.ollama_host, config.ollama_model)
+    _install_sigint_guard()  # first Ctrl+C asks, second shuts down
     DMBot(config).run(config.discord_token, log_handler=None)
 
 

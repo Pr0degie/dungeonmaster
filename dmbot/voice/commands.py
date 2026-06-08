@@ -31,10 +31,13 @@ from ..bridge import BridgeClient
 from ..discord_ui.mic import MicToggleView
 from ..discord_ui.dice import DiceTestView
 from ..discord_ui.turnorder import TurnOrderView
+from ..discord_ui.pause import PauseToggleView, pause_embed
+from ..discord_ui.rules import RulesView
 from ..rules import engine, profile as profile_mod
 from ..rules.profile import ProfileError, SystemProfile
 from ..rules.characters import CharacterStore, resolve_target
 from ..rules.marker import TestRequest, extract_tests
+from ..rules.summary import rules_pages_de
 
 # Repo data dir (data/systems is the profile root; sessions/ sits beside it).
 _DATA_DIR = profile_mod.systems_dir().parent
@@ -124,6 +127,14 @@ class VoiceReceiveCog(commands.Cog):
         self._turn_order: dict[int, list[str]] = {}
         self._turn_index: dict[int, int] = {}
         self._turn_message: discord.Message | None = None
+        # Pause control: one shared flag driven by the terminal Esc key (Variante A) AND the Discord
+        # ⏸ button (Variante C). Pause freezes everything — mute the VAD/STT pipeline + block DM
+        # turns — until resumed. The text channel + panel message let an Esc-pause also show in Discord.
+        self._paused = False
+        self._pause_message: discord.Message | None = None
+        self._text_channel: discord.abc.Messageable | None = None  # where panels are posted (set on join)
+        self._esc_task: asyncio.Task | None = None    # terminal Esc listener (Windows)
+        self._anim_task: asyncio.Task | None = None   # the animated "paused" box (rich)
         self._brain = DMBrain(
             OllamaClient(ollama_host, ollama_model),
             profile=self._profile,
@@ -189,7 +200,15 @@ class VoiceReceiveCog(commands.Cog):
         if for_dm and self._active_vc_id is not None:
             self._brain.add_player_line(self._active_vc_id, name, text)
 
+    async def cog_load(self) -> None:
+        # Terminal Esc → pause/resume (Variante A). Windows-only (msvcrt); on other platforms the
+        # listener no-ops and the Discord ⏸ button still works. Runs for the whole bot lifetime.
+        self._esc_task = asyncio.create_task(self._esc_key_listener())
+
     async def cog_unload(self) -> None:
+        for task in (self._esc_task, self._anim_task):
+            if task is not None:
+                task.cancel()
         # stop() does a (short) thread.join — run it off the event loop so the gateway heartbeat
         # keeps beating during shutdown (otherwise Ctrl+C logs "voice heartbeat blocked").
         await asyncio.to_thread(self._transcriber.stop)
@@ -236,9 +255,15 @@ class VoiceReceiveCog(commands.Cog):
             except OSError:
                 pass
 
-    async def _send_with_retry(self, channel, content: str, *, view: discord.ui.View | None = None):
+    async def _send_with_retry(self, channel, content: str | None = None, *,
+                               view: discord.ui.View | None = None,
+                               embed: discord.Embed | None = None):
         """Send a message, retrying once on a transient Discord 5xx (e.g. the 503 seen mid-session)."""
-        kwargs = {"view": view} if view is not None else {}
+        kwargs: dict = {}
+        if view is not None:
+            kwargs["view"] = view
+        if embed is not None:
+            kwargs["embed"] = embed
         try:
             return await channel.send(content, **kwargs)
         except discord.HTTPException as exc:
@@ -269,6 +294,9 @@ class VoiceReceiveCog(commands.Cog):
     @commands.command(name="dm")
     async def dm(self, ctx: commands.Context, *, text: str = "") -> None:
         """Run a DM turn. `!dm` answers the buffered voice lines; `!dm <Text>` answers text."""
+        if self._paused:
+            await ctx.send("⏸ Pausiert — mit **Esc** oder dem ⏸-Knopf fortsetzen.")
+            return
         channel_id = self._active_vc_id if self._active_vc_id is not None else ctx.channel.id
         if not text and self._brain.pending_count(channel_id) == 0:
             await ctx.send(
@@ -292,6 +320,9 @@ class VoiceReceiveCog(commands.Cog):
     @commands.command(name="redo", aliases=["r"])
     async def redo(self, ctx: commands.Context) -> None:
         """Re-run the last DM turn with the same input — for when the DM misunderstood. Alias: !r"""
+        if self._paused:
+            await ctx.send("⏸ Pausiert — mit **Esc** oder dem ⏸-Knopf fortsetzen.")
+            return
         channel_id = self._active_vc_id if self._active_vc_id is not None else ctx.channel.id
         try:
             async with ctx.typing():
@@ -313,6 +344,8 @@ class VoiceReceiveCog(commands.Cog):
         """Auto-trigger a DM turn when the mic button is released (push-to-talk). Waits for the
         just-said utterances to finish transcribing (so the last thing said is included), then
         answers if anything was routed to the DM. Silent no-op when nothing was — no nagging."""
+        if self._paused:
+            return
         channel_id = self._active_vc_id if self._active_vc_id is not None else channel.id
         await asyncio.to_thread(self._transcriber.wait_idle, 4.0)  # let the final utterance land
         if self._brain.pending_count(channel_id) == 0:
@@ -337,6 +370,113 @@ class VoiceReceiveCog(commands.Cog):
         except Exception:
             log.exception("auto DM turn after mic release failed")
 
+    # ----- Pause control: Esc (terminal) + ⏸ button (Discord), one shared state ----------
+
+    async def toggle_pause(self) -> bool:
+        """Flip the shared game-pause state; return the new flag. Called by Esc and the ⏸ button."""
+        await self.set_paused(not self._paused)
+        return self._paused
+
+    async def set_paused(self, value: bool) -> None:
+        """Freeze/resume the game. Pause mutes the VAD/STT pipeline (no transcription) and the DM
+        turn guards block any answer; resume reverses both. Idempotent. Both surfaces (the terminal
+        box and the Discord embed) are re-rendered from this one flag."""
+        if value == self._paused:
+            return
+        self._paused = value
+        if value:
+            if self._sink is not None:
+                self._sink.mute()  # freeze transcription (also flushes the open utterance)
+            log.warning("⏸ Spiel pausiert — keine Transkription, der Spielleiter wartet.")
+            if self._anim_task is not None and not self._anim_task.done():
+                self._anim_task.cancel()
+            self._anim_task = asyncio.create_task(self._run_pause_animation())
+        else:
+            if self._sink is not None:
+                self._sink.unmute()  # (no DM turn runs while paused, so this can't fight layer 2)
+            log.warning("▶ Spiel fortgesetzt.")
+        await self._refresh_pause_panel()
+
+    async def _esc_key_listener(self) -> None:
+        """Variante A: poll the DMbot terminal for the Esc key and toggle pause. Non-blocking — it
+        only reads a key when one is ready, so it never stalls the discord.py event loop. Windows
+        only (``msvcrt``); elsewhere it no-ops (the Discord ⏸ button still works)."""
+        try:
+            import msvcrt  # Windows console key polling (D16: the runtime is Windows)
+        except ImportError:
+            return
+        log.info("Esc-Taste im Terminal pausiert/setzt das Spiel fort.")
+        try:
+            while not self.bot.is_closed():
+                if msvcrt.kbhit():
+                    ch = msvcrt.getwch()
+                    if ch == "\x1b":  # Esc
+                        await self.toggle_pause()
+                    elif ch in ("\x00", "\xe0") and msvcrt.kbhit():
+                        msvcrt.getwch()  # swallow the 2nd byte of arrow/function keys
+                await asyncio.sleep(0.05)
+        except asyncio.CancelledError:
+            pass
+
+    async def _run_pause_animation(self) -> None:
+        """Variante A's animated box: a spinning 'PAUSIERT' panel in the DMbot terminal while the
+        game is frozen. Best-effort — if rich is missing or the console can't host a live region,
+        it just skips (the Discord embed still shows the state). The pipeline is muted while paused,
+        so the console is quiet and the box owns the screen cleanly."""
+        try:
+            from rich.align import Align
+            from rich.live import Live
+            from rich.panel import Panel
+            from rich.spinner import Spinner
+        except Exception:
+            return
+        spinner = Spinner(
+            "dots12",
+            text="  ⏸  PAUSIERT  —  Esc oder der ⏸-Knopf setzt fort  ",
+            style="bold yellow",
+        )
+        panel = Panel(
+            Align.center(spinner), title="[bold]DMbot[/]", border_style="yellow", padding=(1, 6)
+        )
+        try:
+            with Live(panel, refresh_per_second=12, transient=True):
+                while self._paused and not self.bot.is_closed():
+                    await asyncio.sleep(0.1)
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            log.debug("pause animation unavailable", exc_info=True)
+
+    async def _refresh_pause_panel(self) -> None:
+        """(Re)render the Discord pause panel (embed + button) to the current state. Posts it if a
+        text channel is known and none exists yet, so an Esc-driven pause is also visible in Discord."""
+        if self._text_channel is None:
+            return
+        view = PauseToggleView(self.toggle_pause, paused=self._paused)
+        embed = pause_embed(self._paused)
+        if self._pause_message is not None:
+            try:
+                await self._pause_message.edit(embed=embed, view=view)
+                return
+            except discord.HTTPException:
+                self._pause_message = None  # message gone — fall through and re-post
+        try:
+            self._pause_message = await self._text_channel.send(embed=embed, view=view)
+        except discord.HTTPException:
+            log.warning("could not post the pause panel", exc_info=True)
+
+    @commands.command(name="pausebutton")
+    async def pausebutton(self, ctx: commands.Context) -> None:
+        """(Re)post the pause control panel (embed + ⏸ button) at the bottom of the text channel."""
+        self._text_channel = ctx.channel
+        if self._pause_message is not None:
+            try:
+                await self._pause_message.delete()
+            except discord.HTTPException:
+                pass
+            self._pause_message = None
+        await self._refresh_pause_panel()
+
     # ----- Phase 8: dice engine, marker flow & turn order --------------------------------
 
     def _brain_channel(self, channel) -> int:
@@ -358,6 +498,8 @@ class VoiceReceiveCog(commands.Cog):
     async def _run_and_deliver(self, channel, guild_id: int | None) -> None:
         """Run a DM turn and deliver it — used after a dice roll feeds its result back in so the
         DM narrates the consequence (architecture §9)."""
+        if self._paused:  # frozen — the roll result is already posted; narration waits for resume
+            return
         try:
             t0 = time.perf_counter()
             answer = await self._brain.respond(self._brain_channel(channel))
@@ -412,7 +554,7 @@ class VoiceReceiveCog(commands.Cog):
                 line = engine.describe_result_de(
                     result, skill=skill, character=who, difficulty=resolved.difficulty
                 )
-            log.info("🎲 %s", line)
+            log.info("%s", line)  # `line` already starts with 🎲 (describe_result_de)
             try:
                 await interaction.message.edit(content=line, view=None)  # show result, drop button
             except discord.HTTPException:
@@ -511,6 +653,20 @@ class VoiceReceiveCog(commands.Cog):
             self._turn_index.setdefault(self._active_vc_id, 0)
         await self._post_turn_order(ctx.channel)
 
+    @commands.command(name="rules", aliases=["regeln"])
+    async def rules(self, ctx: commands.Context) -> None:
+        """Show the essential rules of the active system; page through with ◀/▶. Alias: !regeln"""
+        if self._profile is None:
+            await ctx.send("Kein Systemprofil geladen — keine Regeln verfügbar (siehe Log).")
+            return
+        pages = rules_pages_de(self._profile)
+        if not pages:
+            await ctx.send("Für dieses System sind keine Regeln hinterlegt.")
+            return
+        source = self._profile.raw.get("_source", "") if isinstance(self._profile.raw, dict) else ""
+        view = RulesView(pages, self._profile.display_name or self._profile.name, source=source)
+        await self._send_with_retry(ctx.channel, view=view, embed=view.embed())
+
     @commands.command(name="say")
     async def say(self, ctx: commands.Context, *, text: str) -> None:
         """Speak arbitrary text through Piper + Bot A — a TTS/bridge smoke test."""
@@ -580,6 +736,7 @@ class VoiceReceiveCog(commands.Cog):
         sink = voice_recv.SilenceGeneratorSink(vad_sink)
         vc.listen(sink, after=self._on_listen_done)
         self._active_vc_id = channel.id  # buffer transcripts + answer for this channel
+        self._text_channel = ctx.channel  # where the pause panel (and other panels) are posted
         # Phase 8: load this channel's party (else the example), wire the "who plays whom" alias
         # hint into the prompt (open item F), and seed the turn order from the voice members.
         self._characters = self._load_characters(channel.id)
@@ -604,6 +761,7 @@ class VoiceReceiveCog(commands.Cog):
                 f"(Opus: {discord.opus.is_loaded()})"
             )
             await self._post_turn_order(ctx.channel)  # before the mic button so mic stays at bottom
+            await self._refresh_pause_panel()
             await self._post_mic_button(ctx.channel)
         else:
             await ctx.send(
@@ -611,6 +769,7 @@ class VoiceReceiveCog(commands.Cog):
                 f"Spielleitung. Sprecht, dann `!dm` (oder `!dm <Text>`). (Opus: {discord.opus.is_loaded()})"
             )
             await self._post_turn_order(ctx.channel)
+            await self._refresh_pause_panel()
 
     async def toggle_listening(self) -> bool:
         """Flip the push-to-talk DM-routing gate; return the new state. Called by the mic button.
@@ -672,7 +831,12 @@ class VoiceReceiveCog(commands.Cog):
         self._sink = None
         self._utterance_counts.clear()
         self._dm_listening = not self._push_to_talk  # reset the routing gate for the next session
-        for msg_attr in ("_mic_message", "_turn_message"):
+        # Clear any pause: stop the animation, drop the flag (the sink is being dropped anyway).
+        self._paused = False
+        if self._anim_task is not None and not self._anim_task.done():
+            self._anim_task.cancel()
+        self._text_channel = None
+        for msg_attr in ("_mic_message", "_turn_message", "_pause_message"):
             msg = getattr(self, msg_attr)
             if msg is not None:
                 try:
@@ -690,7 +854,7 @@ class VoiceReceiveCog(commands.Cog):
         listening = isinstance(vc, voice_recv.VoiceRecvClient) and vc.is_listening()
         await ctx.send(
             f"connected={connected} listening={listening} "
-            f"opus={discord.opus.is_loaded()}"
+            f"opus={discord.opus.is_loaded()} paused={self._paused}"
         )
 
     @staticmethod

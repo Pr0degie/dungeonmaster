@@ -42,6 +42,7 @@ dependencies = [
     # not the bot runtime. PyMuPDF is a C-extension (not torch-heavy); architecture.md §3.
     "pymupdf4llm>=1.27.2.3",
     "python-dotenv>=1.2.2",
+    "rich>=15.0.0",
     "soxr>=1.1.0",
     "torch>=2.12.0",
     "torchaudio>=2.11.0",

@@ -133,6 +133,7 @@ from Bot A; layer-1 user-ID filtering protects regardless).
 | RAG store | SQLite + vector (e.g. `sqlite-vec`) or ChromaDB | searchable PDF chunks |
 | TTS | `coqui-tts` (XTTS v2) **default**, `piper-tts` fallback | XTTS (default): ~58 built-in speakers + voice cloning, rich but heavy (**pulls torch/torchaudio/torchcodec — from the CUDA `cu130` index** (covers Ada + Blackwell) so it runs on the GPU, not the CPU-only build; transformers pinned <5); device per `TTS_DEVICE` (cuda/cpu), auto-degrades to CPU if CUDA is absent or OOMs. Piper: fast, lean, fixed German voice (`de_DE-thorsten`) → WAV — the fallback when XTTS won't load. Selectable per `TTS_ENGINE` (golden rule #9: the CUDA torch stack is the cost of GPU XTTS → ADR 009) |
 | Bridge client | `httpx`/`aiohttp` | `POST` to Bot A `/speak` |
+| Pause box (terminal) | `rich` | animated `Live` "PAUSIERT" panel in the DMbot console while the game is frozen (pause via Esc; the Discord ⏸ button mirrors it). Pure-Python, light — the cost of the animated box (golden rule #9 → ADR 013) |
 
 ---
 
