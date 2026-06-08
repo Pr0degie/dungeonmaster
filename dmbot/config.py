@@ -135,7 +135,7 @@ class Config:
             # Roll-detection router (ADR 014): after the narration turn, a separate constrained-JSON
             # call classifies the player's action → which test (skill + difficulty) and posts the
             # dice button — far more reliable than the model's inline <<TEST>> marker, which stays as
-            # a fallback. OFF by default (A/B); DM_ROLL_ROUTER=1 enables it.
-            roll_router=os.environ.get("DM_ROLL_ROUTER", "").strip().lower()
+            # a fallback. ON by default (validated live, 2026-06-08); DM_ROLL_ROUTER=0 disables it.
+            roll_router=os.environ.get("DM_ROLL_ROUTER", "1").strip().lower()
             in ("1", "true", "yes", "on"),
         )

@@ -4,20 +4,18 @@ Living status document. A phase counts as done only when its **verification gate
 met and the proof is recorded here.
 
 ## Current focus
-**Phases 0–7 complete + Phase 8 code-complete & rulebook-verified** ⭐. Phases 0–7 are live-validated
-(the DM is playable and turn-managed). **Phase 8 (dice engine, IM profile, marker flow, turn-order
-buttons) is built, unit-proven (suite 64/64) and the IM numbers are verified against the bought Core
-Rulebook** (converted via the new `tools/pdf_to_md.py`); only the live Discord gate is pending. The
-deterministic core honours "dice = code":
-the LLM requests a test by *naming* a skill + a difficulty *word* (`<<TEST Wahrnehmung Schwer für
-Tobi>>`), and the generic engine resolves the target (skill value from the character JSON + the
-difficulty modifier from the profile ladder), rolls, computes the success level, and feeds the
-result back so the DM narrates the consequence. A minimal character store + display-name→character
-alias map were pulled in (the GM rolls *for* the player — open item K — and the alias map fixes
-open item F); turn order is seeded from the voice channel. **Next: Tobi live-tests the Phase-8 gate
-in Discord** (click a dice button, confirm result+degrees, `!turn` rotates), then Phase 9 (memory).
-Recommended dial: **Opus 4.8 / xhigh**. The gemma3:12b taste test stays the model-side quality lever
-(Tobi: **deferred, not now**).
+**Phases 0–8 complete & live-validated** ⭐. The DM is playable, turn-managed, and the **dice engine
+is live** — dice math, turn order, voice loop and the **auto-test** all confirmed in Discord
+(2026-06-08). The deterministic core honours "dice = code": the engine resolves the target (skill
+value from the character JSON + difficulty modifier from the profile ladder), rolls, computes the
+success level, and feeds the result back so the DM narrates the consequence — **never the LLM**.
+Phase 8's one live snag — the LLM not reliably emitting the inline `<<TEST>>` marker (it self-resolves;
+a documented, model-size-independent LLM-GM failure) — was fixed by the **roll-detection router**
+(D29 / ADR 014): a separate constrained-JSON classifier picks the test after narration and posts the
+button (nemo 8/8; now the default, inline marker kept as fallback). **Model: mistral-nemo** (gemma3:12b
+was live-tested but didn't fix the markers and nemo's tone is preferred; the marker fix was
+architectural, not the model). **Next: Phase 9 — memory (JSON world state + recaps).** Read **ADR 004**
+first. Recommended dial: **Opus 4.8 / xhigh**.
 
 ## Last session
 **Ops/UX polish during the Phase-8 live test (2026-06-08).** Tobi started the Phase-8 gate; the dice
@@ -41,7 +39,21 @@ wasn't running** (not a bug; an external process). Built around that + two reque
   field to German (free-text, display-only).
 - **Cosmetic:** dropped the double `🎲 🎲` in the dice log line (`commands.py`).
 - **Suite 74/74** (new: `test_llm_preflight`, `test_shutdown`, `test_pause`, `test_rules_summary`).
-  _All four features need Tobi's live click-through (terminal Esc + Discord buttons + the freeze)._
+
+**Then — Phase-8 live test → the marker problem → the roll-detection router (2026-06-08, same day).**
+The live run worked for dice (`!test`), turn order and the voice loop, but the LLM **wasn't emitting
+the `<<TEST>>` marker** — it self-resolved actions in prose. Diagnosed from `debug.log` (added a raw-LLM
+`🪵` line, debug-only). First sharpened the persona (don't self-resolve, emit the marker + example),
+stripped the repetitive trailing "Was tut ihr?" closer, and fixed a stray "So:" preamble leftover.
+Then a **gemma3:12b vs nemo** taste test: gemma3 narrates cleaner (no meta-ramble/English-leak/tic) but
+its markers were **no** better (still self-resolves), and nemo's tone is preferred → **kept nemo**.
+**Researched it** (Tobi pushed back on "model-limited"): it's a *documented, model-size-independent*
+LLM-GM failure; the fix is a separate roll step, not a bigger model — and an **experiment confirmed it**
+(nemo 8/8 as a separate constrained-JSON classifier). Built the **roll-detection router** (D29 / ADR
+014): after narration, a stateless constrained-JSON call classifies the action → posts the dice button;
+inline marker kept as fallback; **now the default**. Tobi live-confirmed: "funktioniert jetzt besser" →
+**Phase 8 flipped to ✅**. Also: split file logging into `terminal.log` (console mirror) + `debug.log`
+(heartbeat-collapsed, pasteable). Research written up in `docs/research-notes.md`. **Suite 81/81.**
 
 **Phase 8 built — dice engine, IM profile, marker flow, turn-order buttons (2026-06-07).** The whole
 deterministic core, decoupled from the LLM (golden rule #2). New `dmbot/rules/`: `profile.py` (load +
@@ -202,32 +214,28 @@ _(Prior session — voice-stack hardening, ADR 006 — and Phases 3–6 (the pla
 in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 
 ## Next concrete step
-**Live-test the Phase-8 gate in Discord (Tobi), then Phase 9 (memory).** Phase 8 is code-complete and
-unit-proven (63/63); the gate needs a real run: `!j`, then **(a)** `!test Wahrnehmung Schwer für Tobi`
-→ click the dice button → confirm the posted result + degrees match the engine; **(b)** speak a line
-that makes the DM emit `<<TEST …>>` → confirm a dice button auto-appears and, after the click, the DM
-narrates the consequence; **(c)** `!turn` → confirm the order rotates over the voice members. Fill the
-Phase-8 `VERIFY EVIDENCE` once seen live, flip it to ✅. _Setup before the run:_ transfer the real party
-sheets into `data/sessions/<voice-channel-id>/characters.json` (else the example party stands in). _(The
-IM difficulty ladder/SL/auto-bands are already verified against the bought rulebook — see the profile
-`_note`.)_ **Then Phase 9 — memory (JSON state + recaps):** read ADR 004 first; HP/wounds
-advance deterministically in code, recaps by the LLM. Dial: **Opus 4.8 / xhigh**.
+**Phase 9 — memory (JSON world state + recaps).** Phase 8 is done (live-validated). **Read ADR 004
+first** (character/state JSON). Build: JSON world state per voice channel in `data/sessions/` (schema
+in `architecture.md` §7), advanced **deterministically in code** (e.g. HP/wounds after damage —
+never from LLM free text, golden rule #3); recaps summarised by the LLM, stored by code, re-injected
+at the front of the next session's prompt. **Gate:** an HP change survives a restart; the next session
+opens with a correct recap. Dial: **Opus 4.8 / xhigh**. (The dice engine already computes damage via
+the profile, so wiring its result into the JSON state is the natural first hook.)
 
-**In parallel — the gemma3:12b taste test** (quick, high-leverage): set `OLLAMA_MODEL=gemma3:12b`
-(pull it first) and replay a scene. Most of the residual persona drift (action attribution, not
-dodging provocative input, POV) is nemo's weakness, not the prompt — gemma3 may follow the sharpened
-persona better. If it does, flip the default; if not, the persona is already as tight as it gets.
+_Resolved this session (no longer open):_ the **gemma3 vs nemo** taste test (gemma3 didn't fix the
+marker problem; nemo kept for tone — the fix was the **roll-detection router**, ADR 014); **two-stage
+Ctrl+C** shutdown (done); the **auto-test** (router, live-validated).
 
-_Carry-overs (verify in a live run, not code) — Tobi said he'll test these during development:_
-1. **Dialogue loop** end-to-end on the 5080 host: `!j` → speak → `!dm` answers aloud, and a 2nd
-   `!dm` keeps the per-channel history. (Fill Phase-6 evidence once confirmed on that box.)
+_Carry-overs (verify in a live run, not code):_
+1. **Remote/Tailscale bridge (ADR 010)** — implemented, **never live-tested**; do the two-machine
+   check in the README "Split hosting" section when wanted (currently both bots on one box).
 2. **Answer length** by ear — tune `DM_NUM_PREDICT` if turns feel long/clipped.
-3. **Prompt Ctrl+C shutdown** — confirm one Ctrl+C exits cleanly.
-4. **Remote/Tailscale bridge (ADR 010)** — implemented, **never live-tested**; do the two-machine
-   check in the README "Split hosting" section when they want it (currently both bots on one box).
-5. Older: STT confidence filter on noisy speech; `gemma3:12b` vs `mistral-nemo` persona taste test;
-   the toggleable edit/review window (Part 2 backlog). **Input bleed:** a player's stream audio
-   leaking into the mic gets transcribed — an input-discipline / future wake-word concern, not a bug.
+3. **Roll-router live feel** — now default-on; if a scene posts a spurious/odd button, tune the
+   classifier prompt (`dmbot/llm/roll_router.py`) or the difficulty handling. Inline `<<TEST>>` is the
+   fallback if the router is turned off (`DM_ROLL_ROUTER=0`).
+4. Older: STT confidence filter on noisy speech; the toggleable edit/review window (Part 2 backlog;
+   the pause control D27/ADR 013 is its groundwork). **Input bleed:** a player's stream audio leaking
+   into the mic gets transcribed — input-discipline / future wake-word concern, not a bug.
 
 ---
 
@@ -270,7 +278,7 @@ create the next-numbered ADR.
 | D26 | Phase-8 dice flow | **Difficulty is a ladder *word*, resolved to a number in code** (`<<TEST Wahrnehmung Schwer für Tobi>>` → profile maps *Schwer* → −20; `±N` only as manual override). **Minimal character JSON + alias map pulled into Phase 8** (GM rolls *for* the player; alias map also fixes F). **Turn order seeded from the voice channel.** | Honours "dice = code" / open item K (the number lives in the profile/character data, not the LLM); the lean party JSON is cheap and is the heart of K; the alias map quietly fixes F; the voice channel is a zero-setup turn-order source (full registration, ADR 003, stays deferred) → ADR 012 |
 | D27 | Pause control | **One shared `_paused` freeze, driven by the terminal Esc key (Variante A, animated `rich` box) AND a Discord ⏸ button (Variante C, status embed).** Pause mutes the VAD/STT pipeline + blocks all DM turns; resume reverses it | Tobi wanted both controls + a visible state, and a real freeze (not "keep transcribing"); reuses the layer-2 `mute()/unmute()`; new light dep `rich`; first half of the "Edit/Review window" backlog (same human-in-the-loop gate) → ADR 013 |
 | D28 | Lore representation (Phase 10) | **RAG, not fine-tuning, for facts.** 40k lore from **both** wiki sources (Fandom official XML dump + Lexicanum via MediaWiki API / archive.org), **text only**, chunked + `nomic-embed-text` → **`sqlite-vec`** with rulebook vs lore as separate `source`s. Fine-tuning only later as a **tone-LoRA** (style, not facts) | Fine-tuning hallucinates facts, can't cite, needs retraining to update + a wiki doesn't fit in 12B weights/context; RAG is grounded/citeable/updatable (golden rule #7). Both wikis ≈ 0.8–1.3 GB (images excluded). Plan saved; → a new ADR when Phase 10 starts |
-| D29 | Auto-test trigger | **Roll-detection router** — a separate, stateless **constrained-JSON classifier** picks the test (skill + difficulty, skill enum = the character's sheet) **after** narration, instead of the model's inline `<<TEST>>` (kept as fallback). Behind `DM_ROLL_ROUTER` (off by default, A/B) | The inline marker failed live (only 2 good markers/session; the model self-resolves uncertain actions) — a **documented, model-size-independent** LLM-GM failure, not a 12B limit (web + an experiment: the same nemo scored **8/8** as a separate step). Costs +1 short stateless call/turn, doesn't bloat the DM context. Revisits ADR 004 → ADR 014 |
+| D29 | Auto-test trigger | **Roll-detection router** — a separate, stateless **constrained-JSON classifier** picks the test (skill + difficulty, skill enum = the character's sheet) **after** narration, instead of the model's inline `<<TEST>>` (kept as fallback). **ON by default** (`DM_ROLL_ROUTER`, validated live 2026-06-08; `=0` disables) | The inline marker failed live (only 2 good markers/session; the model self-resolves uncertain actions) — a **documented, model-size-independent** LLM-GM failure, not a 12B limit (web + an experiment: the same nemo scored **8/8** as a separate step). Costs +1 short stateless call/turn, doesn't bloat the DM context. Revisits ADR 004 → ADR 014 |
 
 ### Phase → ADR map (read these when you enter the phase)
 
@@ -451,7 +459,7 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   done from these transcripts and is in the unit suite (**29/29**) — but is **persona/model-limited**
   (nemo); residual drift is the gemma3 lever, not a Phase-7 gate failure.
 
-### 🔄 Phase 8 — Dice engine, system profile & turn-order buttons  (code-complete, live gate pending)
+### ✅ Phase 8 — Dice engine, system profile & turn-order buttons  (live-validated)
 - [x] `rules/engine.py` — generic dice + resolution engine (profile-driven, seeded RNG) **+ unit tests**.
       Dice parser (`XdY±N`, `d5`), `resolve_test` via a resolver registry (IM `roll_under` first), SL =
       tens-difference, crit/fumble on doubles, 01–05 / 96–00 auto-bands, `describe_result_de` (the
@@ -486,9 +494,15 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   seeded RNG (success/fail boundaries, SL tens-difference, crit/fumble on doubles, auto-bands, the
   d100-as-"00" case) and the full marker→resolve→roll path verified end to end against the real IM
   profile + example party (`<<TEST Wahrnehmung Schwer für Tobi>>` → Mortn, Wahrnehmung 44 − Schwer 20 =
-  target 24 → roll 42 → "Fehlschlag, 2 EG"). **Suite 64/64.** _Pending (Tobi, live Discord run):_ click a
-  dice button in-channel and confirm the posted result + degrees, that a DM `<<TEST>>` auto-posts a
-  button and the consequence is narrated, and that `!turn` rotates over the voice members.
+  target 24 → roll 42 → "Fehlschlag, 2 EG").
+  _Live (Tobi, Discord, 2026-06-08):_ **(2a)** `!test … Schwer für Tobi` → the dice button posts and the
+  result + degrees match the engine (verified live across several rolls, incl. the doubles-crit on 44);
+  **(2c)** `!turn` rotates over the voice members with ▶/◀; **(3)** the voice loop + push-to-talk
+  auto-send work; **(4)** the **auto-test now fires reliably via the roll-detection router (D29/ADR 014)**
+  — the inline `<<TEST>>` was unreliable live (the model self-resolves; root-caused from the debug log),
+  so a separate constrained-JSON classifier picks the test after narration and posts the button. Tobi:
+  "funktioniert jetzt besser." **Suite 81/81.** Router is the default auto-test path; inline marker stays
+  as fallback.
 
 ### ⬜ Phase 9 — Memory (JSON + recaps)
 - [ ] JSON world state + deterministic advancement
@@ -553,9 +567,11 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 ## Open questions / to clarify
 
 **From the Phase-7 playtests (2026-06-06) — carry into Phase 8 / quality work:**
-- **(gemma3) Persona drift is model-limited.** nemo still mis-attributes who did what, dodges
-  provocative in-fiction input, and occasionally slips POV — despite a sharpened persona. **Try
-  `gemma3:12b`** (taste test, see Next step) before assuming the prompt is at fault.
+- ✅ **(gemma3) Taste test done (2026-06-08).** gemma3:12b narrates cleaner than nemo (no
+  meta-ramble/English-leak/"Was-tut-ihr"-tic) but its **dice markers were no better** (still
+  self-resolves), and nemo's tone is preferred → **kept nemo**. The marker problem was *not* the model
+  (documented LLM-GM failure) — fixed architecturally by the roll-detection router (D29/ADR 014). The
+  residual narration drift (POV, attribution) stays nemo's ceiling; a tone-LoRA is the Part-2 lever.
 - ✅ **(F) Player → character name mapping — addressed in Phase 8 (ADR 012).** The character JSON
   carries a display-name→character **alias map**, injected as a light prompt hint
   (`CharacterStore.alias_hint_de`), and turn order shows character names. _Verify live whether nemo
