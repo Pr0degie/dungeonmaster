@@ -23,6 +23,18 @@ first run, the optional Piper fallback voice lives in `voices/`, gitignored).
 
 ## 2. Install
 
+**Automated (recommended):** run the one-shot installer from the repo root. It does steps 2+3
+for you — installs `uv`, runs `uv sync`, creates `.env`, and pulls/warms the local Ollama models
+— then prints what only *you* can finish (token, Bot A, PDFs). Safe to re-run.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
+# .\setup.ps1 -StartBot     # also launch the bot when setup succeeds
+# .\setup.ps1 -SkipOllama   # skip the LLM steps (e.g. remote Ollama host)
+```
+
+**Manual** (what the script automates):
+
 ```bash
 uv sync                  # creates the venv and installs all dependencies
 ```

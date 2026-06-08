@@ -59,8 +59,8 @@ Runtime is **Windows** (see decision log D16). Check the items off.
       finds the DLLs. Verified: `faster-whisper 'small' loaded on cuda (float16)`,
       ~1.25 s to transcribe 4 s of audio (model cached). If GPU init ever fails it auto-falls
       back to CPU int8 (logged), so STT degrades instead of dying.
-- Tunable via env (no code change): `WHISPER_MODEL` (default `small`), `WHISPER_DEVICE`
-  (`cuda`), `WHISPER_COMPUTE` (`float16`). Bump to `medium` if German accuracy needs it.
+- Tunable via env (no code change): `WHISPER_MODEL` (default `medium`), `WHISPER_DEVICE`
+  (`cuda`), `WHISPER_COMPUTE` (`float16`). Drop to `small` to free VRAM if needed.
 
 ### B4 — Discord (two bots) — ✅ DONE (2026-06-04)
 - [x] **DMbot** created, token in `.env`; **Bot A** (music bot) token in its own repo.
