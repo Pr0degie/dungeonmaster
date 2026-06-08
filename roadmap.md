@@ -109,7 +109,7 @@ sessions — after a model switch, re-run `/effort`.
 - Keep session state per channel clean.
 - **Verification:** two people speak → the DM reacts in order and does not talk into its own audio.
 
-### Phase 8 — Dice engine, system profile & turn-order buttons
+### Phase 8 — Dice engine, system profile & turn-order buttons   ✅ DONE (2026-06-08, live-validated)
 **Goal:** system-agnostic mechanics at the press of a button — IM as the first profile.
 - `rules/engine.py`: **generic** dice + resolution engine driven by a system profile
   (roll-under/over/pool, target source, degrees, damage). **With unit tests.**
@@ -117,7 +117,9 @@ sessions — after a model switch, re-run `/effort`.
   (1d100, roll-under, SL = tens-difference, d10/d5 damage); engine tested against it.
   (Auto-proposing a profile from a PDF comes with RAG in Phase 10.)
 - Text-channel `View` with buttons: roll, declare action, end turn; display "whose turn it is".
-- The LLM *requests* a test via marker; the engine rolls per the active profile and feeds the result back.
+- A test is detected by the **roll-detection router** (a separate classifier after narration, ADR 014;
+  default on) — or, as a fallback, the LLM's inline `<<TEST>>` marker; the engine rolls per the active
+  profile and feeds the result back. _(The inline-only marker proved unreliable live → ADR 014.)_
 - **Verification:** a button roll shows the correct result + degrees for the active profile; turn order rotates; unit tests green.
 
 ### Phase 9 — Memory (JSON + recaps)

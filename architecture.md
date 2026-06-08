@@ -109,9 +109,9 @@ state (matches D15; an earlier Bot-A→DMbot callback was removed as redundant).
 **DMbot's side of the contract:** write the TTS WAV to a real file (OS temp dir, Windows), then
 `POST` to `http://DM_BRIDGE_HOST:DM_BRIDGE_PORT/speak` — its *path* when the host is loopback
 (shared disk), or its *bytes* when the host is remote (ADR 010). DMbot deletes its WAV after the
-call returns. DMbot pauses its own VAD before the
-`await` and resumes after the response returns (it owns the loop, so it needs no push
-from Bot A; layer-1 user-ID filtering protects regardless).
+call returns. It *may* pause its own VAD around the blocking `await` (belt-and-braces) — but that is
+**opt-in and off by default** now (`DM_PAUSE_VAD_WHILE_SPEAKING=0`, §5 / D25); layer-1 user-ID
+filtering protects regardless.
 
 ### DMbot — Receiver / DM brain (new)
 - **Stack:** discord.py + `discord-ext-voice-recv` (the only real research part)
@@ -164,11 +164,12 @@ Orchestrator builds the prompt:
    + buffered player utterances since the last DM turn
    │
    ▼
-Ollama ──► answer text, possibly with a test marker  <<TEST Perception +10>>
+Ollama ──► answer text (narration only; a roll, if any, is detected separately)
    │            │
-   │            └─► orchestrator detects the marker ──► shows a dice button to the
-   │                right player ──► rules/ rolls d100 + SL ──► result feeds back
-   │                into the next prompt
+   │            └─► roll-detection router (default): a constrained-JSON call after narration
+   │                classifies the action → dice button. Inline <<TEST>> marker = fallback.
+   │                rules/ rolls per the profile + SL ──► result feeds back into the next
+   │                prompt   (ADR 014)
    ▼
 piper-tts ──► <TEMP>/dm_<id>.wav   (OS temp dir, NOT /tmp — Windows!)
    │
@@ -198,6 +199,10 @@ DM voice. Two layers:
    narration-time table talk out of the DM, pausing was redundant and stopped the table
    from being transcribed during the DM's narration — which players wanted in the record.
    Turn it on if mic-to-speaker bleed gets transcribed as a player during narration.
+
+_Separate control, same mechanism:_ the **pause freeze** (Esc in the DMbot terminal **or** a Discord
+⏸ button, ADR 013) also calls `sink.mute()` to halt the whole VAD/STT pipeline while the game is
+paused — and blocks DM turns until resumed.
 
 ---
 
@@ -334,11 +339,23 @@ and the DM knows what's played" for the *mechanics*. IM is simply the first prof
 produced (or seeded) this way.
 
 ### How a test is requested
-The LLM emits a machine-readable **marker**, e.g. `<<TEST Wahrnehmung Schwer für Tobi>>`. The
-orchestrator (`rules/marker.py`) detects it, strips it from the spoken text, and shows a dice
-button to the right player; the engine rolls per the active profile and computes the result,
-which feeds back into the next prompt (the DM narrates the consequence). A bracketed marker is
-more reliable for a 12B model than strict JSON.
+**Primary (default — the roll-detection router, ADR 014):** after the DM's narration, a **separate,
+stateless constrained-JSON LLM call** classifies the player's latest action → `{needs_test, skill,
+difficulty}` (the `skill` enum-constrained to the acting character's sheet, `difficulty` to the
+profile ladder); on a positive verdict the engine rolls and the dice button is posted. This exists
+because the **inline marker proved unreliable live** — narration models self-resolve uncertain actions
+("du bemerkst …") instead of requesting a roll, a *documented, model-size-independent* LLM-GM failure;
+as a *separate* step the same 12B classifies reliably (nemo 8/8). On by default (`DM_ROLL_ROUTER`); the
+call is **stateless** (its tiny prompt isn't the DM history and its JSON never re-enters that context),
+so it doesn't bloat the narration context.
+
+**Fallback (inline marker):** if the narration LLM *does* emit a marker, e.g.
+`<<TEST Wahrnehmung Schwer für Tobi>>`, that wins and the router is skipped for the turn. The
+orchestrator (`rules/marker.py`) detects it, strips it from the spoken text, and shows the dice button.
+A bracketed marker is more reliable for a 12B model than strict JSON.
+
+Either way the engine then rolls per the active profile and computes the result, which feeds back into
+the next prompt (the DM narrates the consequence).
 
 **The difficulty is a *word*, not a number — "dice = code" (golden rule #2):** the LLM picks a
 rung from the profile's `difficulty_ladder` (e.g. *Schwer*); the engine looks up the modifier
@@ -366,6 +383,11 @@ Starting recommendation (runs on the 4070, later also on the 5080):
 
 Final choice via taste test (Phase 0): the same German Eisenhorn prompt to several
 models, compare tone & speed.
+
+_Re-confirmed 2026-06-08:_ gemma3:12b narrates a touch cleaner but did **not** fix the dice-marker
+problem — both models self-resolve actions, which the **roll-detection router** (ADR 014) solves
+*independently of model size*. **nemo kept** for tone; "upgrade to a bigger model" would not have
+fixed the markers.
 
 ---
 

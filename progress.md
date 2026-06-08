@@ -279,6 +279,8 @@ create the next-numbered ADR.
 | D27 | Pause control | **One shared `_paused` freeze, driven by the terminal Esc key (Variante A, animated `rich` box) AND a Discord ⏸ button (Variante C, status embed).** Pause mutes the VAD/STT pipeline + blocks all DM turns; resume reverses it | Tobi wanted both controls + a visible state, and a real freeze (not "keep transcribing"); reuses the layer-2 `mute()/unmute()`; new light dep `rich`; first half of the "Edit/Review window" backlog (same human-in-the-loop gate) → ADR 013 |
 | D28 | Lore representation (Phase 10) | **RAG, not fine-tuning, for facts.** 40k lore from **both** wiki sources (Fandom official XML dump + Lexicanum via MediaWiki API / archive.org), **text only**, chunked + `nomic-embed-text` → **`sqlite-vec`** with rulebook vs lore as separate `source`s. Fine-tuning only later as a **tone-LoRA** (style, not facts) | Fine-tuning hallucinates facts, can't cite, needs retraining to update + a wiki doesn't fit in 12B weights/context; RAG is grounded/citeable/updatable (golden rule #7). Both wikis ≈ 0.8–1.3 GB (images excluded). Plan saved; → a new ADR when Phase 10 starts |
 | D29 | Auto-test trigger | **Roll-detection router** — a separate, stateless **constrained-JSON classifier** picks the test (skill + difficulty, skill enum = the character's sheet) **after** narration, instead of the model's inline `<<TEST>>` (kept as fallback). **ON by default** (`DM_ROLL_ROUTER`, validated live 2026-06-08; `=0` disables) | The inline marker failed live (only 2 good markers/session; the model self-resolves uncertain actions) — a **documented, model-size-independent** LLM-GM failure, not a 12B limit (web + an experiment: the same nemo scored **8/8** as a separate step). Costs +1 short stateless call/turn, doesn't bloat the DM context. Revisits ADR 004 → ADR 014 |
+| D30 | Ollama readiness | **`start_dmbot.bat` warms a *local* Ollama before launch** (boots the daemon + loads the model; skipped for a remote `OLLAMA_HOST`) + a **boot preflight** (`llm/preflight.py`) pings the host / checks the model is pulled | A not-running Ollama failed turns mid-game with a cryptic `ConnectError`; warm-up + a clear boot message turn that into a startup-time signal. Ops polish, no ADR |
+| D31 | Shutdown UX | **Two-stage Ctrl+C** — first press prints "Quit?" and keeps running, the second an animated "Shutting down …" then tears down cleanly | Avoids killing a live session on a single fat-fingered Ctrl+C; discord.py 2.7.1 installs no SIGINT handler so ours stays in effect. Ops polish, no ADR |
 
 ### Phase → ADR map (read these when you enter the phase)
 
@@ -289,8 +291,8 @@ create the next-numbered ADR.
 | 2–4 — Voice / VAD / STT | **ADR 006** (DAVE/E2EE decrypt on receive) + **ADR 007** (VAD stack, Phase 3) + `architecture.md` §4–§5 (feedback protection) |
 | 5 — LLM wiring + persona | ADR 002 + ADR 005 (persona = generic core + campaign overlay) |
 | 6 — TTS + full loop | **ADR 008** (TTS engine: Piper + XTTS) + ADR 002 (bridge, VRAM) + `architecture.md` §3 (bridge contract) |
-| 6–7 — Full loop, turn-taking, registration | ADR 003 (conversational control, registration, turn-taking) + **ADR 011** (STT latency: push-to-talk gate) |
-| 8 — Dice engine, IM profile, marker flow | ADR 005 (engine + profile) + ADR 004 (test marker, character data) + ADR 001 (IM specifics) + **ADR 012** (difficulty ladder, character store, marker grammar) |
+| 6–7 — Full loop, turn-taking, registration | ADR 003 (conversational control, registration, turn-taking) + **ADR 011** (STT latency: push-to-talk gate) + **ADR 013** (pause control) |
+| 8 — Dice engine, IM profile, marker flow | ADR 005 (engine + profile) + ADR 004 (test marker, character data) + ADR 001 (IM specifics) + **ADR 012** (difficulty ladder, character store, marker grammar) + **ADR 014** (roll-detection router) |
 | 9 — Memory (JSON + recaps) | ADR 004 (character/state JSON) |
 | 10 — RAG + profile bootstrap | ADR 005 (profile bootstrap) |
 

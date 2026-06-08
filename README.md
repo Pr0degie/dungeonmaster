@@ -8,9 +8,10 @@ mechanics (a per-system profile). Everything runs **locally** — no cloud, no A
 First campaign: **Warhammer 40,000 / Imperium Maledictum** in Dan Abnett's *Eisenhorn*
 grimdark tone — but that's just the first profile + tone overlay, not baked into the DM.
 
-> **Status:** the core voice loop is **playable** (Phases 0–6 done). You can speak and the DM
-> answers aloud. Dice engine, persistent memory and RAG are the next phases. See
-> [`progress.md`](progress.md) for the live status and [`roadmap.md`](roadmap.md) for the plan.
+> **Status:** **playable + dice-enabled** (Phases 0–8 done, live-validated 2026-06-08). You speak,
+> the DM answers aloud, and skill checks roll on a button. Persistent memory (Phase 9) and RAG
+> (Phase 10) are next. See [`progress.md`](progress.md) for the live status and
+> [`roadmap.md`](roadmap.md) for the plan.
 
 ## How it works
 
@@ -36,8 +37,7 @@ You speak ─► DMbot receives per-user audio (discord-ext-voice-recv, DAVE/E2E
 ```
 
 **Signature principle:** *dice = code, narration = LLM.* Dice rolls and their resolution are
-computed by a deterministic engine from the active system profile — never the language model
-(coming in Phase 8).
+computed by a deterministic engine from the active system profile — never the language model.
 
 ## Quick start
 
@@ -138,13 +138,15 @@ Prefix is `!`. Type them in any text channel the bot can read.
 | `!dm [text]` | run a DM turn — answers the speech routed to the DM (or the given `text`) — and speaks it aloud |
 | `!redo` / `!r` | re-run the **last** DM turn with the same input — for when the DM misunderstood |
 | `!mic` | re-post the push-to-talk button at the bottom of the chat (if it scrolled away) |
+| `!pausebutton` | (re)post the pause panel — a ⏸ button + status embed (the **Esc** key in the DMbot terminal does the same) |
 | `!roll <dice>` | roll raw dice through the engine (`!roll 1d100`, `!roll 2d10+3`) — a smoke test |
 | `!test <skill> [difficulty] [für name]` | request a test → posts a 🎲 button; the engine rolls + resolves it (`!test Wahrnehmung Schwer für Tobi`) |
 | `!turn` / `!order` | show / rotate the turn order ("whose turn"), seeded from the voice channel |
+| `!rules` / `!regeln` | show the active system's essential rules as a paged embed (◀/▶ to flip pages) |
 | `!say <text>` | speak arbitrary text aloud — a TTS + bridge smoke test |
 | `!voice [name]` | switch the XTTS speaker (no name → show current); only with `TTS_ENGINE=xtts` |
 | `!voices` | list the XTTS built-in speakers; only with `TTS_ENGINE=xtts` |
-| `!vstatus` | show connection / listening / Opus state |
+| `!vstatus` | show connection / listening / Opus / **paused** state |
 
 > **Push-to-talk** (default `DM_PUSH_TO_TALK=1`): tap the **🎙 button** posted on `!join` *before*
 > you speak to the DM and again when you're done — only that speech reaches the DM, while the whole
@@ -152,8 +154,10 @@ Prefix is `!`. Type them in any text channel the bot can read.
 > button **auto-runs the DM turn** (no `!dm` needed; `DM_BUTTON_AUTOSEND=0` to disable) — it waits
 > for the just-said speech to transcribe first. `!mic` brings the button back if it scrolled away.
 
-> **Dice (Phase 8):** when a roll is due, the DM writes a marker `<<TEST <skill> <difficulty> für
-> <name>>>` and DMbot posts a 🎲 button. Clicking it rolls **in code** (never the LLM): the target is
+> **Dice (Phase 8):** when a roll is due, DMbot posts a 🎲 button — detected automatically by the
+> **roll-detection router** (a separate classifier after the DM's narration; `DM_ROLL_ROUTER=1`, default
+> on). The DM may also emit an inline `<<TEST <skill> <difficulty> für <name>>>` marker as a fallback.
+> Clicking the button rolls **in code** (never the LLM): the target is
 > the character's skill value (from `data/sessions/<channel>/characters.json`) plus the difficulty
 > modifier from the active system profile (`data/systems/<DM_SYSTEM>.json`, default
 > `imperium_maledictum`), and the result feeds back so the DM narrates the consequence. You can also
