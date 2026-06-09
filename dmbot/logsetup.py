@@ -56,6 +56,13 @@ _NAME_W = 12
 _GAP = "  "
 
 
+def _short_name(name: str) -> str:
+    """Trim the noisy ``dmbot.`` package prefix from a logger name so it costs fewer tokens when a
+    log is pasted (``dmbot.voice.commands`` → ``voice.commands``). Third-party names (httpx,
+    faster_whisper, discord.*) are left intact — there the full path tells you who logged it."""
+    return name[len("dmbot.") :] if name.startswith("dmbot.") else name
+
+
 class _ConsoleFormatter(logging.Formatter):
     """Green-themed console: transcripts as chat (green), warnings/errors highlighted."""
 
@@ -100,9 +107,12 @@ class _ConsoleFormatter(logging.Formatter):
 
         if record.levelno >= logging.WARNING:  # keep these loud, not green
             col = _RED if record.levelno >= logging.ERROR else _YELLOW
-            return f"{_DIM}{ts}{_RESET} {col}{record.levelname:<7} {record.name}{_RESET} | {col}{msg}{_RESET}"
+            return f"{_DIM}{ts}{_RESET} {col}{record.levelname:<7} {_short_name(record.name)}{_RESET} | {col}{msg}{_RESET}"
 
-        return f"{_DIM}{_GREEN}{ts}  {record.name} | {msg}{_RESET}"
+        # INFO: the curated console only shows dmbot.* lines (see _ConsoleNoiseFilter), so the logger
+        # name is redundant noise — drop it. The message (usually emoji-prefixed) stands on its own,
+        # and pasted logs stay token-light.
+        return f"{_DIM}{_GREEN}{ts}  {msg}{_RESET}"
 
 
 _ANSI_RE = re.compile(r"\033\[[0-9;]*m")
@@ -115,6 +125,20 @@ class _PlainMirrorFormatter(_ConsoleFormatter):
 
     def format(self, record: logging.LogRecord) -> str:
         return _ANSI_RE.sub("", super().format(record))
+
+
+class _DebugFormatter(logging.Formatter):
+    """``%(name)s``-bearing format for ``logs/debug.log`` with the ``dmbot.`` prefix trimmed
+    (:func:`_short_name`), to keep the pasted log token-light. Restores the record afterwards so the
+    other handlers (which share the record) still see the full name."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        original = record.name
+        record.name = _short_name(record.name)
+        try:
+            return super().format(record)
+        finally:
+            record.name = original
 
 
 class _ConsoleNoiseFilter(logging.Filter):
@@ -235,7 +259,7 @@ def setup_logging(
 
     log_file: Path | None = None
     if to_file:
-        plain = logging.Formatter(
+        debug_fmt = _DebugFormatter(
             "%(asctime)s %(levelname)-7s %(name)s | %(message)s", datefmt="%H:%M:%S"
         )
         try:
@@ -249,7 +273,7 @@ def setup_logging(
             # 2) debug.log — fuller detail for debugging (third-party INFO like httpx + tracebacks),
             #    but the PCM heartbeat flood is collapsed (one-in-N) so it stays token-light/pasteable.
             debug_h = logging.FileHandler(_DEBUG_FILE, mode="a", encoding="utf-8")
-            debug_h.setFormatter(plain)
+            debug_h.setFormatter(debug_fmt)
             debug_h.addFilter(_HeartbeatThrottle())
             root.addHandler(debug_h)
             log_file = _DEBUG_FILE
