@@ -38,6 +38,13 @@ Read ADR 004 + the §7 schema + the wiring points first, then asked Tobi the two
   round-trip = the gate's code half, summary, engine damage math, profile accessors, recap + injection).
   **Suite 102/102 green.** All changed modules import clean. _Live gate (HP survives restart; recap on
   next session) pending Tobi._
+- **Logging trimmed for token-light pastes (D34, same day).** Dropped the redundant logger name on
+  INFO console/mirror lines (the curated console only shows `dmbot.*` anyway), and stripped the common
+  `dmbot.` prefix on WARNING/ERROR + in `debug.log` (`dmbot.voice.commands` → `voice.commands`) via a
+  `_short_name` helper + a new `_DebugFormatter`; third-party names (httpx, faster_whisper, discord.*)
+  kept intact. `ERROR`/`WARNING` levels + colour + tracebacks unchanged — only the noise around them
+  shrank. _Tobi sets `DM_LOG_FILE=1` + `DM_TRANSCRIPT_FILE=1` (both already on in `.env`) before the
+  live test, then pastes `debug.log` / `transcript.log` for the playtest-tuning round._
 
 **Ops/UX polish during the Phase-8 live test (2026-06-08).** Tobi started the Phase-8 gate; the dice
 math verified perfectly live (5 rolls, targets/SL/auto-bands/doubles-crit all correct against the
@@ -305,6 +312,7 @@ create the next-numbered ADR.
 | D31 | Shutdown UX | **Two-stage Ctrl+C** — first press prints "Quit?" and keeps running, the second an animated "Shutting down …" then tears down cleanly | Avoids killing a live session on a single fat-fingered Ctrl+C; discord.py 2.7.1 installs no SIGINT handler so ours stays in effect. Ops polish, no ADR |
 | D32 | Memory state file | **Split** — `characters.json` stays the read-only sheet (transferred once), a new code-owned `data/sessions/<id>/state.json` holds the mutable layer (wounds/conditions/inventory, NPCs, quests, location, recap), seeded once from the sheet, saved atomically on every change | Keeps the hand-authored source pristine/diffable, gives a clean reset (delete state.json) and a clean gate (save-on-change → HP survives a restart); avoids code corrupting the sheets. Rejected: one blob that code rewrites → ADR 015 |
 | D33 | Combat damage | **Auto-applied on a hit** — a successful attack (skill ∈ profile `combat.attack_skills`) rolls weapon damage, applies **weapon + SL − soak** (TB + armour) to a target (auto if one, else a dropdown; `!npc add` registers enemies; `!damage`/`!heal` GM overrides) | Tobi chose auto-combat over a manual command; realises the dice engine's damage in play (the natural Phase-8→9 hook). Profile-driven (`combat` block) so it stays system-agnostic; weapon values approximate, tune live → ADR 015 |
+| D34 | Log verbosity | **Trim the logger name** — drop it entirely on INFO console/mirror lines, strip the `dmbot.` prefix on WARNING/ERROR + in `debug.log`; third-party names kept | Tobi pastes logs for the playtest-tuning loop; the repeated `dmbot.voice.commands` prefix wasted tokens while the message (often emoji-prefixed) already carries the context. Levels/colour/tracebacks unchanged. Ops polish, no ADR |
 
 ### Phase → ADR map (read these when you enter the phase)
 
