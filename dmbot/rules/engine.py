@@ -152,3 +152,49 @@ def describe_result_de(
     if result.auto:
         verdict += " (automatisch)"
     return f"{head} — {verdict}."
+
+
+@dataclass(frozen=True, slots=True)
+class DamageResult:
+    """An attack's damage, applied to a target's wounds. Pure: the RNG already happened in
+    :func:`roll_damage`; this is the deterministic arithmetic that turns it into wounds lost."""
+
+    weapon_roll: DiceRoll   # the weapon's damage dice (e.g. 1d10+5 → 8)
+    success_level: int      # SL of the attack test (degrees), added to damage in IM
+    soak: int               # Toughness Bonus + armour, subtracted
+    applied: int            # wounds actually lost (never < 0)
+
+
+def resolve_damage(weapon_roll: DiceRoll, success_level: int, soak: int) -> DamageResult:
+    """IM 'Dealing Damage' (Core Rulebook p.214): wounds lost = weapon Damage + SL, reduced by soak
+    (Toughness Bonus + armour), never below 0. SL is only added when positive (an attack only deals
+    damage on a success, so SL ≥ 0, but guard regardless). System-agnostic in shape — another
+    profile can soak differently; the cog supplies the numbers from the active profile."""
+    applied = max(0, weapon_roll.total + max(0, success_level) - max(0, soak))
+    return DamageResult(
+        weapon_roll=weapon_roll, success_level=success_level, soak=soak, applied=applied
+    )
+
+
+def describe_damage_de(
+    dmg: DamageResult,
+    *,
+    attacker: str | None,
+    target: str,
+    weapon: str | None,
+    new_wounds: int,
+    max_wounds: int,
+    downed: bool,
+) -> str:
+    """A German one-line damage summary that feeds back so the DM narrates the consequence:
+    "💥 Vask trifft Kultist mit Kettenschwert: 8 + 2 EG − 3 Soak = 7 Wunden → Kultist 3/10."
+    """
+    who = attacker or "Angreifer"
+    weap = f" mit {weapon}" if weapon else ""
+    sl = f" + {dmg.success_level} EG" if dmg.success_level else ""
+    soak = f" − {dmg.soak} Soak" if dmg.soak else ""
+    state = "kampfunfähig" if downed else f"{new_wounds}/{max_wounds}"
+    return (
+        f"💥 {who} trifft {target}{weap}: {dmg.weapon_roll.total}{sl}{soak} "
+        f"= {dmg.applied} Wunden → {target} {state}."
+    )

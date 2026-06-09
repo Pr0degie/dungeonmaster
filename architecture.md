@@ -261,14 +261,37 @@ stores:
   "time_ingame": "..."
 }
 ```
-Advanced deterministically by code (e.g. HP after damage). Goes into the prompt as
-structured data.
+Advanced deterministically by code (e.g. HP after damage). Goes into the prompt as a compact,
+**structured** German block (`world_state_summary_de` — key:value lines, not prose; CLAUDE.md),
+after the recap and before the history.
 
-> **Character sheets are the source of this JSON, not RAG.** You transfer each sheet
-> **once** into the `characters` block. The *shape* of a character (which characteristics,
-> skills, resource tracks exist) is dictated by the active **system profile** (§9) — so it
-> differs between D&D, IM, etc. That lets the engine roll stat-aware and track the right
-> resource (HP/wounds/stress/…). Only the *rulebook/lore/adventure* lives in RAG.
+> **Sheet vs. state — the split (ADR 015).** The schema above is split across two files so the
+> hand-authored source stays pristine while code advances the live state:
+>
+> - **`data/sessions/<channel>/characters.json`** — the **read-only sheet** (characteristics,
+>   skills, `max_wounds`, aliases), transferred **once** from the player sheets (ADR 004). Code
+>   never rewrites it.
+> - **`data/sessions/<channel>/state.json`** — the **code-owned mutable layer** (`dmbot/memory/state.py`):
+>   current `wounds`/`conditions`/`inventory` per character, the `npcs`, `quests`, `location`,
+>   `time_ingame`, and the stored `recap`. **Seeded once** from the sheet on the first `!join`,
+>   then written by code on **every** change (atomic temp + `os.replace`) so an HP change survives
+>   a restart. Reset a session by deleting it. Per-channel and git-ignored (only the `_example`
+>   party is checked in).
+>
+> **Character sheets are the source of this JSON, not RAG.** The *shape* of a character (which
+> characteristics, skills, resource tracks exist) is dictated by the active **system profile**
+> (§9) — so it differs between D&D, IM, etc. That lets the engine roll stat-aware and track the
+> right resource (HP/wounds/stress/…). Only the *rulebook/lore/adventure* lives in RAG.
+
+> **Auto-applied combat damage (Phase 9, ADR 015).** On a successful **attack** test (skill ∈ the
+> profile's `combat.attack_skills`) the engine rolls the weapon's damage and the cog applies
+> **weapon damage + SL − soak** (soak = Toughness Bonus + armour) to a target's wounds, then feeds
+> the result back so the DM narrates the consequence — dice *and* damage are code, never the LLM
+> (golden rule #2). The target is auto-hit if there's one candidate, else picked from a dropdown
+> over the scene's NPCs + party; `!npc add` registers enemies, `!damage`/`!heal` are GM overrides.
+> All profile-driven (a `combat` block: `attack_skills`, a `weapons` damage table, `default_damage`,
+> a `soak` source) so it stays system-agnostic — a profile without that block simply has no
+> auto-damage.
 
 **b) Session recaps (free text) — the "narrative thread"**
 On session end (the `wrap up` command) — or on context overflow — the LLM produces a

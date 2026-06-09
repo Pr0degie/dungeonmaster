@@ -19,6 +19,7 @@ import threading
 from .llm.client import OllamaClient
 from .llm.persona import load_system_prompt
 from .llm.roll_router import classifier_schema, classifier_system, to_test_request
+from .memory.recap import RECAP_SYSTEM_DE, build_recap_user
 from .rules.marker import TestRequest, extract_tests
 from .rules.profile import SystemProfile
 
@@ -166,6 +167,11 @@ class DMBrain:
         # A light "who plays whom" hint (display name → character) appended to the system prompt,
         # so the model stops confusing player and character names (open item F). Set per channel.
         self._alias_hint: dict[int, str] = {}
+        # Memory (Phase 9): the stored session recap + a compact world-state block, injected into the
+        # system prompt after the persona (CLAUDE.md order: core → tone → recap → JSON state →
+        # history). Set per channel by the cog from the world state, refreshed when state changes.
+        self._recap: dict[int, str] = {}
+        self._state_summary: dict[int, str] = {}
         # The last turn's (user_msg, labels) per channel, so !redo can re-generate it when the DM
         # misunderstood — same input, a fresh answer that replaces the last one in history.
         self._last_turn: dict[int, tuple[str, list[str]]] = {}
@@ -263,6 +269,14 @@ class DMBrain:
         With an active profile, ``<<TEST …>>`` markers are extracted **before** the last-sentence
         trim (the trim would otherwise drop a trailing marker) and surfaced as pending tests."""
         system = load_system_prompt()
+        # Memory (Phase 9), in the CLAUDE.md prompt order: persona (core+tone) → recap → JSON state →
+        # who-plays-whom → history. The recap is the narrative thread; the state block the hard facts.
+        recap = self._recap.get(channel_id)
+        if recap:
+            system = f"{system}\n\n## Was bisher geschah\n{recap}"
+        state_summary = self._state_summary.get(channel_id)
+        if state_summary:
+            system = f"{system}\n\n{state_summary}"
         hint = self._alias_hint.get(channel_id)
         if hint:
             system = f"{system}\n\n{hint}"
@@ -338,6 +352,37 @@ class DMBrain:
         else:
             self._alias_hint.pop(channel_id, None)
 
+    def set_context(self, channel_id: int, *, recap: str = "", state_summary: str = "") -> None:
+        """Set the memory context injected into this channel's prompt (Phase 9): the stored recap
+        (narrative thread) and the compact world-state block (hard facts). Empty strings clear them.
+        The cog calls this on join (from the loaded state) and after every state change."""
+        if recap:
+            self._recap[channel_id] = recap
+        else:
+            self._recap.pop(channel_id, None)
+        if state_summary:
+            self._state_summary[channel_id] = state_summary
+        else:
+            self._state_summary.pop(channel_id, None)
+
+    async def summarize(self, channel_id: int) -> str | None:
+        """Produce a German "Was bisher geschah" recap from this channel's history (the `wrap up`
+        trigger, D14). Code stores the returned string in the world state; this only generates it.
+        ``None`` if there's no history to summarise."""
+        history = self._history.get(channel_id) or []
+        if not history:
+            return None
+        user = build_recap_user(history)
+        raw = await self._client.chat(
+            RECAP_SYSTEM_DE,
+            [{"role": "user", "content": user}],
+            options={"temperature": 0.3, "num_predict": 400},
+        )
+        # Light cleanup only (no marker/test stripping — a recap has none): drop markdown + a leading
+        # role label the model might prepend.
+        text = raw.replace("*", "").strip()
+        return _ROLE_LABEL.sub("", text).strip() or None
+
     def reset(self, channel_id: int) -> None:
         """Forget a channel's history and pending lines (e.g. new session)."""
         with self._lock:
@@ -348,6 +393,8 @@ class DMBrain:
         self._test_results.pop(channel_id, None)
         self._last_action.pop(channel_id, None)
         self._alias_hint.pop(channel_id, None)
+        self._recap.pop(channel_id, None)
+        self._state_summary.pop(channel_id, None)
 
     async def aclose(self) -> None:
         await self._client.aclose()

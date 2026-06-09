@@ -38,6 +38,23 @@
   "auto_success_max": 5,
   "auto_fail_min": 96,
   "damage": "Waffenschaden + EG (reduziert durch Rüstung an der Trefferzone)",
+  "combat": {
+    "attack_skills": ["Nahkampf", "Fernkampf"],
+    "default_damage": "1d10",
+    "soak": { "characteristic": "Tgh", "mode": "tens" },
+    "weapons": {
+      "Kampfmesser": "1d10+1",
+      "Kettenschwert": "1d10+5",
+      "Kettenmesser": "1d10+3",
+      "Laspistole": "1d10+3",
+      "Lasgewehr": "1d10+4",
+      "Autopistole": "1d10+3",
+      "Stubber": "1d10+4",
+      "Schwert": "1d10+4",
+      "Faust": "1d10-2"
+    },
+    "_note": "Auto-damage (Phase 9): on a successful Nahkampf/Fernkampf test the engine rolls the weapon's damage, adds SL, subtracts soak (Toughness Bonus = tens of Tgh, plus armour) and applies the rest to the target's wounds. Weapon damage values are APPROXIMATE IM Core Rulebook figures for the example party's gear (Dealing Damage p.214) — tune against the real weapon tables when the party's actual loadout is entered. soak.characteristic=Tgh, mode=tens → Toughness Bonus."
+  },
   "character_schema": {
     "characteristics": ["WS", "BS", "Str", "Tgh", "Ag", "Int", "Per", "Wil", "Fel"],
     "resource": "wounds",

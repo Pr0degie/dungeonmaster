@@ -33,11 +33,13 @@ from ..discord_ui.dice import DiceTestView
 from ..discord_ui.turnorder import TurnOrderView
 from ..discord_ui.pause import PauseToggleView, pause_embed
 from ..discord_ui.rules import RulesView
+from ..discord_ui.target import TargetSelectView
 from ..rules import engine, profile as profile_mod
 from ..rules.profile import ProfileError, SystemProfile
-from ..rules.characters import CharacterStore, resolve_target
+from ..rules.characters import Character, CharacterStore, resolve_target
 from ..rules.marker import TestRequest, extract_tests
 from ..rules.summary import rules_pages_de
+from ..memory.state import WorldState, world_state_summary_de
 
 # Repo data dir (data/systems is the profile root; sessions/ sits beside it).
 _DATA_DIR = profile_mod.systems_dir().parent
@@ -125,6 +127,11 @@ class VoiceReceiveCog(commands.Cog):
         # Characters: start from the example party so !test/!roll work out of the box; !join prefers
         # a channel-specific data/sessions/<id>/characters.json if present. Engine rolls (RNG) here.
         self._characters: CharacterStore | None = self._load_characters(None)
+        # Memory (Phase 9): the mutable world state per channel — current wounds/conditions, NPCs,
+        # quests, location, recap. Loaded/seeded on !join (data/sessions/<id>/state.json), advanced
+        # deterministically by code (golden rule #3), persisted on every change so HP survives a
+        # restart. The read-only characters.json above stays the source (split, ADR 015).
+        self._state: dict[int, WorldState] = {}
         self._rng = random.Random()  # production RNG (tests pass their own seeded Random)
         # Turn order ("whose turn"), seeded from the voice-channel members at !join (keyed by the
         # active voice-channel id, like the brain's buffers). The view rotates the index.
@@ -502,6 +509,54 @@ class VoiceReceiveCog(commands.Cog):
                 return CharacterStore.load(specific)
         return CharacterStore.load(sessions / "_example" / "characters.json")
 
+    def _state_path(self, channel_id: int) -> Path:
+        """Where this channel's mutable world state lives (data/sessions/<id>/state.json)."""
+        return _DATA_DIR / "sessions" / str(channel_id) / "state.json"
+
+    def _load_or_seed_state(self, channel_id: int) -> WorldState:
+        """Load the channel's saved state, or seed a fresh one from the sheet (ADR 004/015) on the
+        first ever join. Either way it's the live mutable layer for this session."""
+        existing = WorldState.load(self._state_path(channel_id))
+        if existing is not None:
+            log.info("loaded world state from %s", self._state_path(channel_id))
+            return existing
+        store = self._characters or CharacterStore()
+        system = self._profile.name if self._profile else ""
+        return WorldState.seed_from_store(store, system=system, session_id=str(channel_id))
+
+    def _persist_and_refresh(self, channel) -> None:
+        """Save the channel's world state to disk and re-inject recap + the compact state block into
+        the brain's prompt, so the next DM turn sees current HP/conditions (and so the gate's 'HP
+        survives a restart' holds — we save on every change)."""
+        cid = self._brain_channel(channel)
+        state = self._state.get(cid)
+        if state is None:
+            return
+        try:
+            state.save(self._state_path(cid))
+        except OSError:
+            log.exception("could not persist world state for channel %s", cid)
+        self._brain.set_context(
+            cid, recap=state.recap, state_summary=world_state_summary_de(state)
+        )
+
+    def _toughness_bonus(self, target: Character | None) -> int:
+        """Toughness Bonus for a player from the sheet: the profile's soak characteristic (IM: Tgh),
+        rendered per soak mode (IM: tens digit). 0 if no profile/character/characteristic."""
+        if self._profile is None or target is None:
+            return 0
+        char_key = self._profile.soak_characteristic()
+        if not char_key:
+            return 0
+        value = None
+        for name, v in target.characteristics.items():
+            if name.lower() == char_key.lower():
+                value = v
+                break
+        if value is None:
+            return 0
+        return value // 10 if self._profile.soak_mode() == "tens" else value
+
     async def _run_and_deliver(self, channel, guild_id: int | None) -> None:
         """Run a DM turn and deliver it — used after a dice roll feeds its result back in so the
         DM narrates the consequence (architecture §9)."""
@@ -577,6 +632,8 @@ class VoiceReceiveCog(commands.Cog):
         who = resolved.character.name if resolved.character else req.target_name
 
         async def _roll(interaction: discord.Interaction) -> None:
+            guild_id = channel.guild.id if channel.guild else None
+            result = None
             if resolved.target is None:  # no character/skill value — roll, ask them to compare
                 d = engine.roll(self._profile.dice, self._rng)
                 line = f"🎲 {skill}: {d.total} — kein hinterlegter Wert, vergleicht mit eurem Bogen."
@@ -591,9 +648,110 @@ class VoiceReceiveCog(commands.Cog):
             except discord.HTTPException:
                 await self._send_with_retry(channel, line)
             self._brain.add_test_result(self._brain_channel(channel), line)
-            await self._run_and_deliver(channel, channel.guild.id if channel.guild else None)
+            # Auto-combat (Phase 9): a successful attack rolls & applies weapon damage to a target
+            # before the DM narrates, so the narration carries the consequence. Non-attacks, misses
+            # and value-less rolls fall through to the normal immediate narration.
+            if (
+                result is not None
+                and result.success
+                and self._profile is not None
+                and self._profile.combat_enabled()
+                and self._profile.is_attack_skill(skill)
+            ):
+                if await self._begin_attack_damage(channel, attacker=who, result=result):
+                    return  # the damage flow narrates once a target is chosen/auto-applied
+            await self._run_and_deliver(channel, guild_id)
 
         return _roll
+
+    def _choose_weapon(self, attacker: Character | None) -> tuple[str | None, str]:
+        """Pick the attacker's weapon + its damage notation: the first inventory item the profile
+        knows a damage value for, else the profile's default damage. ('', '') if neither exists."""
+        if self._profile is None:
+            return None, ""
+        if attacker is not None:
+            for item in attacker.inventory:
+                notation = self._profile.weapon_damage(item)
+                if notation:
+                    return item, notation
+        return None, self._profile.default_damage()
+
+    async def _begin_attack_damage(self, channel, *, attacker: str | None, result) -> bool:
+        """Start the auto-damage flow for a successful attack. Returns True if it took over (a target
+        was auto-hit or a picker was posted — it will narrate); False if it couldn't (no weapon data
+        or no target), so the caller narrates the hit plainly."""
+        cid = self._brain_channel(channel)
+        state = self._state.get(cid)
+        if state is None:
+            return False
+        attacker_char = self._characters.get(attacker) if self._characters else None
+        weapon, notation = self._choose_weapon(attacker_char)
+        if not notation:
+            return False  # no weapon damage data → can't auto-roll; narrate the hit plainly
+        # Candidates: living NPCs (the usual enemy) first, then other party members (friendly fire).
+        candidates = [n.name for n in state.npcs if n.wounds > 0]
+        candidates += [
+            c.name for c in state.characters if c.name.lower() != (attacker or "").lower()
+        ]
+        if not candidates:
+            await self._send_with_retry(
+                channel,
+                "💥 Treffer! Aber kein Ziel hinterlegt — `!npc add <Name> [Wunden]`, dann erneut würfeln.",
+            )
+            return False
+        if len(candidates) == 1:
+            await self._apply_attack_damage(
+                channel, attacker=attacker, weapon=weapon, notation=notation,
+                result=result, target_name=candidates[0],
+            )
+            return True
+
+        async def _pick(interaction: discord.Interaction, name: str) -> None:
+            await self._apply_attack_damage(
+                channel, attacker=attacker, weapon=weapon, notation=notation,
+                result=result, target_name=name,
+            )
+
+        weap = f" ({weapon})" if weapon else ""
+        await self._send_with_retry(
+            channel, f"💥 Treffer von **{attacker}**{weap} — wen trifft es?",
+            view=TargetSelectView(candidates, _pick),
+        )
+        return True
+
+    async def _apply_attack_damage(
+        self, channel, *, attacker: str | None, weapon: str | None, notation: str, result, target_name: str
+    ) -> None:
+        """Roll the weapon's damage, subtract the target's soak (Toughness Bonus + armour), apply the
+        rest to its wounds, persist, and feed the result back so the DM narrates the consequence."""
+        cid = self._brain_channel(channel)
+        state = self._state.get(cid)
+        if state is None:
+            return
+        target = state.find(target_name)
+        if target is None:  # picker only lists state names, but guard: register an ad-hoc enemy
+            target = state.add_or_update_npc(target_name, wounds=10)
+        if target.is_npc:
+            tb = target.toughness_bonus
+        else:
+            sheet = self._characters.get(target_name) if self._characters else None
+            tb = self._toughness_bonus(sheet)
+        soak = tb + target.armour
+        weapon_roll = engine.roll_damage(notation, self._rng)
+        dmg = engine.resolve_damage(weapon_roll, result.degrees, soak)
+        state.apply_damage(target_name, dmg.applied)
+        updated = state.find(target_name)
+        downed = updated is not None and updated.wounds <= 0
+        line = engine.describe_damage_de(
+            dmg, attacker=attacker, target=target_name, weapon=weapon,
+            new_wounds=updated.wounds if updated else 0,
+            max_wounds=updated.max_wounds if updated else 0, downed=downed,
+        )
+        log.info("%s", line)
+        await self._send_with_retry(channel, line)
+        self._persist_and_refresh(channel)
+        self._brain.add_test_result(cid, line)
+        await self._run_and_deliver(channel, channel.guild.id if channel.guild else None)
 
     def _build_turn_order(self, voice_channel) -> list[str]:
         """Seed the turn order from a voice channel's human members (Bot A + bots filtered),
@@ -698,6 +856,105 @@ class VoiceReceiveCog(commands.Cog):
         view = RulesView(pages, self._profile.display_name or self._profile.name, source=source)
         await self._send_with_retry(ctx.channel, view=view, embed=view.embed())
 
+    @commands.command(name="damage", aliases=["schaden"])
+    async def damage(self, ctx: commands.Context, name: str = "", amount: int = 0) -> None:
+        """GM override: apply raw wounds. `!damage Seskin 3` (after soak — this is the final number).
+        Auto-combat does this for you on a hit; this is for adjudicated/out-of-band damage."""
+        cid = self._brain_channel(ctx.channel)
+        state = self._state.get(cid)
+        if state is None:
+            await ctx.send("Keine aktive Sitzung — erst `!j`.")
+            return
+        if not name or amount <= 0:
+            await ctx.send("Nutzung: `!damage <Name> <Wunden>` (z. B. `!damage Kultist 5`).")
+            return
+        c = state.apply_damage(name, amount)
+        if c is None:
+            await ctx.send(f"Niemand namens **{name}** im Weltzustand (Charakter oder NSC).")
+            return
+        self._persist_and_refresh(ctx.channel)
+        downed = " — **kampfunfähig**" if c.wounds <= 0 else ""
+        await ctx.send(f"💢 **{c.name}** −{amount} Wunden → {c.wounds}/{c.max_wounds}{downed}")
+
+    @commands.command(name="heal", aliases=["heilung"])
+    async def heal(self, ctx: commands.Context, name: str = "", amount: int = 0) -> None:
+        """GM: restore wounds. `!heal Seskin 4` (clamps at max, clears 'kampfunfähig' above 0)."""
+        cid = self._brain_channel(ctx.channel)
+        state = self._state.get(cid)
+        if state is None:
+            await ctx.send("Keine aktive Sitzung — erst `!j`.")
+            return
+        if not name or amount <= 0:
+            await ctx.send("Nutzung: `!heal <Name> <Wunden>`.")
+            return
+        c = state.heal(name, amount)
+        if c is None:
+            await ctx.send(f"Niemand namens **{name}** im Weltzustand.")
+            return
+        self._persist_and_refresh(ctx.channel)
+        await ctx.send(f"➕ **{c.name}** +{amount} Wunden → {c.wounds}/{c.max_wounds}")
+
+    @commands.command(name="npc", aliases=["nsc"])
+    async def npc(
+        self, ctx: commands.Context, action: str = "", name: str = "",
+        wounds: int = 10, tb: int = 0, armour: int = 0,
+    ) -> None:
+        """Register an enemy the party can damage: `!npc add Kultist 10 3 2` (Wunden, ToughnessBonus,
+        Rüstung). `!npc list` shows them. (NSC-Namen ohne Leerzeichen — z. B. `Kult_Anführer`.)"""
+        cid = self._brain_channel(ctx.channel)
+        state = self._state.get(cid)
+        if state is None:
+            await ctx.send("Keine aktive Sitzung — erst `!j`.")
+            return
+        if action.lower() in ("", "list"):
+            if not state.npcs:
+                await ctx.send("Keine NSCs registriert. `!npc add <Name> [Wunden] [TB] [Rüstung]`.")
+                return
+            lines = "; ".join(
+                f"{n.name} {n.wounds}/{n.max_wounds}" + (f" [{n.attitude}]" if n.attitude else "")
+                for n in state.npcs
+            )
+            await ctx.send(f"**NSCs:** {lines}")
+            return
+        if action.lower() == "add":
+            if not name:
+                await ctx.send("Nutzung: `!npc add <Name> [Wunden] [ToughnessBonus] [Rüstung]`.")
+                return
+            n = state.add_or_update_npc(
+                name, wounds=wounds, max_wounds=wounds, toughness_bonus=tb, armour=armour
+            )
+            self._persist_and_refresh(ctx.channel)
+            await ctx.send(
+                f"➕ NSC **{n.name}**: {n.wounds} Wunden, TB {n.toughness_bonus}, Rüstung {n.armour}."
+            )
+            return
+        await ctx.send("Nutzung: `!npc add <Name> [Wunden] [TB] [Rüstung]` oder `!npc list`.")
+
+    @commands.command(name="wrap", aliases=["wrapup"])
+    async def wrap(self, ctx: commands.Context, *, _arg: str = "") -> None:
+        """`!wrap up` / `!wrapup` — generate & store the session recap (D14). It's re-injected at the
+        front of the next session so the story carries over. Non-destructive: play can continue."""
+        cid = self._brain_channel(ctx.channel)
+        await ctx.send("📜 Ich fasse die Sitzung zusammen …")
+        try:
+            recap = await self._brain.summarize(cid)
+        except Exception:
+            log.exception("recap generation failed")
+            await ctx.send("Konnte keine Zusammenfassung erstellen (siehe Log).")
+            return
+        if not recap:
+            await ctx.send("Noch nichts passiert, das sich zusammenfassen ließe.")
+            return
+        state = self._state.get(cid)
+        if state is not None:
+            state.set_recap(recap)
+            self._persist_and_refresh(ctx.channel)
+            try:  # mirror to a human-readable recap.md beside state.json
+                (self._state_path(cid).parent / "recap.md").write_text(recap + "\n", encoding="utf-8")
+            except OSError:
+                log.exception("could not write recap.md")
+        await ctx.send(f"📜 **Was bisher geschah:**\n{recap}")
+
     @commands.command(name="say")
     async def say(self, ctx: commands.Context, *, text: str) -> None:
         """Speak arbitrary text through Piper + Bot A — a TTS/bridge smoke test."""
@@ -774,6 +1031,11 @@ class VoiceReceiveCog(commands.Cog):
         self._brain.set_alias_hint(channel.id, self._characters.alias_hint_de())
         self._turn_order[channel.id] = self._build_turn_order(channel)
         self._turn_index[channel.id] = 0
+        # Memory (Phase 9): load this channel's world state (or seed it from the sheet on first join),
+        # then inject the stored recap + current state into the prompt so the DM picks up where it
+        # left off — the "next session opens with a correct recap" half of the gate.
+        self._state[channel.id] = self._load_or_seed_state(channel.id)
+        self._persist_and_refresh(channel)
 
         log.info(
             "joined voice '%s' (id=%s) and started VAD pipeline (16k mono + silero, push_to_talk=%s)",
@@ -801,6 +1063,11 @@ class VoiceReceiveCog(commands.Cog):
             )
             await self._post_turn_order(ctx.channel)
             await self._refresh_pause_panel()
+
+        # If a recap was stored from a previous session, show it so the table picks up the thread.
+        state = self._state.get(channel.id)
+        if state is not None and state.recap:
+            await ctx.send(f"📜 **Was bisher geschah:** {state.recap}")
 
     async def toggle_listening(self) -> bool:
         """Flip the push-to-talk DM-routing gate; return the new state. Called by the mic button.
@@ -855,6 +1122,14 @@ class VoiceReceiveCog(commands.Cog):
         # handle and the per-user counters, so a later !join starts a fresh session (session
         # state is per channel, ADR 003).
         if self._active_vc_id is not None:
+            # Persist the world state one last time (it's saved on every change too) so HP/recap
+            # survive into the next session, then drop the in-memory handle for this channel.
+            state = self._state.pop(self._active_vc_id, None)
+            if state is not None:
+                try:
+                    state.save(self._state_path(self._active_vc_id))
+                except OSError:
+                    log.exception("could not persist world state on leave")
             self._brain.reset(self._active_vc_id)
             self._turn_order.pop(self._active_vc_id, None)
             self._turn_index.pop(self._active_vc_id, None)

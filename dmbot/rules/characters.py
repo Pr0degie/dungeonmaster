@@ -97,6 +97,10 @@ class CharacterStore:
     def __len__(self) -> int:
         return len(self._by_name)
 
+    def characters(self) -> list[Character]:
+        """All loaded characters (insertion order). Used to seed the mutable world state (§7)."""
+        return list(self._by_name.values())
+
     def get(self, name: str | None) -> Character | None:
         """Find a character by character name or by a player's display-name alias."""
         if not name:

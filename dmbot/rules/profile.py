@@ -41,6 +41,7 @@ class SystemProfile:
     auto_success_max: int = 0   # rolls <= this always succeed (0 = no band). IM: 5.
     auto_fail_min: int = 0      # rolls >= this always fail (0 = no band). IM: 96.
     damage: "str | dict" = ""   # free-text ("weapon_damage + SL") or structured, per architecture §9
+    combat: dict = field(default_factory=dict)  # attack skills, weapon damage table, soak source (§7/§9)
     character_schema: dict = field(default_factory=dict)
     raw: dict = field(default_factory=dict)  # full source dict, for forward-compat reads
 
@@ -66,6 +67,7 @@ class SystemProfile:
             auto_success_max=int(data.get("auto_success_max", 0)),
             auto_fail_min=int(data.get("auto_fail_min", 0)),
             damage=data.get("damage", "") or "",
+            combat=dict(data.get("combat", {}) or {}),
             character_schema=dict(data.get("character_schema", {}) or {}),
             raw=dict(data),
         )
@@ -111,6 +113,46 @@ class SystemProfile:
     def difficulty_names(self) -> list[str]:
         """Canonical ladder labels, hardest first only by declaration order — for the prompt."""
         return list(self.difficulty_ladder)
+
+    # -- combat (Phase 9: auto damage) ----------------------------------------------------
+    # All optional: a profile without a "combat" block simply has no auto-damage flow (the test
+    # still rolls and reports, but no wounds are applied). Keeps the engine system-agnostic.
+
+    def combat_enabled(self) -> bool:
+        return bool(self.combat.get("attack_skills"))
+
+    def is_attack_skill(self, skill: str | None) -> bool:
+        """Is ``skill`` one the profile treats as an attack (success → roll & apply damage)?"""
+        if not skill:
+            return False
+        key = skill.strip().lower()
+        return any(key == s.strip().lower() for s in self.combat.get("attack_skills", []))
+
+    def weapon_damage(self, weapon: str | None) -> str | None:
+        """Damage notation for a named weapon from the profile's weapon table (case-insensitive),
+        or ``None`` if the weapon is unknown (caller falls back to :meth:`default_damage`)."""
+        if not weapon:
+            return None
+        weapons = self.combat.get("weapons", {}) or {}
+        key = weapon.strip().lower()
+        for name, notation in weapons.items():
+            if name.strip().lower() == key:
+                return notation
+        return None
+
+    def default_damage(self) -> str:
+        """Fallback damage notation for an unknown/unspecified weapon (e.g. '1d10')."""
+        return self.combat.get("default_damage", "") or ""
+
+    def soak_characteristic(self) -> str:
+        """Which characteristic feeds soak (IM: 'Tgh' → Toughness Bonus). Empty = no characteristic
+        soak."""
+        return (self.combat.get("soak", {}) or {}).get("characteristic", "") or ""
+
+    def soak_mode(self) -> str:
+        """How the soak characteristic becomes a bonus: 'tens' (IM Toughness Bonus = tens digit) or
+        'value'. Default 'tens'."""
+        return (self.combat.get("soak", {}) or {}).get("mode", "tens") or "tens"
 
 
 def systems_dir() -> Path:
