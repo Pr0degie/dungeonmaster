@@ -251,6 +251,24 @@ and is in the prompt. Fill the Phase-9 `VERIFY EVIDENCE` when met. Watch the **a
 (weapon-damage numbers are approximate — tune the IM profile's `combat.weapons`; soak = TB + armour).
 Dial: **Opus 4.8 / xhigh**.
 
+**Exact test sequence (durable copy of the chat checklist — `DM_LOG_FILE=1` + `DM_TRANSCRIPT_FILE=1`
+are already on in `.env`):**
+1. _Auto-combat:_ `!j` → `!npc add Kultist 10 3` (10 Wunden, ToughnessBonus 3; optional armour as a
+   4th arg) → `!test Nahkampf für Timo` (or a voice "ich greife den Kultisten an" → router posts the
+   button) → click 🎲 → on success, pick **Kultist** in the target dropdown → expect a `💥 … = N Wunden
+   → Kultist M/10` line. Confirm it fires **only** on Nahkampf/Fernkampf + only on success.
+2. _Gate 1 (HP survives restart):_ check `data/sessions/<id>/state.json` shows the reduced wounds;
+   `!npc list`; try `!damage Kultist 5` / `!heal Kultist 3` (0 → "kampfunfähig"). **Restart the bot** →
+   `!j` → wounds still reduced.
+3. _Gate 2 (recap):_ play a few turns → `!wrap up` (or `!wrapup`) → German "Was bisher geschah" posted +
+   stored (`state.json` recap + `data/sessions/<id>/recap.md`). **Restart** → `!j` → "📜 Was bisher
+   geschah" shown and the DM continues from it.
+4. _Watch & report (paste `debug.log` + `transcript.log`):_ damage numbers sane? target dropdown listing
+   fellow PCs annoying or fine? does the DM honour the injected world-state HP without inventing values?
+   recap quality (German, factual, length)? any `ERROR` lines?
+- Run the unit suite with **`uv run --with pytest python -m pytest -q`** (pytest isn't in the default
+  venv — see [[run-tests-command]] memory). Currently 102/102 green.
+
 _Resolved this session (no longer open):_ the **gemma3 vs nemo** taste test (gemma3 didn't fix the
 marker problem; nemo kept for tone — the fix was the **roll-detection router**, ADR 014); **two-stage
 Ctrl+C** shutdown (done); the **auto-test** (router, live-validated).
