@@ -2,7 +2,23 @@
 
 from __future__ import annotations
 
-from dmbot.tts.textsplit import TTS_CHAR_LIMIT, chunk_text, normalize_for_tts
+from dmbot.tts.textsplit import (
+    TTS_CHAR_LIMIT,
+    chunk_text,
+    has_speakable_content,
+    normalize_for_tts,
+)
+
+
+def test_has_speakable_content() -> None:
+    # real narration is speakable; a content-less answer (a marker-only turn after stripping, a
+    # lone quote/backtick) is NOT — it must not be synthesised (XTTS would read it for ~15 s).
+    assert has_speakable_content("Du öffnest die Tür.")
+    assert has_speakable_content("Ja")
+    assert not has_speakable_content("``")
+    assert not has_speakable_content('"')
+    assert not has_speakable_content("  .,!? ")
+    assert not has_speakable_content("")
 
 
 def test_short_text_is_one_chunk() -> None:

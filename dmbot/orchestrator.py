@@ -24,7 +24,7 @@ from .llm.roll_router import classifier_schema, classifier_system, to_test_reque
 from .memory.recap import RECAP_SYSTEM_DE, build_recap_user
 from .rules.marker import TestRequest, extract_tests
 from .rules.profile import SystemProfile
-from .tts.textsplit import split_completed
+from .tts.textsplit import has_speakable_content, split_completed
 
 log = logging.getLogger(__name__)
 
@@ -126,7 +126,7 @@ def _sanitize_leading(text: str) -> str:
     leading role label and a leading meta-preamble. Split out so the streaming assembler (ADR 017)
     can apply it incrementally *without* the trailing strips, which only ever touch the held-back
     last sentence."""
-    text = text.replace("*", "").strip()  # drop markdown emphasis/bold
+    text = text.replace("*", "").replace("`", "").strip()  # drop markdown bold + code-fence backticks
     text = _META_SELFCORRECT.sub("", text, count=1).strip()  # drop a "…Sprachmodell… Hier ist die korrekte Antwort:" frame
     text = _ROLE_LABEL.sub("", text).strip()  # drop a leading role label
     text = _strip_meta_preamble(text)  # drop a leading "Als Spielleitung beschreibe ich …" preamble
@@ -485,7 +485,9 @@ class DMBrain:
         # <<TEST …>> marker at all (the prime suspect when the dice-marker flow doesn't fire).
         log.info("🪵 LLM roh: %s", raw.replace("\n", " ⏎ "))
         answer, tests = finalize_answer(raw, labels, self._profile)
-        if tests:
+        # Suppress inline <<TEST>> markers on a results-only (post-roll consequence) turn — a
+        # consequence narration must not request a NEW roll or the dice loop never ends (seen live).
+        if tests and self._last_action.get(channel_id) is not None:
             self._pending_tests.setdefault(channel_id, []).extend(tests)
         return answer
 
@@ -556,7 +558,8 @@ class DMBrain:
         try:
             async for delta in agen:
                 for sentence in assembler.feed(delta):
-                    await on_sentence(sentence)
+                    if has_speakable_content(sentence):  # skip a lone "."/quote/backtick (don't synth it)
+                        await on_sentence(sentence)
                 if assembler.stopped:
                     break  # a mid-text speaker label — abort the stream, keep the narration
                 if should_abort is not None and should_abort():
@@ -572,8 +575,11 @@ class DMBrain:
         for sentence in result.remaining:
             if should_abort is not None and should_abort():
                 break
-            await on_sentence(sentence)
-        if result.tests:
+            if has_speakable_content(sentence):
+                await on_sentence(sentence)
+        # Suppress inline <<TEST>> markers on a results-only (post-roll consequence) turn — a
+        # consequence narration must not request a NEW roll or the dice loop never ends (seen live).
+        if result.tests and self._last_action.get(channel_id) is not None:
             self._pending_tests.setdefault(channel_id, []).extend(result.tests)
         stored = result.answer
         if errored and stored:

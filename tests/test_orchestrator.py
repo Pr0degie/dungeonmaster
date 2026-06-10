@@ -11,7 +11,16 @@ from __future__ import annotations
 
 import asyncio
 
-from dmbot.orchestrator import DMBrain, _sanitize, _strip_leading_label
+from dmbot.orchestrator import (
+    DMBrain,
+    _ROLE_LABELS,
+    _sanitize,
+    _strip_leading_label,
+    finalize_answer,
+)
+from dmbot.rules import profile as profile_mod
+
+_IM = profile_mod.load("imperium_maledictum")
 
 
 def test_strip_leading_player_label() -> None:
@@ -28,6 +37,54 @@ def test_sanitize_strips_meta_preamble() -> None:
     assert _sanitize("Als Spielleitung beschreibe ich: Du siehst eine Tür.") == "Du siehst eine Tür."
     assert _sanitize("Als die Spielleitung beschreibe ich euch: Test.") == "Test."
     assert _sanitize("Spielleitung: Der Rover rollt.") == "Der Rover rollt."
+
+
+def test_sanitize_strips_code_fence_backticks() -> None:
+    # nemo wraps output / a bare marker in `code fences`; backticks would be read aloud — strip them
+    assert _sanitize("`Du öffnest die Tür.`") == "Du öffnest die Tür."
+    assert _sanitize("```\nEs ist dunkel.\n```") == "Es ist dunkel."
+
+
+def test_finalize_marker_only_in_backticks_is_empty() -> None:
+    # the live failure: the model emits ONLY a marker wrapped in backticks → nothing to speak, but
+    # the dice request still surfaces (the cog then posts the button and stays silent).
+    raw = "`<<TEST Kampf Schwer für Mortn>>`"
+    answer, tests = finalize_answer(raw, ["Mortn", *_ROLE_LABELS], _IM)
+    assert answer == ""
+    assert tests and tests[0].skill == "Kampf"
+
+
+def test_results_only_turn_suppresses_inline_marker() -> None:
+    # a post-roll consequence narration must NOT request a new roll, or the dice loop never ends.
+    class _C:
+        async def chat(self, system, messages, options=None):
+            return "Der Kultist weicht zurück. <<TEST Kampf für Mortn>>"
+
+        async def aclose(self) -> None:
+            pass
+
+    brain = DMBrain(_C(), profile=_IM)
+    ch = 1
+    brain.add_test_result(ch, "🎲 Kampf: 28")  # results-only: a dice result, no player line
+    answer = asyncio.run(brain.respond(ch))
+    assert "<<" not in answer  # marker stripped from the spoken text
+    assert brain.take_pending_tests(ch) == []  # but NO new dice button — the loop is broken
+
+
+def test_player_action_turn_keeps_inline_marker() -> None:
+    class _C:
+        async def chat(self, system, messages, options=None):
+            return "Du schleichst zur Tür. <<TEST Heimlichkeit für Timo>>"
+
+        async def aclose(self) -> None:
+            pass
+
+    brain = DMBrain(_C(), profile=_IM)
+    ch = 1
+    brain.add_player_line(ch, "Timo", "Ich schleiche zur Tür.")
+    asyncio.run(brain.respond(ch))
+    tests = brain.take_pending_tests(ch)
+    assert len(tests) == 1 and tests[0].skill == "Heimlichkeit"  # real player action → marker honoured
 
 
 def test_sanitize_keeps_real_narration() -> None:

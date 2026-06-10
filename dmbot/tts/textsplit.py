@@ -68,6 +68,14 @@ def normalize_for_tts(text: str) -> str:
     return cleaned or text.strip()
 
 
+def has_speakable_content(text: str) -> bool:
+    """True if ``text`` has anything worth synthesising — at least one letter or digit. A turn that
+    reduces to only punctuation / quotes / backticks (e.g. a marker-only answer the model wrapped in
+    a code fence, after stripping) must NOT be spoken: XTTS would burn ~15 s of synth + playback on a
+    lone quote (seen live 2026-06-10). The dice button still posts; just nothing is read aloud."""
+    return any(ch.isalnum() for ch in text)
+
+
 def chunk_text(text: str, limit: int = TTS_CHAR_LIMIT) -> list[str]:
     """Split ``text`` into chunks no longer than ``limit`` chars, breaking at sentence ends first,
     then at commas/spaces for any single sentence that is itself too long. Whole sentences are kept

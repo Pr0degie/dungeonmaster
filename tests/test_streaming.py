@@ -170,6 +170,24 @@ def test_respond_streaming_stores_the_canonical_answer_and_speaks_it():
     assert brain.last_llm_stats == {"prompt_eval_count": 10, "eval_count": 5, "num_ctx": 8192}
 
 
+def test_streaming_marker_only_turn_speaks_nothing_but_requests_a_test():
+    # the live failure (2026-06-10): the model streamed ONLY a backticked marker. Nothing speakable
+    # must be emitted (no 15 s lone-quote), but the dice request still surfaces.
+    brain = DMBrain(_FakeStreamClient(["`<<TEST Kampf für Timo>>`"]), profile=_IM)
+    ch = 1
+    brain.add_player_line(ch, "Timo", "Ich greife den Kultisten an.")
+    spoken: list[str] = []
+
+    async def on_s(s):
+        spoken.append(s)
+
+    answer = asyncio.run(brain.respond_streaming(ch, on_sentence=on_s))
+    assert answer == ""  # nothing speakable left after stripping the fenced marker
+    assert spoken == []  # and nothing was handed to TTS
+    tests = brain.take_pending_tests(ch)
+    assert tests and tests[0].skill == "Kampf"  # the dice button still gets posted by the cog
+
+
 class _SeqStreamClient:
     """Yields a different one-sentence answer on each chat_stream call (for the redo test)."""
 

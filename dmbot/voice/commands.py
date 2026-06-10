@@ -30,6 +30,7 @@ from ..llm.client import OllamaClient
 from ..llm.roll_router import should_post_router
 from ..orchestrator import DMBrain
 from ..tts.piper import PiperTTS
+from ..tts.textsplit import has_speakable_content
 from ..bridge import BridgeClient
 from ..discord_ui.mic import MicToggleView
 from ..discord_ui.dice import DiceTestView
@@ -488,12 +489,21 @@ class VoiceReceiveCog(commands.Cog):
         mic button. Closes out the per-turn ``timing`` (tts/bridge via ``_speak``) and emits the
         single ``[latency]`` line once ``/speak`` returned."""
         timing.answer_chars = len(answer)
-        log.info("🎭 %s", answer)  # rendered prominently in the console
+        if answer:
+            log.info("🎭 %s", answer)  # rendered prominently in the console
         log.info("⏱ LLM %d ms%s", timing.respond_ms(), " (redo)" if timing.kind == "redo" else "")
-        await self._send_with_retry(channel, answer)
-        speak_task = asyncio.create_task(self._speak(answer, guild_id, timing))
+        # A content-less answer (a marker-only turn the model wrapped in a code fence, etc.) must not
+        # be posted or spoken — XTTS would read a lone quote for ~15 s. The dice button still posts.
+        speakable = has_speakable_content(answer)
+        speak_task = None
+        if speakable:
+            await self._send_with_retry(channel, answer)
+            speak_task = asyncio.create_task(self._speak(answer, guild_id, timing))
+        else:
+            log.info("(inhaltslose Antwort — nichts gepostet/gesprochen; nur ggf. Würfel)")
         dice_task = asyncio.create_task(self._handle_dice(channel))
-        await speak_task
+        if speak_task is not None:
+            await speak_task
         timing.end = time.monotonic()  # /speak returned → total stops here (mic re-anchor excluded)
         timing.log_line()
         await dice_task  # the dice button must land before the mic button re-anchors at the bottom
@@ -582,27 +592,31 @@ class VoiceReceiveCog(commands.Cog):
             except Exception:
                 log.exception("streaming producer failed")
             answer = holder["answer"]
-            if answer:
+            if answer is not None:  # a turn happened ("" = a marker-only/content-less turn)
                 timing.answer_chars = len(answer)
-                log.info("🎭 %s", answer)
+                if answer:
+                    log.info("🎭 %s", answer)
                 log.info("⏱ LLM %d ms%s", timing.respond_ms(),
                          " (redo)" if timing.kind == "redo" else "")
-                await self._send_with_retry(channel, answer)
+                # Post the text only if there's something to read; the sentences were already
+                # filtered for speakability before synthesis. A marker-only turn posts no text but
+                # still posts its dice button below.
+                if has_speakable_content(answer):
+                    await self._send_with_retry(channel, answer)
                 dice_task = asyncio.create_task(self._handle_dice(channel))
             await asyncio.gather(sw, pw)  # wait for the last sentence to finish playing
         finally:
             if sink is not None:
                 sink.unmute()
-        answer = holder["answer"]
-        if answer:
+        if holder["answer"] is not None:
             timing.end = time.monotonic()  # last /speak returned
             timing.log_line()
             if dice_task is not None:
                 await dice_task
-            await self._autosave_turn(channel, answer, redo=redo)
+            await self._autosave_turn(channel, holder["answer"], redo=redo)
             if self._push_to_talk and self._sink is not None:
                 await self._post_mic_button(channel)
-        return answer
+        return holder["answer"]
 
     @commands.command(name="dm")
     async def dm(self, ctx: commands.Context, *, text: str = "") -> None:
@@ -629,7 +643,7 @@ class VoiceReceiveCog(commands.Cog):
                 log.exception("DM turn failed (stream)")
                 await ctx.send("(Der Spielleiter schweigt — Fehler bei der Antwort, siehe Log.)")
                 return
-            if not answer:
+            if answer is None:  # None = nothing to respond to; "" = a marker-only turn (dice posted)
                 await ctx.send("(Nichts zu beantworten.)")
             return
         try:
@@ -641,7 +655,7 @@ class VoiceReceiveCog(commands.Cog):
             log.exception("DM turn failed")
             await ctx.send("(Der Spielleiter schweigt — Fehler bei der Antwort, siehe Log.)")
             return
-        if not answer:
+        if answer is None:
             await ctx.send("(Nichts zu beantworten.)")
             return
         await self._deliver_answer(ctx.channel, guild_id, answer, timing)
@@ -664,7 +678,7 @@ class VoiceReceiveCog(commands.Cog):
                 log.exception("DM redo failed (stream)")
                 await ctx.send("(Fehler beim Neu-Erzählen, siehe Log.)")
                 return
-            if not answer:
+            if answer is None:
                 await ctx.send("Nichts zum Wiederholen — erst eine Runde mit `!dm` spielen.")
             return
         try:
@@ -676,7 +690,7 @@ class VoiceReceiveCog(commands.Cog):
             log.exception("DM redo failed")
             await ctx.send("(Fehler beim Neu-Erzählen, siehe Log.)")
             return
-        if not answer:
+        if answer is None:
             await ctx.send("Nichts zum Wiederholen — erst eine Runde mit `!dm` spielen.")
             return
         await self._deliver_answer(ctx.channel, guild_id, answer, timing)
@@ -715,7 +729,7 @@ class VoiceReceiveCog(commands.Cog):
             log.exception("DM turn failed (auto)")
             await self._send_with_retry(channel, "(Der Spielleiter schweigt — Fehler, siehe Log.)")
             return
-        if answer:
+        if answer is not None:  # "" = a marker-only turn → still deliver (posts the dice button)
             await self._deliver_answer(channel, guild_id, answer, timing)
 
     async def _on_mic_stop(self, interaction: discord.Interaction) -> None:
@@ -926,7 +940,7 @@ class VoiceReceiveCog(commands.Cog):
             log.exception("DM turn failed (after roll)")
             await self._send_with_retry(channel, "(Der Spielleiter schweigt — Fehler, siehe Log.)")
             return
-        if answer:
+        if answer is not None:  # "" = the consequence narration was empty; nothing to deliver/speak
             await self._deliver_answer(channel, guild_id, answer, timing)
 
     async def _post_pending_dice(self, channel) -> int:
