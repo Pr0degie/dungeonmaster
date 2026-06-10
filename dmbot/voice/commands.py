@@ -1047,10 +1047,14 @@ class VoiceReceiveCog(commands.Cog):
     @commands.command(name="npc", aliases=["nsc"])
     async def npc(
         self, ctx: commands.Context, action: str = "", name: str = "",
-        wounds: int = 10, tb: int = 0, armour: int = 0,
+        wounds: str = "10", tb: str = "0", armour: str = "0",
     ) -> None:
         """Register an enemy the party can damage: `!npc add Kultist 10 3 2` (Wunden, ToughnessBonus,
-        Rüstung). `!npc list` shows them. (NSC-Namen ohne Leerzeichen — z. B. `Kult_Anführer`.)"""
+        Rüstung). `!npc list` shows them. (NSC-Namen ohne Leerzeichen — z. B. `Kult_Anführer`.)
+
+        Wounds/TB/armour are parsed tolerantly (str + manual ``int``) so a stray non-numeric token
+        gives a clear usage hint instead of discord.py's raw ``BadArgument`` traceback — the error
+        that blocked the Phase-9 live gate."""
         cid = self._brain_channel(ctx.channel)
         state = self._state.get(cid)
         if state is None:
@@ -1070,8 +1074,17 @@ class VoiceReceiveCog(commands.Cog):
             if not name:
                 await ctx.send("Nutzung: `!npc add <Name> [Wunden] [ToughnessBonus] [Rüstung]`.")
                 return
+            try:
+                w, t, a = int(wounds), int(tb), int(armour)
+            except ValueError:
+                await ctx.send(
+                    "Wunden, ToughnessBonus und Rüstung müssen Zahlen sein. "
+                    "Nutzung: `!npc add <Name> [Wunden] [TB] [Rüstung]` — z. B. `!npc add Kultist 10 3`. "
+                    "(NSC-Namen ohne Leerzeichen, z. B. `Kult_Anführer`.)"
+                )
+                return
             n = state.add_or_update_npc(
-                name, wounds=wounds, max_wounds=wounds, toughness_bonus=tb, armour=armour
+                name, wounds=w, max_wounds=w, toughness_bonus=t, armour=a
             )
             self._persist_and_refresh(ctx.channel)
             await ctx.send(
