@@ -16,6 +16,29 @@ TTS_CHAR_LIMIT = 240
 
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?…])\s+")
 
+# Split after terminal punctuation + any closing quote/bracket + whitespace. Used by the streaming
+# assembler (ADR 017) to tell a *complete* sentence (it ends on a terminator) from a still-growing
+# fragment — the single home for sentence-boundary logic, so the assembler doesn't re-roll its own.
+_SENTENCE_BOUNDARY = re.compile(r'(?<=[.!?…])["»”’)\]]*\s+')
+_ENDS_SENTENCE = re.compile(r'[.!?…]["»”’)\]]*$')
+
+
+def split_completed(text: str) -> tuple[list[str], str]:
+    """Split ``text`` into (completed sentences, trailing fragment).
+
+    A *completed* sentence ends on terminal punctuation (optionally a closing quote/bracket); the
+    trailing fragment is whatever follows the last terminator with no terminator of its own (the
+    part still being generated mid-stream). ``("", "")``-safe: empty input → ``([], "")``.
+    """
+    text = text.strip()
+    if not text:
+        return [], ""
+    parts = [p for p in _SENTENCE_BOUNDARY.split(text) if p]
+    if not parts:
+        return [], ""
+    tail = "" if _ENDS_SENTENCE.search(parts[-1]) else parts.pop()
+    return [p.strip() for p in parts if p.strip()], tail.strip()
+
 # Glyphs XTTS reads out or stumbles over when spoken (players: "er liest die Interpunktion mit vor
 # — Komma, Punkt, Ausrufezeichen … das ist Müll"): quotation marks of every flavour, brackets and
 # stray symbols. Dropped before synthesis. We deliberately KEEP . , ! ? ; : (they carry the voice's

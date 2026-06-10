@@ -1,0 +1,76 @@
+"""Per-turn conversation autosave (D41 — crash recovery).
+
+``DMBrain``'s history lives in memory; a crash loses the evening's conversational thread. World
+state already persists separately (ADR 015: ``state.json``, atomic, saved per change). This is the
+**third** session artifact: ``data/sessions/<channel_id>/history.jsonl`` — append-only, one JSON
+line per completed DM turn (``{ts, user_msg, answer, redo}``). It is code-owned like ``state.json``;
+``characters.json`` stays the read-only sheet, so the ADR 015 split is not blurred. Restored on
+``!join`` (only into an empty history), rotated on ``!leave``.
+
+Pure file helpers (no Discord/asyncio) so they're unit-testable and run off the event loop via
+``asyncio.to_thread`` in the cog.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from pathlib import Path
+
+log = logging.getLogger(__name__)
+
+
+def append_turn(
+    path: Path, *, ts: str, user_msg: str, answer: str, redo: bool = False
+) -> None:
+    """Append one completed turn as a JSON line (creates the parent dir). Append-only — no atomic
+    rename needed; a torn final line is tolerated on load. ``redo=True`` marks a re-run so the
+    loader replaces the prior turn instead of stacking (mirrors :meth:`DMBrain.redo`)."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(
+        {"ts": ts, "user_msg": user_msg, "answer": answer, "redo": redo}, ensure_ascii=False
+    )
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(line + "\n")
+
+
+def load_recent(path: Path, max_turns: int) -> list[tuple[str, str]]:
+    """Read the saved turns and return the last ``max_turns`` as ``(user_msg, answer)`` pairs.
+
+    A ``redo`` record **replaces** the previous turn (so a restored session doesn't resurrect a
+    superseded answer — same semantics as :meth:`DMBrain.redo`). Corrupt lines are skipped with a
+    warning (an append-only file can have a torn tail). A missing file → ``[]``."""
+    path = Path(path)
+    if not path.is_file():
+        return []
+    turns: list[tuple[str, str]] = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            rec = json.loads(raw)
+        except ValueError:
+            log.warning("history autosave: skipping a corrupt line in %s", path)
+            continue
+        user_msg, answer = rec.get("user_msg"), rec.get("answer")
+        if user_msg is None or answer is None:
+            continue
+        if rec.get("redo") and turns:
+            turns[-1] = (user_msg, answer)  # the redo replaced the prior turn
+        else:
+            turns.append((user_msg, answer))
+    return turns[-max_turns:] if max_turns and max_turns > 0 else turns
+
+
+def rotate(path: Path, *, stamp: str) -> Path | None:
+    """Rename the history file to ``history.<stamp>.jsonl`` (keep it, don't delete) on ``!leave``,
+    so the next session starts fresh while the record survives. No-op (``None``) if the file
+    doesn't exist; otherwise returns the rotated path."""
+    path = Path(path)
+    if not path.is_file():
+        return None
+    target = path.with_name(f"history.{stamp}.jsonl")
+    path.replace(target)
+    return target

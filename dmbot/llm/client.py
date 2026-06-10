@@ -1,21 +1,49 @@
-"""Ollama chat client (Phase 5).
+"""Ollama chat client (Phase 5; streaming added ADR 017).
 
 A thin async wrapper over Ollama's ``/api/chat``. The host and model come from config
 (``OLLAMA_HOST`` / ``OLLAMA_MODEL``) — never hardcoded, so moving Ollama to the 5080 over
 Tailscale stays a one-line change (ADR 002). Async because discord.py runs an event loop and a
 generation takes seconds; blocking it would freeze the whole bot.
 
-Non-streaming for now: Phase 5 just needs the finished German answer. Streaming is a later
-latency optimisation (it pairs with streaming TTS, not an MVP must — CLAUDE.md).
+Two entry points: :meth:`OllamaClient.chat` returns the finished German answer (roll router,
+recap, tests use it); :meth:`OllamaClient.chat_stream` yields text deltas as they generate so the
+DM turn can synthesise + speak the first sentence before the rest is done (ADR 017). Both set
+``last_stats`` from the final response object identically.
 """
 
 from __future__ import annotations
 
+import json
 import logging
+from collections.abc import AsyncIterator
 
 import httpx
 
 log = logging.getLogger(__name__)
+
+
+def _parse_stream_line(line: str) -> tuple[str, dict | None]:
+    """Parse one NDJSON line of Ollama's streaming ``/api/chat`` response.
+
+    Returns ``(text delta, final-stats | None)``: the delta is the line's ``message.content``;
+    only the terminal ``done: true`` object carries ``prompt_eval_count`` / ``eval_count`` (every
+    intermediate line returns ``None`` for the second item). A blank or unparseable line yields
+    ``("", None)`` so the stream loop skips it instead of crashing the turn.
+    """
+    line = line.strip()
+    if not line:
+        return "", None
+    try:
+        data = json.loads(line)
+    except ValueError:
+        return "", None
+    delta = (data.get("message") or {}).get("content", "") or ""
+    if data.get("done"):
+        return delta, {
+            "prompt_eval_count": data.get("prompt_eval_count"),
+            "eval_count": data.get("eval_count"),
+        }
+    return delta, None
 
 # A storyteller wants some spark but must stay coherent and in-world. num_ctx is capped well
 # below nemo's 16k default: the KV cache for 16k context costs ~2 GB of VRAM we don't have to
@@ -87,6 +115,41 @@ class OllamaClient:
             "num_ctx": payload["options"].get("num_ctx"),
         }
         return data["message"]["content"].strip()
+
+    async def chat_stream(
+        self,
+        system: str,
+        messages: list[dict[str, str]],
+        *,
+        options: dict | None = None,
+    ) -> AsyncIterator[str]:
+        """Like :meth:`chat`, but stream the answer as text deltas (``stream: true``).
+
+        Yields each ``message.content`` delta as it arrives, so the DM turn can synthesise +
+        speak the first sentence while the rest is still generating (ADR 017). ``last_stats`` is
+        set from the terminal ``done`` object, same shape as :meth:`chat`. The caller stops the
+        generation early simply by stopping iteration / calling ``aclose`` on this generator —
+        httpx closes the underlying stream (the client-side stop-label abort). Server-side
+        ``options.stop`` still applies. Raises ``httpx.HTTPError`` on transport/HTTP failure.
+        """
+        payload = {
+            "model": self._model,
+            "stream": True,
+            "keep_alive": self._keep_alive,
+            "messages": [{"role": "system", "content": system}, *messages],
+            "options": {**_DEFAULT_OPTIONS, **(options or {})},
+        }
+        num_ctx = payload["options"].get("num_ctx")
+        async with self._client.stream(
+            "POST", f"{self._host}/api/chat", json=payload
+        ) as resp:
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                delta, final = _parse_stream_line(line)
+                if final is not None:
+                    self.last_stats = {**final, "num_ctx": num_ctx}
+                if delta:
+                    yield delta
 
     async def aclose(self) -> None:
         await self._client.aclose()

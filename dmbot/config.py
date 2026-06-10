@@ -42,6 +42,8 @@ class Config:
     pause_vad_while_speaking: bool
     button_autosend: bool
     roll_router: bool
+    streaming: bool
+    autosave: bool
 
     @classmethod
     def load(cls) -> "Config":
@@ -139,5 +141,16 @@ class Config:
             # dice button — far more reliable than the model's inline <<TEST>> marker, which stays as
             # a fallback. ON by default (validated live, 2026-06-08); DM_ROLL_ROUTER=0 disables it.
             roll_router=os.environ.get("DM_ROLL_ROUTER", "1").strip().lower()
+            in ("1", "true", "yes", "on"),
+            # Streaming pipeline (ADR 017): stream the LLM answer and speak it sentence-by-sentence,
+            # so the first audio plays while the rest is still generating (time-to-first-audio drops
+            # from "whole generation + whole synthesis" to "first sentence"). ON by default;
+            # DM_STREAMING=0 = the byte-identical batch path (one WAV per turn). Needs a TTS backend.
+            streaming=os.environ.get("DM_STREAMING", "1").strip().lower()
+            in ("1", "true", "yes", "on"),
+            # Per-turn conversation autosave (D41): append every completed turn to
+            # data/sessions/<id>/history.jsonl so a crash doesn't lose the evening's thread; restored
+            # on !join, rotated on !leave. ON by default; DM_AUTOSAVE=0 disables it.
+            autosave=os.environ.get("DM_AUTOSAVE", "1").strip().lower()
             in ("1", "true", "yes", "on"),
         )

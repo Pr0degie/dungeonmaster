@@ -15,6 +15,8 @@ import json
 import logging
 import re
 import threading
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 
 from .llm.client import OllamaClient
 from .llm.persona import load_system_prompt
@@ -22,6 +24,7 @@ from .llm.roll_router import classifier_schema, classifier_system, to_test_reque
 from .memory.recap import RECAP_SYSTEM_DE, build_recap_user
 from .rules.marker import TestRequest, extract_tests
 from .rules.profile import SystemProfile
+from .tts.textsplit import split_completed
 
 log = logging.getLogger(__name__)
 
@@ -118,14 +121,28 @@ def _strip_trailing_prompt(text: str) -> str:
     return stripped or text
 
 
-def _sanitize(text: str) -> str:
+def _sanitize_leading(text: str) -> str:
+    """The leading/global half of :func:`_sanitize`: drop markdown, a self-correction frame, a
+    leading role label and a leading meta-preamble. Split out so the streaming assembler (ADR 017)
+    can apply it incrementally *without* the trailing strips, which only ever touch the held-back
+    last sentence."""
     text = text.replace("*", "").strip()  # drop markdown emphasis/bold
     text = _META_SELFCORRECT.sub("", text, count=1).strip()  # drop a "…Sprachmodell… Hier ist die korrekte Antwort:" frame
     text = _ROLE_LABEL.sub("", text).strip()  # drop a leading role label
     text = _strip_meta_preamble(text)  # drop a leading "Als Spielleitung beschreibe ich …" preamble
+    return text
+
+
+def _sanitize_trailing(text: str) -> str:
+    """The trailing half of :func:`_sanitize`: drop a trailing meta-disclaimer parenthetical and a
+    repetitive trailing 'Was tut ihr?' closer. Applied last, on the final/held-back sentence."""
     text = _META_PAREN.sub("", text).strip()  # drop a trailing meta-disclaimer in parentheses
     text = _strip_trailing_prompt(text)  # drop a repetitive trailing "Was tut ihr?" closer
     return text
+
+
+def _sanitize(text: str) -> str:
+    return _sanitize_trailing(_sanitize_leading(text))
 
 
 # Sentence-ending punctuation, optionally followed by a closing quote/bracket.
@@ -141,6 +158,133 @@ def _trim_to_last_sentence(text: str) -> str:
         return text  # nothing to fall back to — leave it rather than nuke the whole turn
     last = ends[-1].end()
     return text[:last].strip() if text[last:].strip() else text
+
+
+def finalize_answer(
+    raw: str, labels: list[str], profile: SystemProfile | None
+) -> tuple[str, list[TestRequest]]:
+    """The full non-streaming post-processing of a raw LLM answer → (clean spoken answer, parsed
+    dice tests). The single source of truth shared by the batch path (:meth:`DMBrain._generate`)
+    and the streaming assembler's :meth:`StreamAssembler.finish` — so the two can never drift and
+    the stored history is identical for the same raw text (the parity guarantee, ADR 017)."""
+    answer = _sanitize(_cut_at_labels(raw, labels)) or _sanitize(raw)
+    answer = _strip_leading_label(answer, labels)  # kill a leaked leading "Name:"/"DM:" label
+    tests: list[TestRequest] = []
+    if profile is not None:
+        answer, tests = extract_tests(answer, profile)  # strip markers, collect requests
+    return _trim_to_last_sentence(answer), tests
+
+
+# --- Streaming assembler (ADR 017) --------------------------------------------------------------
+
+# Hold the first chunk until it's a full sentence or this many chars, so a leading meta-preamble /
+# role label is strippable before anything is spoken.
+_FIRST_CHUNK_MIN_CHARS = 80
+
+
+def _open_marker_index(text: str) -> int | None:
+    """Index of an *unclosed* ``<<`` (a ``<<TEST …>>`` marker still arriving), or None — so the
+    streaming view can withhold the dangling marker fragment and never speak a partial ``<<``."""
+    i = text.rfind("<<")
+    if i == -1 or ">>" in text[i:]:
+        return None
+    return i
+
+
+@dataclass
+class StreamResult:
+    """Outcome of :meth:`StreamAssembler.finish`: sentences not yet spoken, the canonical stored
+    answer (history parity), and the dice tests parsed from the whole turn."""
+
+    remaining: list[str]
+    answer: str
+    tests: list[TestRequest]
+
+
+class StreamAssembler:
+    """Turns a stream of raw LLM deltas into speakable sentences while preserving the *exact*
+    non-streaming sanitisation (ADR 017). Pure + unit-testable against a list of fake deltas.
+
+    Hold-back rules:
+    - the **first** sentence is withheld until it's complete (one sentence or ``_FIRST_CHUNK_MIN_CHARS``
+      chars) so a leading meta-preamble / role label is strippable before anything is spoken;
+    - the **latest** completed sentence is always held back (emit N only when N+1 exists) so the
+      trailing strips (parenthetical, 'Was tut ihr?', mid-word cut) apply before it's spoken;
+    - text is withheld from any unmatched ``<<`` — a ``<<TEST …>>`` marker may span deltas;
+    - a mid-text speaker label (``_cut_at_labels``) sets :attr:`stopped` so the caller aborts the
+      HTTP stream and only the pre-label narration is kept.
+
+    :meth:`finish` recomputes the answer with :func:`finalize_answer` on the accumulated raw, so
+    history parity holds by construction; ``remaining`` is whatever of that answer wasn't spoken.
+    """
+
+    def __init__(self, labels: list[str], profile: SystemProfile | None) -> None:
+        self._labels = labels
+        self._profile = profile
+        self._raw = ""
+        self._released = False
+        self._emitted: list[str] = []
+        self.stopped = False
+
+    @property
+    def raw(self) -> str:
+        return self._raw
+
+    def feed(self, delta: str) -> list[str]:
+        """Accumulate ``delta`` and return any newly-speakable sentences (already sanitised)."""
+        if self.stopped:
+            return []
+        self._raw += delta
+        cut = _cut_at_labels(self._raw, self._labels)
+        if len(cut) < len(self._raw.strip()):
+            self.stopped = True  # a speaker label appeared mid-text → caller aborts the stream
+        body = self._body(cut)
+        if body is None:
+            return []
+        sentences, _tail = split_completed(body)
+        emittable = sentences[:-1] if sentences else []  # hold back the latest completed sentence
+        new = emittable[len(self._emitted):]
+        self._emitted.extend(new)
+        return new
+
+    def _body(self, cut: str) -> str | None:
+        """The leading-sanitised, marker-stripped speakable view of the cut buffer, or None while
+        the first chunk is still being held back."""
+        text = cut.replace("*", "")
+        idx = _open_marker_index(text)
+        if idx is not None:
+            text = text[:idx]  # withhold from an unmatched "<<" (a marker may span deltas)
+        if self._profile is not None:
+            text, _ = extract_tests(text, self._profile)  # strip complete <<TEST …>> markers
+        text = _sanitize_leading(text)
+        text = _strip_leading_label(text, self._labels)
+        if not self._released:
+            sentences, _tail = split_completed(text)
+            if not sentences and len(text) < _FIRST_CHUNK_MIN_CHARS:
+                return None
+            self._released = True
+        return text
+
+    def finish(self) -> StreamResult:
+        """Stream ended (or aborted): compute the canonical answer + tests and return whatever of
+        it hasn't been spoken yet (the held-back tail / final sentence)."""
+        answer, tests = finalize_answer(self._raw, self._labels, self._profile)
+        sentences, tail = split_completed(answer)
+        all_sentences = [s for s in (*sentences, tail) if s]
+        if all_sentences[: len(self._emitted)] == self._emitted:
+            remaining = all_sentences[len(self._emitted):]
+        else:
+            # The canonical answer diverged from what we already spoke — only the rare mid-text
+            # self-correction frame ("Hier ist die korrekte Antwort: …") or a stop-label edit can
+            # do this. Speak the canonical remainder so the real answer is still heard; history
+            # already stores the canonical text, so parity is intact.
+            log.warning(
+                "streaming: spoken text diverged from the finalized answer (self-correction / "
+                "stop-label) — speaking the canonical remainder; %d sentences already spoken",
+                len(self._emitted),
+            )
+            remaining = all_sentences
+        return StreamResult(remaining=remaining, answer=answer, tests=tests)
 
 
 class DMBrain:
@@ -200,6 +344,11 @@ class DMBrain:
         # line. None until the first turn.
         self.last_llm_stats: dict | None = None
 
+    @property
+    def max_history_turns(self) -> int:
+        """How many turns the in-memory history keeps — used to bound the autosave restore (D41)."""
+        return self._max_messages // 2
+
     def add_player_line(self, channel_id: int, name: str, text: str) -> None:
         """Buffer a transcribed player line for the next DM turn (STT thread-safe)."""
         with self._lock:
@@ -215,13 +364,13 @@ class DMBrain:
             self._buffer[channel_id] = []
             return lines
 
-    async def respond(
-        self, channel_id: int, *, extra_text: str | None = None
-    ) -> str | None:
-        """Run one DM turn for ``channel_id``: consume the buffered player lines (plus any
-        directly typed ``extra_text``), ask the LLM, append to history and return the answer.
-        Returns ``None`` if there is nothing to respond to.
-        """
+    def _prepare_turn(
+        self, channel_id: int, extra_text: str | None
+    ) -> tuple[str, list[str], list[dict[str, str]]] | None:
+        """Drain + cap the buffered player lines (plus any typed ``extra_text``), fold in any
+        pending dice results, and assemble ``(user_msg, labels, history)`` — the shared front half
+        of :meth:`respond` and :meth:`respond_streaming`. Records the turn's last action (roll
+        router) and last turn (redo). Returns ``None`` if there's nothing to respond to."""
         lines = self._drain(channel_id)
         total = len(lines)
         if self._max_buffer_lines and total > self._max_buffer_lines:
@@ -253,8 +402,20 @@ class DMBrain:
         known = self._known_speakers.get(channel_id, [])
         labels = list(dict.fromkeys([name for name, _ in lines] + known + _ROLE_LABELS))
         self._last_turn[channel_id] = (user_msg, labels)
-
         history = self._history.setdefault(channel_id, [])
+        return user_msg, labels, history
+
+    async def respond(
+        self, channel_id: int, *, extra_text: str | None = None
+    ) -> str | None:
+        """Run one DM turn for ``channel_id``: consume the buffered player lines (plus any
+        directly typed ``extra_text``), ask the LLM, append to history and return the answer.
+        Returns ``None`` if there is nothing to respond to.
+        """
+        prep = self._prepare_turn(channel_id, extra_text)
+        if prep is None:
+            return None
+        user_msg, labels, history = prep
         answer = await self._generate(channel_id, user_msg, labels, history)
         self._append_turn(history, user_msg, answer)
         return answer
@@ -279,20 +440,18 @@ class DMBrain:
         self._append_turn(history, user_msg, answer)
         return answer
 
-    async def _generate(
+    def _build_request(
         self,
         channel_id: int,
         user_msg: str,
         labels: list[str],
         history_prefix: list[dict[str, str]],
-    ) -> str:
-        """One LLM call for ``user_msg`` on top of ``history_prefix`` → a sanitised DM answer.
-
-        With an active profile, ``<<TEST …>>`` markers are extracted **before** the last-sentence
-        trim (the trim would otherwise drop a trailing marker) and surfaced as pending tests."""
+    ) -> tuple[str, list[dict[str, str]], dict]:
+        """Assemble ``(system, messages, options)`` for one DM turn — the shared head both the
+        batch (:meth:`_generate`) and streaming (:meth:`_stream_and_store`) paths use, so they
+        can't drift. Memory order per CLAUDE.md: persona (core+tone) → recap → JSON state →
+        who-plays-whom → history. Labels become Ollama stop sequences (the anti-puppeting guard)."""
         system = load_system_prompt()
-        # Memory (Phase 9), in the CLAUDE.md prompt order: persona (core+tone) → recap → JSON state →
-        # who-plays-whom → history. The recap is the narrative thread; the state block the hard facts.
         recap = self._recap.get(channel_id)
         if recap:
             system = f"{system}\n\n## Was bisher geschah\n{recap}"
@@ -304,6 +463,19 @@ class DMBrain:
             system = f"{system}\n\n{hint}"
         messages = [*history_prefix, {"role": "user", "content": user_msg}]
         options = {"stop": [f"\n{label}:" for label in labels], "num_predict": self._num_predict}
+        return system, messages, options
+
+    async def _generate(
+        self,
+        channel_id: int,
+        user_msg: str,
+        labels: list[str],
+        history_prefix: list[dict[str, str]],
+    ) -> str:
+        """One non-streaming LLM call for ``user_msg`` on top of ``history_prefix`` → a sanitised
+        DM answer. ``<<TEST …>>`` markers are extracted and surfaced as pending tests (via
+        :func:`finalize_answer`)."""
+        system, messages, options = self._build_request(channel_id, user_msg, labels, history_prefix)
         raw = await self._client.chat(system, messages, options=options)
         # narration call's token counts (for [latency]); getattr so a test double without the attr
         # (or a future client) degrades to None instead of raising.
@@ -312,13 +484,102 @@ class DMBrain:
         # the raw LLM output BEFORE marker-stripping, so we can see whether the model emitted a
         # <<TEST …>> marker at all (the prime suspect when the dice-marker flow doesn't fire).
         log.info("🪵 LLM roh: %s", raw.replace("\n", " ⏎ "))
-        answer = _sanitize(_cut_at_labels(raw, labels)) or _sanitize(raw)
-        answer = _strip_leading_label(answer, labels)  # kill a leaked leading "Name:"/"DM:" label
-        if self._profile is not None:
-            answer, tests = extract_tests(answer, self._profile)  # strip markers, collect requests
-            if tests:
-                self._pending_tests.setdefault(channel_id, []).extend(tests)
-        return _trim_to_last_sentence(answer)  # clean ending if the num_predict cap cut it off
+        answer, tests = finalize_answer(raw, labels, self._profile)
+        if tests:
+            self._pending_tests.setdefault(channel_id, []).extend(tests)
+        return answer
+
+    async def respond_streaming(
+        self,
+        channel_id: int,
+        *,
+        extra_text: str | None = None,
+        on_sentence: Callable[[str], Awaitable[None]],
+        should_abort: Callable[[], bool] | None = None,
+    ) -> str | None:
+        """Streaming variant of :meth:`respond` (ADR 017): same buffering / history / pending-test
+        bookkeeping, but drive the LLM with :meth:`OllamaClient.chat_stream` and ``await
+        on_sentence(s)`` for each complete sentence as it's ready, so the cog can synthesise + speak
+        it before the rest is done. ``should_abort()`` (e.g. ``lambda: paused``) stops emission
+        cleanly. Returns the stored answer, or ``None`` if there's nothing to respond to."""
+        prep = self._prepare_turn(channel_id, extra_text)
+        if prep is None:
+            return None
+        user_msg, labels, history = prep
+        return await self._stream_and_store(
+            channel_id, user_msg, labels, history, on_sentence, should_abort
+        )
+
+    async def redo_streaming(
+        self,
+        channel_id: int,
+        *,
+        on_sentence: Callable[[str], Awaitable[None]],
+        should_abort: Callable[[], bool] | None = None,
+    ) -> str | None:
+        """Streaming variant of :meth:`redo`: re-stream the last turn's input, replacing (not
+        stacking) the previous answer in history."""
+        last = self._last_turn.get(channel_id)
+        if last is None:
+            return None
+        user_msg, labels = last
+        history = self._history.setdefault(channel_id, [])
+        if (
+            len(history) >= 2
+            and history[-1]["role"] == "assistant"
+            and history[-2]["role"] == "user"
+        ):
+            del history[-2:]  # drop the turn we're redoing so it isn't duplicated
+        self._pending_tests.pop(channel_id, None)  # the redo supersedes the old turn's test markers
+        return await self._stream_and_store(
+            channel_id, user_msg, labels, history, on_sentence, should_abort
+        )
+
+    async def _stream_and_store(
+        self,
+        channel_id: int,
+        user_msg: str,
+        labels: list[str],
+        history: list[dict[str, str]],
+        on_sentence: Callable[[str], Awaitable[None]],
+        should_abort: Callable[[], bool] | None,
+    ) -> str:
+        """Drive ``chat_stream`` through a :class:`StreamAssembler`, speaking sentences via
+        ``on_sentence`` as they're ready, then finalise: store the canonical answer (parity with
+        the batch path), surface pending tests, set the latency stats. Degrades on a mid-stream
+        error — keeps what was spoken, marks the stored answer, never raises out of a half-spoken
+        turn."""
+        system, messages, options = self._build_request(channel_id, user_msg, labels, history)
+        assembler = StreamAssembler(labels, self._profile)
+        errored = False
+        agen = self._client.chat_stream(system, messages, options=options)
+        try:
+            async for delta in agen:
+                for sentence in assembler.feed(delta):
+                    await on_sentence(sentence)
+                if assembler.stopped:
+                    break  # a mid-text speaker label — abort the stream, keep the narration
+                if should_abort is not None and should_abort():
+                    break  # paused (ADR 013): stop emitting; resume won't replay
+        except Exception:
+            log.exception("streaming turn failed mid-generation — keeping the partial answer")
+            errored = True
+        finally:
+            await agen.aclose()  # closes the httpx stream (the client-side stop)
+        self.last_llm_stats = getattr(self._client, "last_stats", None)
+        log.info("🪵 LLM roh (stream): %s", assembler.raw.replace("\n", " ⏎ "))
+        result = assembler.finish()
+        for sentence in result.remaining:
+            if should_abort is not None and should_abort():
+                break
+            await on_sentence(sentence)
+        if result.tests:
+            self._pending_tests.setdefault(channel_id, []).extend(result.tests)
+        stored = result.answer
+        if errored and stored:
+            stored = f"{stored} … [Antwort unterbrochen]"  # noted in history; never spoken
+        self._append_turn(history, user_msg, stored)
+        return result.answer
 
     def _append_turn(self, history: list[dict[str, str]], user_msg: str, answer: str) -> None:
         history.append({"role": "user", "content": user_msg})
@@ -334,6 +595,27 @@ class DMBrain:
         """The latest player action (display-name, text) the last turn answered, or None — the
         roll-detection router (ADR 014) classifies this. None on a results-only turn."""
         return self._last_action.get(channel_id)
+
+    def last_user_msg(self, channel_id: int) -> str | None:
+        """The user message of the most recent turn (for history autosave, D41), or None."""
+        last = self._last_turn.get(channel_id)
+        return last[0] if last else None
+
+    def restore_history(self, channel_id: int, turns: list[tuple[str, str]]) -> int:
+        """Restore prior ``(user_msg, answer)`` turns into this channel's history on join — crash
+        recovery (D41). Only fills an **empty** history (never clobbers a live session) and respects
+        the history cap. Returns how many turns were restored. Note: ``_last_turn`` is *not*
+        restored, so ``!redo`` is unavailable for the restored last turn (known limitation)."""
+        if self._history.get(channel_id):
+            return 0
+        history: list[dict[str, str]] = []
+        for user_msg, answer in turns:
+            history.append({"role": "user", "content": user_msg})
+            history.append({"role": "assistant", "content": answer})
+        if len(history) > self._max_messages:
+            history = history[len(history) - self._max_messages:]
+        self._history[channel_id] = history
+        return len(history) // 2
 
     async def classify_test(
         self, *, action: str, character: str | None, skills: list[str]

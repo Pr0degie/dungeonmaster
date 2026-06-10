@@ -2,7 +2,12 @@
 verified offline against Ollama (nemo 8/8); here we lock the constrained schema + the JSON→TestRequest
 mapping, which is what makes the verdict safe to trust without re-checking the model each turn."""
 
-from dmbot.llm.roll_router import classifier_schema, classifier_system, to_test_request
+from dmbot.llm.roll_router import (
+    classifier_schema,
+    classifier_system,
+    should_post_router,
+    to_test_request,
+)
 
 
 def test_schema_constrains_skill_and_difficulty_to_the_allowed_sets():
@@ -40,3 +45,16 @@ def test_none_on_garbage_input():
 def test_blank_difficulty_becomes_none():
     req = to_test_request({"needs_test": True, "skill": "Athletik", "difficulty": ""}, character="Vask")
     assert req is not None and req.difficulty is None  # engine then uses the profile default
+
+
+# --- dedupe: the router fires concurrently with the narration turn (D40), but an inline marker wins
+
+def test_should_post_router_marker_wins_the_dedupe():
+    # router on + the model emitted no marker → the router posts the one button
+    assert should_post_router(True, 0) is True
+    # router on + a marker already posted → router stays silent (exactly one button per action)
+    assert should_post_router(True, 1) is False
+    assert should_post_router(True, 3) is False
+    # router off → never posts, marker or not (inline <<TEST>> remains the only trigger)
+    assert should_post_router(False, 0) is False
+    assert should_post_router(False, 2) is False

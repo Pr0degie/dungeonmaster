@@ -48,6 +48,13 @@ def classifier_system(skills: list[str], difficulties: list[str], system_display
     )
 
 
+def should_post_router(router_on: bool, marker_posted: int) -> bool:
+    """Dedupe the two roll-trigger paths (D40): an inline ``<<TEST>>`` marker the model emitted
+    (already posted, ``marker_posted`` > 0) **wins**, so the router stays silent — at most one dice
+    button per action. The router only fills in when the router is on and the model emitted none."""
+    return router_on and marker_posted == 0
+
+
 def to_test_request(data: object, *, character: str | None) -> TestRequest | None:
     """Turn the classifier's parsed JSON into a :class:`TestRequest` (or ``None`` for no test)."""
     if not isinstance(data, dict) or not data.get("needs_test"):
