@@ -22,7 +22,7 @@ os.environ.setdefault("COQUI_TOS_AGREED", "1")  # accept the model licence non-i
 
 from TTS.api import TTS  # noqa: E402 — heavy (torch); only imported when XTTS is selected
 
-from .textsplit import chunk_text  # noqa: E402
+from .textsplit import chunk_text, normalize_for_tts  # noqa: E402
 
 log = logging.getLogger(__name__)
 
@@ -119,10 +119,10 @@ class XttsTTS:
         German) — each chunk is synthesised separately and the WAVs are concatenated."""
         fd, path = tempfile.mkstemp(prefix="dm_tts_", suffix=".wav")
         os.close(fd)
-        chunks = chunk_text(text)
+        chunks = chunk_text(normalize_for_tts(text))  # speech-only cleanup, then split for XTTS's char limit
         if len(chunks) <= 1:
             self._tts.tts_to_file(
-                text=text, speaker=self._speaker, language=self._language, file_path=path
+                text=chunks[0], speaker=self._speaker, language=self._language, file_path=path
             )
             return path
         parts: list[str] = []

@@ -19,6 +19,8 @@ from pathlib import Path
 
 from piper import PiperVoice
 
+from .textsplit import normalize_for_tts
+
 log = logging.getLogger(__name__)
 
 # Default voice (downloaded per SETUP B5 into voices/). Overridable via config.
@@ -50,5 +52,5 @@ class PiperTTS:
         fd, path = tempfile.mkstemp(prefix="dm_tts_", suffix=".wav")
         os.close(fd)
         with wave.open(path, "wb") as wav_file:
-            self._voice.synthesize_wav(text, wav_file)
+            self._voice.synthesize_wav(normalize_for_tts(text), wav_file)  # speech-only punctuation cleanup
         return path

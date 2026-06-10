@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dmbot.tts.textsplit import TTS_CHAR_LIMIT, chunk_text
+from dmbot.tts.textsplit import TTS_CHAR_LIMIT, chunk_text, normalize_for_tts
 
 
 def test_short_text_is_one_chunk() -> None:
@@ -34,3 +34,24 @@ def test_packs_multiple_sentences_up_to_limit() -> None:
     chunks = chunk_text(" ".join([s] * 6))  # ~440 chars → must become >1 chunk, each <= limit
     assert len(chunks) >= 2
     assert all(len(c) <= TTS_CHAR_LIMIT for c in chunks)
+
+
+def test_normalize_drops_quotes_but_keeps_words_and_prosody() -> None:
+    # NPC dialogue full of quotes (the likely culprit XTTS read aloud) → quotes gone, words + the
+    # sentence-ending punctuation kept (the voice still phrases it as a question/exclamation).
+    assert normalize_for_tts('Er zischt: "Wer wagt es?"') == "Er zischt: Wer wagt es?"
+    assert normalize_for_tts('„Bleib weg!", zischt er.') == "Bleib weg! zischt er."
+    # straight + curly quotes, asterisks, brackets all go
+    assert normalize_for_tts("Ein *dunkler* (alter) Gang.") == "Ein dunkler alter Gang."
+
+
+def test_normalize_maps_ellipsis_and_dashes_to_pauses() -> None:
+    assert normalize_for_tts("Ich… ich weiß nicht.") == "Ich. ich weiß nicht."
+    # em/en dash used as a parenthetical pause → comma; the word hyphen in "Hive-Stadt" survives
+    assert normalize_for_tts("Der Raum — düster — schweigt.") == "Der Raum, düster, schweigt."
+    assert normalize_for_tts("Die Hive-Stadt ist riesig.") == "Die Hive-Stadt ist riesig."
+
+
+def test_normalize_never_returns_empty() -> None:
+    assert normalize_for_tts('"..."') == "."  # all-symbol → falls back rather than feed TTS ""
+    assert normalize_for_tts("   ") == ""
