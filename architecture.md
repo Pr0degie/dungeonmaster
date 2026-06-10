@@ -164,24 +164,33 @@ Orchestrator builds the prompt:
    + buffered player utterances since the last DM turn
    │
    ▼
-Ollama ──► answer text (narration only; a roll, if any, is detected separately)
+Ollama ──► answer text, STREAMED as deltas (narration only; a roll is detected separately)
    │            │
-   │            └─► roll-detection router (default): a constrained-JSON call after narration
-   │                classifies the action → dice button. Inline <<TEST>> marker = fallback.
-   │                rules/ rolls per the profile + SL ──► result feeds back into the next
-   │                prompt   (ADR 014)
+   │            └─► roll-detection router (default): a constrained-JSON call fired at
+   │                generation-end, CONCURRENT with playback, classifies the action → dice
+   │                button (appears while the DM still speaks). Inline <<TEST>> marker =
+   │                fallback; marker wins the dedupe. rules/ rolls per the profile + SL ──►
+   │                result feeds back into the next prompt   (ADR 014, timing D40)
    ▼
-piper-tts ──► <TEMP>/dm_<id>.wav   (OS temp dir, NOT /tmp — Windows!)
+StreamAssembler cuts complete sentences (hold-back rules, ADR 017) as the deltas arrive
    │
    ▼
-httpx POST {wav_path} to Bot A /speak   (DMbot pauses VAD)
+piper/xtts-tts ──► one <TEMP>/dm_<id>.wav PER SENTENCE (synth N+1 while N plays)
    │
    ▼
-[Bot A] plays the WAV ── and only responds when finished (blocking)
+httpx POST {wav_path} to Bot A /speak, sequentially  (layer-2 mute, if on, spans the whole answer)
    │
    ▼
-[DMbot] return = "done" ──► VAD active again, buffer cleared, next turn
+[Bot A] plays each WAV ── and only responds when finished (blocking, D15 = the queue)
+   │
+   ▼
+[DMbot] last return = "done" ──► VAD active again, buffer cleared, next turn
 ```
+
+> **Streaming (ADR 017, `DM_STREAMING=1`).** The first sentence is synthesised + spoken while the
+> rest is still generating, so time-to-first-audio drops from "whole generation + whole synthesis"
+> to "first sentence". The stored history is byte-identical to the non-streaming path (one
+> `finalize_answer` chain shared by both). `DM_STREAMING=0` = the old single-WAV-per-turn path.
 
 ---
 
@@ -216,6 +225,13 @@ player, but **only answers on a button press** ("End turn" / "DM, respond"). Tha
 the DM never talks over anyone, table talk stays out of the game, and it is naturally
 semi-turn-based. **VAD only segments clean utterances — the button triggers the DM
 turn, not the VAD.**
+
+Once triggered, the answer is **streamed and spoken sentence-by-sentence** (ADR 017,
+`DM_STREAMING=1`): each sentence is synthesised and played via a sequential `/speak` while the
+next generates, so the first audio starts after the first sentence rather than the whole turn. If
+layer-2 mute is on (`DM_PAUSE_VAD_WHILE_SPEAKING=1`), the sink stays muted across the **entire**
+streamed answer (not per WAV); a pause/Esc (ADR 013) mid-stream stops further sentences cleanly and
+resume does not replay.
 
 > **Later goal:** a wake word ("Magos, …") that triggers the DM turn instead of the
 > button. The button is the robust path to get there (see ADR 003 / Part 2 of the roadmap).
@@ -277,6 +293,14 @@ after the recap and before the history.
 >   then written by code on **every** change (atomic temp + `os.replace`) so an HP change survives
 >   a restart. Reset a session by deleting it. Per-channel and git-ignored (only the `_example`
 >   party is checked in).
+> - **`data/sessions/<channel>/history.jsonl`** — the **conversation autosave** (`dmbot/memory/history.py`,
+>   D41, `DM_AUTOSAVE=1`): append-only, one JSON line per completed DM turn (`{ts, user_msg, answer,
+>   redo}`), written off the event loop after every turn. **Restored** into an empty in-memory
+>   history on `!join` (capped at `max_history_turns`; a `redo` record replaces the prior turn), and
+>   **rotated** to `history.<timestamp>.jsonl` on `!leave` so the next session starts fresh while the
+>   record survives. Crash recovery for the *narrative thread* (`state.json` already covers the hard
+>   facts). Code-owned like `state.json` — the read-only `characters.json` split is unchanged.
+>   _Known limitation:_ `_last_turn` isn't restored, so `!redo` is unavailable for the restored last turn.
 >
 > **Character sheets are the source of this JSON, not RAG.** The *shape* of a character (which
 > characteristics, skills, resource tracks exist) is dictated by the active **system profile**
@@ -362,15 +386,23 @@ and the DM knows what's played" for the *mechanics*. IM is simply the first prof
 produced (or seeded) this way.
 
 ### How a test is requested
-**Primary (default — the roll-detection router, ADR 014):** after the DM's narration, a **separate,
-stateless constrained-JSON LLM call** classifies the player's latest action → `{needs_test, skill,
-difficulty}` (the `skill` enum-constrained to the acting character's sheet, `difficulty` to the
-profile ladder); on a positive verdict the engine rolls and the dice button is posted. This exists
-because the **inline marker proved unreliable live** — narration models self-resolve uncertain actions
-("du bemerkst …") instead of requesting a roll, a *documented, model-size-independent* LLM-GM failure;
-as a *separate* step the same 12B classifies reliably (nemo 8/8). On by default (`DM_ROLL_ROUTER`); the
-call is **stateless** (its tiny prompt isn't the DM history and its JSON never re-enters that context),
-so it doesn't bloat the narration context.
+**Primary (default — the roll-detection router, ADR 014):** a **separate, stateless constrained-JSON
+LLM call** classifies the player's latest action → `{needs_test, skill, difficulty}` (the `skill`
+enum-constrained to the acting character's sheet, `difficulty` to the profile ladder); on a positive
+verdict the engine rolls and the dice button is posted. This exists because the **inline marker
+proved unreliable live** — narration models self-resolve uncertain actions ("du bemerkst …") instead
+of requesting a roll, a *documented, model-size-independent* LLM-GM failure; as a *separate* step the
+same 12B classifies reliably (nemo 8/8). On by default (`DM_ROLL_ROUTER`); the call is **stateless**
+(its tiny prompt isn't the DM history and its JSON never re-enters that context), so it doesn't bloat
+the narration context.
+
+> **Timing (D40 — supersedes ADR 014's "after playback", not its design):** the classifier fires at
+> **generation-end** and posts the dice button **concurrently with playback**, so the 🎲 appears
+> while the DM still speaks instead of after the whole turn. On a single GPU Ollama serialises, so
+> firing at turn-start would only queue the classifier behind the narration anyway — firing once the
+> narration generation frees the GPU is the earliest point that doesn't delay the narration. The
+> inline marker still **wins the dedupe** (`should_post_router`): if the model emitted a `<<TEST>>`
+> this turn, the router stays silent — exactly one button per action.
 
 **Fallback (inline marker):** if the narration LLM *does* emit a marker, e.g.
 `<<TEST Wahrnehmung Schwer für Tobi>>`, that wins and the router is skipped for the turn. The

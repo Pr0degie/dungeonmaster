@@ -4,11 +4,21 @@ Living status document. A phase counts as done only when its **verification gate
 met and the proof is recorded here.
 
 ## Current focus
+**Cross-cutting latency/robustness work (between Phase 9 and 10): code-complete, all live-unverified
+— stacked on top of the still-pending Phase-9 gate + ADR-016 tuning.** This session landed three
+flag-gated features: **streaming the DM turn** (LLM deltas → sentence TTS → sequential `/speak`, so
+the first audio plays while the rest generates — **ADR 017**, `DM_STREAMING=1`), the **roll-router
+firing concurrently with playback** (🎲 button appears while the DM still speaks — **D40**), and
+**per-turn history autosave** for crash recovery (`history.jsonl`, restore on `!join`, rotate on
+`!leave` — **D41**, `DM_AUTOSAVE=1`). All three are off-switchable to the prior behaviour. Suite
+**136/136**. **Nothing live-tested yet** — the next Discord run proves streaming + router timing +
+autosave **and** the still-open ADR-016 tuning **and** the Phase-9 memory gate, all at once.
+
 **Phase 9 — memory: code-complete, live gate still pending — plus a playtest-tuning round
 (2026-06-10) that is itself live-unverified.** Three live logs drove fixes for the DM **puppeting
 the whole party**, **runaway turn length (= the latency)**, and **XTTS reading punctuation aloud**
 (→ **ADR 016**). Every log was *pre-change*, so the next Discord run is the first proof of both the
-tuning **and** the Phase-9 memory gate. Suite **113/113**.
+tuning **and** the Phase-9 memory gate.
 
 **Phase 9 — memory — code-complete (2026-06-09); live gate pending.** Phases 0–8 are live-validated
 ⭐. Phase 9 (JSON world state + recaps) is now **built and unit-proven (102/102)**; what's left is the
@@ -24,6 +34,46 @@ world-state block (CLAUDE.md prompt order). **Model: mistral-nemo.** Recommended
 gate / any follow-up: **Opus 4.8 / xhigh**.
 
 ## Last session
+**Latency & crash-resilience — streaming pipeline + concurrent roll-router + history autosave
+(2026-06-10).** Cross-cutting work between Phase 9 and 10, three flag-gated features, suite
+**113→136** green (+23 tests). Nothing committed (Tobi commits manually); nothing live-tested (all
+prior; the next Discord run is the first proof).
+- **Streaming pipeline (D39 → ADR 017, `DM_STREAMING=1`).** The DM turn now streams: `OllamaClient.chat_stream()`
+  yields deltas; a pure `StreamAssembler` cuts complete sentences under three hold-back rules
+  (first-chunk hold for the leading meta-preamble; hold back the latest sentence for the trailing
+  strips; withhold from an unmatched `<<` / a mid-text speaker label); the cog synthesises + plays
+  each sentence via a producer→synth→play pipeline (synth N+1 while N plays) over the blocking
+  `/speak`. **History parity is by construction:** the batch chain is factored into one
+  `finalize_answer(raw, labels, profile)` that both paths call, and `StreamAssembler.finish()`
+  recomputes it on the accumulated raw — stored == spoken == the non-streaming result. `_sanitize`
+  split into `_sanitize_leading` (incremental) + `_sanitize_trailing` (held tail). Layer-2 mute spans
+  the whole answer; pause/Esc stops cleanly without replay; a mid-stream httpx error keeps what was
+  spoken + notes history `… [Antwort unterbrochen]`. `[latency]` gained `first_audio=…ms` + a `stream`
+  marker (tts/wav/bridge summed). `!redo` has its own streaming path. `DM_STREAMING=0` = byte-identical
+  old single-WAV path; streaming only engages with a TTS backend.
+- **Roll-router concurrent with playback (D40, no ADR — supersedes ADR 014's *timing* only).** The
+  ADR-014 classifier now fires at **generation-end** and posts the 🎲 button **concurrently with
+  playback** (`_deliver_answer` / `_deliver_streaming` run `_speak`/playback and `_handle_dice` as
+  parallel tasks), so the button appears while the DM still speaks instead of after the whole turn.
+  Single-GPU Ollama serialises, so firing at turn-start would just queue the classifier behind the
+  narration — gen-end is the earliest point that doesn't delay it. Inline `<<TEST>>` marker still wins
+  the dedupe (new pure `should_post_router(router_on, marker_posted)`).
+- **Per-turn history autosave (D41, no ADR — extends ADR 015's artifact set, `DM_AUTOSAVE=1`).** New
+  `dmbot/memory/history.py`: `append_turn`/`load_recent`/`rotate` over append-only
+  `data/sessions/<id>/history.jsonl` (`{ts, user_msg, answer, redo}`; a `redo` record replaces the
+  prior turn; corrupt tail tolerated). The cog appends after every turn (`asyncio.to_thread`, never
+  blocks the loop), restores the last `max_history_turns` into an **empty** `DMBrain` history on
+  `!join` (`restore_history`; `_last_turn` not restored → `!redo` unavailable for the restored last
+  turn, documented), and rotates to `history.<timestamp>.jsonl` on `!leave`. Code-owned like
+  `state.json`; the read-only `characters.json` split (ADR 015) is unchanged.
+- **Tests (+23):** `tests/test_streaming.py` (assembler hold-back rules: meta-preamble in chunk 1,
+  trailing "Was tut ihr?" split across deltas, `<<TEST` split across a boundary, stop-label mid-stream,
+  num_predict mid-sentence cut, history parity vs the batch chain; `_parse_stream_line`;
+  `respond_streaming`/`redo_streaming` history + spoken-equals-stored + mid-stream-error degrade),
+  `tests/test_history_autosave.py` (append→load round-trip, redo-replaces, cap, corrupt line, rotate,
+  restore-into-empty/noop-when-nonempty), `tests/test_roll_router.py` (+`should_post_router` dedupe).
+  Flags documented in `.env.example`; architecture.md §4/§6/§7/§9 updated.
+
 **Playtest-tuning round — stop the DM puppeting the party + cut runaway length + TTS punctuation
 (2026-06-10).** Tobi pasted three live logs (one 06-09 box, two from one continued 06-10 session —
 **all pre-change**). The dominant, repeatedly-voiced failure: the DM **spoke and acted for the
@@ -311,13 +361,24 @@ _(Prior session — voice-stack hardening, ADR 006 — and Phases 3–6 (the pla
 in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 
 ## Next concrete step
-**Run the live check in Discord — it validates this session's tuning fixes (ADR 016) *and* is the
-Phase-9 gate.** Everything this session landed code-only against *pre-change* logs, so the next live
-run is the first proof. **Watch first for:** (a) **no more `Name:` / „Als Spielleitung beschreibe
-ich:" scripts** — the DM must stop speaking/acting for the PCs (W1); (b) `[latency] wav=/total=`
-**markedly lower** now that turns are short (W2 cheap win); (c) **XTTS no longer reading
-quotes/punctuation** aloud (W6 — _tell me if it still does; I kept `. , ! ?` for intonation, so if
-those are literally spoken it's a different XTTS issue_).
+**Run the live check in Discord — one run now proves the streaming/robustness work (ADR 017 / D40 /
+D41) *and* the ADR-016 tuning *and* the Phase-9 gate.** Everything landed code-only; nothing is
+live-tested. **Watch first for (this session's new work):**
+- **(S) Streaming — the headline.** Every DM turn now logs `[latency] … stream … first_audio=…ms …`.
+  *Before/after time-to-first-audio:* on a streamed turn `first_audio` is the trigger→first-WAV gap;
+  compare it to a pre-change line's `trigger→llm_done + tts` (the old silent gap). Expect `first_audio`
+  **well below** that. Also: the answer must still be clean (no leading „Als Spielleitung…", no
+  trailing „Was tut ihr?", no spoken `<<TEST>>`), the audio must flow sentence-to-sentence without
+  long gaps, and `!redo` must still work. Sanity: set `DM_STREAMING=0` for one turn → the old
+  single-WAV behaviour returns (no `first_audio`/`stream` in the line).
+- **(R) Router timing (D40).** The 🎲 button should appear **while the DM is still speaking**, not
+  after. Still exactly one button per action (marker or router, never both).
+- **(C) Crash recovery (D41).** Play a few turns, then **kill the bot hard** (don't `!leave`) → `!j`
+  → expect a `restored N conversation turns` log line and the DM continuing the thread. A clean
+  `!leave` instead rotates the file to `history.<ts>.jsonl` and the next `!j` starts fresh.
+- **(legacy ADR-016 watch)** still also confirm: (a) no `Name:` / „Als Spielleitung beschreibe ich:"
+  scripts (W1); (b) `wav=/total=` lower now turns are short (W2); (c) XTTS no longer reading
+  quotes/punctuation (W6 — _I kept `. , ! ?` for intonation; tell me if those are literally spoken_).
 
 **Then the Phase-9 memory gate proper.** The code is done + unit-proven; verify it in a real
 session: (1) **HP survives a restart** — `!join`, deal damage (a `!test Nahkampf`/`Fernkampf` hit on a
@@ -343,11 +404,15 @@ are already on in `.env`):**
 4. _Watch & report (paste `debug.log` + `transcript.log`):_ damage numbers sane? target dropdown listing
    fellow PCs annoying or fine? does the DM honour the injected world-state HP without inventing values?
    recap quality (German, factual, length)? any `ERROR` lines?
-5. _Latency baseline (NEW, D35):_ every DM turn now logs one `[latency] turn=… stt=… trigger→llm_done=…
-   ctx=…/8192 gen=… tts=… bridge_wait=… total=…` line — paste a few from `debug.log` so we know where
-   the seconds go (and whether `ctx` is nearing 8192) **before** starting the streaming optimisation.
+5. _Latency / streaming (D35 + ADR 017):_ every DM turn logs `[latency] turn=… [stream] stt=…
+   trigger→llm_done=… ctx=…/8192 gen=… chars=… first_audio=…ms tts=… bridge_wait=… total=…`. Paste a
+   few — the **before/after** is `first_audio` (streamed) vs `trigger→llm_done + tts` (the old
+   pre-audio gap). Toggle `DM_STREAMING=0` for one turn to see the old single-WAV line for contrast.
+6. _Crash recovery (D41):_ play a few turns → **kill the bot** (not `!leave`) → `!j` → expect
+   `restored N conversation turns`. Then a clean `!leave` → next `!j` is fresh and the old log is at
+   `data/sessions/<id>/history.<ts>.jsonl`.
 - Run the unit suite with **`uv run --with pytest python -m pytest -q`** (pytest isn't in the default
-  venv — see [[run-tests-command]] memory). Currently 113/113 green.
+  venv — see [[run-tests-command]] memory). Currently **136/136** green.
 
 _Resolved this session (no longer open):_ the **gemma3 vs nemo** taste test (gemma3 didn't fix the
 marker problem; nemo kept for tone — the fix was the **roll-detection router**, ADR 014); **two-stage
@@ -422,6 +487,9 @@ create the next-numbered ADR.
 | D36 | Context-budget warning | **WARNING when a narration prompt exceeds ~85% of `num_ctx`** (`[ctx] prompt N/8192 …`), beside the per-turn `ctx=` display; pure `_TurnTiming.ctx_over_budget()` predicate, narration turns only (router/recap exempt) | The persona leads the system prompt, so Ollama truncates **it** first when prompt+history overflow — a silent quality cliff. 85% gives a turn or two to trim history/recap/state before the cap (raising `num_ctx` costs KV-cache VRAM we don't have on the 4070). Logging only, no trade-off → no ADR |
 | D37 | Anti-puppeting + length | **Deterministic speaker-label backstop** — every character + player name (`CharacterStore.speaker_labels` → `DMBrain.set_known_speakers`, on join) becomes a `_cut_at_labels` cut-point + Ollama stop sequence, so an appended `Seskin:`/`Pr0degie:` puppet script is truncated even when those names didn't speak this turn; **plus** positive top-of-persona scoping + the alias hint reframed into a hard "PCs belong to the players" boundary placed **last**; **plus** `num_predict` 220→160 | The persona forbade puppeting and nemo ignored it across 3 live sessions; `[latency]` (D35) showed the puppeting **is** the latency (scripted 700+-char turns → 55–80 s of audio → `total` up to 183 s). A code-level guard the model can't ignore, mirroring ADR 014's "don't trust the model" stance; rejected a fuller PC-dialogue stripper (false-positive risk) → ADR 016 |
 | D38 | TTS speech-only normalization | **`normalize_for_tts()`** (XTTS + Piper synth, **not** the Discord post) drops quotes/brackets/stray symbols + maps the ellipsis and em/en dashes to a pause, while **keeping** `. , ! ? ; :` + word hyphens | Players: *"er liest die Interpunktion mit vor"*; the TTS path had no normalization (quotes/ellipses went raw to XTTS, which verbalises them). Keep the prosody-bearing punctuation (the intonation they want), strip only what XTTS reads aloud; also fixed XTTS's single-chunk branch synthesising the raw text → ADR 016 |
+| D39 | Streaming pipeline | **Stream the DM turn** — `chat_stream()` deltas → a pure `StreamAssembler` cuts complete sentences (first-chunk hold for the leading meta-preamble; hold back the latest sentence for the trailing strips; withhold from an unmatched `<<` / mid-text speaker label) → the cog synthesises + plays each sentence over the blocking `/speak` (synth N+1 while N plays). History parity by construction: one `finalize_answer()` shared by both paths; `finish()` recomputes it on the accumulated raw. `DM_STREAMING=1` default; `0` = byte-identical batch path | Time-to-first-audio was full generation + full synthesis of silence (D35 `[latency]`); the blocking `/speak` (D15) is already the queue, so shrink the unit to one WAV per sentence and pipeline. Rejected: streaming TTS (heavier, Part 2) + progressive Discord edits (rate limits); recompute-at-finish beats an incremental emitter because the global self-correction frame can retroactively drop spoken text → ADR 017 |
+| D40 | Roll-router timing | **Fire the ADR-014 classifier at generation-end and post the 🎲 button concurrently with playback** (`_handle_dice` runs as a task beside `_speak`/the streaming playback), so the button appears while the DM still speaks. Inline `<<TEST>>` still wins the dedupe (`should_post_router`) | The button used to appear only after generation **and** playback. Input (action + skills) is known earlier, but single-GPU Ollama serialises — firing at turn-start would just queue the classifier behind the narration (or delay it), so gen-end is the earliest point that overlaps playback without delaying narration. Supersedes ADR 014's *timing* only, not its design → D-entry, no new ADR |
+| D41 | History autosave | **Third session artifact** `data/sessions/<id>/history.jsonl` (`dmbot/memory/history.py`) — append-only, one line per turn (`{ts, user_msg, answer, redo}`), appended off-loop after each turn, restored into an empty `DMBrain` history on `!join`, rotated to `history.<ts>.jsonl` on `!leave`. `DM_AUTOSAVE=1` | World state already persists (ADR 015); a crash still lost the conversational thread. Code-owned like `state.json` (the read-only `characters.json` split is unchanged). Append-only (no atomic dance; torn tail tolerated); a `redo` record replaces the prior turn. `_last_turn` not restored → `!redo` unavailable for the restored last turn (documented). Extends ADR 015's artifact set → D-entry, no new ADR |
 
 ### Phase → ADR map (read these when you enter the phase)
 
@@ -431,9 +499,9 @@ create the next-numbered ADR.
 | 1 — Bridge (done) | ADR 002 + `architecture.md` §3 (bridge contract) |
 | 2–4 — Voice / VAD / STT | **ADR 006** (DAVE/E2EE decrypt on receive) + **ADR 007** (VAD stack, Phase 3) + `architecture.md` §4–§5 (feedback protection) |
 | 5 — LLM wiring + persona | ADR 002 + ADR 005 (persona = generic core + campaign overlay) + **ADR 016** (anti-puppeting backstop, length cap, output cleanup) |
-| 6 — TTS + full loop | **ADR 008** (TTS engine: Piper + XTTS) + ADR 002 (bridge, VRAM) + `architecture.md` §3 (bridge contract) + **ADR 016** (TTS speech-only normalization) |
+| 6 — TTS + full loop | **ADR 008** (TTS engine: Piper + XTTS) + ADR 002 (bridge, VRAM) + `architecture.md` §3 (bridge contract) + **ADR 016** (TTS speech-only normalization) + **ADR 017** (streaming pipeline: sentence-chunked TTS, hold-back rules, history parity) |
 | 6–7 — Full loop, turn-taking, registration | ADR 003 (conversational control, registration, turn-taking) + **ADR 011** (STT latency: push-to-talk gate) + **ADR 013** (pause control) |
-| 8 — Dice engine, IM profile, marker flow | ADR 005 (engine + profile) + ADR 004 (test marker, character data) + ADR 001 (IM specifics) + **ADR 012** (difficulty ladder, character store, marker grammar) + **ADR 014** (roll-detection router) |
+| 8 — Dice engine, IM profile, marker flow | ADR 005 (engine + profile) + ADR 004 (test marker, character data) + ADR 001 (IM specifics) + **ADR 012** (difficulty ladder, character store, marker grammar) + **ADR 014** (roll-detection router; timing now D40 — fires concurrent with playback) |
 | 9 — Memory (JSON + recaps) | ADR 004 (character/state JSON) + **ADR 015** (sheet/state split, auto-combat damage) |
 | 10 — RAG + profile bootstrap | ADR 005 (profile bootstrap) |
 
@@ -766,6 +834,26 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   after the window closes.
 - Continuous silence injection runs silero on every silent user ~50×/s (cheap, ~1–2 %/core
   each); fine for a small table, revisit only if many idle users ever cost CPU.
+
+**From the streaming/robustness session (2026-06-10) — open, carry forward:**
+- **Pending live validation (Tobi wants to run this later).** Streaming (ADR 017) + router timing
+  (D40) + autosave (D41) are **code-complete + 136/136 unit-green but never run live**. The full
+  live-test script lives above in **`## Next concrete step`** (items S/R/C + the numbered sequence
+  4–6); that is the durable copy to run when Tobi has a table. One Discord run proves all of it plus
+  the still-open ADR-016 tuning and the Phase-9 memory gate.
+- **Caveat — `[latency] gen=` can be stale on a *client-side* stop-label abort (streaming).** When a
+  mid-text speaker label trips `StreamAssembler.stopped` and the brain aborts the httpx stream, the
+  Ollama `done` object (which carries `eval_count`) never arrives, so `last_stats` — hence the
+  `[latency]` line's `gen=`/`ctx=` — holds the **previous** turn's numbers. In practice Ollama's
+  server-side `options.stop` (the `\n<label>:` sequences) usually stops generation first **with** a
+  `done` object, so this rarely shows; the client-side cut is only the safety net. Not worth fixing
+  now — but if a `gen=` ever looks implausibly carried-over after a truncated turn, this is why.
+  (Stored history is unaffected — `finalize_answer` recomputes from the accumulated raw either way.)
+- **first_audio reliability depends on XTTS-on-GPU latency per sentence.** Streaming spreads synthesis
+  over sentences, so per-sentence synth must keep up with playback or gaps appear between sentences.
+  Watch the live `tts=` (now summed) vs `wav=`; if synth lags, the `wav_q` (maxsize=1) backpressure
+  just means the table hears a short gap — acceptable, but a signal that XTTS is the next bottleneck
+  (→ Part-2 streaming-TTS, the deeper W2 latency lever).
 
 **Loose ends / housekeeping (from the Phase 2 session):**
 - ✅ `docs/pipeline-diagram.*` removed (Tobi, 2026-06-05) — no longer a loose end.
