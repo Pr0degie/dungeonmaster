@@ -4,6 +4,12 @@ Living status document. A phase counts as done only when its **verification gate
 met and the proof is recorded here.
 
 ## Current focus
+**Phase 9 — memory: code-complete, live gate still pending — plus a playtest-tuning round
+(2026-06-10) that is itself live-unverified.** Three live logs drove fixes for the DM **puppeting
+the whole party**, **runaway turn length (= the latency)**, and **XTTS reading punctuation aloud**
+(→ **ADR 016**). Every log was *pre-change*, so the next Discord run is the first proof of both the
+tuning **and** the Phase-9 memory gate. Suite **113/113**.
+
 **Phase 9 — memory — code-complete (2026-06-09); live gate pending.** Phases 0–8 are live-validated
 ⭐. Phase 9 (JSON world state + recaps) is now **built and unit-proven (102/102)**; what's left is the
 **live Discord gate** Tobi must run: an HP change survives a restart, and the next session opens with
@@ -18,6 +24,36 @@ world-state block (CLAUDE.md prompt order). **Model: mistral-nemo.** Recommended
 gate / any follow-up: **Opus 4.8 / xhigh**.
 
 ## Last session
+**Playtest-tuning round — stop the DM puppeting the party + cut runaway length + TTS punctuation
+(2026-06-10).** Tobi pasted three live logs (one 06-09 box, two from one continued 06-10 session —
+**all pre-change**). The dominant, repeatedly-voiced failure: the DM **spoke and acted for the
+player characters** — scripting `Pr0degie: …` / `Seskin: …` / `Als Spielleitung beschreibe ich: …`
+for the whole party (players: *"hat noch nicht gerafft, dass es mehrere Spieler gibt"*; one dictated
+a corrected persona aloud). The `[latency]` lines (D35) showed **this puppeting IS the latency**:
+scripted turns hit 700+ chars → `wav=55–80 s`, `total` up to **183 s** (each spoken char ≈ 0.1 s of
+XTTS audio Bot A's blocking `/speak` waits through); clean short turns ran ~15 s. Fixes (→ **ADR
+016**; commits `17adcfe` / `dc33d64` / `f36b5de` / `4564ecb`):
+- **Persona + alias hint reframed** — positive top-of-file scoping (only NSCs/enemies/environment,
+  never speak/think/act for the PCs, *multiple* players); the alias hint turned from a neutral cast
+  list into a hard "these figures belong to the players" boundary placed **last** (recency).
+- **Deterministic speaker-label backstop (the real fix; the persona alone never held nemo across 3
+  sessions):** `CharacterStore.speaker_labels()` → `DMBrain.set_known_speakers` (wired on join) →
+  every character + player name joins the turn's speakers as `_cut_at_labels` cut-points + Ollama
+  stop sequences, so an appended `Seskin:`/`Pr0degie:` script is truncated **even when those names
+  didn't speak this turn**. Kills the puppet display **and** the runaway length together.
+- **Length cap:** `num_predict` 220→160 + persona "zwei bis drei kurze Sätze, die Gruppe wartet".
+- **W6 TTS normalization:** `normalize_for_tts()` (XTTS + Piper synth, **not** the Discord post)
+  drops quotes/brackets/symbols, maps ellipsis + em/en dashes to a pause, keeps `. , ! ? ; :` +
+  word hyphens; also fixed XTTS's single-chunk branch synthesising the **raw** text.
+- **`!npc add`** tolerant parsing (the `armour` `BadArgument` that blocked the gate) + a `_sanitize`
+  strip for a "…als Sprachmodell … Hier ist die korrekte Antwort:" self-correction frame.
+- **Wishlist compiled (W1–W9, now-vs-later):** W1 (puppeting) + **W3 (stop button — Tobi built it
+  himself)** + W6 done (W1/W6 unverified live); W7 = the Phase-9 gate; deep latency **W2 = Part-2
+  streaming TTS** (roadmap); W4 (within-session repetition) / W5 (answer the exact question asked) /
+  W8 (engage provocative content) = persona/adherence, re-assess after the live check. **Suite
+  113/113.** _All four commits are **live-unverified** — every log was pre-change; the next run is
+  the proof._
+
 **Per-turn latency instrumentation — logging only, baseline groundwork (2026-06-10).** Before any
 streaming/latency work touches the pipeline, threaded a per-turn timing record (`_TurnTiming`,
 `voice/commands.py`) through the DM turn flow and emit **one `[latency]` INFO line per turn** (console
@@ -275,7 +311,15 @@ _(Prior session — voice-stack hardening, ADR 006 — and Phases 3–6 (the pla
 in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 
 ## Next concrete step
-**Phase 9 — run the live gate in Discord.** The code is done + unit-proven; verify it in a real
+**Run the live check in Discord — it validates this session's tuning fixes (ADR 016) *and* is the
+Phase-9 gate.** Everything this session landed code-only against *pre-change* logs, so the next live
+run is the first proof. **Watch first for:** (a) **no more `Name:` / „Als Spielleitung beschreibe
+ich:" scripts** — the DM must stop speaking/acting for the PCs (W1); (b) `[latency] wav=/total=`
+**markedly lower** now that turns are short (W2 cheap win); (c) **XTTS no longer reading
+quotes/punctuation** aloud (W6 — _tell me if it still does; I kept `. , ! ?` for intonation, so if
+those are literally spoken it's a different XTTS issue_).
+
+**Then the Phase-9 memory gate proper.** The code is done + unit-proven; verify it in a real
 session: (1) **HP survives a restart** — `!join`, deal damage (a `!test Nahkampf`/`Fernkampf` hit on a
 registered NPC via `!npc add`, or `!damage <Name> <n>`), confirm `data/sessions/<id>/state.json` holds
 the reduced wounds, **restart the bot**, `!join` again → wounds unchanged. (2) **Recap** — play a bit,
@@ -303,7 +347,7 @@ are already on in `.env`):**
    ctx=…/8192 gen=… tts=… bridge_wait=… total=…` line — paste a few from `debug.log` so we know where
    the seconds go (and whether `ctx` is nearing 8192) **before** starting the streaming optimisation.
 - Run the unit suite with **`uv run --with pytest python -m pytest -q`** (pytest isn't in the default
-  venv — see [[run-tests-command]] memory). Currently 107/107 green.
+  venv — see [[run-tests-command]] memory). Currently 113/113 green.
 
 _Resolved this session (no longer open):_ the **gemma3 vs nemo** taste test (gemma3 didn't fix the
 marker problem; nemo kept for tone — the fix was the **roll-detection router**, ADR 014); **two-stage
@@ -319,6 +363,13 @@ _Carry-overs (verify in a live run, not code):_
 4. Older: STT confidence filter on noisy speech; the toggleable edit/review window (Part 2 backlog;
    the pause control D27/ADR 013 is its groundwork). **Input bleed:** a player's stream audio leaking
    into the mic gets transcribed — input-discipline / future wake-word concern, not a bug.
+5. **Open player wishes (playtest 2026-06-10; ADR 016) — re-assess after the live check, since W1's
+   shorter/cleaner output may already shrink them:** **W4** within-session repetition (*"warum hat er
+   das zweimal gesagt?"* — the DM re-narrates the same scene); **W5** answer the *exact* question
+   asked, not a generic re-description (*"ich hab nicht nach dem Raum gefragt, sondern was auf dem
+   Bildschirm läuft"*); **W8** engage provocative/derbe content (persona has it, nemo inconsistent).
+   Deep latency **W2** = Part-2 streaming TTS (roadmap). **W3** (stop button) done by Tobi. Also seen:
+   a benign `voice_recv` `voice_member_disconnect` traceback on a member leaving (alpha lib — watch).
 
 ---
 
@@ -369,6 +420,8 @@ create the next-numbered ADR.
 | D34 | Log verbosity | **Trim the logger name** — drop it entirely on INFO console/mirror lines, strip the `dmbot.` prefix on WARNING/ERROR + in `debug.log`; third-party names kept | Tobi pastes logs for the playtest-tuning loop; the repeated `dmbot.voice.commands` prefix wasted tokens while the message (often emoji-prefixed) already carries the context. Levels/colour/tracebacks unchanged. Ops polish, no ADR |
 | D35 | Latency instrumentation | **One `[latency]` log line per DM turn** — a `_TurnTiming` record (monotonic) threaded through the existing turn flow: stt (reused `transcribe_ms`) · trigger→llm_done (+ broken-out autosend `wait=`) · tts · bridge_wait · total, plus `chars`/`wav` and Ollama `ctx=<prompt>/<num_ctx> gen=<eval>`. Emitted once in `_deliver_answer` (all four triggers; not `!say`). `OllamaClient.last_stats` keeps the previously-discarded token counts without changing `chat()`'s return type | Need a baseline of where a turn's seconds go *before* the streaming optimisation; reuses existing measurements + surfaces for free whether the growing prompt is nearing `num_ctx`. Logging only, zero behaviour change, no trade-off → no ADR |
 | D36 | Context-budget warning | **WARNING when a narration prompt exceeds ~85% of `num_ctx`** (`[ctx] prompt N/8192 …`), beside the per-turn `ctx=` display; pure `_TurnTiming.ctx_over_budget()` predicate, narration turns only (router/recap exempt) | The persona leads the system prompt, so Ollama truncates **it** first when prompt+history overflow — a silent quality cliff. 85% gives a turn or two to trim history/recap/state before the cap (raising `num_ctx` costs KV-cache VRAM we don't have on the 4070). Logging only, no trade-off → no ADR |
+| D37 | Anti-puppeting + length | **Deterministic speaker-label backstop** — every character + player name (`CharacterStore.speaker_labels` → `DMBrain.set_known_speakers`, on join) becomes a `_cut_at_labels` cut-point + Ollama stop sequence, so an appended `Seskin:`/`Pr0degie:` puppet script is truncated even when those names didn't speak this turn; **plus** positive top-of-persona scoping + the alias hint reframed into a hard "PCs belong to the players" boundary placed **last**; **plus** `num_predict` 220→160 | The persona forbade puppeting and nemo ignored it across 3 live sessions; `[latency]` (D35) showed the puppeting **is** the latency (scripted 700+-char turns → 55–80 s of audio → `total` up to 183 s). A code-level guard the model can't ignore, mirroring ADR 014's "don't trust the model" stance; rejected a fuller PC-dialogue stripper (false-positive risk) → ADR 016 |
+| D38 | TTS speech-only normalization | **`normalize_for_tts()`** (XTTS + Piper synth, **not** the Discord post) drops quotes/brackets/stray symbols + maps the ellipsis and em/en dashes to a pause, while **keeping** `. , ! ? ; :` + word hyphens | Players: *"er liest die Interpunktion mit vor"*; the TTS path had no normalization (quotes/ellipses went raw to XTTS, which verbalises them). Keep the prosody-bearing punctuation (the intonation they want), strip only what XTTS reads aloud; also fixed XTTS's single-chunk branch synthesising the raw text → ADR 016 |
 
 ### Phase → ADR map (read these when you enter the phase)
 
@@ -377,8 +430,8 @@ create the next-numbered ADR.
 | 0 — Foundation & setup | ADR 002 (topology, `OLLAMA_HOST`, localhost bridge) |
 | 1 — Bridge (done) | ADR 002 + `architecture.md` §3 (bridge contract) |
 | 2–4 — Voice / VAD / STT | **ADR 006** (DAVE/E2EE decrypt on receive) + **ADR 007** (VAD stack, Phase 3) + `architecture.md` §4–§5 (feedback protection) |
-| 5 — LLM wiring + persona | ADR 002 + ADR 005 (persona = generic core + campaign overlay) |
-| 6 — TTS + full loop | **ADR 008** (TTS engine: Piper + XTTS) + ADR 002 (bridge, VRAM) + `architecture.md` §3 (bridge contract) |
+| 5 — LLM wiring + persona | ADR 002 + ADR 005 (persona = generic core + campaign overlay) + **ADR 016** (anti-puppeting backstop, length cap, output cleanup) |
+| 6 — TTS + full loop | **ADR 008** (TTS engine: Piper + XTTS) + ADR 002 (bridge, VRAM) + `architecture.md` §3 (bridge contract) + **ADR 016** (TTS speech-only normalization) |
 | 6–7 — Full loop, turn-taking, registration | ADR 003 (conversational control, registration, turn-taking) + **ADR 011** (STT latency: push-to-talk gate) + **ADR 013** (pause control) |
 | 8 — Dice engine, IM profile, marker flow | ADR 005 (engine + profile) + ADR 004 (test marker, character data) + ADR 001 (IM specifics) + **ADR 012** (difficulty ladder, character store, marker grammar) + **ADR 014** (roll-detection router) |
 | 9 — Memory (JSON + recaps) | ADR 004 (character/state JSON) + **ADR 015** (sheet/state split, auto-combat damage) |
