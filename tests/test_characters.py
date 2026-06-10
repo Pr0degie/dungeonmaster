@@ -65,3 +65,6 @@ def test_resolve_target_without_character_has_no_target() -> None:
 def test_alias_hint_lists_who_plays_whom() -> None:
     hint = _STORE.alias_hint_de()
     assert "spielt" in hint and "Seskin" in hint and "Mortn" in hint
+    # … and draws the hard "these belong to the players, never control them" boundary (the live fix
+    # for the DM puppeting the whole party). Keep this assertion: it's the point of the block.
+    assert "gehören allein den Spielenden" in hint and "NIE für sie" in hint
