@@ -381,33 +381,35 @@ _(Prior session — voice-stack hardening, ADR 006 — and Phases 3–6 (the pla
 in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 
 ## Next concrete step
-**Run the live check in Discord — one run now proves the streaming/robustness work (ADR 017 / D40 /
-D41) *and* the ADR-016 tuning *and* the Phase-9 gate.** Everything landed code-only; nothing is
-live-tested. **Watch first for (this session's new work):**
-- **(S) Streaming — the headline.** Every DM turn now logs `[latency] … stream … first_audio=…ms …`.
-  *Before/after time-to-first-audio:* on a streamed turn `first_audio` is the trigger→first-WAV gap;
-  compare it to a pre-change line's `trigger→llm_done + tts` (the old silent gap). Expect `first_audio`
-  **well below** that. Also: the answer must still be clean (no leading „Als Spielleitung…", no
-  trailing „Was tut ihr?", no spoken `<<TEST>>`), the audio must flow sentence-to-sentence without
-  long gaps, and `!redo` must still work. Sanity: set `DM_STREAMING=0` for one turn → the old
-  single-WAV behaviour returns (no `first_audio`/`stream` in the line).
-- **(R) Router timing (D40).** The 🎲 button should appear **while the DM is still speaking**, not
-  after. Still exactly one button per action (marker or router, never both).
-- **(C) Crash recovery (D41).** Play a few turns, then **kill the bot hard** (don't `!leave`) → `!j`
-  → expect a `restored N conversation turns` log line and the DM continuing the thread. A clean
-  `!leave` instead rotates the file to `history.<ts>.jsonl` and the next `!j` starts fresh.
-- **(legacy ADR-016 watch)** still also confirm: (a) no `Name:` / „Als Spielleitung beschreibe ich:"
-  scripts (W1); (b) `wav=/total=` lower now turns are short (W2); (c) XTTS no longer reading
-  quotes/punctuation (W6 — _I kept `. , ! ?` for intonation; tell me if those are literally spoken_).
+**Tomorrow's live check (Tobi, 2026-06-11).** The first live run (2026-06-10) already confirmed
+**streaming** (`first_audio≈3.2s`) and the **Phase-9 recap** (auto-loaded on `!join` + a good
+`!wrap up`). A tuning round (`6268b85`, **D42**) then fixed the empty-turn lone-quote read-aloud and
+the `<<TEST>>` dice loop — landed but **unproven**, so the next run re-confirms them too. Dial:
+**Opus 4.8 / xhigh**.
 
-**Then the Phase-9 memory gate proper.** The code is done + unit-proven; verify it in a real
-session: (1) **HP survives a restart** — `!join`, deal damage (a `!test Nahkampf`/`Fernkampf` hit on a
-registered NPC via `!npc add`, or `!damage <Name> <n>`), confirm `data/sessions/<id>/state.json` holds
-the reduced wounds, **restart the bot**, `!join` again → wounds unchanged. (2) **Recap** — play a bit,
-`!wrap up` → a German "Was bisher geschah" is posted + stored; restart, `!join` → the recap is shown
-and is in the prompt. Fill the Phase-9 `VERIFY EVIDENCE` when met. Watch the **auto-combat feel**
-(weapon-damage numbers are approximate — tune the IM profile's `combat.weapons`; soak = TB + armour).
-Dial: **Opus 4.8 / xhigh**.
+**⚠️ Prerequisite that blocked the gate today — register the player characters.** The live attack
+rolled raw (`für Mortn` → „kein hinterlegter Wert") because Mortn isn't in
+`data/sessions/<id>/characters.json`, so **no damage was ever applied/persisted** and the
+HP-survives-restart gate couldn't run. Put the real PCs (skills + `max_wounds`) in that file — or use
+`!damage <Name> <n>` as a GM override — before testing the gate.
+
+**Open items, priority order:**
+1. **HP survives a restart — the only Phase-9 gate half still open.** `!j` → `!npc add Kultist 10 3`
+   → `!test Nahkampf für <registered PC>` → 🎲 → on success pick **Kultist** → expect `💥 … = N Wunden
+   → Kultist M/10` (this also proves the **auto-combat flow**, untested so far). Check `state.json`
+   shows the reduced wounds → **restart the bot** → `!j` → wounds unchanged. Then fill the Phase-9
+   `VERIFY EVIDENCE`.
+2. **Re-confirm D42:** no empty/marker-only turn read aloud (no 15-s lone quote), and **no dice loop**
+   (a post-roll consequence narration must NOT spawn another 🎲).
+3. **Crash recovery (D41):** play a few turns → **kill the bot hard** (not `!leave`) → `!j` → expect
+   `restored N conversation turns`. Then a clean `!leave` → next `!j` is fresh.
+4. **Router timing (D40):** the 🎲 button appears **while the DM still speaks**; exactly one per action.
+5. **first_audio before/after** + `!redo` + pause/Esc mid-stream: one turn with `DM_STREAMING=0` for
+   the old single-WAV contrast (no `first_audio`/`stream` in that line).
+
+**Watch (persona/adherence, not gate blockers):** the **meta-ramble** („Als Spielleitung beschreibe
+ich nicht direkt die Szene…") — nemo's ceiling, report if frequent; and whether XTTS still reads any
+*real* punctuation aloud (the lone-quote bug is fixed; `. , ! ?` are kept on purpose for intonation).
 
 **Exact test sequence (durable copy of the chat checklist — `DM_LOG_FILE=1` + `DM_TRANSCRIPT_FILE=1`
 are already on in `.env`):**
@@ -857,11 +859,21 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   each); fine for a small table, revisit only if many idle users ever cost CPU.
 
 **From the streaming/robustness session (2026-06-10) — open, carry forward:**
-- **Pending live validation (Tobi wants to run this later).** Streaming (ADR 017) + router timing
-  (D40) + autosave (D41) are **code-complete + 136/136 unit-green but never run live**. The full
-  live-test script lives above in **`## Next concrete step`** (items S/R/C + the numbered sequence
-  4–6); that is the durable copy to run when Tobi has a table. One Discord run proves all of it plus
-  the still-open ADR-016 tuning and the Phase-9 memory gate.
+- **⚠️ Gate prerequisite — register the player characters.** The first live run couldn't run the
+  HP-survives-restart gate because the PC (`Mortn`) wasn't in `data/sessions/<id>/characters.json` →
+  rolls were raw (`kein hinterlegter Wert`) → no damage applied → nothing persisted. Add the real PCs
+  (skills + `max_wounds`) before retrying the gate, or use `!damage <Name> <n>`. (Only the `_example`
+  party is checked in; the real channel's `characters.json` is git-ignored and must be authored.)
+- **Pending live validation (Tobi tests 2026-06-11).** What's already confirmed live: streaming
+  (`first_audio≈3.2s`) + the Phase-9 recap. Still open: HP-survives-restart (+ auto-combat),
+  re-confirm the D42 tuning (no empty read-aloud, no dice loop), crash-restore (D41), router timing
+  (D40), first_audio before/after. The prioritised checklist + exact sequence live in **`## Next
+  concrete step`**.
+- **Open persona/adherence — meta-ramble (nemo's ceiling).** On one live turn the model broke the
+  fiction mid-narration („Nein, tut mir leid, ich habe mich versprochen. Als Spielleitung beschreibe
+  ich nicht direkt die Szene. Ich reagiere lediglich auf das, was die Spielenden tun…") and it got
+  spoken. Not the leading-preamble shape `_strip_meta_preamble` catches, and a generic mid-text
+  meta-stripper risks false positives. Left as a persona/tone-LoRA item; watch frequency.
 - **Caveat — `[latency] gen=` can be stale on a *client-side* stop-label abort (streaming).** When a
   mid-text speaker label trips `StreamAssembler.stopped` and the brain aborts the httpx stream, the
   Ollama `done` object (which carries `eval_count`) never arrives, so `last_stats` — hence the
