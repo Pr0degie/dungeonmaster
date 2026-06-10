@@ -387,18 +387,24 @@ in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 the `<<TEST>>` dice loop — landed but **unproven**, so the next run re-confirms them too. Dial:
 **Opus 4.8 / xhigh**.
 
-**⚠️ Prerequisite that blocked the gate today — register the player characters.** The live attack
-rolled raw (`für Mortn` → „kein hinterlegter Wert") because Mortn isn't in
-`data/sessions/<id>/characters.json`, so **no damage was ever applied/persisted** and the
-HP-survives-restart gate couldn't run. Put the real PCs (skills + `max_wounds`) in that file — or use
-`!damage <Name> <n>` as a GM override — before testing the gate.
+**✅ Prerequisite resolved (2026-06-10) — party registered + session reset.** The
+`circlejerk` channel (`1343673766487654464`) now has a hand-authored
+`data/sessions/<id>/characters.json` with three deliberately-different IM builds (so rolls aren't
+raw any more): **Garran Vex** (Pr0degie/Tobi — Nahkampf bruiser, Kettenschwert 1d10+5, Tgh 52),
+**Eli Castor** (Timo — Fernkampf, Lasgewehr 1d10+4), **Magos Yann** (Sezgin/SezBoss69 — tech/skill,
+„Schockstab" not in the weapons table → tests the `default_damage` 1d10 fallback, starting condition
+„Benommen"), with aliases mapping each Discord name → character. The old `state.json` + `history.jsonl`
++ `recap.md` (seeded from the example party, test-run garbage, bar recap) were **deleted**, so the
+next `!join` re-seeds the world state fresh from the new sheet. (Channel files are git-ignored —
+session-local.)
 
 **Open items, priority order:**
 1. **HP survives a restart — the only Phase-9 gate half still open.** `!j` → `!npc add Kultist 10 3`
-   → `!test Nahkampf für <registered PC>` → 🎲 → on success pick **Kultist** → expect `💥 … = N Wunden
-   → Kultist M/10` (this also proves the **auto-combat flow**, untested so far). Check `state.json`
+   → `!test Nahkampf für Garran Vex` → 🎲 → on success pick **Kultist** → expect `💥 … = N Wunden →
+   Kultist M/10` (this also proves the **auto-combat flow**, untested so far). Check `state.json`
    shows the reduced wounds → **restart the bot** → `!j` → wounds unchanged. Then fill the Phase-9
-   `VERIFY EVIDENCE`.
+   `VERIFY EVIDENCE`. (Try a `Fernkampf für Eli Castor` hit and a non-combat `!test Wissen für Magos
+   Yann` too, to exercise the ranged + skill-only paths.)
 2. **Re-confirm D42:** no empty/marker-only turn read aloud (no 15-s lone quote), and **no dice loop**
    (a post-roll consequence narration must NOT spawn another 🎲).
 3. **Crash recovery (D41):** play a few turns → **kill the bot hard** (not `!leave`) → `!j` → expect
@@ -859,11 +865,12 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   each); fine for a small table, revisit only if many idle users ever cost CPU.
 
 **From the streaming/robustness session (2026-06-10) — open, carry forward:**
-- **⚠️ Gate prerequisite — register the player characters.** The first live run couldn't run the
-  HP-survives-restart gate because the PC (`Mortn`) wasn't in `data/sessions/<id>/characters.json` →
-  rolls were raw (`kein hinterlegter Wert`) → no damage applied → nothing persisted. Add the real PCs
-  (skills + `max_wounds`) before retrying the gate, or use `!damage <Name> <n>`. (Only the `_example`
-  party is checked in; the real channel's `characters.json` is git-ignored and must be authored.)
+- ✅ **Gate prerequisite resolved (2026-06-10) — party registered + session reset.** The first run
+  couldn't run the HP-gate because the PC wasn't in `characters.json` (raw rolls, no damage
+  persisted). Now the `circlejerk` channel has a hand-authored sheet (Garran Vex / Eli Castor / Magos
+  Yann, three different builds + aliases) and its old `state.json`/`history.jsonl`/`recap.md` were
+  deleted so `!join` re-seeds fresh. (Channel files are git-ignored; only the `_example` party is
+  checked in.)
 - **Pending live validation (Tobi tests 2026-06-11).** What's already confirmed live: streaming
   (`first_audio≈3.2s`) + the Phase-9 recap. Still open: HP-survives-restart (+ auto-combat),
   re-confirm the D42 tuning (no empty read-aloud, no dice loop), crash-restore (D41), router timing
