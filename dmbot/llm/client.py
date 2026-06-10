@@ -40,6 +40,12 @@ class OllamaClient:
         # load of a ~9 GB model under VRAM pressure is the dominant latency — measured 15 s).
         self._keep_alive = keep_alive
         self._client = httpx.AsyncClient(timeout=timeout)
+        # Token accounting from the most recent chat() call (prompt_eval_count / eval_count and the
+        # num_ctx in effect). Surfaced for the per-turn [latency] line — answers, for free, whether
+        # the growing system prompt is creeping toward the num_ctx cap. None until the first call;
+        # overwritten each call, so read it right after the call you care about. Does NOT change
+        # chat()'s return type (existing callers keep getting the answer string).
+        self.last_stats: dict | None = None
 
     @property
     def model(self) -> str:
@@ -73,6 +79,13 @@ class OllamaClient:
         resp = await self._client.post(f"{self._host}/api/chat", json=payload)
         resp.raise_for_status()
         data = resp.json()
+        # Ollama returns prompt_eval_count (context tokens) + eval_count (generated tokens) on the
+        # final response object; keep them (with the num_ctx we asked for) for the [latency] line.
+        self.last_stats = {
+            "prompt_eval_count": data.get("prompt_eval_count"),
+            "eval_count": data.get("eval_count"),
+            "num_ctx": payload["options"].get("num_ctx"),
+        }
         return data["message"]["content"].strip()
 
     async def aclose(self) -> None:

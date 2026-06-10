@@ -180,6 +180,11 @@ class DMBrain:
         # (e.g. a test-result feedback turn), so the router skips it.
         self._last_action: dict[int, tuple[str, str] | None] = {}
         self._lock = threading.Lock()  # buffer written from STT thread, read on event loop
+        # Token stats (prompt_eval_count / eval_count / num_ctx) from the most recent *narration*
+        # call — set only by _generate (respond/redo), so the router's classify_test and summarize
+        # calls don't overwrite it. The cog reads it right after respond()/redo() for the [latency]
+        # line. None until the first turn.
+        self.last_llm_stats: dict | None = None
 
     def add_player_line(self, channel_id: int, name: str, text: str) -> None:
         """Buffer a transcribed player line for the next DM turn (STT thread-safe)."""
@@ -283,6 +288,9 @@ class DMBrain:
         messages = [*history_prefix, {"role": "user", "content": user_msg}]
         options = {"stop": [f"\n{label}:" for label in labels], "num_predict": self._num_predict}
         raw = await self._client.chat(system, messages, options=options)
+        # narration call's token counts (for [latency]); getattr so a test double without the attr
+        # (or a future client) degrades to None instead of raising.
+        self.last_llm_stats = getattr(self._client, "last_stats", None)
         # Debug aid (lands in debug.log only — 🪵 is filtered off the console + terminal mirror):
         # the raw LLM output BEFORE marker-stripping, so we can see whether the model emitted a
         # <<TEST …>> marker at all (the prime suspect when the dice-marker flow doesn't fire).

@@ -17,6 +17,7 @@ import random
 import tempfile
 import time
 import wave
+from dataclasses import dataclass
 
 import discord
 from discord.ext import commands, voice_recv
@@ -48,6 +49,12 @@ log = logging.getLogger(__name__)
 
 _SR_16K = 16_000
 
+# Context-budget smoke signal: warn once a narration prompt fills more than this fraction of
+# num_ctx. Above it, Ollama starts truncating the prompt *head* — which is the persona (the worst
+# part to silently lose), since the system prompt leads. The grower is the 20-turn history + the
+# recap + the state block, so the fix is to trim those, not raise the cap (KV-cache VRAM).
+_CTX_WARN_FRACTION = 0.85
+
 
 def _write_utterance_wav(name: str, index: int, pcm_s16le_mono_16k: bytes) -> str:
     """Write one utterance to a 16 kHz mono WAV in the OS temp dir (Phase-3 inspection).
@@ -62,6 +69,102 @@ def _write_utterance_wav(name: str, index: int, pcm_s16le_mono_16k: bytes) -> st
         wav.setframerate(_SR_16K)
         wav.writeframes(pcm_s16le_mono_16k)
     return path
+
+
+def _wav_duration_s(path: str) -> float | None:
+    """Playback length of a WAV in seconds (frames / sample-rate), or None if it can't be read.
+    Best-effort: it only contextualises the tts/bridge numbers in the [latency] line."""
+    try:
+        with wave.open(path, "rb") as w:
+            rate = w.getframerate()
+            return w.getnframes() / rate if rate else None
+    except (OSError, wave.Error, EOFError):
+        return None
+
+
+@dataclass
+class _TurnTiming:
+    """Per-DM-turn latency record (logging only — no behaviour change, no ADR). Timestamps are
+    ``time.monotonic`` carried through the existing turn flow (trigger → respond → speak); the
+    deltas are emitted as one ``[latency]`` line per turn at the end of ``_deliver_answer``.
+
+    Stages: stt (last routed utterance's transcribe ms), trigger→llm_done (turn start → Ollama
+    returned, with the autosend ``wait_idle`` portion broken out), tts (synth → WAV), bridge_wait
+    (``/speak`` POST → return), total (trigger → ``/speak`` returned). ctx/gen come from Ollama.
+    """
+
+    turn: int
+    trigger: float  # monotonic at turn start (the trigger fired)
+    kind: str = ""  # "", "redo", "auto", "roll" — which trigger started the turn
+    wait_ms: int = 0  # wait_idle before respond (autosend only); 0 otherwise
+    stt_ms: int | None = None  # transcribe ms of the last DM-routed utterance (None if not speech-driven)
+    llm_done: float | None = None  # monotonic when Ollama returned
+    prompt_eval: int | None = None  # Ollama prompt_eval_count (context tokens)
+    eval_count: int | None = None  # Ollama eval_count (generated tokens)
+    num_ctx: int | None = None  # the num_ctx cap in effect
+    answer_chars: int = 0
+    tts_ms: int | None = None  # synth call → WAV ready
+    wav_s: float | None = None  # WAV duration (contextualises tts/bridge_wait)
+    bridge_ms: int | None = None  # /speak POST → return (= playback + transfer)
+    end: float | None = None  # monotonic when /speak returned
+
+    def take_llm_stats(self, stats: dict | None) -> None:
+        if not stats:
+            return
+        self.prompt_eval = stats.get("prompt_eval_count")
+        self.eval_count = stats.get("eval_count")
+        self.num_ctx = stats.get("num_ctx")
+
+    def respond_ms(self) -> int:
+        """The pure LLM-generation time (trigger→llm_done minus the wait_idle portion) — i.e. the
+        meaning of the existing ``⏱ LLM`` log line, preserved across the four trigger sites."""
+        if self.llm_done is None:
+            return 0
+        return round((self.llm_done - self.trigger) * 1000) - self.wait_ms
+
+    def ctx_over_budget(self, fraction: float = _CTX_WARN_FRACTION) -> bool:
+        """True when this turn's prompt filled more than ``fraction`` of num_ctx — the early signal
+        (before Ollama truncates the prompt head) that the growing system prompt needs trimming."""
+        return (
+            self.prompt_eval is not None
+            and bool(self.num_ctx)
+            and self.prompt_eval > fraction * self.num_ctx
+        )
+
+    def log_line(self) -> None:
+        """Emit the one compact ``[latency]`` line for this turn (INFO → console + debug.log)."""
+        def ms(v: int | None) -> str:
+            return f"{v}ms" if v is not None else "—"
+
+        parts = [f"turn={self.turn}"]
+        if self.kind:
+            parts.append(self.kind)
+        parts.append(f"stt={ms(self.stt_ms)}")
+        if self.wait_ms:
+            parts.append(f"wait={self.wait_ms}ms")
+        t2l = round((self.llm_done - self.trigger) * 1000) if self.llm_done is not None else None
+        parts.append(f"trigger→llm_done={ms(t2l)}")
+        if self.prompt_eval is not None:
+            parts.append(f"ctx={self.prompt_eval}/{self.num_ctx}" if self.num_ctx
+                         else f"ctx={self.prompt_eval}")
+        if self.eval_count is not None:
+            parts.append(f"gen={self.eval_count}")
+        parts.append(f"chars={self.answer_chars}")
+        parts.append(f"tts={ms(self.tts_ms)}")
+        if self.wav_s is not None:
+            parts.append(f"wav={self.wav_s:.1f}s")
+        parts.append(f"bridge_wait={ms(self.bridge_ms)}")
+        total = round((self.end - self.trigger) * 1000) if self.end is not None else None
+        parts.append(f"total={ms(total)}")
+        log.info("[latency] %s", " ".join(parts))
+        # Context-budget early warning (narration turns only — those are the ones that build a
+        # _TurnTiming). Above ~85% of num_ctx, Ollama truncates the prompt head (the persona) first.
+        if self.ctx_over_budget():
+            log.warning(
+                "[ctx] prompt %d/%d tokens (>%d%% of num_ctx) — nearing the cap; Ollama will start "
+                "truncating the prompt head (persona first). Trim history / recap / state block.",
+                self.prompt_eval, self.num_ctx, round(_CTX_WARN_FRACTION * 100),
+            )
 
 
 class VoiceReceiveCog(commands.Cog):
@@ -99,6 +202,12 @@ class VoiceReceiveCog(commands.Cog):
         self._dump_utterances = dump_utterances
         self._utterance_counts: dict[int, int] = {}
         self._active_vc_id: int | None = None  # the voice channel we buffer/answer for
+        # Per-turn latency instrumentation (logging only). A monotonic turn counter for the
+        # [latency] line, and the transcribe ms of the last DM-routed utterance per channel (set on
+        # the STT thread in _on_transcript, popped by the turn that consumes it) so a speech-driven
+        # turn can report its stt stage without re-measuring.
+        self._turn_seq = 0
+        self._last_stt_ms: dict[int, int] = {}
         self._sink: VadSink | None = None  # set on join; muted while Bot A speaks (layer 2)
         self._mic_message: discord.Message | None = None  # the live mic button msg (kept at bottom)
         self._push_to_talk = push_to_talk
@@ -210,6 +319,9 @@ class VoiceReceiveCog(commands.Cog):
         # thread; the brain's buffer is lock-guarded.
         if for_dm and self._active_vc_id is not None:
             self._brain.add_player_line(self._active_vc_id, name, text)
+            # Remember this utterance's transcribe ms as the turn's stt stage (reuse, don't
+            # re-measure). A plain int write; the consuming turn pops it on the event loop.
+            self._last_stt_ms[self._active_vc_id] = round(latency_ms)
 
     async def cog_load(self) -> None:
         # Terminal Esc → pause/resume (Variante A). Windows-only (msvcrt); on other platforms the
@@ -226,22 +338,28 @@ class VoiceReceiveCog(commands.Cog):
         await self._brain.aclose()
         await self._bridge.aclose()
 
-    async def _speak(self, text: str, guild_id: int | None) -> bool:
+    async def _speak(self, text: str, guild_id: int | None,
+                     timing: _TurnTiming | None = None) -> bool:
         """Synthesise ``text`` and play it via Bot A's /speak bridge. Returns True if it played.
 
         Synthesis is blocking, so it runs in a thread. The WAV is deleted after playback so the
         temp dir doesn't fill up. Bot A's audio is filtered by user-ID (feedback layer 1), so
-        DMbot does not transcribe its own DM voice even without pausing the VAD.
+        DMbot does not transcribe its own DM voice even without pausing the VAD. ``timing`` (when
+        a DM turn passes one) collects the tts / wav / bridge_wait stages for the [latency] line.
         """
         if self._tts is None:
             return False
         try:
             t0 = time.perf_counter()
             wav = await asyncio.to_thread(self._tts.synthesize, text)
-            log.info("🔊 TTS %d ms → speaking", round((time.perf_counter() - t0) * 1000))
+            tts_ms = round((time.perf_counter() - t0) * 1000)
+            log.info("🔊 TTS %d ms → speaking", tts_ms)
         except Exception:
             log.exception("TTS synthesis failed")
             return False
+        if timing is not None:
+            timing.tts_ms = tts_ms
+            timing.wav_s = _wav_duration_s(wav)
         # Feedback protection layer 2 (ADR 003), now OPT-IN and off by default: pause the VAD while
         # Bot A speaks. It's redundant in normal use — layer 1 (the Bot-A user-ID filter, golden
         # rule #4, always on) already keeps the DM from transcribing its own voice, and the
@@ -254,7 +372,10 @@ class VoiceReceiveCog(commands.Cog):
         if sink is not None:
             sink.mute()
         try:
+            tb = time.monotonic()
             played = await self._bridge.speak(wav, guild_id=guild_id)
+            if timing is not None:
+                timing.bridge_ms = round((time.monotonic() - tb) * 1000)
             if not played:
                 log.warning("playback did not succeed — is Bot A in the voice channel?")
             return played
@@ -288,13 +409,31 @@ class VoiceReceiveCog(commands.Cog):
                 log.warning("Discord send retry also failed — dropping the message", exc_info=True)
                 return None
 
-    async def _deliver_answer(self, channel, guild_id: int | None, answer: str, llm_ms: int,
-                              *, redo: bool = False) -> None:
-        """Log, post (5xx-resilient), speak, and re-anchor the mic button — shared by all turns."""
+    def _begin_turn(self, channel_id: int, *, kind: str = "") -> _TurnTiming:
+        """Open a per-turn timing record: bump the turn counter, stamp the trigger, and claim the
+        last DM-routed utterance's transcribe ms (the stt stage; None for typed/redo/dice turns)."""
+        self._turn_seq += 1
+        return _TurnTiming(
+            turn=self._turn_seq,
+            trigger=time.monotonic(),
+            kind=kind,
+            stt_ms=self._last_stt_ms.pop(channel_id, None),
+        )
+
+    async def _deliver_answer(self, channel, guild_id: int | None, answer: str,
+                              timing: _TurnTiming) -> None:
+        """Log, post (5xx-resilient), speak, and re-anchor the mic button — shared by all turns.
+
+        Also closes out the per-turn ``timing`` record: it fills in the tts/bridge stages via
+        ``_speak`` and emits the single ``[latency]`` line once ``/speak`` has returned (so every
+        turn type — !dm, !redo, autosend, dice feedback — logs exactly one)."""
+        timing.answer_chars = len(answer)
         log.info("🎭 %s", answer)  # rendered prominently in the console
-        log.info("⏱ LLM %d ms%s", llm_ms, " (redo)" if redo else "")
+        log.info("⏱ LLM %d ms%s", timing.respond_ms(), " (redo)" if timing.kind == "redo" else "")
         await self._send_with_retry(channel, answer)
-        await self._speak(answer, guild_id)
+        await self._speak(answer, guild_id, timing)
+        timing.end = time.monotonic()  # /speak returned → total stops here (dice/mic re-anchor excluded)
+        timing.log_line()
         # A test the DM requested via <<TEST …>> → post its dice button (before the mic re-anchor
         # so the mic button stays at the very bottom). With the roll-router on (ADR 014), if the
         # model emitted no inline marker this turn, classify the action and post one anyway.
@@ -317,11 +456,12 @@ class VoiceReceiveCog(commands.Cog):
                 "Nichts zu beantworten — sprecht etwas (nach `!j`) oder nutzt `!dm <Text>`."
             )
             return
+        timing = self._begin_turn(channel_id)
         try:
             async with ctx.typing():
-                t0 = time.perf_counter()
                 answer = await self._brain.respond(channel_id, extra_text=text or None)
-                llm_ms = round((time.perf_counter() - t0) * 1000)
+                timing.llm_done = time.monotonic()
+                timing.take_llm_stats(self._brain.last_llm_stats)
         except Exception:
             log.exception("DM turn failed")
             await ctx.send("(Der Spielleiter schweigt — Fehler bei der Antwort, siehe Log.)")
@@ -329,7 +469,7 @@ class VoiceReceiveCog(commands.Cog):
         if not answer:
             await ctx.send("(Nichts zu beantworten.)")
             return
-        await self._deliver_answer(ctx.channel, ctx.guild.id if ctx.guild else None, answer, llm_ms)
+        await self._deliver_answer(ctx.channel, ctx.guild.id if ctx.guild else None, answer, timing)
 
     @commands.command(name="redo", aliases=["r"])
     async def redo(self, ctx: commands.Context) -> None:
@@ -338,11 +478,12 @@ class VoiceReceiveCog(commands.Cog):
             await ctx.send("⏸ Pausiert — mit **Esc** oder dem ⏸-Knopf fortsetzen.")
             return
         channel_id = self._active_vc_id if self._active_vc_id is not None else ctx.channel.id
+        timing = self._begin_turn(channel_id, kind="redo")
         try:
             async with ctx.typing():
-                t0 = time.perf_counter()
                 answer = await self._brain.redo(channel_id)
-                llm_ms = round((time.perf_counter() - t0) * 1000)
+                timing.llm_done = time.monotonic()
+                timing.take_llm_stats(self._brain.last_llm_stats)
         except Exception:
             log.exception("DM redo failed")
             await ctx.send("(Fehler beim Neu-Erzählen, siehe Log.)")
@@ -351,7 +492,7 @@ class VoiceReceiveCog(commands.Cog):
             await ctx.send("Nichts zum Wiederholen — erst eine Runde mit `!dm` spielen.")
             return
         await self._deliver_answer(
-            ctx.channel, ctx.guild.id if ctx.guild else None, answer, llm_ms, redo=True
+            ctx.channel, ctx.guild.id if ctx.guild else None, answer, timing
         )
 
     async def _auto_dm_turn(self, channel, guild_id: int | None) -> None:
@@ -361,19 +502,27 @@ class VoiceReceiveCog(commands.Cog):
         if self._paused:
             return
         channel_id = self._active_vc_id if self._active_vc_id is not None else channel.id
+        # Trigger = mic release, before wait_idle, so trigger→llm_done covers the whole turn and the
+        # wait_idle portion is broken out (wait=…ms).
+        timing = self._begin_turn(channel_id, kind="auto")
+        tw = time.monotonic()
         await asyncio.to_thread(self._transcriber.wait_idle, 4.0)  # let the final utterance land
+        timing.wait_ms = round((time.monotonic() - tw) * 1000)
+        # The triggering utterance is usually still transcribing during wait_idle, so re-claim the
+        # stt stage now that it has landed (keep _begin_turn's value if nothing new arrived).
+        timing.stt_ms = self._last_stt_ms.pop(channel_id, timing.stt_ms)
         if self._brain.pending_count(channel_id) == 0:
             return
         try:
-            t0 = time.perf_counter()
             answer = await self._brain.respond(channel_id)
-            llm_ms = round((time.perf_counter() - t0) * 1000)
+            timing.llm_done = time.monotonic()
+            timing.take_llm_stats(self._brain.last_llm_stats)
         except Exception:
             log.exception("DM turn failed (auto)")
             await self._send_with_retry(channel, "(Der Spielleiter schweigt — Fehler, siehe Log.)")
             return
         if answer:
-            await self._deliver_answer(channel, guild_id, answer, llm_ms)
+            await self._deliver_answer(channel, guild_id, answer, timing)
 
     async def _on_mic_stop(self, interaction: discord.Interaction) -> None:
         """Mic button released → optionally run the DM turn automatically (players asked for this)."""
@@ -562,16 +711,17 @@ class VoiceReceiveCog(commands.Cog):
         DM narrates the consequence (architecture §9)."""
         if self._paused:  # frozen — the roll result is already posted; narration waits for resume
             return
+        timing = self._begin_turn(self._brain_channel(channel), kind="roll")
         try:
-            t0 = time.perf_counter()
             answer = await self._brain.respond(self._brain_channel(channel))
-            llm_ms = round((time.perf_counter() - t0) * 1000)
+            timing.llm_done = time.monotonic()
+            timing.take_llm_stats(self._brain.last_llm_stats)
         except Exception:
             log.exception("DM turn failed (after roll)")
             await self._send_with_retry(channel, "(Der Spielleiter schweigt — Fehler, siehe Log.)")
             return
         if answer:
-            await self._deliver_answer(channel, guild_id, answer, llm_ms)
+            await self._deliver_answer(channel, guild_id, answer, timing)
 
     async def _post_pending_dice(self, channel) -> int:
         """Post a dice button for each test the last DM turn requested via a <<TEST …>> marker.
