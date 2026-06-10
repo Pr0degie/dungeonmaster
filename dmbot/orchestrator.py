@@ -61,6 +61,14 @@ _TRAILING_PROMPT = re.compile(
     r"(?:möchtet|wollt|werdet)\s+ihr(?:\s+tun)?)\b[^?]*\?\s*$",
     re.IGNORECASE,
 )
+# Small models sometimes break the fiction to "correct themselves" out loud — they narrate, then
+# "Nein, warte kurz. Das ist ein Meta-Kommentar von mir als Sprachmodell … Hier ist die korrekte
+# Antwort: <echte Erzählung>". Drop everything up to such a self-correction frame so only the real
+# narration is spoken (the frame admits to being an AI — exactly what must never be read aloud).
+_META_SELFCORRECT = re.compile(
+    r"^.*?\bHier ist die (?:korrekte|richtige)\b[^:]*:\s*",
+    re.IGNORECASE | re.DOTALL,
+)
 # Generic role labels small models like to keep talking as / for. Combined with the player
 # names this turn, they become both Ollama stop sequences and a post-hoc truncation guard
 # against the model fabricating player replies and playing several turns itself.
@@ -112,6 +120,7 @@ def _strip_trailing_prompt(text: str) -> str:
 
 def _sanitize(text: str) -> str:
     text = text.replace("*", "").strip()  # drop markdown emphasis/bold
+    text = _META_SELFCORRECT.sub("", text, count=1).strip()  # drop a "…Sprachmodell… Hier ist die korrekte Antwort:" frame
     text = _ROLE_LABEL.sub("", text).strip()  # drop a leading role label
     text = _strip_meta_preamble(text)  # drop a leading "Als Spielleitung beschreibe ich …" preamble
     text = _META_PAREN.sub("", text).strip()  # drop a trailing meta-disclaimer in parentheses
@@ -143,7 +152,7 @@ class DMBrain:
         *,
         profile: SystemProfile | None = None,
         max_history_turns: int = 20,
-        num_predict: int = 220,
+        num_predict: int = 160,
         max_buffer_lines: int = 8,
     ) -> None:
         self._client = client
@@ -167,6 +176,11 @@ class DMBrain:
         # A light "who plays whom" hint (display name → character) appended to the system prompt,
         # so the model stops confusing player and character names (open item F). Set per channel.
         self._alias_hint: dict[int, str] = {}
+        # Every character + player name at the table (CharacterStore.speaker_labels). They join the
+        # turn's own speakers as cut-labels + stop sequences (see _generate / respond), so a puppeted
+        # "Seskin: …"/"Pr0degie: …" script the model tacks on is truncated — the deterministic guard
+        # behind the persona's no-puppeting rule (the live fix; nemo ignores the soft rule).
+        self._known_speakers: dict[int, list[str]] = {}
         # Memory (Phase 9): the stored session recap + a compact world-state block, injected into the
         # system prompt after the persona (CLAUDE.md order: core → tone → recap → JSON state →
         # history). Set per channel by the cog from the world state, refreshed when state changes.
@@ -232,9 +246,12 @@ class DMBrain:
         parts = [f"[Würfel] {r}" for r in results]
         parts += [f"{name}: {text}" for name, text in lines]
         user_msg = "\n".join(parts)
-        # Labels (player names this turn + generic roles) become Ollama stop sequences and the
-        # post-hoc truncation guard against the model fabricating replies / playing several turns.
-        labels = [name for name, _ in lines] + _ROLE_LABELS
+        # Labels become Ollama stop sequences and the post-hoc truncation guard against the model
+        # fabricating replies / scripting several turns: this turn's own speakers + every known
+        # character/player at the table (so an appended "Seskin: …"/"Pr0degie: …" puppet script is
+        # cut even when those names didn't speak this turn) + the generic role labels. Deduped.
+        known = self._known_speakers.get(channel_id, [])
+        labels = list(dict.fromkeys([name for name, _ in lines] + known + _ROLE_LABELS))
         self._last_turn[channel_id] = (user_msg, labels)
 
         history = self._history.setdefault(channel_id, [])
@@ -359,6 +376,16 @@ class DMBrain:
             self._alias_hint[channel_id] = hint
         else:
             self._alias_hint.pop(channel_id, None)
+
+    def set_known_speakers(self, channel_id: int, names: list[str]) -> None:
+        """Register every character + player name at the table (CharacterStore.speaker_labels). They
+        join the turn's own speakers as cut-labels + stop sequences, so a puppeted "Seskin: …" /
+        "Pr0degie: …" script the model appends is truncated — the deterministic backstop to the
+        persona's no-puppeting rule. An empty list clears it."""
+        if names:
+            self._known_speakers[channel_id] = list(names)
+        else:
+            self._known_speakers.pop(channel_id, None)
 
     def set_context(self, channel_id: int, *, recap: str = "", state_summary: str = "") -> None:
         """Set the memory context injected into this channel's prompt (Phase 9): the stored recap

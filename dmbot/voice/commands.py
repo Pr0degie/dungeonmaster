@@ -179,7 +179,7 @@ class VoiceReceiveCog(commands.Cog):
         dump_utterances: bool = False,
         ollama_host: str = "http://127.0.0.1:11434",
         ollama_model: str = "mistral-nemo",
-        dm_num_predict: int = 220,
+        dm_num_predict: int = 160,
         dm_max_lines: int = 8,
         system: str = "imperium_maledictum",
         push_to_talk: bool = True,
@@ -1192,6 +1192,8 @@ class VoiceReceiveCog(commands.Cog):
         # hint into the prompt (open item F), and seed the turn order from the voice members.
         self._characters = self._load_characters(channel.id)
         self._brain.set_alias_hint(channel.id, self._characters.alias_hint_de())
+        # All table names → cut-labels/stop sequences, so a puppeted "Seskin: …" script is truncated.
+        self._brain.set_known_speakers(channel.id, self._characters.speaker_labels())
         self._turn_order[channel.id] = self._build_turn_order(channel)
         self._turn_index[channel.id] = 0
         # Memory (Phase 9): load this channel's world state (or seed it from the sheet on first join),

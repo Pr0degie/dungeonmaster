@@ -147,6 +147,17 @@ class CharacterStore:
             "Spielenden wirklich sagen oder tun."
         )
 
+    def speaker_labels(self) -> list[str]:
+        """Every name that may prefix a *scripted* line the model must not write — each character
+        name plus each player display name. The orchestrator adds these (beside the turn's own
+        speakers) as cut-labels + stop sequences, so a puppeted ``Seskin: …`` / ``Pr0degie: …``
+        script the model tacks on gets chopped off post-hoc: the deterministic backstop to the
+        persona's "never speak or act for the player characters" rule (nemo ignores the soft rule
+        and scripts the whole party — the live puppeting + runaway-length fix)."""
+        names = [c.name for c in self._by_name.values()]
+        names += [display for display, _ in self._alias_pairs]
+        return list(dict.fromkeys(n for n in names if n))  # dedupe, keep order
+
 
 def resolve_target(
     profile: SystemProfile,

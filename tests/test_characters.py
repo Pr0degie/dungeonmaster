@@ -68,3 +68,11 @@ def test_alias_hint_lists_who_plays_whom() -> None:
     # … and draws the hard "these belong to the players, never control them" boundary (the live fix
     # for the DM puppeting the whole party). Keep this assertion: it's the point of the block.
     assert "gehören allein den Spielenden" in hint and "NIE für sie" in hint
+
+
+def test_speaker_labels_lists_every_character_and_player() -> None:
+    # the deterministic puppet-script cut: every character name + every player display name, deduped
+    labels = _STORE.speaker_labels()
+    assert "Seskin" in labels and "Mortn" in labels        # character names
+    assert "SezBoss69" in labels and "Tobi" in labels      # player display names
+    assert len(labels) == len(set(labels))                 # deduped

@@ -149,3 +149,42 @@ def test_buffer_unbounded_when_cap_zero() -> None:
 
     sent = client.last_user_content
     assert all(f"Zeile {i}" in sent for i in range(5))
+
+
+def test_sanitize_strips_meta_selfcorrection() -> None:
+    # nemo breaks the fiction to "correct itself" out loud (admits to being a Sprachmodell) — only
+    # the real narration after "Hier ist die korrekte Antwort:" must survive.
+    raw = (
+        "Du öffnest die Tür. Nein, warte kurz. Das ist ein Meta-Kommentar von mir als "
+        "Sprachmodell. Hier ist die korrekte Antwort: Die Tür knarrt rostig auf."
+    )
+    assert _sanitize(raw) == "Die Tür knarrt rostig auf."
+
+
+class _CapClient:
+    """Returns a puppeted multi-party script and captures the options DMBrain passes."""
+
+    def __init__(self) -> None:
+        self.options: dict | None = None
+
+    async def chat(self, system, messages, options=None) -> str:
+        self.options = options
+        return "Du schlägst zu. Seskin: Ich helfe dir! Pr0degie: Ich auch!"
+
+    async def aclose(self) -> None:
+        pass
+
+
+def test_known_speakers_truncate_puppeted_party_script() -> None:
+    client = _CapClient()
+    brain = DMBrain(client)
+    ch = 42
+    brain.set_known_speakers(ch, ["Seskin", "Vask", "Pr0degie"])
+    brain.add_player_line(ch, "Timo", "Ich greife an.")
+
+    answer = asyncio.run(brain.respond(ch))
+
+    # the appended "Seskin: …/Pr0degie: …" puppet script is cut even though neither spoke this turn
+    assert answer == "Du schlägst zu."
+    # and the table's names also became Ollama stop sequences
+    assert "\nSeskin:" in client.options["stop"] and "\nPr0degie:" in client.options["stop"]
