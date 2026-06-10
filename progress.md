@@ -18,6 +18,39 @@ world-state block (CLAUDE.md prompt order). **Model: mistral-nemo.** Recommended
 gate / any follow-up: **Opus 4.8 / xhigh**.
 
 ## Last session
+**Per-turn latency instrumentation — logging only, baseline groundwork (2026-06-10).** Before any
+streaming/latency work touches the pipeline, threaded a per-turn timing record (`_TurnTiming`,
+`voice/commands.py`) through the DM turn flow and emit **one `[latency]` INFO line per turn** (console
++ `debug.log`), e.g.
+`[latency] turn=42 auto stt=480ms wait=900ms trigger→llm_done=6200ms ctx=3100/8192 gen=180 chars=412 tts=3100ms wav=8.2s bridge_wait=4900ms total=14700ms`.
+- **Stages** (all `time.monotonic`, carried in the existing flow — no new threads/globals): **stt**
+  (reuses the Transcriber's `transcribe_ms` of the last DM-routed utterance — not re-measured),
+  **trigger→llm_done** (turn start → Ollama returned, with the autosend `wait_idle` portion broken
+  out as `wait=`), **tts** (synth → WAV), **bridge_wait** (`/speak` POST → return), **total**
+  (trigger → `/speak` returned), plus the answer's `chars=` and the WAV's `wav=…s`.
+- **Ollama token counts** (`prompt_eval_count`/`eval_count`, previously discarded) are now kept on
+  `OllamaClient.last_stats` (the chat return type is **unchanged** for existing callers) → surfaced
+  as `ctx=<prompt>/<num_ctx> gen=<eval>`, which shows for free whether the growing system prompt
+  (persona + recap + state block + 20-turn history) is nearing the `num_ctx: 8192` cap. The brain
+  copies them to `DMBrain.last_llm_stats` only on the **narration** call, so the roll-router /
+  summarize calls can't clobber the turn's numbers.
+- **Once per turn:** the line is emitted in `_deliver_answer`, the shared funnel for all four
+  triggers (`!dm`, `!redo`, autosend, dice-result feedback); `!say` (TTS smoke test) deliberately
+  produces none. Speech-less turns (typed `!dm`, redo, dice-feedback) log `stt=—`; text-only turns
+  (TTS off) log `tts=—`/`bridge_wait=—`. The existing `⏱ LLM` line is unchanged (its value now
+  derived from the record). **Zero behavior change, no new deps; suite 102/102 green** (D35, no ADR).
+- **Context-budget warning + a test (same day, D36).** Building on those token counts: the per-turn
+  record now also emits a **WARNING** — `[ctx] prompt N/8192 tokens (>85% of num_ctx) …` — when a
+  narration prompt fills >85% of `num_ctx`, the early smoke signal *before* Ollama truncates the
+  prompt **head** (the persona leads the system prompt — the worst part to silently lose). Narration
+  turns only (only those build a `_TurnTiming`; the roll-router / recap calls are exempt), via a pure
+  `_TurnTiming.ctx_over_budget()` predicate beside the `ctx=` display. New `tests/test_context_budget.py`
+  fakes the `/api/chat` response and asserts the client's meta extraction (counts + default/overridden
+  `num_ctx`, `chat()` return type unchanged) and the 85% boundary. **Suite now 107/107 green.**
+- _Tobi: run one live session and paste a few `[latency]` lines → that's the baseline before the
+  streaming work starts. A `[ctx] … >85%` WARNING in the same paste means the prompt is near the cap
+  (trim history/recap/state)._
+
 **Phase 9 built — memory: world state, deterministic advancement, recaps, auto-combat damage (2026-06-09).**
 Read ADR 004 + the §7 schema + the wiring points first, then asked Tobi the two shaping decisions →
 **split** state-file model + **auto-combat-damage** now (→ **ADR 015**). Built end to end:
@@ -266,8 +299,11 @@ are already on in `.env`):**
 4. _Watch & report (paste `debug.log` + `transcript.log`):_ damage numbers sane? target dropdown listing
    fellow PCs annoying or fine? does the DM honour the injected world-state HP without inventing values?
    recap quality (German, factual, length)? any `ERROR` lines?
+5. _Latency baseline (NEW, D35):_ every DM turn now logs one `[latency] turn=… stt=… trigger→llm_done=…
+   ctx=…/8192 gen=… tts=… bridge_wait=… total=…` line — paste a few from `debug.log` so we know where
+   the seconds go (and whether `ctx` is nearing 8192) **before** starting the streaming optimisation.
 - Run the unit suite with **`uv run --with pytest python -m pytest -q`** (pytest isn't in the default
-  venv — see [[run-tests-command]] memory). Currently 102/102 green.
+  venv — see [[run-tests-command]] memory). Currently 107/107 green.
 
 _Resolved this session (no longer open):_ the **gemma3 vs nemo** taste test (gemma3 didn't fix the
 marker problem; nemo kept for tone — the fix was the **roll-detection router**, ADR 014); **two-stage
@@ -331,6 +367,8 @@ create the next-numbered ADR.
 | D32 | Memory state file | **Split** — `characters.json` stays the read-only sheet (transferred once), a new code-owned `data/sessions/<id>/state.json` holds the mutable layer (wounds/conditions/inventory, NPCs, quests, location, recap), seeded once from the sheet, saved atomically on every change | Keeps the hand-authored source pristine/diffable, gives a clean reset (delete state.json) and a clean gate (save-on-change → HP survives a restart); avoids code corrupting the sheets. Rejected: one blob that code rewrites → ADR 015 |
 | D33 | Combat damage | **Auto-applied on a hit** — a successful attack (skill ∈ profile `combat.attack_skills`) rolls weapon damage, applies **weapon + SL − soak** (TB + armour) to a target (auto if one, else a dropdown; `!npc add` registers enemies; `!damage`/`!heal` GM overrides) | Tobi chose auto-combat over a manual command; realises the dice engine's damage in play (the natural Phase-8→9 hook). Profile-driven (`combat` block) so it stays system-agnostic; weapon values approximate, tune live → ADR 015 |
 | D34 | Log verbosity | **Trim the logger name** — drop it entirely on INFO console/mirror lines, strip the `dmbot.` prefix on WARNING/ERROR + in `debug.log`; third-party names kept | Tobi pastes logs for the playtest-tuning loop; the repeated `dmbot.voice.commands` prefix wasted tokens while the message (often emoji-prefixed) already carries the context. Levels/colour/tracebacks unchanged. Ops polish, no ADR |
+| D35 | Latency instrumentation | **One `[latency]` log line per DM turn** — a `_TurnTiming` record (monotonic) threaded through the existing turn flow: stt (reused `transcribe_ms`) · trigger→llm_done (+ broken-out autosend `wait=`) · tts · bridge_wait · total, plus `chars`/`wav` and Ollama `ctx=<prompt>/<num_ctx> gen=<eval>`. Emitted once in `_deliver_answer` (all four triggers; not `!say`). `OllamaClient.last_stats` keeps the previously-discarded token counts without changing `chat()`'s return type | Need a baseline of where a turn's seconds go *before* the streaming optimisation; reuses existing measurements + surfaces for free whether the growing prompt is nearing `num_ctx`. Logging only, zero behaviour change, no trade-off → no ADR |
+| D36 | Context-budget warning | **WARNING when a narration prompt exceeds ~85% of `num_ctx`** (`[ctx] prompt N/8192 …`), beside the per-turn `ctx=` display; pure `_TurnTiming.ctx_over_budget()` predicate, narration turns only (router/recap exempt) | The persona leads the system prompt, so Ollama truncates **it** first when prompt+history overflow — a silent quality cliff. 85% gives a turn or two to trim history/recap/state before the cap (raising `num_ctx` costs KV-cache VRAM we don't have on the 4070). Logging only, no trade-off → no ADR |
 
 ### Phase → ADR map (read these when you enter the phase)
 
@@ -654,7 +692,10 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   difficulty *word* → `rules/characters.resolve_target` (skill value + ladder modifier) → engine.
   _The IM ladder/SL/auto-bands are verified against the bought rulebook (2026-06-07); verify the live feel._
 - **Latency grows with context** as history accumulates; the 20-turn cap helps but recaps (Phase 9)
-  are the real fix. Watch; don't act yet.
+  are the real fix. **Now observable (D35/D36):** the per-turn `[latency]` line shows
+  `ctx=<prompt>/8192 gen=<eval>`, and a WARNING fires once the prompt passes ~85% of `num_ctx` — so
+  the cap-creep is no longer silent. Capture the live baseline before the streaming work; don't raise
+  `num_ctx` (KV-cache VRAM) — trim history/recap/state if the warning shows.
 
 **Only empirical, to decide in Phase 0 (try it, not design):**
 - ✅ **Model:** decided — **mistral-nemo** as primary (taste test 2026-06-04 vs gemma3:12b /
