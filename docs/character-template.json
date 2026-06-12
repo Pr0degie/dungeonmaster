@@ -1,0 +1,50 @@
+{
+  "_anleitung": [
+    "Vorlage zum Ausfuellen von Hand. EINFACHER ist das Formular in docs/how-to-create-a-character.html",
+    "(es rechnet Punkte/Wunden automatisch). Hier musst du selbst rechnen:",
+    "- characteristics: 9 Werte. Punkte-Kauf = jeder startet bei 20, du verteilst 90 Punkte,",
+    "  min +4 / max +18 pro Eigenschaft (Startwerte 24-38). DANN Herkunfts-Boni addieren (+5 fest, +5 Wahl).",
+    "  Trag hier die ENDWERTE ein (inkl. Herkunft).",
+    "- skills: 6 Steigerungen a +5, max 2 pro Skill. Skillwert = zugehoerige Eigenschaft + (Steigerungen x 5).",
+    "  Nur gelernte Skills eintragen; ungelernte weglassen.",
+    "- wounds / max_wounds: StrB + 2xTghB + WilB  (Bonus = Zehnerstelle des Endwerts).",
+    "- inventory: Hauptwaffe ZUERST, dann 3-5 Gegenstaende.",
+    "Die Felder _anleitung, player, concept, origin schaden der Engine nicht (Zusatzinfo).",
+    "Fertig? Schick den Block an Tobi. Claude prueft die Budgets vor dem Einbau."
+  ],
+
+  "name": "DEIN CHARAKTERNAME",
+  "player": "DEIN DISCORD-NAME",
+  "concept": "ein Satz: wer bist du?",
+  "origin": "z.B. Makropolwelt",
+
+  "characteristics": {
+    "WS":  0,
+    "BS":  0,
+    "Str": 0,
+    "Tgh": 0,
+    "Ag":  0,
+    "Int": 0,
+    "Per": 0,
+    "Wil": 0,
+    "Fel": 0
+  },
+
+  "skills": {
+    "Nahkampf":      0,
+    "Fernkampf":     0,
+    "Athletik":      0,
+    "Heimlichkeit":  0,
+    "Wahrnehmung":   0,
+    "Technologie":   0,
+    "Wissen":        0,
+    "Medizin":       0,
+    "Überreden":     0,
+    "Einschüchtern": 0
+  },
+
+  "wounds": 0,
+  "max_wounds": 0,
+
+  "inventory": ["Hauptwaffe", "Gegenstand", "Gegenstand"]
+}
