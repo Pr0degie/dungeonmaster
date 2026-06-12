@@ -4,19 +4,27 @@ Living status document. A phase counts as done only when its **verification gate
 met and the proof is recorded here.
 
 ## Current focus
-**Cross-cutting latency/robustness work (between Phase 9 and 10): code-complete, all live-unverified
-— stacked on top of the still-pending Phase-9 gate + ADR-016 tuning.** This session landed three
-flag-gated features: **streaming the DM turn** (LLM deltas → sentence TTS → sequential `/speak`, so
-the first audio plays while the rest generates — **ADR 017**, `DM_STREAMING=1`), the **roll-router
-firing concurrently with playback** (🎲 button appears while the DM still speaks — **D40**), and
-**per-turn history autosave** for crash recovery (`history.jsonl`, restore on `!join`, rotate on
-`!leave` — **D41**, `DM_AUTOSAVE=1`). All three are off-switchable to the prior behaviour. Suite
-**142/142**. **First live run done (2026-06-10):** streaming works (`first_audio≈3.2s`) and the
-**Phase-9 recap auto-loaded on `!join` + a strong `!wrap up`** (memory narrative half effectively
-confirmed); a tuning round fixed marker-only/empty turns reading a lone quote aloud, code-fence
-backticks, and a `<<TEST>>` **dice loop** on consequence narrations (**D42**). _Still to prove
-live:_ the **HP-survives-restart** half of the Phase-9 gate, the router-button-during-speech feel,
-the crash-restore, and the open meta-ramble (persona/adherence).
+**Post-roll robustness round (D43 → ADR 018) after the 2026-06-12 echo collapse: code-complete,
+live-unverified — the Phase-9 gate is STILL pending (the gate attempt ran in the wrong channel).**
+Tobi's session "fühlt sich nicht mehr wie ein Gamemaster an" diagnosed from `debug.log` +
+`history.jsonl` as a failure chain, not model regression: wrong channel → silent example-party
+fallback (Mortn/Seskin instead of the registered party); the unreliable inline marker won the
+dedupe and requested **Heimlichkeit for an attack**; the bare `[Würfel]` feedback line made nemo
+**predict the next player line** instead of narrating — the label-strip turned that into a
+clean-looking echo that was spoken, stored, and self-reinforced (three turns of "Ich greife den
+Kultisten an."). Fixes landed (all deterministic): **echo guard** (retry once with nudge, then
+suppress + keep the pair out of history), **roll-feedback directive** on results-only turns,
+**router-wins dedupe** (flips D40's marker-wins), **autosave race fix** (snapshot `user_msg` at
+generation end), `!join` **party announcement + example-fallback warning**, `chat_stream` read
+timeout 300 s (the cold-start ReadTimeout), and the **ADR 016 length squeeze rolled back**
+(160→220, "zwei bis vier Sätze" — streaming removed the latency justification). Suite **157/157**.
+
+**Cross-cutting latency/robustness work (ADR 017 streaming + D40 router timing + D41 autosave):
+live-confirmed in part.** Streaming works (`first_audio≈3.2s`, 2026-06-10) and the **Phase-9 recap
+auto-loaded on `!join` + a strong `!wrap up`** (memory narrative half effectively confirmed); D42
+fixed marker-only turns + the dice loop. _Still to prove live:_ the **HP-survives-restart** half of
+the Phase-9 gate, the D43 fixes above, the router-button-during-speech feel, the crash-restore, and
+the open meta-ramble (persona/adherence).
 
 **Phase 9 — memory: code-complete, live gate still pending — plus a playtest-tuning round
 (2026-06-10) that is itself live-unverified.** Three live logs drove fixes for the DM **puppeting
@@ -38,7 +46,33 @@ world-state block (CLAUDE.md prompt order). **Model: mistral-nemo.** Recommended
 gate / any follow-up: **Opus 4.8 / xhigh**.
 
 ## Last session
-**First live streaming run + tuning (2026-06-10, after the commit).** Tobi ran the streaming
+**The 2026-06-12 echo collapse → diagnosis + the D43/ADR-018 robustness round.** Tobi reported the
+bot "fühlt sich nicht mehr wie ein Gamemaster an" with a live log. Diagnosis from `debug.log` +
+`data/sessions/1355307134559981709/history.jsonl`:
+- **Wrong channel:** the session ran in `1355307134559981709`, not circlejerk (`1343673766487654464`)
+  where the party is registered → `_load_characters` silently fell back to the **example party**
+  (Pr0degie→Mortn aliases, wrong sheet values). Tobi confirmed circlejerk is the play channel.
+- **Echo degeneration:** on the post-roll turn the model answered `Pr0degie: Ich greife den
+  Kultisten an.` (predicting the next player line, not narrating); `_strip_leading_label` left a
+  clean-looking echo that was spoken + stored → self-reinforced: **three turns in a row the DM
+  answered every input — including an elaborate sword attack — with the same parroted sentence.**
+- **Trigger:** the model's inline marker requested `<<TEST Heimlichkeit für Pr0degie>>` for an
+  *attack* and won the D40 dedupe over the validated router; the bare `[Würfel] …` line carried no
+  instruction what to do with it.
+- **Race:** a dice click during playback overwrote `_last_turn` before the running turn's autosave
+  read it → wrong `(user_msg, answer)` pairs in `history.jsonl` (seen in line 3).
+- **Cold start:** the greeting turn hit `httpx.ReadTimeout` after 222 s gen (model load + GPU
+  contention) and XTTS ran at RTF 34–45 until warm.
+
+Fixes (all landed, suite **142→157**, live-unverified): echo guard (`is_echo` + retry-with-nudge +
+suppress + history-poison protection incl. `restore_history` skipping empty answers), roll-feedback
+directive on results-only turns, router-wins dedupe (`roll_button_source`), autosave `user_msg`
+snapshot at generation end, `!join` party announcement + ⚠ example-fallback warning, `chat_stream`
+read timeout 300 s, `DM_NUM_PREDICT` 160→220 + persona "zwei bis vier Sätze" (ADR 016 partial
+rollback — streaming removed the brevity justification). Poisoned session dir
+`data/sessions/1355307134559981709/` deleted; circlejerk untouched. **→ ADR 018.**
+
+**(Prior) First live streaming run + tuning (2026-06-10, after the commit).** Tobi ran the streaming
 pipeline live and pasted the log. **What worked:** streaming itself (`first_audio=3234ms` on the
 narration turn — the old path would've been silent for `gen 6.5s + full synth`), and the **Phase-9
 recap came automatically on `!join` and the `!wrap up` of the prior session was very good** (the
@@ -381,11 +415,14 @@ _(Prior session — voice-stack hardening, ADR 006 — and Phases 3–6 (the pla
 in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 
 ## Next concrete step
-**Tomorrow's live check (Tobi, 2026-06-11).** The first live run (2026-06-10) already confirmed
-**streaming** (`first_audio≈3.2s`) and the **Phase-9 recap** (auto-loaded on `!join` + a good
-`!wrap up`). A tuning round (`6268b85`, **D42**) then fixed the empty-turn lone-quote read-aloud and
-the `<<TEST>>` dice loop — landed but **unproven**, so the next run re-confirms them too. Dial:
-**Opus 4.8 / xhigh**.
+**The live gate run — in circlejerk this time (Tobi).** The 2026-06-12 attempt ran in the wrong
+channel and collapsed (see Last session); the D43/ADR-018 fixes are landed but **unproven**. The
+next run must start with `!j` **in circlejerk** — the `!join` post now names the party (expect
+**Garran Vex, Eli Castor, Magos Yann**; a ⚠ warning instead means wrong channel, stop and switch).
+New D43 checks on top of the existing list: a post-roll turn **narrates the consequence** (no
+parroted player line — watch for the `echo guard` WARNING in the log); an attack action gets a
+**combat-skill** button (router decides, not the marker); `history.jsonl` pairs stay correct when
+the 🎲 is clicked while the DM still speaks. Dial: **Opus 4.8 / xhigh**.
 
 **✅ Prerequisite resolved (2026-06-10) — party registered + session reset.** The
 `circlejerk` channel (`1343673766487654464`) now has a hand-authored
@@ -519,6 +556,7 @@ create the next-numbered ADR.
 | D40 | Roll-router timing | **Fire the ADR-014 classifier at generation-end and post the 🎲 button concurrently with playback** (`_handle_dice` runs as a task beside `_speak`/the streaming playback), so the button appears while the DM still speaks. Inline `<<TEST>>` still wins the dedupe (`should_post_router`) | The button used to appear only after generation **and** playback. Input (action + skills) is known earlier, but single-GPU Ollama serialises — firing at turn-start would just queue the classifier behind the narration (or delay it), so gen-end is the earliest point that overlaps playback without delaying narration. Supersedes ADR 014's *timing* only, not its design → D-entry, no new ADR |
 | D41 | History autosave | **Third session artifact** `data/sessions/<id>/history.jsonl` (`dmbot/memory/history.py`) — append-only, one line per turn (`{ts, user_msg, answer, redo}`), appended off-loop after each turn, restored into an empty `DMBrain` history on `!join`, rotated to `history.<ts>.jsonl` on `!leave`. `DM_AUTOSAVE=1` | World state already persists (ADR 015); a crash still lost the conversational thread. Code-owned like `state.json` (the read-only `characters.json` split is unchanged). Append-only (no atomic dance; torn tail tolerated); a `redo` record replaces the prior turn. `_last_turn` not restored → `!redo` unavailable for the restored last turn (documented). Extends ADR 015's artifact set → D-entry, no new ADR |
 | D42 | Streaming content tuning (first live run) | **(a)** skip TTS+post of a **content-less** answer (`has_speakable_content`: no letter/digit) — a marker-only / code-fenced turn no longer makes XTTS read a lone quote for ~15 s; the dice button still posts. **(b)** `_sanitize` strips **code-fence backticks** (`` ` ``) like markdown `*`. **(c)** suppress inline `<<TEST>>` markers on **results-only turns** (`_last_action is None`) so a post-roll consequence narration can't request a new roll | First live streaming run: the model emitted marker-only turns (15 s of lone-quote audio each) and a `<<TEST>>` on every turn incl. consequence narrations → an endless attack→roll→narrate+marker→roll **dice loop**. (a)/(b) are output cleanup (ADR 016 family); (c) is the real flow decision — a consequence narration legitimately *never* needs a fresh roll; the router handles real player-action rolls on the next turn. Builds on ADR 014/D40 + ADR 016/017 → D-entry, no new ADR |
+| D43 | Post-roll robustness (echo collapse, 2026-06-12) | **(a) Echo guard** — pure `is_echo()` flags an answer that parrots a player line (normalized exact/fragment/≥90%-coverage); retry once with a corrective nudge, then **suppress the turn** (nothing spoken, the pair stays out of history); `restore_history` skips empty answers. **(b) Roll-feedback directive** — a results-only `[Würfel]` turn appends "Beschreibe als Spielleitung kurz die Folgen …". **(c) Router wins the dedupe** (flips D40's marker-wins; `roll_button_source` replaces `should_post_router`) — inline markers stripped but discarded when the router is on. **(d) Autosave race fix** — the cog snapshots `user_msg` at generation end and passes it to `_autosave_turn` (a dice click during playback overwrites `_last_turn`). **(e) ADR 016 partial rollback** — `num_predict` 160→220, persona "zwei bis vier Sätze". Plus: `!join` names the party + warns loudly on the `_example` fallback; `chat_stream` read timeout 120→300 s | The 2026-06-12 session collapsed: a nonsense marker roll (Heimlichkeit for an attack — the unreliable marker won the dedupe over the validated router) + a bare `[Würfel]` feedback line made nemo predict the *next player line*; the label-strip turned it into a clean-looking echo that was spoken, stored, and self-reinforced ("Ich greife den Kultisten an." three turns straight). Deterministic guards over persona hopes (the ADR 016 lesson); the brevity squeeze predates streaming and the praised sessions ran at 220 → ADR 018 |
 
 ### Phase → ADR map (read these when you enter the phase)
 
@@ -530,7 +568,7 @@ create the next-numbered ADR.
 | 5 — LLM wiring + persona | ADR 002 + ADR 005 (persona = generic core + campaign overlay) + **ADR 016** (anti-puppeting backstop, length cap, output cleanup) |
 | 6 — TTS + full loop | **ADR 008** (TTS engine: Piper + XTTS) + ADR 002 (bridge, VRAM) + `architecture.md` §3 (bridge contract) + **ADR 016** (TTS speech-only normalization) + **ADR 017** (streaming pipeline: sentence-chunked TTS, hold-back rules, history parity) |
 | 6–7 — Full loop, turn-taking, registration | ADR 003 (conversational control, registration, turn-taking) + **ADR 011** (STT latency: push-to-talk gate) + **ADR 013** (pause control) |
-| 8 — Dice engine, IM profile, marker flow | ADR 005 (engine + profile) + ADR 004 (test marker, character data) + ADR 001 (IM specifics) + **ADR 012** (difficulty ladder, character store, marker grammar) + **ADR 014** (roll-detection router; timing now D40 — fires concurrent with playback) |
+| 8 — Dice engine, IM profile, marker flow | ADR 005 (engine + profile) + ADR 004 (test marker, character data) + ADR 001 (IM specifics) + **ADR 012** (difficulty ladder, character store, marker grammar) + **ADR 014** (roll-detection router; timing now D40 — fires concurrent with playback) + **ADR 018** (router wins the dedupe; echo guard + roll-feedback directive on post-roll turns) |
 | 9 — Memory (JSON + recaps) | ADR 004 (character/state JSON) + **ADR 015** (sheet/state split, auto-combat damage) |
 | 10 — RAG + profile bootstrap | ADR 005 (profile bootstrap) |
 

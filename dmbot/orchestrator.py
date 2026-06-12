@@ -175,6 +175,52 @@ def finalize_answer(
     return _trim_to_last_sentence(answer), tests
 
 
+# --- Echo guard (D43 / ADR 018) ------------------------------------------------------------------
+
+# Appended to the retry prompt when the model parroted a player line instead of narrating.
+_ECHO_NUDGE = (
+    "Antworte als Spielleitung: Beschreibe, was daraufhin in der Szene geschieht, "
+    "und wiederhole nicht die Worte der Spielenden."
+)
+
+# Explicit directive on a results-only (post-roll) turn — without it the model sees a bare
+# "[Würfel] …" line and tends to predict the *next player line* instead of narrating (seen live
+# 2026-06-12: three identical echo turns poisoned the history).
+_ROLL_DIRECTIVE = (
+    "Beschreibe als Spielleitung kurz die Folgen dieses Würfelergebnisses in der Szene."
+)
+
+
+def _normalize_echo(text: str) -> str:
+    """Case/punctuation-insensitive view for the echo comparison."""
+    return re.sub(r"[\W_]+", " ", text.lower()).strip()
+
+
+def is_echo(answer: str, user_msg: str) -> bool:
+    """True when ``answer`` merely parrots a line of this turn's ``user_msg`` — the model
+    predicted the next table line ("Pr0degie: Ich greife den Kultisten an.") instead of narrating.
+    Once such an echo lands in history it self-reinforces, so the caller retries/suppresses.
+    Compares each user line (with and without its ``Name:``/``[Würfel] …:`` lead) normalized;
+    an echo is an exact match, the answer being a fragment of the line, or the line covering
+    ≥90% of the answer. Lines under 10 normalized chars never count (too short to call)."""
+    norm_answer = _normalize_echo(answer)
+    if not norm_answer:
+        return False
+    for line in user_msg.splitlines():
+        body = line.split(":", 1)[1] if ":" in line else line
+        for candidate in (line, body):
+            norm_line = _normalize_echo(candidate)
+            if len(norm_line) < 10:
+                continue
+            if (
+                norm_answer == norm_line
+                or norm_answer in norm_line
+                or (norm_line in norm_answer and len(norm_line) >= 0.9 * len(norm_answer))
+            ):
+                return True
+    return False
+
+
 # --- Streaming assembler (ADR 017) --------------------------------------------------------------
 
 # Hold the first chunk until it's a full sentence or this many chars, so a leading meta-preamble /
@@ -394,6 +440,10 @@ class DMBrain:
         # Result lines (engine rolls) lead, then the player lines — both as context for this turn.
         parts = [f"[Würfel] {r}" for r in results]
         parts += [f"{name}: {text}" for name, text in lines]
+        if results and not lines:
+            # Results-only turn: tell the model explicitly what to do with the bare roll line —
+            # without this it tends to predict the next player line instead (echo, D43/ADR 018).
+            parts.append(_ROLL_DIRECTIVE)
         user_msg = "\n".join(parts)
         # Labels become Ollama stop sequences and the post-hoc truncation guard against the model
         # fabricating replies / scripting several turns: this turn's own speakers + every known
@@ -417,6 +467,8 @@ class DMBrain:
             return None
         user_msg, labels, history = prep
         answer = await self._generate(channel_id, user_msg, labels, history)
+        if answer is None:
+            return ""  # echo-suppressed (D43): content-less to the cog, the pair stays out of history
         self._append_turn(history, user_msg, answer)
         return answer
 
@@ -437,6 +489,8 @@ class DMBrain:
             del history[-2:]  # drop the turn we're redoing so it isn't duplicated
         self._pending_tests.pop(channel_id, None)  # the redo supersedes the old turn's test markers
         answer = await self._generate(channel_id, user_msg, labels, history)
+        if answer is None:
+            return ""  # echo-suppressed (D43): content-less to the cog, the pair stays out of history
         self._append_turn(history, user_msg, answer)
         return answer
 
@@ -465,16 +519,16 @@ class DMBrain:
         options = {"stop": [f"\n{label}:" for label in labels], "num_predict": self._num_predict}
         return system, messages, options
 
-    async def _generate(
+    async def _chat_once(
         self,
         channel_id: int,
         user_msg: str,
         labels: list[str],
         history_prefix: list[dict[str, str]],
-    ) -> str:
-        """One non-streaming LLM call for ``user_msg`` on top of ``history_prefix`` → a sanitised
-        DM answer. ``<<TEST …>>`` markers are extracted and surfaced as pending tests (via
-        :func:`finalize_answer`)."""
+    ) -> tuple[str, list[TestRequest]]:
+        """One non-streaming LLM call for ``user_msg`` on top of ``history_prefix`` → (sanitised
+        answer, parsed dice tests). The raw building block of :meth:`_generate` (which wraps the
+        echo-guard retry around it) and of the streaming path's echo retry."""
         system, messages, options = self._build_request(channel_id, user_msg, labels, history_prefix)
         raw = await self._client.chat(system, messages, options=options)
         # narration call's token counts (for [latency]); getattr so a test double without the attr
@@ -484,7 +538,27 @@ class DMBrain:
         # the raw LLM output BEFORE marker-stripping, so we can see whether the model emitted a
         # <<TEST …>> marker at all (the prime suspect when the dice-marker flow doesn't fire).
         log.info("🪵 LLM roh: %s", raw.replace("\n", " ⏎ "))
-        answer, tests = finalize_answer(raw, labels, self._profile)
+        return finalize_answer(raw, labels, self._profile)
+
+    async def _generate(
+        self,
+        channel_id: int,
+        user_msg: str,
+        labels: list[str],
+        history_prefix: list[dict[str, str]],
+    ) -> str | None:
+        """One DM answer for ``user_msg`` with the echo guard (D43/ADR 018): if the answer merely
+        parrots a player line, retry once with a corrective nudge; if the retry parrots again,
+        return ``None`` so the caller suppresses the turn entirely (nothing spoken, nothing
+        stored — an echo in history self-reinforces, seen live 2026-06-12)."""
+        answer, tests = await self._chat_once(channel_id, user_msg, labels, history_prefix)
+        if answer and is_echo(answer, user_msg):
+            log.warning("echo guard: answer parrots a player line (%r) — retrying once", answer)
+            nudged = f"{user_msg}\n{_ECHO_NUDGE}"
+            answer, tests = await self._chat_once(channel_id, nudged, labels, history_prefix)
+            if answer and is_echo(answer, user_msg):
+                log.warning("echo guard: the retry parroted again — suppressing the turn")
+                return None
         # Suppress inline <<TEST>> markers on a results-only (post-roll consequence) turn — a
         # consequence narration must not request a NEW roll or the dice loop never ends (seen live).
         if tests and self._last_action.get(channel_id) is not None:
@@ -554,12 +628,14 @@ class DMBrain:
         system, messages, options = self._build_request(channel_id, user_msg, labels, history)
         assembler = StreamAssembler(labels, self._profile)
         errored = False
+        spoke_any = False
         agen = self._client.chat_stream(system, messages, options=options)
         try:
             async for delta in agen:
                 for sentence in assembler.feed(delta):
                     if has_speakable_content(sentence):  # skip a lone "."/quote/backtick (don't synth it)
                         await on_sentence(sentence)
+                        spoke_any = True
                 if assembler.stopped:
                     break  # a mid-text speaker label — abort the stream, keep the narration
                 if should_abort is not None and should_abort():
@@ -572,20 +648,39 @@ class DMBrain:
         self.last_llm_stats = getattr(self._client, "last_stats", None)
         log.info("🪵 LLM roh (stream): %s", assembler.raw.replace("\n", " ⏎ "))
         result = assembler.finish()
-        for sentence in result.remaining:
+        answer, tests, remaining = result.answer, result.tests, list(result.remaining)
+        suppressed = False
+        # Echo guard (D43/ADR 018). Only when nothing was spoken yet — an echo is a short single
+        # sentence the assembler held back; a half-spoken turn is never retried. The retry is a
+        # plain batch call: corrective rare path, the answer is short anyway.
+        if not errored and not spoke_any and answer and is_echo(answer, user_msg):
+            log.warning("echo guard (stream): answer parrots a player line (%r) — retrying once", answer)
+            nudged = f"{user_msg}\n{_ECHO_NUDGE}"
+            try:
+                answer, tests = await self._chat_once(channel_id, nudged, labels, history)
+            except Exception:
+                log.exception("echo-guard retry failed — suppressing the turn")
+                answer, tests = "", []
+            if answer and is_echo(answer, user_msg):
+                log.warning("echo guard: the retry parroted again — suppressing the turn")
+                answer, tests = "", []
+            suppressed = not answer
+            remaining = [answer] if answer else []
+        for sentence in remaining:
             if should_abort is not None and should_abort():
                 break
             if has_speakable_content(sentence):
                 await on_sentence(sentence)
         # Suppress inline <<TEST>> markers on a results-only (post-roll consequence) turn — a
         # consequence narration must not request a NEW roll or the dice loop never ends (seen live).
-        if result.tests and self._last_action.get(channel_id) is not None:
-            self._pending_tests.setdefault(channel_id, []).extend(result.tests)
-        stored = result.answer
+        if tests and self._last_action.get(channel_id) is not None:
+            self._pending_tests.setdefault(channel_id, []).extend(tests)
+        stored = answer
         if errored and stored:
             stored = f"{stored} … [Antwort unterbrochen]"  # noted in history; never spoken
-        self._append_turn(history, user_msg, stored)
-        return result.answer
+        if not suppressed:
+            self._append_turn(history, user_msg, stored)
+        return answer
 
     def _append_turn(self, history: list[dict[str, str]], user_msg: str, answer: str) -> None:
         history.append({"role": "user", "content": user_msg})
@@ -616,6 +711,8 @@ class DMBrain:
             return 0
         history: list[dict[str, str]] = []
         for user_msg, answer in turns:
+            if not answer.strip():
+                continue  # marker-only/suppressed turns: don't re-teach empty answers on restore (D43)
             history.append({"role": "user", "content": user_msg})
             history.append({"role": "assistant", "content": answer})
         if len(history) > self._max_messages:

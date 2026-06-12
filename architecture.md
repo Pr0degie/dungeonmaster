@@ -168,9 +168,11 @@ Ollama ──► answer text, STREAMED as deltas (narration only; a roll is dete
    │            │
    │            └─► roll-detection router (default): a constrained-JSON call fired at
    │                generation-end, CONCURRENT with playback, classifies the action → dice
-   │                button (appears while the DM still speaks). Inline <<TEST>> marker =
-   │                fallback; marker wins the dedupe. rules/ rolls per the profile + SL ──►
-   │                result feeds back into the next prompt   (ADR 014, timing D40)
+   │                button (appears while the DM still speaks). Router wins the dedupe;
+   │                inline <<TEST>> marker = fallback only when the router is off (D43).
+   │                rules/ rolls per the profile + SL ──► result feeds back into the next
+   │                prompt, with an explicit narrate-the-consequence directive + echo guard
+   │                (ADR 014, timing D40, dedupe/echo ADR 018)
    ▼
 StreamAssembler cuts complete sentences (hold-back rules, ADR 017) as the deltas arrive
    │
@@ -400,13 +402,15 @@ the narration context.
 > **generation-end** and posts the dice button **concurrently with playback**, so the 🎲 appears
 > while the DM still speaks instead of after the whole turn. On a single GPU Ollama serialises, so
 > firing at turn-start would only queue the classifier behind the narration anyway — firing once the
-> narration generation frees the GPU is the earliest point that doesn't delay the narration. The
-> inline marker still **wins the dedupe** (`should_post_router`): if the model emitted a `<<TEST>>`
-> this turn, the router stays silent — exactly one button per action.
+> narration generation frees the GPU is the earliest point that doesn't delay the narration.
+> **Dedupe (D43/ADR 018 — flips D40's marker-wins):** when the router is on, the **router wins** —
+> the model's inline `<<TEST>>` requests are stripped from the text and *discarded*
+> (`roll_button_source`): the constrained classifier picks reliable skills, the narration model
+> doesn't (seen live: `<<TEST Heimlichkeit>>` for an attack). Exactly one button per action.
 
-**Fallback (inline marker):** if the narration LLM *does* emit a marker, e.g.
-`<<TEST Wahrnehmung Schwer für Tobi>>`, that wins and the router is skipped for the turn. The
-orchestrator (`rules/marker.py`) detects it, strips it from the spoken text, and shows the dice button.
+**Fallback (inline marker, only when the router is off):** with `DM_ROLL_ROUTER=0` an emitted
+marker, e.g. `<<TEST Wahrnehmung Schwer für Tobi>>`, posts the button. The orchestrator
+(`rules/marker.py`) detects it, strips it from the spoken text, and shows the dice button.
 A bracketed marker is more reliable for a 12B model than strict JSON.
 
 Either way the engine then rolls per the active profile and computes the result, which feeds back into

@@ -140,8 +140,13 @@ class OllamaClient:
             "options": {**_DEFAULT_OPTIONS, **(options or {})},
         }
         num_ctx = payload["options"].get("num_ctx")
+        # Generous read timeout for the stream: the first delta can take minutes on a cold start
+        # (model load + prompt eval under GPU contention) — the client default (120 s) killed a
+        # live greeting turn mid-stream (ReadTimeout, 2026-06-12). Between-delta stalls that long
+        # mean Ollama is loading, not hanging; the abort path for a wedged stream is pause/stop.
+        stream_timeout = httpx.Timeout(connect=10.0, read=300.0, write=30.0, pool=10.0)
         async with self._client.stream(
-            "POST", f"{self._host}/api/chat", json=payload
+            "POST", f"{self._host}/api/chat", json=payload, timeout=stream_timeout
         ) as resp:
             resp.raise_for_status()
             async for line in resp.aiter_lines():

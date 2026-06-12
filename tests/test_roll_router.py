@@ -5,7 +5,7 @@ mapping, which is what makes the verdict safe to trust without re-checking the m
 from dmbot.llm.roll_router import (
     classifier_schema,
     classifier_system,
-    should_post_router,
+    roll_button_source,
     to_test_request,
 )
 
@@ -47,14 +47,15 @@ def test_blank_difficulty_becomes_none():
     assert req is not None and req.difficulty is None  # engine then uses the profile default
 
 
-# --- dedupe: the router fires concurrently with the narration turn (D40), but an inline marker wins
+# --- dedupe: the router wins when it's on (D43, flips D40) — the constrained classifier picks
+# reliable skills, the narration model's inline markers don't (seen live: <<TEST Heimlichkeit>>
+# for an attack). Markers are the fallback only when the router is off. One button per action.
 
-def test_should_post_router_marker_wins_the_dedupe():
-    # router on + the model emitted no marker → the router posts the one button
-    assert should_post_router(True, 0) is True
-    # router on + a marker already posted → router stays silent (exactly one button per action)
-    assert should_post_router(True, 1) is False
-    assert should_post_router(True, 3) is False
-    # router off → never posts, marker or not (inline <<TEST>> remains the only trigger)
-    assert should_post_router(False, 0) is False
-    assert should_post_router(False, 2) is False
+def test_roll_button_source_router_wins_the_dedupe():
+    # router on → the router decides, with or without inline markers (markers are discarded)
+    assert roll_button_source(True, 0) == "router"
+    assert roll_button_source(True, 1) == "router"
+    assert roll_button_source(True, 3) == "router"
+    # router off → inline <<TEST>> markers are the only trigger
+    assert roll_button_source(False, 2) == "marker"
+    assert roll_button_source(False, 0) == "none"

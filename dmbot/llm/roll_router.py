@@ -48,11 +48,15 @@ def classifier_system(skills: list[str], difficulties: list[str], system_display
     )
 
 
-def should_post_router(router_on: bool, marker_posted: int) -> bool:
-    """Dedupe the two roll-trigger paths (D40): an inline ``<<TEST>>`` marker the model emitted
-    (already posted, ``marker_posted`` > 0) **wins**, so the router stays silent — at most one dice
-    button per action. The router only fills in when the router is on and the model emitted none."""
-    return router_on and marker_posted == 0
+def roll_button_source(router_on: bool, marker_count: int) -> str:
+    """Which path posts this turn's dice button — ``"router"`` | ``"marker"`` | ``"none"``.
+    Flips D40's dedupe (D43/ADR 018): when the router is on, the **router wins** and the model's
+    inline ``<<TEST>>`` requests are discarded — the constrained classifier picks reliable skills
+    (ADR 014: 8/8), the narration model doesn't (seen live: ``<<TEST Heimlichkeit>>`` for an
+    attack). Markers are the fallback only when the router is off. At most one button per action."""
+    if router_on:
+        return "router"
+    return "marker" if marker_count else "none"
 
 
 def to_test_request(data: object, *, character: str | None) -> TestRequest | None:

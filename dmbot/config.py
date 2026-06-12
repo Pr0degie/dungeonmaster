@@ -106,12 +106,12 @@ class Config:
             # XTTS device: "cpu" (safe, slower) or "cuda" (fast, needs free VRAM).
             tts_device=os.environ.get("TTS_DEVICE", "cpu").strip(),
             # Hard cap on a DM turn's length (Ollama num_predict, ~tokens). The persona asks for
-            # 2–3 short sentences, but the model overruns into minute-long monologues; this is the
-            # deterministic ceiling. Each spoken char ≈ 0.1 s of TTS audio the whole table waits
-            # through, so keep it tight: ~160 ≈ a few spoken sentences (was 220; live turns ran
-            # 80–180 s when it scripted the party). The orchestrator trims a capped turn to its last
-            # full sentence. Tune by ear: lower = snappier turns, higher = more room.
-            dm_num_predict=int(os.environ.get("DM_NUM_PREDICT", "160")),
+            # 2–4 sentences; this is the deterministic ceiling against monologues. Back to 220
+            # (D43): the 160 squeeze (ADR 016) predates streaming — first audio now plays after the
+            # first sentence regardless of turn length, and the praised sessions ran at 220. The
+            # speaker-label stops stay as the backstop against scripted-party runaways. The
+            # orchestrator trims a capped turn to its last full sentence. Tune by ear.
+            dm_num_predict=int(os.environ.get("DM_NUM_PREDICT", "220")),
             # Cap on how many buffered player lines a !dm turn sends. Continuous transcription
             # (no wake word) piles up table talk + jokes between turns; sending all of it drowns
             # the real action, so keep only the most recent N. 0 = unbounded. Lower = snappier

@@ -27,7 +27,7 @@ from .recv import VadSink
 from .preflight import check_dave_session, check_static
 from ..stt import Transcriber
 from ..llm.client import OllamaClient
-from ..llm.roll_router import should_post_router
+from ..llm.roll_router import roll_button_source
 from ..orchestrator import DMBrain
 from ..tts.piper import PiperTTS
 from ..tts.textsplit import has_speakable_content
@@ -265,7 +265,7 @@ class VoiceReceiveCog(commands.Cog):
             log.exception("no usable system profile %r — running without the dice engine", system)
         # Characters: start from the example party so !test/!roll work out of the box; !join prefers
         # a channel-specific data/sessions/<id>/characters.json if present. Engine rolls (RNG) here.
-        self._characters: CharacterStore | None = self._load_characters(None)
+        self._characters, _ = self._load_characters(None)
         # Memory (Phase 9): the mutable world state per channel — current wounds/conditions, NPCs,
         # quests, location, recap. Loaded/seeded on !join (data/sessions/<id>/state.json), advanced
         # deterministically by code (golden rule #3), persisted on every change so HP survives a
@@ -456,21 +456,36 @@ class VoiceReceiveCog(commands.Cog):
         return self._streaming and self._tts is not None
 
     async def _handle_dice(self, channel) -> None:
-        """Post the turn's dice button: marker tests first, and if the model emitted none and the
-        roll router is on, classify the action and post one (dedupe — at most one button). Run
-        concurrently with playback (Task 2 / D40) so it appears while the DM still speaks."""
-        posted = await self._post_pending_dice(channel)
-        if should_post_router(self._roll_router, posted):
+        """Post the turn's dice button. The router wins when it's on (D43, flips D40's dedupe):
+        the model's inline ``<<TEST>>`` requests are drained and **discarded** — the constrained
+        classifier picks reliable skills, the narration model doesn't (seen live: Heimlichkeit
+        for an attack). Markers post only as the fallback when the router is off. Runs
+        concurrently with playback (D40) so the button appears while the DM still speaks."""
+        markers = self._brain.take_pending_tests(self._brain_channel(channel))
+        source = roll_button_source(self._roll_router, len(markers))
+        if source == "router":
+            if markers:
+                log.info("🎲 %d Inline-Marker verworfen — der Router entscheidet (D43)", len(markers))
             await self._post_router_dice(channel)
+        elif source == "marker":
+            for req in markers:
+                await self._post_dice_button(channel, req)
 
-    async def _autosave_turn(self, channel, answer: str, *, redo: bool = False) -> None:
+    async def _autosave_turn(self, channel, answer: str, *, user_msg: str | None = None,
+                             redo: bool = False) -> None:
         """Append the just-completed turn to ``data/sessions/<id>/history.jsonl`` (D41) off the
         event loop, best-effort. World state persists separately (ADR 015); this is the narrative
-        thread so a crash doesn't lose the evening's conversation."""
+        thread so a crash doesn't lose the evening's conversation.
+
+        ``user_msg`` must be the value snapshotted at **generation end** (D43): this runs after
+        playback, and a dice click during playback starts the next turn, which overwrites the
+        brain's mutable ``_last_turn`` — reading it here pairs the wrong user_msg with the answer
+        (seen live 2026-06-12 in history.jsonl). The read-now fallback covers legacy callers."""
         if not self._autosave:
             return
         cid = self._brain_channel(channel)
-        user_msg = self._brain.last_user_msg(cid)
+        if user_msg is None:
+            user_msg = self._brain.last_user_msg(cid)
         if user_msg is None:
             return
         try:
@@ -489,6 +504,9 @@ class VoiceReceiveCog(commands.Cog):
         mic button. Closes out the per-turn ``timing`` (tts/bridge via ``_speak``) and emits the
         single ``[latency]`` line once ``/speak`` returned."""
         timing.answer_chars = len(answer)
+        # Snapshot the turn's user_msg NOW (generation just ended): a dice click during the
+        # playback below starts the next turn and overwrites the brain's _last_turn (D43 race fix).
+        saved_user_msg = self._brain.last_user_msg(self._brain_channel(channel))
         if answer:
             log.info("🎭 %s", answer)  # rendered prominently in the console
         log.info("⏱ LLM %d ms%s", timing.respond_ms(), " (redo)" if timing.kind == "redo" else "")
@@ -507,7 +525,8 @@ class VoiceReceiveCog(commands.Cog):
         timing.end = time.monotonic()  # /speak returned → total stops here (mic re-anchor excluded)
         timing.log_line()
         await dice_task  # the dice button must land before the mic button re-anchors at the bottom
-        await self._autosave_turn(channel, answer, redo=timing.kind == "redo")
+        await self._autosave_turn(channel, answer, user_msg=saved_user_msg,
+                                  redo=timing.kind == "redo")
         # Keep the mic button reachable: move it back to the bottom after the message + speech.
         if self._push_to_talk and self._sink is not None:
             await self._post_mic_button(channel)
@@ -586,11 +605,15 @@ class VoiceReceiveCog(commands.Cog):
         sw = asyncio.create_task(synth_worker())
         pw = asyncio.create_task(play_worker())
         dice_task: asyncio.Task | None = None
+        saved_user_msg: str | None = None
         try:
             try:
                 await prod  # generation finished (mid-playback) — the full answer is known now
             except Exception:
                 log.exception("streaming producer failed")
+            # Snapshot the turn's user_msg NOW: the dice button below can be clicked while the
+            # tail still plays, and that next turn overwrites _last_turn (D43 race fix).
+            saved_user_msg = self._brain.last_user_msg(channel_id)
             answer = holder["answer"]
             if answer is not None:  # a turn happened ("" = a marker-only/content-less turn)
                 timing.answer_chars = len(answer)
@@ -613,7 +636,7 @@ class VoiceReceiveCog(commands.Cog):
             timing.log_line()
             if dice_task is not None:
                 await dice_task
-            await self._autosave_turn(channel, holder["answer"], redo=redo)
+            await self._autosave_turn(channel, holder["answer"], user_msg=saved_user_msg, redo=redo)
             if self._push_to_talk and self._sink is not None:
                 await self._post_mic_button(channel)
         return holder["answer"]
@@ -855,16 +878,19 @@ class VoiceReceiveCog(commands.Cog):
         fallback (matches the existing !dm/!redo convention)."""
         return self._active_vc_id if self._active_vc_id is not None else channel.id
 
-    def _load_characters(self, channel_id: int | None) -> CharacterStore:
+    def _load_characters(self, channel_id: int | None) -> tuple[CharacterStore, bool]:
         """Load the party JSON: a channel-specific sheet if present, else the example party.
+        Returns ``(store, fallback)`` — ``fallback`` is True when the example party was loaded so
+        ``!join`` can warn loudly (D43: a session in the wrong channel silently ran the example
+        party, wrong names + wrong sheet values, and nobody noticed until the DM felt broken).
         A missing file yields an empty store (the engine then rolls without a target)."""
         sessions = _DATA_DIR / "sessions"
         if channel_id is not None:
             specific = sessions / str(channel_id) / "characters.json"
             if specific.is_file():
                 log.info("loaded characters from %s", specific)
-                return CharacterStore.load(specific)
-        return CharacterStore.load(sessions / "_example" / "characters.json")
+                return CharacterStore.load(specific), False
+        return CharacterStore.load(sessions / "_example" / "characters.json"), True
 
     def _state_path(self, channel_id: int) -> Path:
         """Where this channel's mutable world state lives (data/sessions/<id>/state.json)."""
@@ -942,16 +968,6 @@ class VoiceReceiveCog(commands.Cog):
             return
         if answer is not None:  # "" = the consequence narration was empty; nothing to deliver/speak
             await self._deliver_answer(channel, guild_id, answer, timing)
-
-    async def _post_pending_dice(self, channel) -> int:
-        """Post a dice button for each test the last DM turn requested via a <<TEST …>> marker.
-        Returns how many were posted (so the roll-router only fills in when the model emitted none)."""
-        if self._profile is None:
-            return 0
-        reqs = self._brain.take_pending_tests(self._brain_channel(channel))
-        for req in reqs:
-            await self._post_dice_button(channel, req)
-        return len(reqs)
 
     async def _post_router_dice(self, channel) -> None:
         """Roll-detection router (ADR 014): classify the latest player action in a separate
@@ -1410,7 +1426,7 @@ class VoiceReceiveCog(commands.Cog):
         self._text_channel = ctx.channel  # where the pause panel (and other panels) are posted
         # Phase 8: load this channel's party (else the example), wire the "who plays whom" alias
         # hint into the prompt (open item F), and seed the turn order from the voice members.
-        self._characters = self._load_characters(channel.id)
+        self._characters, char_fallback = self._load_characters(channel.id)
         self._brain.set_alias_hint(channel.id, self._characters.alias_hint_de())
         # All table names → cut-labels/stop sequences, so a puppeted "Seskin: …" script is truncated.
         self._brain.set_known_speakers(channel.id, self._characters.speaker_labels())
@@ -1462,6 +1478,21 @@ class VoiceReceiveCog(commands.Cog):
             )
             await self._post_turn_order(ctx.channel)
             await self._refresh_pause_panel()
+
+        # Name the loaded party — and warn loudly on the example-party fallback (D43): a session
+        # in the wrong channel once silently ran Mortn/Seskin/Vask with wrong sheet values, and it
+        # only surfaced as "the DM feels broken". Better one loud line than a quiet wrong game.
+        party = ", ".join(c.name for c in self._characters.characters())
+        if char_fallback:
+            log.warning("no characters.json for channel %s — example party loaded (%s)",
+                        channel.id, party or "leer")
+            await ctx.send(
+                f"⚠ **Keine `characters.json` für diesen Channel** — Beispiel-Party geladen "
+                f"({party or '—'}). Würfe nutzen die falschen Werte! Lege "
+                f"`data/sessions/{channel.id}/characters.json` an (oder spielt im Stamm-Channel)."
+            )
+        elif party:
+            await ctx.send(f"👥 **Party:** {party}")
 
         # If a recap was stored from a previous session, show it so the table picks up the thread.
         state = self._state.get(channel.id)
