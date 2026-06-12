@@ -500,11 +500,20 @@ _(Prior session — voice-stack hardening, ADR 006 — and Phases 3–6 (the pla
 in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 
 ## Next concrete step
+**Schritt 0 — neue Charaktere (blockiert den Gate-Run).** Die Runde erstellt neue Charaktere
+(`docs/how-to-create-a-character.html` → Formular → JSON-Block je Spieler). Sobald Tobi die drei
+Blöcke pastet: **Claude validiert** (Punkte-/Steigerungs-Budget, Skill-Namen, Wunden-Formel,
+Waffe gegen das Profil), baut `data/sessions/1343673766487654464/characters.json` + Aliases
+(Discord→Charakter), **löscht** dort `state.json`/`history*.jsonl`/`recap.md` (frischer
+Chemical-Burn-Start), füllt die Bögen (`tools/fill_character_sheet.py`) und verschickt sie, und
+**aktualisiert die how-to-play-Charakterkarten + die Namen unten in dieser Checkliste** (die
+Gates selbst sind charakterunabhängig). _Erst danach Schritt 1ff._
+
 **ONE live session in circlejerk covers everything (Tobi).** Before it: **review the compendium**
 (`data/adventures/chemical_burn/adventure.json` + `npcs.json` — spot-check scene cards for tone
 and the never-say secrets). Then `!j` **in circlejerk** and check in this order:
-1. **Join line-up:** party named (**Garran Vex, Eli Castor, Magos Yann** — a ⚠ warning = wrong
-   channel, stop) + `📖 Abenteuer: Chemical Burn — Szene: Der Auftrag`.
+1. **Join line-up:** party named (**die drei neuen Charaktere** — a ⚠ warning = wrong channel,
+   stop) + `📖 Abenteuer: Chemical Burn — Szene: Der Auftrag`.
 2. **Phase 10 gate half 1:** ask a rule question by voice („Was passiert bei einem kritischen
    Erfolg?") → answer grounded in the book (a `📚 Regelwerk:` line appears in `debug.log`).
 3. **Plot coherence (D44):** the DM opens with Halikarns Auftrag, not improv; `!ort mud_gate` →
