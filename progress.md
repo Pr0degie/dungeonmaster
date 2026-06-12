@@ -62,6 +62,13 @@ world-state block (CLAUDE.md prompt order). **Model: mistral-nemo.** Recommended
 gate / any follow-up: **Opus 4.8 / xhigh**.
 
 ## Last session
+**Spieler-Doku (gleicher Tag, Abschluss):** `docs/how-to-play.html` — deutsches Regel-Primer
+(~10 min Lesezeit, gestyltes Standalone-HTML, grimdark): d100-Kernschleife, Schwierigkeitsleiter,
+EG, Crits, Kampf mit Schadensformel, Fortgeschrittenes (Vorteil, Zustände, Überlegenheit,
+Einfluss/Patron, Korruption) — Beispiele mit den echten Party-Werten durchgerechnet (gegen das
+Sheet verifiziert), spoilerfrei, ohne Bot-Bedienung (bewusst, Tobis Wahl). Vor der nächsten
+Session an Timo & Sezgin verteilen. Eigene Formulierung → committed trotz public repo.
+
 **Starter Set in den DM (D46, gleicher Tag, direkt nach 10a).** Tobi legte das gekaufte IM
 Starter Set nach `data/pdfs/Starter Set/`. Entschieden + gebaut:
 - **Setting Guide (68 S.) → Lore-RAG:** `pdf_to_md --pages 1-57` (das „Villains on
@@ -507,20 +514,14 @@ raw any more): **Garran Vex** (Pr0degie/Tobi — Nahkampf bruiser, Kettenschwert
 next `!join` re-seeds the world state fresh from the new sheet. (Channel files are git-ignored —
 session-local.)
 
-**Open items, priority order:**
-1. **HP survives a restart — the only Phase-9 gate half still open.** `!j` → `!npc add Kultist 10 3`
-   → `!test Nahkampf für Garran Vex` → 🎲 → on success pick **Kultist** → expect `💥 … = N Wunden →
-   Kultist M/10` (this also proves the **auto-combat flow**, untested so far). Check `state.json`
-   shows the reduced wounds → **restart the bot** → `!j` → wounds unchanged. Then fill the Phase-9
-   `VERIFY EVIDENCE`. (Try a `Fernkampf für Eli Castor` hit and a non-combat `!test Wissen für Magos
-   Yann` too, to exercise the ranged + skill-only paths.)
-2. **Re-confirm D42:** no empty/marker-only turn read aloud (no 15-s lone quote), and **no dice loop**
-   (a post-roll consequence narration must NOT spawn another 🎲).
-3. **Crash recovery (D41):** play a few turns → **kill the bot hard** (not `!leave`) → `!j` → expect
-   `restored N conversation turns`. Then a clean `!leave` → next `!j` is fresh.
-4. **Router timing (D40):** the 🎲 button appears **while the DM still speaks**; exactly one per action.
-5. **first_audio before/after** + `!redo` + pause/Esc mid-stream: one turn with `DM_STREAMING=0` for
-   the old single-WAV contrast (no `first_audio`/`stream` in that line).
+**Secondary live checks (same session, when convenient — older landed-but-unproven work):**
+- **D42 re-confirm:** no empty/marker-only turn read aloud (no 15-s lone quote), **no dice loop**.
+- **Crash recovery (D41):** kill the bot hard (not `!leave`) → `!j` → `restored N conversation
+  turns`; a clean `!leave` → next `!j` is fresh.
+- **Router timing (D40):** the 🎲 appears **while the DM still speaks**; exactly one per action.
+- **first_audio contrast** + `!redo` + pause/Esc mid-stream: one turn with `DM_STREAMING=0`.
+- **Vor der Session:** `docs/how-to-play.html` an Timo & Sezgin verteilen (deutsches
+  Regel-Primer, 2026-06-12 erstellt) — spart die Regelerklärung am Tisch.
 
 **Watch (persona/adherence, not gate blockers):** the **meta-ramble** („Als Spielleitung beschreibe
 ich nicht direkt die Szene…") — nemo's ceiling, report if frequent; and whether XTTS still reads any
@@ -549,29 +550,46 @@ are already on in `.env`):**
    `restored N conversation turns`. Then a clean `!leave` → next `!j` is fresh and the old log is at
    `data/sessions/<id>/history.<ts>.jsonl`.
 - Run the unit suite with **`uv run --with pytest python -m pytest -q`** (pytest isn't in the default
-  venv — see [[run-tests-command]] memory). Currently **136/136** green.
+  venv — see [[run-tests-command]] memory). Currently **177/177** green.
 
 _Resolved this session (no longer open):_ the **gemma3 vs nemo** taste test (gemma3 didn't fix the
 marker problem; nemo kept for tone — the fix was the **roll-detection router**, ADR 014); **two-stage
 Ctrl+C** shutdown (done); the **auto-test** (router, live-validated).
 
-_Carry-overs (verify in a live run, not code):_
-1. **Remote/Tailscale bridge (ADR 010)** — implemented, **never live-tested**; do the two-machine
-   check in the README "Split hosting" section when wanted (currently both bots on one box).
-2. **Answer length** by ear — tune `DM_NUM_PREDICT` if turns feel long/clipped.
-3. **Roll-router live feel** — now default-on; if a scene posts a spurious/odd button, tune the
-   classifier prompt (`dmbot/llm/roll_router.py`) or the difficulty handling. Inline `<<TEST>>` is the
-   fallback if the router is turned off (`DM_ROLL_ROUTER=0`).
-4. Older: STT confidence filter on noisy speech; the toggleable edit/review window (Part 2 backlog;
-   the pause control D27/ADR 013 is its groundwork). **Input bleed:** a player's stream audio leaking
-   into the mic gets transcribed — input-discipline / future wake-word concern, not a bug.
-5. **Open player wishes (playtest 2026-06-10; ADR 016) — re-assess after the live check, since W1's
-   shorter/cleaner output may already shrink them:** **W4** within-session repetition (*"warum hat er
-   das zweimal gesagt?"* — the DM re-narrates the same scene); **W5** answer the *exact* question
-   asked, not a generic re-description (*"ich hab nicht nach dem Raum gefragt, sondern was auf dem
-   Bildschirm läuft"*); **W8** engage provocative/derbe content (persona has it, nemo inconsistent).
-   Deep latency **W2** = Part-2 streaming TTS (roadmap). **W3** (stop button) done by Tobi. Also seen:
-   a benign `voice_recv` `voice_member_disconnect` traceback on a member leaving (alpha lib — watch).
+_Carry-overs & future directions (Stand 2026-06-12 abends):_
+1. **Modell-Test (Timo):** Mistral Small (o.ä.) auf Timos Box / der 5080 via Tailscale —
+   unabhängig vom Story-Code, Umschalten = `OLLAMA_HOST`-Einzeiler (D6/ADR 002). A/B gegen nemo
+   mit identischer Story fahren, erst NACH der Gate-Session (sonst zwei Variablen gleichzeitig).
+2. **Director→Narrator-Experiment (Timos Architektur-Idee, Diskussion 2026-06-12):** ein
+   constrained-JSON-Call entscheidet pro Turn strukturiert *was passiert* (Szenenziel,
+   NSC-Aktionen, State-Änderungen), nemo macht nur Prosa. **Bewusst aufgeschoben** — der
+   Szenen-Tracker (ADR 019) ist die deterministische Vorstufe; erst bauen, wenn Live-Spiel
+   zeigt, dass `!ort`-Handarbeit nervt oder die Szenen-Kohärenz trotz Karten kippt.
+   Kosten wären ~+1–3 s pro Turn (Single-GPU).
+3. **„The Blazing Seraph"** (Starter-Set-Abenteuer, 49 S., eigenes Bestiarium) → zweites
+   Szenen-Kompendium, NACH dem Chemical-Burn-Live-Test (Feedback einarbeiten). Danach:
+   `DM_ADVENTURE` umschalten genügt.
+4. **„Villains on Voll" (Setting Guide S. 58–67) nachingestieren**, sobald die
+   Chemical-Burn-Kampagne durch ist (`pdf_to_md --pages 58-68` → `ingest --source setting`).
+5. **RAG-Schwelle tunen:** `MAX_DISTANCE` 0.45 ist auf wenigen Fragen kalibriert; deutsche
+   Zustandsnamen („Blutend") liegen knapp drüber. Gegen Live-`📚`-Logzeilen nachjustieren.
+6. **Repo-Sichtbarkeit (Tobi-Entscheidung):** Repo ist PUBLIC → `data/adventures/` bleibt
+   untracked (Ableitung gekaufter Bücher). Auf privat stellen + whitelisten, wenn das
+   Kompendium versioniert/auf die 5080-Box synchronisiert werden soll.
+7. **Remote/Tailscale bridge (ADR 010)** — implemented, **never live-tested**; two-machine check
+   per README "Split hosting" when wanted.
+8. **Roll-router live feel** — router-wins ist seit D43 die einzige Quelle; spurious/odd buttons →
+   classifier prompt (`dmbot/llm/roll_router.py`) tunen. Inline `<<TEST>>` nur noch bei
+   `DM_ROLL_ROUTER=0`.
+9. Older: STT confidence filter on noisy speech; toggleable edit/review window (Part 2; pause
+   control D27/ADR 013 is its groundwork); **input bleed** (stream audio into mics — wake-word
+   concern, not a bug); benign `voice_recv` `voice_member_disconnect` traceback (alpha lib — watch).
+10. **Player-wish status (ADR 016 W-Liste):** **W1** (puppeting) Code-Backstops seit ADR 016,
+    **W2** (Latenz) ✅ Streaming ADR 017, **W3** (Stop-Button) ✅ Tobi, **W4** (Wiederholung)
+    Code-Guard seit D45 (live-unverified), **W5** (exakte Frage) adressiert über
+    Roll-Direktive + Szenenkarten + W4-Nudge (live-unverified), **W6** (TTS-Interpunktion) ✅,
+    **W7** = Phase-9-Gate (pending), **W8** (derbe Inhalte engagen) **offen** — nemos Ceiling,
+    beim Modell-Test (Punkt 1) mitbewerten.
 
 ---
 
