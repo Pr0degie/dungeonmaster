@@ -352,9 +352,11 @@ adventure and the rulebook take **different paths**:
   multilingual — German questions against English rule text; D28's `nomic-embed-text` failed
   that, the store's meta table pins the model) → **sqlite-vec** (`data/vectordb/rag.db`,
   cosine). Offline CLI: `python -m dmbot.rag.ingest <md> --source rulebook`. Per turn the brain
-  embeds the player input; chunks join the prompt as a `## Regelwerk` block **only above a
-  relevance threshold**, so narration turns stay lean. Lore corpora (D28) can join as further
-  `source`s later.
+  embeds the player input; chunks join the prompt **only above a relevance threshold**, so
+  narration turns stay lean — grouped as `## Regelwerk` (source `rulebook`, rules ground truth)
+  and `## Weltwissen` (source `setting`: the Starter Set's Rokarth Setting Guide, ingested
+  **without** its "Villains on Voll" spoiler chapter — D46). The wiki lore corpora (D28) can
+  join as further `source`s later.
 - **Character sheets do NOT go into RAG** — they are structured JSON (§7).
 - **Still open (Phase 10's second half):** the **profile bootstrap** — on first load of a new
   ruleset the DM reads the core-mechanics passages and proposes the profile (§9, ADR 005).

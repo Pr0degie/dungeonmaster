@@ -62,7 +62,22 @@ world-state block (CLAUDE.md prompt order). **Model: mistral-nemo.** Recommended
 gate / any follow-up: **Opus 4.8 / xhigh**.
 
 ## Last session
-**Phase 10a built — the 3-stage hybrid (same day as D43, after the "perfect gamemaster"
+**Starter Set in den DM (D46, gleicher Tag, direkt nach 10a).** Tobi legte das gekaufte IM
+Starter Set nach `data/pdfs/Starter Set/`. Entschieden + gebaut:
+- **Setting Guide (68 S.) → Lore-RAG:** `pdf_to_md --pages 1-57` (das „Villains on
+  Voll"-Kapitel mit der Mireclaw-Auflösung bleibt bis zum Kampagnenfinale draußen — dieselbe
+  Spoiler-Disziplin wie beim Abenteuer) → `ingest --source setting` (201 Chunks). Retrieval
+  sucht jetzt rulebook+setting und gruppiert als `## Regelwerk` / `## Weltwissen` (TOP_K=3).
+  Sanity verifiziert: „Welche Adelshäuser herrschen in Rokarth?" → NOBLE HOUSES ✓; „Wer steckt
+  hinter Gratis?" → **kein Treffer** ✓ (die Spoiler-Frage bleibt stumm).
+- **Patron-Sheet Aegidius Halikarn** ins chemical_burn-Kompendium: Motivation Information,
+  Auftreten undurchschaubar, 100 Solars/Tag, Boons (Grenzenlose Autorität, Furchteinflößender
+  Ruf) + die Sanctum-Obscurus-Ausstattung in der Thaler-Szene.
+- **Aufgeschoben:** „The Blazing Seraph" (SS-Adventure-Book, 49 S., eigenes Bestiarium) wird
+  erst nach dem Chemical-Burn-Live-Test zum zweiten Szenen-Kompendium; Handouts/Tokens/
+  Sektorkarte = Tischmaterial (Backlog-Idee: `!ort` postet Handout-Bilder). Suite **176→177**.
+
+**(Same day, earlier) Phase 10a built — the 3-stage hybrid (same day as D43, after the "perfect gamemaster"
 discussion).** Tobi bought *Chemical Burn* (53 pp.), put it in `data/pdfs/`, and asked for a deep
 joint planning round ("stell mir sehr viele fragen"). Decisions (via discussion): 3-stage hybrid
 over pure RAG, story as guardrail (not railroad), priorities = plot coherence + W5 question
@@ -475,6 +490,8 @@ and the never-say secrets). Then `!j` **in circlejerk** and check in this order:
    → `!j` → wounds unchanged; recap flow as before.
 6. **W4/W5:** ask „Warum sind wir hier?" twice — expect an answer, not a re-description (watch
    for the self-repetition WARNING). Then fill the Phase-9 + Phase-10(half) VERIFY EVIDENCE.
+7. **Lore (D46):** eine Rokarth-Frage („Wem gehört diese Stadt eigentlich?") → Antwort mit
+   Setting-Färbung (`📚`-Logzeile zeigt `setting:`); „wer steckt hinter Gratis?" bleibt vage.
 Watch `ctx=` in the `[latency]` lines — the adventure block adds ~1k tokens; the D36 warning
 fires above 85% of 8192. Dial: **Opus 4.8 / xhigh** (roadmap recommends opusplan/high for
 Phase 10 planning; the building is done — the run is verification).
@@ -614,6 +631,7 @@ create the next-numbered ADR.
 | D43 | Post-roll robustness (echo collapse, 2026-06-12) | **(a) Echo guard** — pure `is_echo()` flags an answer that parrots a player line (normalized exact/fragment/≥90%-coverage); retry once with a corrective nudge, then **suppress the turn** (nothing spoken, the pair stays out of history); `restore_history` skips empty answers. **(b) Roll-feedback directive** — a results-only `[Würfel]` turn appends "Beschreibe als Spielleitung kurz die Folgen …". **(c) Router wins the dedupe** (flips D40's marker-wins; `roll_button_source` replaces `should_post_router`) — inline markers stripped but discarded when the router is on. **(d) Autosave race fix** — the cog snapshots `user_msg` at generation end and passes it to `_autosave_turn` (a dice click during playback overwrites `_last_turn`). **(e) ADR 016 partial rollback** — `num_predict` 160→220, persona "zwei bis vier Sätze". Plus: `!join` names the party + warns loudly on the `_example` fallback; `chat_stream` read timeout 120→300 s | The 2026-06-12 session collapsed: a nonsense marker roll (Heimlichkeit for an attack — the unreliable marker won the dedupe over the validated router) + a bare `[Würfel]` feedback line made nemo predict the *next player line*; the label-strip turned it into a clean-looking echo that was spoken, stored, and self-reinforced ("Ich greife den Kultisten an." three turns straight). Deterministic guards over persona hopes (the ADR 016 lesson); the brevity squeeze predates streaming and the praised sessions ran at 220 → ADR 018 |
 | D44 | Adventure into the DM (Phase 10a) | **3-stage hybrid** instead of pure vector RAG: (1) a ~300-token German **adventure summary** always in the prompt; (2) a deterministic **scene tracker** — the adventure hand-authored once into German scene cards (`data/adventures/<id>/adventure.json` + `npcs.json` statblocks; local-only, not in git — derivative of a bought book in a public repo), pointer = `WorldState.scene_id`, moved by humans via `!ort`/`!szenen`, never by the model; `!npc add` resolves compendium statblocks; (3) **rulebook-only RAG** — heading-aware chunks → Ollama embed → `sqlite-vec`, threshold-gated `## Regelwerk` block per turn (offline CLI `python -m dmbot.rag.ingest`). The adventure is deliberately NOT in the vector store | Similarity search can't answer "wo sind wir im Plot" (the loudest player critique: the DM improvised from nothing) and surfaces part-3 spoilers in part 1; plot position must be code state (golden rule #3). Matches Timo's independently-formed architecture (prepared docs + state outside the narrator). First compendium: **Chemical Burn** (15 scenes, 24 statblocks). `DM_ADVENTURE` env; profile bootstrap (gate half 2) stays open → ADR 019 |
 | D45 | Embedder + W4 guard | **(a)** RAG embedder = **`bge-m3`** (multilingual), replacing D28's `nomic-embed-text` for the store; the store's meta table pins model+dim so retrieval always matches. **(b)** Echo guard extended by **`is_self_repetition`** (SequenceMatcher ≥0.75 on normalized text, <60 chars exempt): retry with a "beantworte die Frage direkt"-nudge, then suppress; streamed long repetitions only logged (audio can't be retracted) | (a) Verified against real questions: German queries barely matched the English rulebook with nomic ("kritischer Erfolg" → miss/wrong hit); bge-m3 hits DIFFICULTY/CRITICAL HIT while table talk stays under the 0.45 threshold. (b) W4 from the wishlist, seen live 2026-06-12: "Warum sind wir hier?" → near-verbatim re-description with pronoun swaps — substring checks miss that, fuzzy ratio catches it → ADR 019 (extends ADR 018) |
+| D46 | Starter Set as lore + patron source | **(a)** The Starter Set's **Setting Guide → `source=setting`** in the existing RAG store (pages 1–57 only — the „Villains on Voll" chapter with the Mireclaw reveal stays out until the campaign finale); retrieval searches rulebook+setting and groups hits as `## Regelwerk` / `## Weltwissen (… nur als Färbung nutzen)`, TOP_K=3 total. **(b)** The **Aegidius-Halikarn patron sheet** folded into the chemical_burn compendium (Motivation Information, Auftreten undurchschaubar, Boons incl. Sanctum-Obscurus-Ausstattung in der Thaler-Szene). „The Blazing Seraph" (SS adventure book) wird erst NACH dem Chemical-Burn-Live-Test zum zweiten Kompendium | The Setting Guide is a better first lore source than D28's wiki plan: campaign-specific (Chemical Burn plays in Rokarth), curated, already owned — wikis stay the later broad-lore step. Spoiler discipline (ADR 019) applies to lore too: similarity must not surface the villain chapter on „wer steckt dahinter?" (verified: the question returns nothing). Applies ADR 019, no new trade-off → D-entry, no new ADR |
 
 ### Phase → ADR map (read these when you enter the phase)
 
@@ -872,8 +890,10 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   `WorldState.scene_id`, `!npc add` statblocks) instead of vector RAG; **rulebook** ingestion
   (`dmbot/rag/ingest.py` → `sqlite-vec`, bge-m3, 1505 chunks) + threshold-gated retrieval into
   the prompt. The adventure is deliberately NOT in the vector store (spoilers).
+- [x] **Lore source 1 (D46, 2026-06-12):** Starter-Set Setting Guide (ohne Villains-Kapitel) als
+  `source=setting`, gruppiert als `## Weltwissen`; Patron-Sheet ins Kompendium. Wiki-Korpus
+  (D28: Fandom + Lexicanum) bleibt der spätere Breiten-Ausbau.
 - [ ] **Gate half 1 (live):** a concrete rule question answered correctly from the PDF
-- [ ] Lore corpus (D28: Fandom + Lexicanum → further `source`s) — later
 - [ ] Profile bootstrap: DM proposes a draft system profile from the rulebook → user confirms → saved
 - VERIFY EVIDENCE: _(pending the circlejerk run)_
 - **Decided approach (D28, 2026-06-08 — lore + RAG; full plan in this session's plan file):**

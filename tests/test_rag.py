@@ -58,7 +58,8 @@ def _fixture_db(tmp_path: Path) -> Path:
     rows = [
         ("rulebook", "DIFFICULTY", "Difficulty ladder rules.", [1.0, 0.0, 0.0, 0.0]),
         ("rulebook", "CRITICAL HIT", "Crit rules.", [0.0, 1.0, 0.0, 0.0]),
-        ("lore", "VOLL", "Planet lore.", [1.0, 0.05, 0.0, 0.0]),  # near the query but wrong source
+        ("setting", "NOBLE HOUSES", "House Castyx rules Rokarth.", [0.9, 0.1, 0.0, 0.0]),
+        ("gm_only", "VOLL", "Secret GM lore.", [1.0, 0.05, 0.0, 0.0]),  # near, but unsearched source
     ]
     for source, heading, text, vec in rows:
         cur = conn.execute("INSERT INTO chunks (source, heading, text) VALUES (?, ?, ?)",
@@ -86,7 +87,16 @@ def test_relevant_hit_yields_a_regelwerk_block_with_source(tmp_path) -> None:
     block = asyncio.run(r.fetch_block("Wie funktioniert die Schwierigkeit?"))
     assert block.startswith("## Regelwerk")
     assert "[Quelle: DIFFICULTY]" in block and "Difficulty ladder rules." in block
-    assert "Planet lore." not in block  # source='lore' is filtered out (spoiler discipline)
+    assert "Secret GM lore." not in block  # unsearched sources stay out (spoiler discipline)
+
+
+def test_setting_hits_group_under_weltwissen_after_regelwerk(tmp_path) -> None:
+    db = _fixture_db(tmp_path)
+    # near both the DIFFICULTY rule chunk and the setting chunk → both pass the threshold
+    r = _retriever(db, [0.97, 0.05, 0.0, 0.0])
+    block = asyncio.run(r.fetch_block("Wer regiert Rokarth?"))
+    assert "## Weltwissen" in block and "House Castyx rules Rokarth." in block
+    assert block.index("## Regelwerk") < block.index("## Weltwissen")  # rules truth before colour
 
 
 def test_below_threshold_yields_no_block(tmp_path) -> None:

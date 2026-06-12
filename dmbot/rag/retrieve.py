@@ -1,11 +1,13 @@
-"""Rulebook retrieval — the runtime half of stage 3 (Phase 10a, ADR 019).
+"""Book retrieval — the runtime half of stage 3 (Phase 10a, ADR 019).
 
-Per DM turn the brain asks for a ``## Regelwerk`` block for the current player input: embed the
-query (Ollama ``/api/embed``, async) and KNN-search the sqlite-vec store **with a distance
-threshold** — most turns are narration, not rule questions, so most turns get no block at all and
-the prompt stays lean. Only ``source='rulebook'`` rows are searched; the adventure never enters
-the vector store (spoiler discipline, ADR 019). Degrades silently: no DB / Ollama hiccup → no
-block, never a broken turn.
+Per DM turn the brain asks for a prompt block for the current player input: embed the query
+(Ollama ``/api/embed``, async) and KNN-search the sqlite-vec store **with a distance threshold**
+— most turns are narration, not lookups, so most turns get no block at all and the prompt stays
+lean. Two sources are searched and grouped under separate labels: ``rulebook`` (→ ``## Regelwerk``,
+rules ground truth) and ``setting`` (→ ``## Weltwissen``, Rokarth lore from the Starter Set's
+Setting Guide — its spoiler chapter "Villains on Voll" is excluded at ingest time). The adventure
+itself never enters the vector store (spoiler discipline, ADR 019). Degrades silently: no DB /
+Ollama hiccup → no block, never a broken turn.
 """
 
 from __future__ import annotations
@@ -25,7 +27,13 @@ log = logging.getLogger(__name__)
 # for paraphrased German questions against English rule text, tight enough that table talk
 # ("ich greife ihn an") doesn't drag rule chunks into every prompt. Tune against live logs.
 MAX_DISTANCE = 0.45
-TOP_K = 2
+TOP_K = 3  # total across both sources — lore may colour a scene, not flood the prompt
+
+# Searched sources and their prompt labels, in block order (rules ground truth before colour).
+_SOURCES: dict[str, str] = {
+    "rulebook": "## Regelwerk (Auszüge aus dem Regelbuch — Grundlage für Regelfragen)",
+    "setting": "## Weltwissen (Hive Rokarth — Hintergrund, nur als Färbung nutzen)",
+}
 
 
 class RulebookRetriever:
@@ -76,27 +84,29 @@ class RulebookRetriever:
         resp.raise_for_status()
         return resp.json()["embeddings"][0]
 
-    def _search(self, vector: list[float]) -> list[tuple[str, str, float]]:
-        """KNN over the store (sync sqlite — run via to_thread). → [(heading, text, distance)]."""
+    def _search(self, vector: list[float]) -> list[tuple[str, str, str, float]]:
+        """KNN over the store (sync sqlite — run via to_thread).
+        → [(source, heading, text, distance)] for the searched sources, best first."""
+        placeholders = ",".join("?" for _ in _SOURCES)
         conn = sqlite3.connect(self._db_path)
         try:
             conn.enable_load_extension(True)
             sqlite_vec.load(conn)
             conn.enable_load_extension(False)
             rows = conn.execute(
-                "SELECT c.heading, c.text, v.distance FROM chunks_vec v "
+                "SELECT c.source, c.heading, c.text, v.distance FROM chunks_vec v "
                 "JOIN chunks c ON c.id = v.rowid "
-                "WHERE v.embedding MATCH ? AND v.k = ? AND c.source = 'rulebook' "
+                f"WHERE v.embedding MATCH ? AND v.k = ? AND c.source IN ({placeholders}) "
                 "ORDER BY v.distance",
-                (json.dumps(vector), self._k * 3),  # over-fetch: the source filter prunes
+                (json.dumps(vector), self._k * 3, *_SOURCES),  # over-fetch: the filter prunes
             ).fetchall()
         finally:
             conn.close()
-        return [(h, t, d) for h, t, d in rows][: self._k]
+        return [(s, h, t, d) for s, h, t, d in rows][: self._k]
 
     async def fetch_block(self, query: str) -> str:
-        """The ``## Regelwerk`` prompt block for ``query``, or ``""`` when nothing is relevant
-        (the common case) or anything fails (never breaks a turn)."""
+        """The ``## Regelwerk`` / ``## Weltwissen`` prompt block(s) for ``query``, or ``""`` when
+        nothing is relevant (the common case) or anything fails (never breaks a turn)."""
         query = (query or "").strip()
         if not query:
             return ""
@@ -104,14 +114,21 @@ class RulebookRetriever:
             vector = await self._embed_query(query)
             hits = await asyncio.to_thread(self._search, vector)
         except Exception:
-            log.exception("rulebook retrieval failed — turn continues without it")
+            log.exception("book retrieval failed — turn continues without it")
             return ""
-        hits = [(h, t, d) for h, t, d in hits if d <= self._max_distance]
+        hits = [(s, h, t, d) for s, h, t, d in hits if d <= self._max_distance]
         if not hits:
             return ""
-        log.info("📚 Regelwerk: %s", "; ".join(f"{h!r} (d={d:.2f})" for h, _, d in hits))
-        lines = ["## Regelwerk (Auszüge aus dem Regelbuch — Grundlage für Regelfragen)"]
-        for heading, text, _ in hits:
-            lines.append(f"[Quelle: {heading}]")
-            lines.append(text)
+        log.info("📚 %s", "; ".join(f"{s}:{h!r} (d={d:.2f})" for s, h, _, d in hits))
+        lines: list[str] = []
+        for source, label in _SOURCES.items():  # fixed order: rules ground truth before colour
+            grouped = [(h, t) for s, h, t, _ in hits if s == source]
+            if not grouped:
+                continue
+            if lines:
+                lines.append("")
+            lines.append(label)
+            for heading, text in grouped:
+                lines.append(f"[Quelle: {heading}]")
+                lines.append(text)
         return "\n".join(lines)
