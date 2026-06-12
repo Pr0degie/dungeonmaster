@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How to Play — Imperium Maledictum</title>
+<style>
+  :root {
+    --bg: #0d0b09;
+    --panel: #16120e;
+    --panel-2: #1d1813;
+    --ink: #d8cfc0;
+    --ink-dim: #9a8f7d;
+    --gold: #c9a227;
+    --gold-soft: #8a6f1f;
+    --blood: #8e2f2f;
+    --teal: #4f8a8b;
+    --border: #2e2620;
+    --ok: #6f9e57;
+    --bad: #b05050;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    background-image: radial-gradient(ellipse at 50% -10%, #1d160d 0%, var(--bg) 60%);
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    line-height: 1.6;
+    font-size: 17px;
+  }
+  .page { max-width: 880px; margin: 0 auto; padding: 32px 22px 80px; }
+
+  header { text-align: center; padding: 28px 0 8px; }
+  .eyebrow {
+    letter-spacing: .35em; text-transform: uppercase; font-size: 12px;
+    color: var(--gold-soft); margin-bottom: 10px;
+  }
+  h1 {
+    font-size: clamp(34px, 6vw, 52px); margin: 0 0 6px;
+    color: var(--gold); letter-spacing: .04em; font-variant: small-caps;
+    text-shadow: 0 0 28px rgba(201,162,39,.18);
+  }
+  .subtitle { color: var(--ink-dim); font-style: italic; margin: 0; }
+  .rule-line {
+    height: 1px; margin: 26px auto; width: 70%;
+    background: linear-gradient(90deg, transparent, var(--gold-soft), transparent);
+  }
+
+  h2 {
+    color: var(--gold); font-variant: small-caps; letter-spacing: .05em;
+    font-size: 26px; margin: 48px 0 6px; border-bottom: 1px solid var(--border);
+    padding-bottom: 6px;
+  }
+  h2 .num { color: var(--gold-soft); margin-right: 10px; font-size: 20px; }
+  h3 { color: var(--ink); font-size: 19px; margin: 26px 0 6px; }
+  p { margin: 10px 0; }
+  em { color: var(--ink); }
+  strong { color: #efe6d2; }
+  .dim { color: var(--ink-dim); font-size: 15px; }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 18px 20px; margin: 18px 0;
+  }
+  .panel.gold { border-color: var(--gold-soft); background: linear-gradient(180deg, #1c160c, var(--panel)); }
+  .panel.blood { border-left: 4px solid var(--blood); }
+  .panel-title {
+    font-variant: small-caps; letter-spacing: .08em; color: var(--gold);
+    font-size: 15px; margin-bottom: 6px;
+  }
+
+  .formula {
+    text-align: center; font-size: clamp(17px, 3.4vw, 24px); padding: 18px 10px;
+    color: #efe6d2; font-family: Georgia, serif;
+  }
+  .formula .op { color: var(--gold-soft); padding: 0 8px; }
+  .formula .hl { color: var(--gold); border-bottom: 2px solid var(--gold-soft); padding: 0 4px; }
+
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 16px; }
+  th {
+    text-align: left; color: var(--gold); font-variant: small-caps; letter-spacing: .05em;
+    border-bottom: 1px solid var(--gold-soft); padding: 8px 10px; font-weight: normal;
+  }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  td.mod { font-family: Consolas, monospace; }
+  .pos { color: var(--ok); } .neg { color: var(--bad); } .neut { color: var(--ink-dim); }
+
+  .chars { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 18px 0; }
+  .char {
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px;
+  }
+  .char h4 { margin: 0 0 2px; color: var(--gold); font-size: 18px; font-variant: small-caps; letter-spacing: .04em; }
+  .char .role { color: var(--ink-dim); font-size: 13.5px; font-style: italic; margin-bottom: 8px; }
+  .char ul { margin: 6px 0 0; padding-left: 0; list-style: none; font-size: 15px; }
+  .char li { padding: 2px 0; border-bottom: 1px dotted var(--border); display: flex; justify-content: space-between; }
+  .char li:last-child { border-bottom: none; }
+  .char .v { color: #efe6d2; font-family: Consolas, monospace; }
+
+  .example {
+    background: var(--panel-2); border: 1px solid var(--border); border-left: 4px solid var(--teal);
+    border-radius: 6px; padding: 14px 18px; margin: 14px 0; font-size: 15.5px;
+  }
+  .example .ex-title { color: var(--teal); font-variant: small-caps; letter-spacing: .06em; font-size: 14px; margin-bottom: 4px; }
+  .example .die { font-family: Consolas, monospace; color: #efe6d2; }
+
+  .flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; margin: 16px 0; }
+  .flow .step {
+    flex: 1 1 150px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px;
+    padding: 10px 12px; font-size: 14.5px; position: relative;
+  }
+  .flow .step b { display: block; color: var(--gold); font-variant: small-caps; font-size: 14px; margin-bottom: 3px; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 640px) { .two-col { grid-template-columns: 1fr; } }
+
+  .quote {
+    text-align: center; font-style: italic; color: var(--ink-dim); margin: 30px auto; max-width: 620px;
+  }
+  .quote .who { display: block; margin-top: 6px; font-size: 13.5px; color: var(--gold-soft); font-style: normal; letter-spacing: .08em; }
+
+  .crest { text-align: center; font-size: 26px; color: var(--gold-soft); margin: 4px 0; }
+  footer { margin-top: 56px; text-align: center; color: var(--ink-dim); font-size: 13.5px; }
+  footer .rule-line { margin-bottom: 18px; }
+  code {
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px;
+    padding: 1px 6px; font-size: 14.5px; color: #efe6d2; font-family: Consolas, monospace;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <div class="crest">⚜</div>
+  <div class="eyebrow">Warhammer 40.000 Roleplay</div>
+  <h1>How to Play</h1>
+  <p class="subtitle">Imperium Maledictum — die Spielregeln in zehn Minuten</p>
+  <div class="rule-line"></div>
+</header>
+
+<p class="quote">„Im grimmig-dunklen 41. Jahrtausend gibt es nur Krieg. Und Papierkram. Und sehr,
+sehr viele Würfe, die schiefgehen können."
+<span class="who">— EUER SPIELLEITER</span></p>
+
+<!-- ================================================================== -->
+<h2><span class="num">I</span>Worum geht es?</h2>
+<p><strong>Imperium Maledictum</strong> ist ein Erzähl-Rollenspiel: Der <strong>Spielleiter</strong>
+beschreibt die Welt, <strong>ihr</strong> sagt, was eure Charaktere tun — in normalen Sätzen, kein
+Regelwissen nötig. Immer wenn der Ausgang einer Handlung <em>ungewiss und bedeutsam</em> ist
+(schleichen, überreden, kämpfen, ein Schloss knacken), entscheiden die <strong>Würfel</strong>.
+Alles andere passiert einfach.</p>
+<p>Ihr spielt <strong>Agenten des Inquisitors Aegidius Halikarn</strong> in der Makropole
+Rokarth — kleine Lichter in einer sehr großen Finsternis. Ihr seid keine Superhelden:
+Vorsicht, Vorbereitung und gute Fragen halten euch länger am Leben als jede Rüstung.</p>
+
+<div class="panel gold">
+  <div class="panel-title">⚖ Die einzige Regel, die du wirklich brauchst</div>
+  <div class="formula">
+    Wirf <span class="hl">1W100</span> <span class="op">→</span>
+    Ergebnis <span class="hl">≤ Zielwert</span> <span class="op">=</span> <strong>Erfolg</strong>
+  </div>
+  <div class="formula" style="font-size: 17px; padding-top: 0;">
+    Zielwert <span class="op">=</span> dein <span class="hl">Fertigkeitswert</span>
+    <span class="op">+</span> <span class="hl">Schwierigkeit</span>
+  </div>
+  <p class="dim" style="text-align:center; margin-top:0;">Niedrig würfeln ist gut. Das ist alles.
+  Der Rest dieses Dokuments sind Verfeinerungen dieser einen Zeile.</p>
+</div>
+
+<!-- ================================================================== -->
+<h2><span class="num">II</span>Eure Charaktere</h2>
+<p>Jeder Charakter hat <strong>Eigenschaften</strong> (z.&nbsp;B. Stärke, Widerstand, Geschick — Werte
+um 20–60) und darauf aufbauende <strong>Fertigkeiten</strong> mit einem Prozentwert. Der Wert
+<em>ist</em> deine Chance: Nahkampf 58 heißt, ohne Erschwernis triffst du in 58&nbsp;% der Fälle.</p>
+
+<div class="chars">
+  <div class="char">
+    <h4>Garran Vex</h4>
+    <div class="role">Nahkampf-Brecher — gespielt von Tobi</div>
+    <ul>
+      <li>Nahkampf <span class="v">58</span></li>
+      <li>Athletik <span class="v">48</span></li>
+      <li>Einschüchtern <span class="v">45</span></li>
+      <li>Waffe: Kettenschwert <span class="v">1W10+5</span></li>
+      <li>Zähigkeitsbonus <span class="v">5</span></li>
+    </ul>
+  </div>
+  <div class="char">
+    <h4>Eli Castor</h4>
+    <div class="role">Scharfschütze — gespielt von Timo</div>
+    <ul>
+      <li>Fernkampf <span class="v">60</span></li>
+      <li>Wahrnehmung <span class="v">50</span></li>
+      <li>Heimlichkeit <span class="v">44</span></li>
+      <li>Waffe: Lasgewehr <span class="v">1W10+4</span></li>
+      <li>Zähigkeitsbonus <span class="v">3</span></li>
+    </ul>
+  </div>
+  <div class="char">
+    <h4>Magos Yann</h4>
+    <div class="role">Tech-Gelehrter — gespielt von Sezgin</div>
+    <ul>
+      <li>Wissen <span class="v">62</span></li>
+      <li>Technologie <span class="v">58</span></li>
+      <li>Überreden <span class="v">55</span></li>
+      <li>Medizin <span class="v">46</span></li>
+      <li>Zähigkeitsbonus <span class="v">3</span></li>
+    </ul>
+  </div>
+</div>
+<p class="dim">Merke: Lass den kämpfen, der kämpfen kann. Magos Yann mit Nahkampf 25 gehört
+hinter Garran — und Garran mit Wissen-nichts sollte keine Daten-Slates entschlüsseln.</p>
+
+<!-- ================================================================== -->
+<h2><span class="num">III</span>Die Probe — Schritt für Schritt</h2>
+
+<div class="flow">
+  <div class="step"><b>1 · Ansage</b>Du sagst, was du tust: <em>„Ich schleiche mich an die Wache an."</em></div>
+  <div class="step"><b>2 · Fertigkeit</b>Der Spielleiter wählt die Fertigkeit (Heimlichkeit) und die Schwierigkeit.</div>
+  <div class="step"><b>3 · Zielwert</b>Fertigkeitswert + Schwierigkeit = Ziel.</div>
+  <div class="step"><b>4 · Wurf</b>1W100. Ergebnis ≤ Ziel? Geschafft.</div>
+  <div class="step"><b>5 · Erzählung</b>Der Spielleiter beschreibt die Folgen — gut oder grausam.</div>
+</div>
+
+<h3>Die Schwierigkeitsleiter</h3>
+<p>Die Schwierigkeit ist ein <em>Wort</em>, hinter dem eine Zahl steht. Sie kommt immer vom
+Spielleiter — nie von euch:</p>
+<table>
+  <tr><th>Schwierigkeit</th><th>Modifikator</th><th>Gefühlt</th></tr>
+  <tr><td>Sehr leicht</td><td class="mod pos">+60</td><td class="dim">Fast unmöglich zu vermasseln</td></tr>
+  <tr><td>Leicht</td><td class="mod pos">+40</td><td class="dim">Gute Bedingungen</td></tr>
+  <tr><td>Routine</td><td class="mod pos">+20</td><td class="dim">Alltagshandwerk</td></tr>
+  <tr><td>Herausfordernd</td><td class="mod neut">+0</td><td class="dim">Der Normalfall</td></tr>
+  <tr><td>Schwierig</td><td class="mod neg">−10</td><td class="dim">Widrige Umstände</td></tr>
+  <tr><td>Schwer</td><td class="mod neg">−20</td><td class="dim">Ernsthaft riskant</td></tr>
+  <tr><td>Sehr schwer</td><td class="mod neg">−30</td><td class="dim">Heldenstoff — oder Selbstmord</td></tr>
+</table>
+
+<h3>Erfolgsgrade (EG) — wie gut oder wie schlecht?</h3>
+<p>Oft zählt nicht nur <em>ob</em>, sondern <em>wie deutlich</em>. Dafür vergleicht man die
+<strong>Zehnerstellen</strong>:</p>
+<div class="panel">
+  <div class="formula" style="padding: 8px 0;">
+    EG <span class="op">=</span> Zehnerstelle(<span class="hl">Ziel</span>)
+    <span class="op">−</span> Zehnerstelle(<span class="hl">Wurf</span>)
+  </div>
+  <p class="dim" style="text-align:center; margin:0;">+3 EG oder mehr = beeindruckend ·
+  −3 EG oder schlimmer = peinlich bis gefährlich</p>
+</div>
+
+<div class="example">
+  <div class="ex-title">⚔ Beispiel — Eli schießt</div>
+  Eli legt im Halbdunkel auf einen fliehenden Ganger an. Fernkampf <span class="die">60</span>,
+  schlechtes Licht macht es <em>Schwierig (−10)</em> → Ziel <span class="die">50</span>.
+  Eli würfelt <span class="die">23</span> → Erfolg, und zwar mit
+  <span class="die">5&nbsp;−&nbsp;2&nbsp;=&nbsp;3&nbsp;EG</span>: ein sauberer Treffer, der Ganger
+  geht zu Boden. Bei einer <span class="die">48</span> wäre es nur knapp gewesen (0&nbsp;EG) —
+  getroffen, aber gestreift.
+</div>
+
+<h3>Kritisch &amp; Patzer</h3>
+<div class="two-col">
+  <div class="panel">
+    <div class="panel-title" style="color: var(--ok);">✦ Pasch bei Erfolg = Kritischer Erfolg</div>
+    <p class="dim" style="margin:0;">Würfelst du einen <strong>Pasch</strong> (11, 22, 33 …) und liegst
+    unter dem Ziel, gelingt es spektakulär — im Kampf verursacht das eine <strong>kritische
+    Wunde</strong> beim Gegner.</p>
+  </div>
+  <div class="panel blood">
+    <div class="panel-title" style="color: var(--bad);">✦ Pasch bei Fehlschlag = Patzer</div>
+    <p class="dim" style="margin:0;">Pasch <em>über</em> dem Ziel: Es geht nicht nur schief, es geht
+    <strong>denkwürdig</strong> schief. Die Waffe klemmt, die Lüge fliegt auf, der Sims bricht.</p>
+  </div>
+</div>
+<p><strong>Immer-Regel:</strong> <code>01–05</code> ist <em>immer</em> ein Erfolg,
+<code>96–00</code> <em>immer</em> ein Fehlschlag — egal wie hoch oder tief der Zielwert liegt.
+Der Imperator schützt. Meistens.</p>
+
+<!-- ================================================================== -->
+<h2><span class="num">IV</span>Kampf</h2>
+<p>Kampf ist eine Folge von Proben — gefährlich, schnell, und selten die klügste Option.
+Gekämpft wird in Runden; jeder handelt einmal pro Runde (bewegen + eine Aktion).</p>
+
+<div class="flow">
+  <div class="step"><b>1 · Angriff</b>Probe auf <em>Nahkampf</em> oder <em>Fernkampf</em> gegen deinen Zielwert.</div>
+  <div class="step"><b>2 · Schaden</b>Waffenschaden würfeln + deine EG addieren.</div>
+  <div class="step"><b>3 · Zähigkeit</b>Das Ziel zieht Zähigkeitsbonus + Rüstung ab.</div>
+  <div class="step"><b>4 · Wunden</b>Der Rest geht von den Wunden ab. Bei 0: kampfunfähig.</div>
+</div>
+
+<div class="panel gold">
+  <div class="formula" style="padding: 8px 0;">
+    Schaden <span class="op">=</span> <span class="hl">Waffe</span>
+    <span class="op">+</span> <span class="hl">EG</span>
+    <span class="op">−</span> (<span class="hl">Zähigkeitsbonus + Rüstung</span>)
+  </div>
+</div>
+
+<div class="example">
+  <div class="ex-title">⚔ Beispiel — Garran gegen einen Kultisten</div>
+  Garran greift an: Nahkampf <span class="die">58</span>, <em>Herausfordernd (+0)</em> →
+  Ziel <span class="die">58</span>. Wurf <span class="die">31</span> → Treffer mit
+  <span class="die">2&nbsp;EG</span>. Kettenschwert: <span class="die">1W10+5</span>, gewürfelt
+  eine <span class="die">6</span> → <span class="die">6+5+2&nbsp;=&nbsp;13</span> Schaden.
+  Der Kultist hat Zähigkeitsbonus 3 und Rüstung 1 → er schluckt 4, verliert
+  <strong>9 Wunden</strong>. Bei 12 Wunden gesamt wankt er noch — eine Runde.
+</div>
+
+<h3>Wunden, kritische Wunden &amp; kampfunfähig</h3>
+<p><strong>Wunden</strong> sind eure Lebensenergie (Garran 16, Eli &amp; Yann weniger — Nahkämpfer
+halten mehr aus). Bei <strong>0 Wunden</strong> bist du <strong>kampfunfähig</strong> — nicht
+automatisch tot, aber hilflos und auf deine Kameraden angewiesen. <strong>Kritische Wunden</strong>
+(durch kritische Treffer) sind bleibende Verletzungen mit eigenen Folgen — die will niemand
+sammeln. <em>Medizin</em> (Yann!) stabilisiert und heilt.</p>
+
+<h3>Waffen am Tisch</h3>
+<table>
+  <tr><th>Waffe</th><th>Schaden</th><th>Wer</th></tr>
+  <tr><td>Kettenschwert</td><td class="mod">1W10+5</td><td class="dim">Garran</td></tr>
+  <tr><td>Lasgewehr</td><td class="mod">1W10+4</td><td class="dim">Eli</td></tr>
+  <tr><td>Laspistole</td><td class="mod">1W10+3</td><td class="dim">Reserve</td></tr>
+  <tr><td>Schockstab</td><td class="mod">1W10</td><td class="dim">Yann (Notwehr!)</td></tr>
+  <tr><td>Faust</td><td class="mod">1W10−2</td><td class="dim">Die letzte Option</td></tr>
+</table>
+
+<!-- ================================================================== -->
+<h2><span class="num">V</span>Fortgeschrittenes — in Kürze</h2>
+
+<h3>Vorteil &amp; Nachteil</h3>
+<p>Gute Vorbereitung, eine helfende Hand oder eine Übermacht geben <strong>Vorteil</strong>:
+zweimal würfeln, das <em>bessere</em> Ergebnis zählt. Miese Umstände geben
+<strong>Nachteil</strong>: das <em>schlechtere</em> zählt. Stapelt nicht — entweder, oder.</p>
+
+<h3>Vergleichende &amp; ausgedehnte Proben</h3>
+<p><strong>Vergleichend:</strong> Beide Seiten würfeln (dein Schleichen gegen ihre Wahrnehmung) —
+mehr EG gewinnt. <strong>Ausgedehnt:</strong> Große Aufgaben (ein Archiv durchsuchen, durch ein
+Labyrinth navigieren) brauchen über mehrere Proben hinweg eine Gesamtsumme an EG — jeder
+Fehlschlag kostet Zeit, und Zeit ist in Rokarth selten euer Freund.</p>
+
+<h3>Zustände</h3>
+<p>Kampf und Umwelt hinterlassen Spuren: <em>Blutend</em> (verliert weiter Wunden),
+<em>Benommen</em>, <em>Vergiftet</em>, <em>Verängstigt</em>, <em>Erschöpft</em>, <em>Brennend</em> …
+Ein Zustand sagt dir, was er tut, wenn du ihn bekommst — meist: schnell loswerden. Die giftige
+Luft der unteren Makropole verteilt einige davon gratis.</p>
+
+<h3>Überlegenheit (Superiority)</h3>
+<p>Ein <strong>Gruppen-Vorrat an Oberwasser</strong>: Wer vor dem Kampf das Schlachtfeld studiert,
+den Gegner ausspioniert oder Informationen sammelt, verdient Überlegenheits-Punkte — und die
+Gruppe gibt sie im Kampf für Boni aus. Übersetzt: <em>Hausaufgaben machen zahlt sich in
+Blut aus, das ihr nicht verliert.</em></p>
+
+<h3>Einfluss &amp; euer Patron</h3>
+<p><strong>Einfluss</strong> ist euer Ansehen bei den Fraktionen Rokarths (Vigiliten, Gilden,
+Unterwelt …) — es steigt und fällt mit euren Taten und öffnet oder verschließt Türen.
+Euer Patron <strong>Inquisitor Halikarn</strong> zahlt euren Sold, stellt ein sicheres Haus —
+und verlangt dafür <strong>absolute Diskretion</strong>. Sein Siegel öffnet fast jede Tür im
+Imperium; es zu zeigen hat aber <em>immer</em> einen Preis. Überlegt zweimal.</p>
+
+<h3>Korruption</h3>
+<p>Manche Dinge im 41. Jahrtausend sollte man weder ansehen noch anfassen. Wer es doch tut,
+riskiert <strong>Korruption</strong> — eine schleichende Verderbnis von Geist und Körper.
+Wenn der Spielleiter danach würfeln lässt, war es bereits zu spät.</p>
+
+<!-- ================================================================== -->
+<h2><span class="num">VI</span>So spielt man gut</h2>
+<div class="panel">
+  <ul style="margin: 4px 0; padding-left: 20px;">
+    <li><strong>Sag, was du tust — nicht, was du würfelst.</strong> „Ich lenke die Wache ab und
+    greife nach dem Schlüssel" ist eine Handlung; „Ich mache eine Heimlichkeit-Probe" ist keine.
+    Die Probe wählt der Spielleiter.</li>
+    <li><strong>Fragen sind gratis, Fehler nicht.</strong> Die Umgebung beschreiben lassen, NSCs
+    aushorchen, erst dann handeln — Information ist die stärkste Währung des Spiels.</li>
+    <li><strong>Würfle nur, wenn es brennt.</strong> Alltägliches gelingt einfach. Wenn gewürfelt
+    wird, steht etwas auf dem Spiel — auch ein Fehlschlag treibt die Geschichte voran, nur eben
+    woandershin.</li>
+    <li><strong>Grimdark heißt: Rückzug ist eine Taktik.</strong> Manche Gegner sind (noch) zu
+    groß für euch. Das Spiel belohnt Schläue, nicht Sturheit.</li>
+    <li><strong>Spielt eure Rolle.</strong> Garran droht, Eli beobachtet, Yann doziert — die
+    besten Szenen entstehen, wenn jeder seine Stärke ausspielt.</li>
+  </ul>
+</div>
+
+<!-- ================================================================== -->
+<h2><span class="num">VII</span>Spickzettel</h2>
+<div class="panel gold">
+  <table style="margin: 4px 0;">
+    <tr><td>Probe</td><td class="mod">1W100 ≤ Fertigkeit + Schwierigkeit</td></tr>
+    <tr><td>Erfolgsgrade</td><td class="mod">Zehner(Ziel) − Zehner(Wurf)</td></tr>
+    <tr><td>Immer Erfolg / Fehlschlag</td><td class="mod">01–05 / 96–00</td></tr>
+    <tr><td>Kritisch / Patzer</td><td class="mod">Pasch (11, 22, …) bei Erfolg / Fehlschlag</td></tr>
+    <tr><td>Schaden</td><td class="mod">Waffe + EG − (Zähigkeitsbonus + Rüstung)</td></tr>
+    <tr><td>0 Wunden</td><td class="mod">kampfunfähig</td></tr>
+    <tr><td>Vorteil / Nachteil</td><td class="mod">2× würfeln, besseres / schlechteres zählt</td></tr>
+  </table>
+</div>
+
+<p class="dim" style="text-align:center;">An eurem Tisch würfelt die Spielleitung für euch:
+Ihr sagt, was ihr tut — Würfe, Zielwerte und Schaden rechnet das System nach genau diesen
+Regeln aus und sagt euch das Ergebnis an.</p>
+
+<footer>
+  <div class="rule-line"></div>
+  <div class="crest">☠</div>
+  <p>Eigene Regelzusammenfassung für die Heimrunde · basiert auf <em>Warhammer 40,000 Roleplay:
+  Imperium Maledictum</em> (Cubicle 7) · kein offizielles Produkt</p>
+  <p style="letter-spacing:.2em; font-variant: small-caps; color: var(--gold-soft);">
+  Der Imperator schützt — aber würfeln musst du selbst.</p>
+</footer>
+
+</div>
+</body>
+</html>
