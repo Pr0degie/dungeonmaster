@@ -15,10 +15,12 @@ loudest failure — *the DM improvises from nothing* — needed Phase 10 pulled 
 threshold-gated `## Regelwerk` block; store built offline, 1505 chunks, verified: "kritischer
 Erfolg"/"Schwierigkeit" hit the right sections, table talk stays silent). Plus the **W4
 self-repetition guard** (fuzzy match against the DM's own previous answer, retry-then-suppress).
-Suite **176/176**. `DM_ADVENTURE=chemical_burn` is set in `.env`. _Open in Phase 10: the profile
-bootstrap (gate half 2, ADR 005) + the lore corpus (D28)._ **Both live gates are now stacked:
-Phase 9 (HP survives restart) AND Phase 10 half 1 (rule question from the book) — one circlejerk
-session can cover both.**
+Suite **183/183**. `DM_ADVENTURE=chemical_burn` is set in `.env`. _Open in Phase 10: the profile
+bootstrap (gate half 2, ADR 005); the lore corpus is now covered for the needed factions —
+**D48/ADR 021** curated German Imperium+Chaos compendium (`data/lore/`, sources `lore_imperium`/
+`lore_chaos`), offline-verified; only D28's broad wiki corpus stays a later option._ **Both live
+gates are now stacked: Phase 9 (HP survives restart) AND Phase 10 half 1 (rule question from the
+book) — one circlejerk session can cover both.**
 
 **Visible, fast shutdown (D47 → ADR 020, 2026-06-13): code-complete, live-unverified.** Tobi: "der
 Bot geht nur sehr schwer aus und das dauert sehr lange" + wanted to see what/how many things shut
@@ -76,7 +78,29 @@ world-state block (CLAUDE.md prompt order). **Model: mistral-nemo.** Recommended
 gate / any follow-up: **Opus 4.8 / xhigh**.
 
 ## Last session
-**Charaktererstellung (gleicher Tag, Runde 2 der Spieler-Doku).** Die Runde will neue
+**Lore-Korpus: kuratiertes deutsches Imperium+Chaos-Kompendium (2026-06-13, D48 → ADR 021).**
+Tobi fragte „ist die Lore drin?" → Live-Probe gegen `rag.db`: Menschen-Lore trifft aus dem
+englischen Rulebook (Imperium d=0.27, Inquisition d=0.34), aber **Chaos-Kosmologie existiert in
+den IM-Büchern nicht** („vier Chaosgötter" d=0.53 miss — by design, Chaos als verborgener
+Horror); Tyraniden/Necrons/T'au ebenfalls leer (Tobi: bewusst ok). Beschlossen + gebaut:
+- **`data/lore/imperium.md` (18 Chunks) + `chaos.md` (17 Chunks)** — handgeschriebene deutsche
+  Lore, grimdark in-world (Tobis Wahl: zwei Dateien, beide ausführlich, grimdark). Imperium:
+  Imperator/Thron/Astronomican/Custodes/Ekklesiarchie, High Lords/Zehnt, Astartes, Militarum,
+  Flotte, Mechanicus, Inquisition+Ordos, Astropathen, Navigatoren, Psioniker, Macharian-Kontext.
+  Chaos: Warp/Gellerfeld, die vier Götter (je eigene Sektion), Großes Spiel, Dämonen-Taxonomie,
+  Korruption/Kulte, Horus-Häresie + Horus, Chaos Space Marines, Antwort des Imperiums. Lokal,
+  untracked (`data/**`), wie das Abenteuer-Kompendium.
+- **`retrieve.py`:** `_SOURCES` + `lore_imperium`/`lore_chaos` (→ `## Weltwissen`), Reihenfolge
+  Regeln → breite Lore → lokales Rokarth; `setting`-Label um „lokaler Hintergrund" geschärft.
+  Selbstverdrahtend, sonst kein Code-Change. Schwelle bleibt 0.45 global.
+- **Probe-getunt:** Entitäts-Sektionen brauchen den definitorischen Satz oben („Wer ist Horus?"
+  0.51→0.43 nach eigener `### Horus`-Sektion; „Chaos Space Marines" 0.46→0.36). 24-Fragen-
+  Finalprobe: alle Ziel-Fragen treffen die richtige Quelle <0.45; Regressionen sauber (Regelfrage
+  → rulebook, Rokarth → setting, Table-Talk + Voll-Spoilerfrage stumm). Tests +2 (Weltwissen-
+  Block + Block-Reihenfolge), Suite **183/183**. _Live-Gate offen: `📚 lore_…`-Logzeile in einer
+  echten Session._
+
+**(Davor) Charaktererstellung (2026-06-12, Runde 2 der Spieler-Doku).** Die Runde will neue
 Charaktere (ersetzen Garran/Eli/Yann; Chemical Burn startet dann frisch). Gebaut:
 - **`docs/how-to-create-a-character.html`** — deutsche Anleitung (IM-treuer geführter Build:
   Punkte-Kauf 20+90 oder 2W10+20; echte Origin-Tabelle +5/+5; 6 Skill-Steigerungen à +5, max 2
@@ -541,6 +565,9 @@ and the never-say secrets). Then `!j` **in circlejerk** and check in this order:
    for the self-repetition WARNING). Then fill the Phase-9 + Phase-10(half) VERIFY EVIDENCE.
 7. **Lore (D46):** eine Rokarth-Frage („Wem gehört diese Stadt eigentlich?") → Antwort mit
    Setting-Färbung (`📚`-Logzeile zeigt `setting:`); „wer steckt hinter Gratis?" bleibt vage.
+8. **Lore (D48/ADR 021):** eine Chaos-Frage („Was weiß man über die Chaosgötter?") → grimdark
+   Antwort mit Kompendiums-Färbung (`📚`-Logzeile zeigt `lore_chaos:`); eine Imperiums-Frage
+   („Was ist das Astronomican?") zeigt `lore_imperium:`.
 Watch `ctx=` in the `[latency]` lines — the adventure block adds ~1k tokens; the D36 warning
 fires above 85% of 8192. Dial: **Opus 4.8 / xhigh** (roadmap recommends opusplan/high for
 Phase 10 planning; the building is done — the run is verification).
@@ -695,6 +722,7 @@ create the next-numbered ADR.
 | D45 | Embedder + W4 guard | **(a)** RAG embedder = **`bge-m3`** (multilingual), replacing D28's `nomic-embed-text` for the store; the store's meta table pins model+dim so retrieval always matches. **(b)** Echo guard extended by **`is_self_repetition`** (SequenceMatcher ≥0.75 on normalized text, <60 chars exempt): retry with a "beantworte die Frage direkt"-nudge, then suppress; streamed long repetitions only logged (audio can't be retracted) | (a) Verified against real questions: German queries barely matched the English rulebook with nomic ("kritischer Erfolg" → miss/wrong hit); bge-m3 hits DIFFICULTY/CRITICAL HIT while table talk stays under the 0.45 threshold. (b) W4 from the wishlist, seen live 2026-06-12: "Warum sind wir hier?" → near-verbatim re-description with pronoun swaps — substring checks miss that, fuzzy ratio catches it → ADR 019 (extends ADR 018) |
 | D46 | Starter Set as lore + patron source | **(a)** The Starter Set's **Setting Guide → `source=setting`** in the existing RAG store (pages 1–57 only — the „Villains on Voll" chapter with the Mireclaw reveal stays out until the campaign finale); retrieval searches rulebook+setting and groups hits as `## Regelwerk` / `## Weltwissen (… nur als Färbung nutzen)`, TOP_K=3 total. **(b)** The **Aegidius-Halikarn patron sheet** folded into the chemical_burn compendium (Motivation Information, Auftreten undurchschaubar, Boons incl. Sanctum-Obscurus-Ausstattung in der Thaler-Szene). „The Blazing Seraph" (SS adventure book) wird erst NACH dem Chemical-Burn-Live-Test zum zweiten Kompendium | The Setting Guide is a better first lore source than D28's wiki plan: campaign-specific (Chemical Burn plays in Rokarth), curated, already owned — wikis stay the later broad-lore step. Spoiler discipline (ADR 019) applies to lore too: similarity must not surface the villain chapter on „wer steckt dahinter?" (verified: the question returns nothing). Applies ADR 019, no new trade-off → D-entry, no new ADR |
 | D47 | Visible, fast shutdown | **(a)** TTS synth runs on an **abandonable daemon thread** (`dmbot/shutdown.py` `to_daemon_thread`, replacing `asyncio.to_thread` in `_speak` + the streaming `synth_worker`) so a synth in flight at Ctrl+C is dropped, never join-blocking exit. **(b)** A thread-safe **`[i/n] label` step display** (`ShutdownProgress`/`progress`): `DMBot.close()` declares the count up front (voice disconnects + each cog's `TEARDOWN_STEPS` + the Discord close) and wraps every stage; `cog_unload` reports its four closes; a final summary names any dropped synth. Outside a shutdown, `step()` is a plain log line | Tobi: the bot quit slowly and silently. Cause of the slowness: asyncio's default executor threads are **non-daemon**, so the interpreter joined a multi-second GPU XTTS synth at exit — pure dead wait, the WAV is moot once quitting. Daemon-abandon is the only real lever (XTTS isn't cancelable). The display answers "what/how many is being shut down". Targeted to TTS only (close paths keep normal threads) → **ADR 020** |
+| D48 | Curated German lore compendium | **Hand-authored `data/lore/imperium.md` + `chaos.md`** (German, grimdark in-world, local-only like the adventure compendium) → two new RAG sources **`lore_imperium`/`lore_chaos`**, grouped as `## Weltwissen (Imperium …)` / `## Weltwissen (Chaos — verbotenes Wissen …)`, block order rules → broad lore → local Rokarth. Threshold stays 0.45 global. Tobi's calls: two files/two sources, both ausführlich, grimdark | Live probe (2026-06-13): human lore retrieves from the English rulebook (Imperium d=0.27) but **Chaos cosmology doesn't exist in the IM books** ("vier Chaosgötter" d=0.53 miss — by design, Chaos as hidden horror); RAG can't retrieve what was never written, and German-vs-English inflates distances. German authored text wins TOP_K for German lore questions (verified 0.28–0.44) while rules keep hitting the rulebook. Wiki dump (D28) stays the later breadth step; Tyranids/Necrons/T'au deliberately absent (Tobi) → **ADR 021** |
 
 ### Phase → ADR map (read these when you enter the phase)
 
@@ -708,7 +736,7 @@ create the next-numbered ADR.
 | 6–7 — Full loop, turn-taking, registration | ADR 003 (conversational control, registration, turn-taking) + **ADR 011** (STT latency: push-to-talk gate) + **ADR 013** (pause control) |
 | 8 — Dice engine, IM profile, marker flow | ADR 005 (engine + profile) + ADR 004 (test marker, character data) + ADR 001 (IM specifics) + **ADR 012** (difficulty ladder, character store, marker grammar) + **ADR 014** (roll-detection router; timing now D40 — fires concurrent with playback) + **ADR 018** (router wins the dedupe; echo guard + roll-feedback directive on post-roll turns) |
 | 9 — Memory (JSON + recaps) | ADR 004 (character/state JSON) + **ADR 015** (sheet/state split, auto-combat damage) |
-| 10 — RAG + profile bootstrap | ADR 005 (profile bootstrap) + **ADR 019** (3-stage hybrid: scene tracker + rulebook-only RAG, bge-m3, W4 guard) |
+| 10 — RAG + profile bootstrap | ADR 005 (profile bootstrap) + **ADR 019** (3-stage hybrid: scene tracker + rulebook-only RAG, bge-m3, W4 guard) + **ADR 021** (curated German lore compendium: `lore_imperium`/`lore_chaos` sources) |
 
 ---
 
@@ -956,6 +984,11 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 - [x] **Lore source 1 (D46, 2026-06-12):** Starter-Set Setting Guide (ohne Villains-Kapitel) als
   `source=setting`, gruppiert als `## Weltwissen`; Patron-Sheet ins Kompendium. Wiki-Korpus
   (D28: Fandom + Lexicanum) bleibt der spätere Breiten-Ausbau.
+- [x] **Lore source 2 (D48, 2026-06-13 → ADR 021):** kuratiertes deutsches Lore-Kompendium
+  `data/lore/imperium.md` + `chaos.md` (grimdark, lokal, untracked) als `source=lore_imperium`/
+  `lore_chaos` → `## Weltwissen`. Schließt die Tobi-Anforderung „Menschen- + Chaos-Lore";
+  Chaos-Kosmologie steht in keinem IM-Buch (verifiziert: „vier Chaosgötter" d=0.53 miss → jetzt
+  d=0.43 hit). 24-Fragen-Offline-Probe grün; Tyraniden/Necrons/T'au bewusst draußen.
 - [ ] **Gate half 1 (live):** a concrete rule question answered correctly from the PDF
 - [ ] Profile bootstrap: DM proposes a draft system profile from the rulebook → user confirms → saved
 - VERIFY EVIDENCE: _(pending the circlejerk run)_

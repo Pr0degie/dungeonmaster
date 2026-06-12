@@ -3,9 +3,11 @@
 Per DM turn the brain asks for a prompt block for the current player input: embed the query
 (Ollama ``/api/embed``, async) and KNN-search the sqlite-vec store **with a distance threshold**
 — most turns are narration, not lookups, so most turns get no block at all and the prompt stays
-lean. Two sources are searched and grouped under separate labels: ``rulebook`` (→ ``## Regelwerk``,
-rules ground truth) and ``setting`` (→ ``## Weltwissen``, Rokarth lore from the Starter Set's
-Setting Guide — its spoiler chapter "Villains on Voll" is excluded at ingest time). The adventure
+lean. The sources in ``_SOURCES`` are searched and grouped under separate labels: ``rulebook``
+(→ ``## Regelwerk``, rules ground truth), the curated German lore compendium ``lore_imperium`` /
+``lore_chaos`` (→ ``## Weltwissen``, ADR 021), and ``setting`` (→ ``## Weltwissen``, Rokarth lore
+from the Starter Set's Setting Guide — its spoiler chapter "Villains on Voll" is excluded at
+ingest time). The adventure
 itself never enters the vector store (spoiler discipline, ADR 019). Degrades silently: no DB /
 Ollama hiccup → no block, never a broken turn.
 """
@@ -29,10 +31,14 @@ log = logging.getLogger(__name__)
 MAX_DISTANCE = 0.45
 TOP_K = 3  # total across both sources — lore may colour a scene, not flood the prompt
 
-# Searched sources and their prompt labels, in block order (rules ground truth before colour).
+# Searched sources and their prompt labels, in block order (rules ground truth before colour,
+# broad lore before local Rokarth colour). The curated German lore compendium (ADR 021) ships
+# as two sources so either half can be re-authored + re-ingested without touching the other.
 _SOURCES: dict[str, str] = {
     "rulebook": "## Regelwerk (Auszüge aus dem Regelbuch — Grundlage für Regelfragen)",
-    "setting": "## Weltwissen (Hive Rokarth — Hintergrund, nur als Färbung nutzen)",
+    "lore_imperium": "## Weltwissen (Imperium — Hintergrund, nur als Färbung nutzen)",
+    "lore_chaos": "## Weltwissen (Chaos — verbotenes Wissen, nur als Färbung nutzen)",
+    "setting": "## Weltwissen (Hive Rokarth — lokaler Hintergrund, nur als Färbung nutzen)",
 }
 
 

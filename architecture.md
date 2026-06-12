@@ -354,9 +354,12 @@ adventure and the rulebook take **different paths**:
   cosine). Offline CLI: `python -m dmbot.rag.ingest <md> --source rulebook`. Per turn the brain
   embeds the player input; chunks join the prompt **only above a relevance threshold**, so
   narration turns stay lean — grouped as `## Regelwerk` (source `rulebook`, rules ground truth)
-  and `## Weltwissen` (source `setting`: the Starter Set's Rokarth Setting Guide, ingested
-  **without** its "Villains on Voll" spoiler chapter — D46). The wiki lore corpora (D28) can
-  join as further `source`s later.
+  and `## Weltwissen` (sources `lore_imperium` + `lore_chaos`: the curated German Imperium/Chaos
+  compendium `data/lore/*.md`, hand-authored, local-only — ADR 021; and `setting`: the Starter
+  Set's Rokarth Setting Guide, ingested **without** its "Villains on Voll" spoiler chapter —
+  D46). Block order: rules truth → broad lore → local Rokarth colour. The wiki lore corpora
+  (D28) can join as further `source`s later if play demands breadth (Tyranids/Necrons/T'au are
+  deliberately absent).
 - **Character sheets do NOT go into RAG** — they are structured JSON (§7).
 - **Still open (Phase 10's second half):** the **profile bootstrap** — on first load of a new
   ruleset the DM reads the core-mechanics passages and proposes the profile (§9, ADR 005).

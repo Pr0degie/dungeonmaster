@@ -60,6 +60,9 @@ def _fixture_db(tmp_path: Path) -> Path:
         ("rulebook", "CRITICAL HIT", "Crit rules.", [0.0, 1.0, 0.0, 0.0]),
         ("setting", "NOBLE HOUSES", "House Castyx rules Rokarth.", [0.9, 0.1, 0.0, 0.0]),
         ("gm_only", "VOLL", "Secret GM lore.", [1.0, 0.05, 0.0, 0.0]),  # near, but unsearched source
+        # curated lore compendium (ADR 021) — orthogonal vector, invisible to the queries above
+        ("lore_chaos", "DIE VIER CHAOSGOETTER", "Khorne, Nurgle, Tzeentch, Slaanesh.",
+         [0.0, 0.0, 1.0, 0.0]),
     ]
     for source, heading, text, vec in rows:
         cur = conn.execute("INSERT INTO chunks (source, heading, text) VALUES (?, ?, ?)",
@@ -127,3 +130,21 @@ def test_meta_table_pins_the_embedding_model(tmp_path) -> None:
     db = _fixture_db(tmp_path)
     r = RulebookRetriever(db, "http://unused")
     assert r._embed_model() == "fake-embed"  # queries must use whatever built the store
+
+
+def test_lore_hit_yields_a_weltwissen_block(tmp_path) -> None:
+    db = _fixture_db(tmp_path)
+    r = _retriever(db, [0.0, 0.0, 1.0, 0.0])
+    block = asyncio.run(r.fetch_block("Wer sind die Chaosgötter?"))
+    assert block.startswith("## Weltwissen")
+    assert "[Quelle: DIE VIER CHAOSGOETTER]" in block
+    assert "Khorne, Nurgle, Tzeentch, Slaanesh." in block
+
+
+def test_block_order_rules_then_lore_then_setting(tmp_path) -> None:
+    db = _fixture_db(tmp_path)
+    # near the rulebook, lore, AND setting chunks at once → all three pass the threshold
+    r = _retriever(db, [0.6, 0.0, 0.6, 0.0], k=4)
+    block = asyncio.run(r.fetch_block("Imperium und Chaos und Rokarth?"))
+    assert block.index("## Regelwerk") < block.index("Chaos — verbotenes Wissen")
+    assert block.index("Chaos — verbotenes Wissen") < block.index("lokaler Hintergrund")
