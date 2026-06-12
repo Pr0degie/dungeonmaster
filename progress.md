@@ -20,6 +20,20 @@ bootstrap (gate half 2, ADR 005) + the lore corpus (D28)._ **Both live gates are
 Phase 9 (HP survives restart) AND Phase 10 half 1 (rule question from the book) — one circlejerk
 session can cover both.**
 
+**Visible, fast shutdown (D47 → ADR 020, 2026-06-13): code-complete, live-unverified.** Tobi: "der
+Bot geht nur sehr schwer aus und das dauert sehr lange" + wanted to see what/how many things shut
+down. Two causes, two fixes. **(1) The slow exit** was TTS synth on `asyncio.to_thread` — asyncio's
+default executor threads are **non-daemon**, so the interpreter joined an in-flight multi-second GPU
+XTTS synth at exit (dead wait — the WAV is moot when quitting). New `dmbot/shutdown.py`
+`to_daemon_thread()` runs synth on an abandonable daemon thread; both `_speak` and the streaming
+`synth_worker` use it. **(2) No feedback:** the second Ctrl+C painted a bare `Shutting down...` dots
+line. New `ShutdownProgress` prints `[i/n] label` per teardown stage (animated, then ✓ + duration);
+`DMBot.close()` declares the count up front (voice disconnects + each cog's `TEARDOWN_STEPS` + the
+Discord close) and wraps each stage, `VoiceReceiveCog.cog_unload` reports its four closes
+(STT/LLM/RAG/bridge), and a final summary names any dropped synth. Two-stage Ctrl+C unchanged. Suite
+**181/181** (count includes the adventure/RAG tests landed between sessions). _Verify live: Ctrl+C
+twice during a streamed turn → prompt exit + the `[i/n]` lines._
+
 **Post-roll robustness round (D43 → ADR 018) after the 2026-06-12 echo collapse: code-complete,
 live-unverified — the Phase-9 gate is STILL pending (the gate attempt ran in the wrong channel).**
 Tobi's session "fühlt sich nicht mehr wie ein Gamemaster an" diagnosed from `debug.log` +
@@ -548,6 +562,8 @@ session-local.)
   turns`; a clean `!leave` → next `!j` is fresh.
 - **Router timing (D40):** the 🎲 appears **while the DM still speaks**; exactly one per action.
 - **first_audio contrast** + `!redo` + pause/Esc mid-stream: one turn with `DM_STREAMING=0`.
+- **Shutdown (D47):** Ctrl+C twice during a streamed turn → exit is prompt (no multi-second hang)
+  and prints `[i/n] … ✓` per stage + a summary that names the dropped synth.
 - **Vor der Session:** `docs/how-to-play.html` an Timo & Sezgin verteilen (deutsches
   Regel-Primer, 2026-06-12 erstellt) — spart die Regelerklärung am Tisch.
 
@@ -678,6 +694,7 @@ create the next-numbered ADR.
 | D44 | Adventure into the DM (Phase 10a) | **3-stage hybrid** instead of pure vector RAG: (1) a ~300-token German **adventure summary** always in the prompt; (2) a deterministic **scene tracker** — the adventure hand-authored once into German scene cards (`data/adventures/<id>/adventure.json` + `npcs.json` statblocks; local-only, not in git — derivative of a bought book in a public repo), pointer = `WorldState.scene_id`, moved by humans via `!ort`/`!szenen`, never by the model; `!npc add` resolves compendium statblocks; (3) **rulebook-only RAG** — heading-aware chunks → Ollama embed → `sqlite-vec`, threshold-gated `## Regelwerk` block per turn (offline CLI `python -m dmbot.rag.ingest`). The adventure is deliberately NOT in the vector store | Similarity search can't answer "wo sind wir im Plot" (the loudest player critique: the DM improvised from nothing) and surfaces part-3 spoilers in part 1; plot position must be code state (golden rule #3). Matches Timo's independently-formed architecture (prepared docs + state outside the narrator). First compendium: **Chemical Burn** (15 scenes, 24 statblocks). `DM_ADVENTURE` env; profile bootstrap (gate half 2) stays open → ADR 019 |
 | D45 | Embedder + W4 guard | **(a)** RAG embedder = **`bge-m3`** (multilingual), replacing D28's `nomic-embed-text` for the store; the store's meta table pins model+dim so retrieval always matches. **(b)** Echo guard extended by **`is_self_repetition`** (SequenceMatcher ≥0.75 on normalized text, <60 chars exempt): retry with a "beantworte die Frage direkt"-nudge, then suppress; streamed long repetitions only logged (audio can't be retracted) | (a) Verified against real questions: German queries barely matched the English rulebook with nomic ("kritischer Erfolg" → miss/wrong hit); bge-m3 hits DIFFICULTY/CRITICAL HIT while table talk stays under the 0.45 threshold. (b) W4 from the wishlist, seen live 2026-06-12: "Warum sind wir hier?" → near-verbatim re-description with pronoun swaps — substring checks miss that, fuzzy ratio catches it → ADR 019 (extends ADR 018) |
 | D46 | Starter Set as lore + patron source | **(a)** The Starter Set's **Setting Guide → `source=setting`** in the existing RAG store (pages 1–57 only — the „Villains on Voll" chapter with the Mireclaw reveal stays out until the campaign finale); retrieval searches rulebook+setting and groups hits as `## Regelwerk` / `## Weltwissen (… nur als Färbung nutzen)`, TOP_K=3 total. **(b)** The **Aegidius-Halikarn patron sheet** folded into the chemical_burn compendium (Motivation Information, Auftreten undurchschaubar, Boons incl. Sanctum-Obscurus-Ausstattung in der Thaler-Szene). „The Blazing Seraph" (SS adventure book) wird erst NACH dem Chemical-Burn-Live-Test zum zweiten Kompendium | The Setting Guide is a better first lore source than D28's wiki plan: campaign-specific (Chemical Burn plays in Rokarth), curated, already owned — wikis stay the later broad-lore step. Spoiler discipline (ADR 019) applies to lore too: similarity must not surface the villain chapter on „wer steckt dahinter?" (verified: the question returns nothing). Applies ADR 019, no new trade-off → D-entry, no new ADR |
+| D47 | Visible, fast shutdown | **(a)** TTS synth runs on an **abandonable daemon thread** (`dmbot/shutdown.py` `to_daemon_thread`, replacing `asyncio.to_thread` in `_speak` + the streaming `synth_worker`) so a synth in flight at Ctrl+C is dropped, never join-blocking exit. **(b)** A thread-safe **`[i/n] label` step display** (`ShutdownProgress`/`progress`): `DMBot.close()` declares the count up front (voice disconnects + each cog's `TEARDOWN_STEPS` + the Discord close) and wraps every stage; `cog_unload` reports its four closes; a final summary names any dropped synth. Outside a shutdown, `step()` is a plain log line | Tobi: the bot quit slowly and silently. Cause of the slowness: asyncio's default executor threads are **non-daemon**, so the interpreter joined a multi-second GPU XTTS synth at exit — pure dead wait, the WAV is moot once quitting. Daemon-abandon is the only real lever (XTTS isn't cancelable). The display answers "what/how many is being shut down". Targeted to TTS only (close paths keep normal threads) → **ADR 020** |
 
 ### Phase → ADR map (read these when you enter the phase)
 
