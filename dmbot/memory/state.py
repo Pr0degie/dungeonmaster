@@ -107,6 +107,9 @@ class WorldState:
     location: str = ""
     time_ingame: str = ""
     recap: str = ""
+    # Scene pointer into the loaded adventure compendium (Phase 10a, ADR 019) — the code-owned
+    # "where are we in the plot" the prompt's scene card is selected by. Empty = no adventure.
+    scene_id: str = ""
 
     # -- (de)serialisation ----------------------------------------------------------------
 
@@ -120,6 +123,7 @@ class WorldState:
             "location": self.location,
             "time_ingame": self.time_ingame,
             "recap": self.recap,
+            "scene_id": self.scene_id,
         }
 
     @classmethod
@@ -133,6 +137,7 @@ class WorldState:
             location=str(d.get("location", "") or ""),
             time_ingame=str(d.get("time_ingame", "") or ""),
             recap=str(d.get("recap", "") or ""),
+            scene_id=str(d.get("scene_id", "") or ""),
         )
 
     @classmethod

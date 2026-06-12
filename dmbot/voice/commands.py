@@ -45,6 +45,8 @@ from ..rules.marker import TestRequest, extract_tests
 from ..rules.summary import rules_pages_de
 from ..memory.state import WorldState, world_state_summary_de
 from ..memory import history as history_store
+from ..rag.adventure import Adventure
+from ..rag.retrieve import RulebookRetriever
 
 # Repo data dir (data/systems is the profile root; sessions/ sits beside it).
 _DATA_DIR = profile_mod.systems_dir().parent
@@ -202,6 +204,7 @@ class VoiceReceiveCog(commands.Cog):
         dm_num_predict: int = 160,
         dm_max_lines: int = 8,
         system: str = "imperium_maledictum",
+        adventure: str = "",
         push_to_talk: bool = True,
         pause_vad_while_speaking: bool = False,
         button_autosend: bool = True,
@@ -266,6 +269,16 @@ class VoiceReceiveCog(commands.Cog):
         # Characters: start from the example party so !test/!roll work out of the box; !join prefers
         # a channel-specific data/sessions/<id>/characters.json if present. Engine rolls (RNG) here.
         self._characters, _ = self._load_characters(None)
+        # Adventure compendium (Phase 10a, ADR 019): German scene cards + NPC statblocks under
+        # data/adventures/<name>/. The scene pointer lives in WorldState.scene_id; the block is
+        # injected via _persist_and_refresh. Missing/broken → run without (logged loudly).
+        self._adventure: Adventure | None = None
+        if adventure:
+            self._adventure = Adventure.load(_DATA_DIR / "adventures" / adventure)
+            if self._adventure is not None:
+                log.info("loaded adventure %r (%d scenes, %d NPC statblocks)",
+                         self._adventure.title or adventure,
+                         len(self._adventure.scene_overview()), self._adventure.npc_count())
         # Memory (Phase 9): the mutable world state per channel — current wounds/conditions, NPCs,
         # quests, location, recap. Loaded/seeded on !join (data/sessions/<id>/state.json), advanced
         # deterministically by code (golden rule #3), persisted on every change so HP survives a
@@ -285,11 +298,20 @@ class VoiceReceiveCog(commands.Cog):
         self._text_channel: discord.abc.Messageable | None = None  # where panels are posted (set on join)
         self._esc_task: asyncio.Task | None = None    # terminal Esc listener (Windows)
         self._anim_task: asyncio.Task | None = None   # the animated "paused" box (rich)
+        # Rulebook retriever (stage 3, ADR 019): only wired in when an ingested store exists
+        # (data/vectordb/rag.db, built offline via `python -m dmbot.rag.ingest`). Without it the
+        # brain runs exactly as before — retrieval is additive.
+        self._retriever = RulebookRetriever(_DATA_DIR / "vectordb" / "rag.db", host=ollama_host)
+        if self._retriever.available():
+            log.info("rulebook RAG store found — retrieval is on")
+        else:
+            log.info("no RAG store under data/vectordb/ — rule questions run without the book")
         self._brain = DMBrain(
             OllamaClient(ollama_host, ollama_model),
             profile=self._profile,
             num_predict=dm_num_predict,
             max_buffer_lines=dm_max_lines,
+            retriever=self._retriever if self._retriever.available() else None,
         )
         self._bridge = BridgeClient(bridge_host, bridge_port, secret=bridge_secret)
         # Load the TTS backend once. xtts is imported lazily so Piper users don't pull torch.
@@ -366,6 +388,7 @@ class VoiceReceiveCog(commands.Cog):
         # keeps beating during shutdown (otherwise Ctrl+C logs "voice heartbeat blocked").
         await asyncio.to_thread(self._transcriber.stop)
         await self._brain.aclose()
+        await self._retriever.aclose()
         await self._bridge.aclose()
 
     async def _speak(self, text: str, guild_id: int | None,
@@ -923,8 +946,12 @@ class VoiceReceiveCog(commands.Cog):
             state.save(self._state_path(cid))
         except OSError:
             log.exception("could not persist world state for channel %s", cid)
+        adventure_block = ""
+        if self._adventure is not None:
+            adventure_block = self._adventure.adventure_block_de(state.scene_id)
         self._brain.set_context(
-            cid, recap=state.recap, state_summary=world_state_summary_de(state)
+            cid, recap=state.recap, state_summary=world_state_summary_de(state),
+            adventure_block=adventure_block,
         )
 
     def _toughness_bonus(self, target: Character | None) -> int:
@@ -1283,10 +1310,12 @@ class VoiceReceiveCog(commands.Cog):
     @commands.command(name="npc", aliases=["nsc"])
     async def npc(
         self, ctx: commands.Context, action: str = "", name: str = "",
-        wounds: str = "10", tb: str = "0", armour: str = "0",
+        wounds: str = "", tb: str = "", armour: str = "",
     ) -> None:
         """Register an enemy the party can damage: `!npc add Kultist 10 3 2` (Wunden, ToughnessBonus,
-        Rüstung). `!npc list` shows them. (NSC-Namen ohne Leerzeichen — z. B. `Kult_Anführer`.)
+        Rüstung). With a loaded adventure, `!npc add Alecto` fills the statblock from the
+        compendium's npcs.json (Phase 10a) — explicit numbers still override. `!npc list` shows
+        them. (NSC-Namen ohne Leerzeichen — z. B. `Raguel_der_Rote`.)
 
         Wounds/TB/armour are parsed tolerantly (str + manual ``int``) so a stray non-numeric token
         gives a clear usage hint instead of discord.py's raw ``BadArgument`` traceback — the error
@@ -1310,24 +1339,77 @@ class VoiceReceiveCog(commands.Cog):
             if not name:
                 await ctx.send("Nutzung: `!npc add <Name> [Wunden] [ToughnessBonus] [Rüstung]`.")
                 return
+            # Compendium statblock (Phase 10a): a known adventure NPC brings its own values;
+            # explicit numbers override field by field. No adventure → the old 10/0/0 defaults.
+            block = self._adventure.npc(name) if self._adventure is not None else None
             try:
-                w, t, a = int(wounds), int(tb), int(armour)
+                w = int(wounds) if wounds else (block.wounds if block else 10)
+                t = int(tb) if tb else (block.toughness_bonus if block else 0)
+                a = int(armour) if armour else (block.armour if block else 0)
             except ValueError:
                 await ctx.send(
                     "Wunden, ToughnessBonus und Rüstung müssen Zahlen sein. "
                     "Nutzung: `!npc add <Name> [Wunden] [TB] [Rüstung]` — z. B. `!npc add Kultist 10 3`. "
-                    "(NSC-Namen ohne Leerzeichen, z. B. `Kult_Anführer`.)"
+                    "(NSC-Namen ohne Leerzeichen, z. B. `Raguel_der_Rote`.)"
                 )
                 return
+            display = block.name if block is not None else name  # canonical spelling from the sheet
             n = state.add_or_update_npc(
-                name, wounds=w, max_wounds=w, toughness_bonus=t, armour=a
+                display, wounds=w, max_wounds=w, toughness_bonus=t, armour=a
             )
             self._persist_and_refresh(ctx.channel)
+            src = " *(Statblock aus dem Abenteuer)*" if block is not None and not wounds else ""
             await ctx.send(
-                f"➕ NSC **{n.name}**: {n.wounds} Wunden, TB {n.toughness_bonus}, Rüstung {n.armour}."
+                f"➕ NSC **{n.name}**: {n.wounds} Wunden, TB {n.toughness_bonus}, "
+                f"Rüstung {n.armour}.{src}"
             )
             return
         await ctx.send("Nutzung: `!npc add <Name> [Wunden] [TB] [Rüstung]` oder `!npc list`.")
+
+    @commands.command(name="ort", aliases=["szene"])
+    async def ort(self, ctx: commands.Context, scene_id: str = "") -> None:
+        """`!ort <szenen-id>` — set the adventure's scene pointer (Phase 10a): the DM's prompt then
+        carries that scene's card. Deterministic by design (golden rule #3) — the human at the
+        table moves the plot pointer, the model never does."""
+        if self._adventure is None:
+            await ctx.send("Kein Abenteuer geladen (`DM_ADVENTURE` in `.env`).")
+            return
+        cid = self._brain_channel(ctx.channel)
+        state = self._state.get(cid)
+        if state is None:
+            await ctx.send("Keine aktive Sitzung — erst `!j`.")
+            return
+        if not scene_id:
+            scene = self._adventure.get_scene(state.scene_id)
+            current = f"**{scene.title_de}** (`{scene.id}`)" if scene else "—"
+            await ctx.send(f"Aktuelle Szene: {current}. Wechsel: `!ort <id>` (`!szenen` zeigt alle).")
+            return
+        scene = self._adventure.get_scene(scene_id)
+        if scene is None:
+            await ctx.send(f"Unbekannte Szene `{scene_id}` — `!szenen` zeigt alle Ids.")
+            return
+        state.scene_id = scene.id
+        if scene.title_de:
+            state.set_location(scene.title_de)  # keep the prose state block in sync
+        self._persist_and_refresh(ctx.channel)
+        log.info("scene → %s (%s)", scene.id, scene.title_de)
+        await ctx.send(f"📖 Szene gewechselt: **{scene.title_de}** (Teil {scene.part}).")
+
+    @commands.command(name="szenen")
+    async def szenen(self, ctx: commands.Context) -> None:
+        """List the loaded adventure's scenes by part — the ids `!ort` accepts."""
+        if self._adventure is None:
+            await ctx.send("Kein Abenteuer geladen (`DM_ADVENTURE` in `.env`).")
+            return
+        cid = self._brain_channel(ctx.channel)
+        current = self._state[cid].scene_id if cid in self._state else ""
+        by_part: dict[int, list[str]] = {}
+        for part, sid, title in self._adventure.scene_overview():
+            marker = " ◀" if sid == current else ""
+            by_part.setdefault(part, []).append(f"`{sid}` {title}{marker}")
+        lines = [f"**Teil {part}:** " + " · ".join(entries)
+                 for part, entries in sorted(by_part.items())]
+        await ctx.send(f"📖 **{self._adventure.title}**\n" + "\n".join(lines))
 
     @commands.command(name="wrap", aliases=["wrapup"])
     async def wrap(self, ctx: commands.Context, *, _arg: str = "") -> None:
@@ -1436,6 +1518,10 @@ class VoiceReceiveCog(commands.Cog):
         # then inject the stored recap + current state into the prompt so the DM picks up where it
         # left off — the "next session opens with a correct recap" half of the gate.
         self._state[channel.id] = self._load_or_seed_state(channel.id)
+        # Adventure (Phase 10a): point a fresh session at the start scene; a loaded state keeps
+        # its stored pointer (the plot position survives restarts like HP does).
+        if self._adventure is not None and not self._state[channel.id].scene_id:
+            self._state[channel.id].scene_id = self._adventure.start_scene
         self._persist_and_refresh(channel)
         # Crash recovery (D41): restore the conversation thread from the autosave if the in-memory
         # history is empty (a fresh process after a crash). A clean !leave rotates the file away, so
@@ -1493,6 +1579,13 @@ class VoiceReceiveCog(commands.Cog):
             )
         elif party:
             await ctx.send(f"👥 **Party:** {party}")
+
+        # Announce the loaded adventure + current scene, so the table knows the plot is on rails.
+        if self._adventure is not None:
+            scene = self._adventure.get_scene(self._state[channel.id].scene_id)
+            where = f" — Szene: **{scene.title_de}**" if scene is not None else ""
+            await ctx.send(f"📖 **Abenteuer:** {self._adventure.title}{where} "
+                           f"(`!szenen` zeigt alle, `!ort <id>` wechselt)")
 
         # If a recap was stored from a previous session, show it so the table picks up the thread.
         state = self._state.get(channel.id)

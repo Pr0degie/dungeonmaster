@@ -119,7 +119,7 @@ dmbot/          the DM bot
   orchestrator.py   the DM brain (history + buffer → LLM)
   bridge.py     HTTP client to Bot A's /speak
   logsetup.py   console (green chat) + file logging
-data/           systems/ (profiles), pdfs/ (RAG), sessions/ (state+recaps), vectordb/  ← generated, not hand-edited
+data/           systems/ (profiles), pdfs/ (RAG), adventures/ (scene cards — local-only, derivative of bought books), sessions/ (state+recaps), vectordb/  ← generated/local, not hand-edited
 prompts/        dm_core_de.md (generic GM persona) + campaign_tone_de.md (campaign overlay)  — GERMAN, game content
 docs/           SETUP.md, decisions/ (ADRs)
 ```
@@ -150,8 +150,9 @@ here is its contract, which DMbot calls:
   host** — use env/config (`OLLAMA_HOST`), so the switch is a one-liner. Before blaming
   the client: `ollama list` — is the model even pulled?
 - **Prompt building (`llm/`):** order = generic GM core → campaign tone overlay → recap →
-  JSON state → RAG hits → recent history. Pass state and RAG as structured data, don't boil
-  them into prose.
+  **adventure summary + current scene card** (code-owned pointer `state.scene_id`, ADR 019) →
+  JSON state → Regelwerk hits (threshold-gated rulebook RAG) → recent history. Pass state and
+  RAG as structured data, don't boil them into prose.
 - **TTS:** Piper outputs a specific WAV format — confirm Bot A can play it.
 - **Discord UI (`discord_ui/`):** buttons via `View`/`Button`. Dice buttons call the rules
   engine, never inline their own dice logic.

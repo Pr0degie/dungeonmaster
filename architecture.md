@@ -128,9 +128,9 @@ filtering protects regardless.
 | VAD/segmentation | `silero-vad` via `onnxruntime` | neural VAD run through onnxruntime (no torch), model vendored in-repo; cuts utterances on silence (ADR 007) |
 | STT | `faster-whisper` (CTranslate2) | small/medium on the 4070 (GPU float16, CPU int8 fallback). cuDNN/cuBLAS via the `nvidia-*-cu12` wheels; DLLs registered in-code (`stt/transcriber.py`), no manual `PATH`. Runs on a worker thread off the audio path |
 | LLM | **Ollama** (local/5080) + `httpx` | DM system prompt + history + RAG context + JSON state |
-| Embeddings | `nomic-embed-text` via Ollama | for RAG (tiny, runs anywhere) |
+| Embeddings | **`bge-m3`** via Ollama | for the rulebook RAG — multilingual (German questions must hit English rule text; `nomic-embed-text` (D28) failed that live, ADR 019). The store's meta table pins the model |
 | PDF→Markdown (ingestion prep) | `pymupdf4llm` (on PyMuPDF) | **offline** step: converts a legally-owned rulebook PDF to clean Markdown (reconstructs reading order, renders tables) so RAG chunks aren't multi-column layout garbage (CLAUDE.md). CLI `tools/pdf_to_md.py` → `data/pdfs/md/`, **not** the bot runtime; feeds Phase-10 ingestion (golden rule #9) |
-| RAG store | SQLite + vector (e.g. `sqlite-vec`) or ChromaDB | searchable PDF chunks |
+| RAG store | **`sqlite-vec`** (`data/vectordb/rag.db`) | searchable rulebook chunks, cosine KNN + relevance threshold; built offline via `python -m dmbot.rag.ingest`. The adventure stays OUT (scene cards instead, ADR 019) |
 | TTS | `coqui-tts` (XTTS v2) **default**, `piper-tts` fallback | XTTS (default): ~58 built-in speakers + voice cloning, rich but heavy (**pulls torch/torchaudio/torchcodec — from the CUDA `cu130` index** (covers Ada + Blackwell) so it runs on the GPU, not the CPU-only build; transformers pinned <5); device per `TTS_DEVICE` (cuda/cpu), auto-degrades to CPU if CUDA is absent or OOMs. Piper: fast, lean, fixed German voice (`de_DE-thorsten`) → WAV — the fallback when XTTS won't load. Selectable per `TTS_ENGINE` (golden rule #9: the CUDA torch stack is the cost of GPU XTTS → ADR 009) |
 | Bridge client | `httpx`/`aiohttp` | `POST` to Bot A `/speak` |
 | Pause box (terminal) | `rich` | animated `Live` "PAUSIERT" panel in the DMbot console while the game is frozen (pause via Esc; the Discord ⏸ button mirrors it). Pure-Python, light — the cost of the animated box (golden rule #9 → ADR 013) |
@@ -159,8 +159,9 @@ Orchestrator builds the prompt:
    GM core persona + campaign tone overlay (e.g. Eisenhorn)
    + active system profile (dice/resolution rules)
    + session recap (memory narrative)
+   + adventure summary + CURRENT scene card (code-owned pointer state.scene_id, ADR 019)
    + JSON world state (characters, HP, inventory, NPCs, flags)
-   + RAG hits (relevant rulebook/lore chunks)
+   + Regelwerk hits (rulebook chunks, only when the input matches rule text)
    + buffered player utterances since the last DM turn
    │
    ▼
@@ -330,15 +331,33 @@ context there is plenty of headroom.)
 
 ---
 
-## 8. RAG over PDFs
+## 8. Adventure & books into the DM: the 3-stage hybrid (ADR 019)
 
-- **Ingestion:** **rulebook, setting/lore and adventure PDFs** are read in
-  (PDF → text → chunks), embedded (`nomic-embed-text`) and placed in the vector store.
-  **Character sheets do NOT go into RAG** — they become structured JSON (§7).
-- **Two jobs:** (1) per request, retrieve the most relevant chunks into the prompt (a rule
-  passage, a lore detail, an adventure beat); (2) **bootstrap the system profile** — on
-  first load of a new ruleset, the DM reads the core-mechanics passages and proposes the
-  profile (§9).
+The naive plan (vector-RAG everything) failed structurally for the **adventure**: similarity
+search can't answer "where are we in the plot", and it surfaces part-3 spoilers in part 1. So the
+adventure and the rulebook take **different paths**:
+
+- **Stage 1 — adventure summary (always in the prompt):** a ~300-token German GM-knowledge
+  digest of the arc (`data/adventures/<id>/adventure.json: summary_de`), marked never-read-aloud.
+- **Stage 2 — scene tracker (deterministic, golden rule #3):** the adventure is authored once,
+  offline, into German **scene cards** (description, NPCs present, opportunities with
+  profile-aligned skills/difficulties, secrets flagged never-say, leads_to, off-script guidance)
+  plus `npcs.json` statblocks (`!npc add` resolves them). A code-owned pointer —
+  `WorldState.scene_id`, persisted like HP — selects the **one** card injected per turn. Humans
+  move the pointer (`!ort <id>` / `!szenen`); the model never does. **The adventure is NOT in
+  the vector store** (spoiler discipline). Compendium content is a derivative of a bought book —
+  it stays untracked (`data/**`), like the PDFs, while the repo is public.
+- **Stage 3 — rulebook RAG (vector search where lookup is the right shape):** md (from
+  `tools/pdf_to_md.py`) → heading-aware ~400-token chunks → Ollama `/api/embed` (**`bge-m3`**,
+  multilingual — German questions against English rule text; D28's `nomic-embed-text` failed
+  that, the store's meta table pins the model) → **sqlite-vec** (`data/vectordb/rag.db`,
+  cosine). Offline CLI: `python -m dmbot.rag.ingest <md> --source rulebook`. Per turn the brain
+  embeds the player input; chunks join the prompt as a `## Regelwerk` block **only above a
+  relevance threshold**, so narration turns stay lean. Lore corpora (D28) can join as further
+  `source`s later.
+- **Character sheets do NOT go into RAG** — they are structured JSON (§7).
+- **Still open (Phase 10's second half):** the **profile bootstrap** — on first load of a new
+  ruleset the DM reads the core-mechanics passages and proposes the profile (§9, ADR 005).
 - **Source discipline:** rule questions are answered from the rulebook chunk, not from the
   model's gut — reduces hallucination. This matters more now: the DM learns *unfamiliar*
   systems from the PDF, so it must lean on retrieval rather than half-remembered rules.

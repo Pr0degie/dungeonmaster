@@ -38,6 +38,7 @@ class Config:
     dm_num_predict: int
     dm_max_lines: int
     system: str
+    adventure: str
     push_to_talk: bool
     pause_vad_while_speaking: bool
     button_autosend: bool
@@ -120,6 +121,9 @@ class Config:
             # Active system profile (Phase 8): which data/systems/<name>.json the rules engine
             # applies. IM is the first hand-written profile; other systems are other profiles.
             system=os.environ.get("DM_SYSTEM", "imperium_maledictum").strip(),
+            # Active adventure compendium (Phase 10a, ADR 019): which data/adventures/<name>/
+            # scene cards + NPC statblocks the DM runs. Empty = no adventure (pre-10a behaviour).
+            adventure=os.environ.get("DM_ADVENTURE", "").strip(),
             # Push-to-talk: the whole table is always transcribed + logged, but only speech said
             # while the Discord mic button is engaged is routed to the DM (tap before talking to
             # the DM, tap to stop). Keeps the full transcript record while letting the table pick

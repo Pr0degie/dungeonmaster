@@ -17,6 +17,7 @@ import re
 import threading
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 
 from .llm.client import OllamaClient
 from .llm.persona import load_system_prompt
@@ -183,6 +184,13 @@ _ECHO_NUDGE = (
     "und wiederhole nicht die Worte der Spielenden."
 )
 
+# Appended when the model re-narrated its own previous answer (W4: players asked "warum hat er
+# das zweimal gesagt?" — seen live as a near-verbatim scene re-description on a direct question).
+_REPEAT_NUDGE = (
+    "Beantworte die konkrete Frage der Spielenden direkt und knapp; "
+    "wiederhole nicht deine letzte Beschreibung."
+)
+
 # Explicit directive on a results-only (post-roll) turn — without it the model sees a bare
 # "[Würfel] …" line and tends to predict the *next player line* instead of narrating (seen live
 # 2026-06-12: three identical echo turns poisoned the history).
@@ -219,6 +227,18 @@ def is_echo(answer: str, user_msg: str) -> bool:
             ):
                 return True
     return False
+
+
+def is_self_repetition(answer: str, previous_answer: str) -> bool:
+    """True when ``answer`` re-narrates the DM's **own previous answer** nearly verbatim — the W4
+    failure (live 2026-06-12: asked "Warum sind wir hier?", the model re-told the prior scene
+    description with only pronoun swaps). Fuzzy, not substring: pronoun/conjugation edits survive
+    a SequenceMatcher ratio. Short answers are exempt — "Du triffst." may legitimately recur."""
+    norm_new = _normalize_echo(answer)
+    norm_prev = _normalize_echo(previous_answer)
+    if len(norm_new) < 60 or len(norm_prev) < 60:
+        return False
+    return SequenceMatcher(None, norm_new, norm_prev).ratio() >= 0.75
 
 
 # --- Streaming assembler (ADR 017) --------------------------------------------------------------
@@ -342,10 +362,17 @@ class DMBrain:
         *,
         profile: SystemProfile | None = None,
         max_history_turns: int = 20,
-        num_predict: int = 160,
+        num_predict: int = 220,
         max_buffer_lines: int = 8,
+        retriever=None,
     ) -> None:
         self._client = client
+        # Rulebook retriever (stage 3, ADR 019): an object with ``async fetch_block(query) -> str``
+        # (rag/retrieve.RulebookRetriever). Per turn the latest user_msg is embedded and matching
+        # rule chunks join the prompt — threshold-gated, so narration turns carry no block. None →
+        # no retrieval (pre-10a behaviour, and what most unit tests use).
+        self._retriever = retriever
+        self._rag_block: dict[int, str] = {}
         # Active system profile (Phase 8). When set, DM answers are scanned for <<TEST …>> markers
         # (rules/marker), which are stripped from the spoken text and surfaced as pending tests.
         # None → no dice flow (pre-Phase-8 behaviour, kept for the existing unit tests).
@@ -376,6 +403,9 @@ class DMBrain:
         # history). Set per channel by the cog from the world state, refreshed when state changes.
         self._recap: dict[int, str] = {}
         self._state_summary: dict[int, str] = {}
+        # The adventure block (stage 1+2 of the hybrid, ADR 019): always-on adventure summary +
+        # the current scene card, selected by code from WorldState.scene_id. Set by the cog.
+        self._adventure_block: dict[int, str] = {}
         # The last turn's (user_msg, labels) per channel, so !redo can re-generate it when the DM
         # misunderstood — same input, a fresh answer that replaces the last one in history.
         self._last_turn: dict[int, tuple[str, list[str]]] = {}
@@ -455,6 +485,21 @@ class DMBrain:
         history = self._history.setdefault(channel_id, [])
         return user_msg, labels, history
 
+    async def _refresh_rag(self, channel_id: int, user_msg: str) -> None:
+        """Fetch the turn's ``## Regelwerk`` block for ``user_msg`` (stage 3, ADR 019). Empty for
+        most turns (threshold) and on any failure — retrieval must never break a turn."""
+        if self._retriever is None:
+            return
+        try:
+            block = await self._retriever.fetch_block(user_msg)
+        except Exception:
+            log.exception("rag refresh failed — turn continues without it")
+            block = ""
+        if block:
+            self._rag_block[channel_id] = block
+        else:
+            self._rag_block.pop(channel_id, None)
+
     async def respond(
         self, channel_id: int, *, extra_text: str | None = None
     ) -> str | None:
@@ -466,6 +511,7 @@ class DMBrain:
         if prep is None:
             return None
         user_msg, labels, history = prep
+        await self._refresh_rag(channel_id, user_msg)
         answer = await self._generate(channel_id, user_msg, labels, history)
         if answer is None:
             return ""  # echo-suppressed (D43): content-less to the cog, the pair stays out of history
@@ -488,6 +534,7 @@ class DMBrain:
         ):
             del history[-2:]  # drop the turn we're redoing so it isn't duplicated
         self._pending_tests.pop(channel_id, None)  # the redo supersedes the old turn's test markers
+        await self._refresh_rag(channel_id, user_msg)
         answer = await self._generate(channel_id, user_msg, labels, history)
         if answer is None:
             return ""  # echo-suppressed (D43): content-less to the cog, the pair stays out of history
@@ -509,9 +556,19 @@ class DMBrain:
         recap = self._recap.get(channel_id)
         if recap:
             system = f"{system}\n\n## Was bisher geschah\n{recap}"
+        # Adventure summary + current scene card (ADR 019) between recap and hard state: the
+        # narrative thread leads, then "where we are in the plot", then the hard facts.
+        adventure = self._adventure_block.get(channel_id)
+        if adventure:
+            system = f"{system}\n\n{adventure}"
         state_summary = self._state_summary.get(channel_id)
         if state_summary:
             system = f"{system}\n\n{state_summary}"
+        # Rulebook chunks for this turn (stage 3, ADR 019) — present only when the player input
+        # actually matched rule text (threshold in the retriever), so narration turns stay lean.
+        rag = self._rag_block.get(channel_id)
+        if rag:
+            system = f"{system}\n\n{rag}"
         hint = self._alias_hint.get(channel_id)
         if hint:
             system = f"{system}\n\n{hint}"
@@ -540,6 +597,25 @@ class DMBrain:
         log.info("🪵 LLM roh: %s", raw.replace("\n", " ⏎ "))
         return finalize_answer(raw, labels, self._profile)
 
+    @staticmethod
+    def _answer_problem(answer: str, user_msg: str, prev_answer: str) -> tuple[str, str] | None:
+        """``(log label, retry nudge)`` when the answer parrots a player line (D43/ADR 018) or
+        re-narrates the DM's own previous answer (W4/ADR 019); ``None`` when the answer is fine."""
+        if not answer:
+            return None
+        if is_echo(answer, user_msg):
+            return "parrots a player line", _ECHO_NUDGE
+        if is_self_repetition(answer, prev_answer):
+            return "re-narrates the previous answer", _REPEAT_NUDGE
+        return None
+
+    @staticmethod
+    def _prev_answer(history_prefix: list[dict[str, str]]) -> str:
+        """The DM's most recent stored answer (for the self-repetition check), or ''."""
+        if history_prefix and history_prefix[-1].get("role") == "assistant":
+            return history_prefix[-1].get("content", "")
+        return ""
+
     async def _generate(
         self,
         channel_id: int,
@@ -547,17 +623,21 @@ class DMBrain:
         labels: list[str],
         history_prefix: list[dict[str, str]],
     ) -> str | None:
-        """One DM answer for ``user_msg`` with the echo guard (D43/ADR 018): if the answer merely
-        parrots a player line, retry once with a corrective nudge; if the retry parrots again,
-        return ``None`` so the caller suppresses the turn entirely (nothing spoken, nothing
-        stored — an echo in history self-reinforces, seen live 2026-06-12)."""
+        """One DM answer for ``user_msg`` with the echo guard (D43/ADR 018 + W4): if the answer
+        merely parrots a player line or re-narrates the DM's own previous answer, retry once with
+        a corrective nudge; if the retry misfires again, return ``None`` so the caller suppresses
+        the turn entirely (nothing spoken, nothing stored — degenerate turns in history
+        self-reinforce, seen live 2026-06-12)."""
+        prev = self._prev_answer(history_prefix)
         answer, tests = await self._chat_once(channel_id, user_msg, labels, history_prefix)
-        if answer and is_echo(answer, user_msg):
-            log.warning("echo guard: answer parrots a player line (%r) — retrying once", answer)
-            nudged = f"{user_msg}\n{_ECHO_NUDGE}"
+        problem = self._answer_problem(answer, user_msg, prev)
+        if problem is not None:
+            label, nudge = problem
+            log.warning("echo guard: answer %s (%r) — retrying once", label, answer)
+            nudged = f"{user_msg}\n{nudge}"
             answer, tests = await self._chat_once(channel_id, nudged, labels, history_prefix)
-            if answer and is_echo(answer, user_msg):
-                log.warning("echo guard: the retry parroted again — suppressing the turn")
+            if self._answer_problem(answer, user_msg, prev) is not None:
+                log.warning("echo guard: the retry misfired again — suppressing the turn")
                 return None
         # Suppress inline <<TEST>> markers on a results-only (post-roll consequence) turn — a
         # consequence narration must not request a NEW roll or the dice loop never ends (seen live).
@@ -582,6 +662,7 @@ class DMBrain:
         if prep is None:
             return None
         user_msg, labels, history = prep
+        await self._refresh_rag(channel_id, user_msg)
         return await self._stream_and_store(
             channel_id, user_msg, labels, history, on_sentence, should_abort
         )
@@ -607,6 +688,7 @@ class DMBrain:
         ):
             del history[-2:]  # drop the turn we're redoing so it isn't duplicated
         self._pending_tests.pop(channel_id, None)  # the redo supersedes the old turn's test markers
+        await self._refresh_rag(channel_id, user_msg)
         return await self._stream_and_store(
             channel_id, user_msg, labels, history, on_sentence, should_abort
         )
@@ -650,22 +732,30 @@ class DMBrain:
         result = assembler.finish()
         answer, tests, remaining = result.answer, result.tests, list(result.remaining)
         suppressed = False
-        # Echo guard (D43/ADR 018). Only when nothing was spoken yet — an echo is a short single
-        # sentence the assembler held back; a half-spoken turn is never retried. The retry is a
-        # plain batch call: corrective rare path, the answer is short anyway.
-        if not errored and not spoke_any and answer and is_echo(answer, user_msg):
-            log.warning("echo guard (stream): answer parrots a player line (%r) — retrying once", answer)
-            nudged = f"{user_msg}\n{_ECHO_NUDGE}"
+        # Echo guard (D43/ADR 018 + W4). Only when nothing was spoken yet — an echo/repetition is
+        # held back by the assembler's last-sentence rule for short answers; a half-spoken turn is
+        # never retried. The retry is a plain batch call: corrective rare path.
+        prev = self._prev_answer(history)
+        problem = None if (errored or spoke_any) else self._answer_problem(answer, user_msg, prev)
+        if problem is not None:
+            label, nudge = problem
+            log.warning("echo guard (stream): answer %s (%r) — retrying once", label, answer)
+            nudged = f"{user_msg}\n{nudge}"
             try:
                 answer, tests = await self._chat_once(channel_id, nudged, labels, history)
             except Exception:
                 log.exception("echo-guard retry failed — suppressing the turn")
                 answer, tests = "", []
-            if answer and is_echo(answer, user_msg):
-                log.warning("echo guard: the retry parroted again — suppressing the turn")
+            if self._answer_problem(answer, user_msg, prev) is not None:
+                log.warning("echo guard: the retry misfired again — suppressing the turn")
                 answer, tests = "", []
             suppressed = not answer
             remaining = [answer] if answer else []
+        elif not errored and spoke_any and is_self_repetition(answer, prev):
+            # A long repetition streams sentence-by-sentence before finish() can judge it — too
+            # late to retract audio. Keep history parity (stored == spoken) but flag it loudly
+            # for the tuning loop (W4 visibility).
+            log.warning("echo guard: streamed answer re-narrated the previous one (already spoken)")
         for sentence in remaining:
             if should_abort is not None and should_abort():
                 break
@@ -772,10 +862,14 @@ class DMBrain:
         else:
             self._known_speakers.pop(channel_id, None)
 
-    def set_context(self, channel_id: int, *, recap: str = "", state_summary: str = "") -> None:
-        """Set the memory context injected into this channel's prompt (Phase 9): the stored recap
-        (narrative thread) and the compact world-state block (hard facts). Empty strings clear them.
-        The cog calls this on join (from the loaded state) and after every state change."""
+    def set_context(
+        self, channel_id: int, *, recap: str = "", state_summary: str = "",
+        adventure_block: str = "",
+    ) -> None:
+        """Set the memory context injected into this channel's prompt: the stored recap (narrative
+        thread), the compact world-state block (hard facts, Phase 9) and the adventure block
+        (summary + current scene card, Phase 10a). Empty strings clear them. The cog calls this on
+        join (from the loaded state) and after every state change."""
         if recap:
             self._recap[channel_id] = recap
         else:
@@ -784,6 +878,10 @@ class DMBrain:
             self._state_summary[channel_id] = state_summary
         else:
             self._state_summary.pop(channel_id, None)
+        if adventure_block:
+            self._adventure_block[channel_id] = adventure_block
+        else:
+            self._adventure_block.pop(channel_id, None)
 
     async def summarize(self, channel_id: int) -> str | None:
         """Produce a German "Was bisher geschah" recap from this channel's history (the `wrap up`
@@ -815,6 +913,8 @@ class DMBrain:
         self._alias_hint.pop(channel_id, None)
         self._recap.pop(channel_id, None)
         self._state_summary.pop(channel_id, None)
+        self._adventure_block.pop(channel_id, None)
+        self._rag_block.pop(channel_id, None)
 
     async def aclose(self) -> None:
         await self._client.aclose()

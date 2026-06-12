@@ -4,6 +4,22 @@ Living status document. A phase counts as done only when its **verification gate
 met and the proof is recorded here.
 
 ## Current focus
+**Phase 10a — the adventure is in the DM (D44/D45 → ADR 019): code-complete, live-unverified.**
+The "perfect gamemaster" discussion (Tobi + Timos architecture critique) concluded that the
+loudest failure — *the DM improvises from nothing* — needed Phase 10 pulled forward as a
+**3-stage hybrid**, not pure vector RAG: (1) a German **adventure summary** always in the prompt,
+(2) a deterministic **scene tracker** (Chemical Burn hand-authored into 15 German scene cards +
+24 NPC statblocks under `data/adventures/chemical_burn/` — local-only, public repo; pointer =
+`WorldState.scene_id`, moved via `!ort`/`!szenen`, statblocks via `!npc add`), and (3)
+**rulebook-only RAG** (`sqlite-vec` + **bge-m3** — nomic failed German→English retrieval —
+threshold-gated `## Regelwerk` block; store built offline, 1505 chunks, verified: "kritischer
+Erfolg"/"Schwierigkeit" hit the right sections, table talk stays silent). Plus the **W4
+self-repetition guard** (fuzzy match against the DM's own previous answer, retry-then-suppress).
+Suite **176/176**. `DM_ADVENTURE=chemical_burn` is set in `.env`. _Open in Phase 10: the profile
+bootstrap (gate half 2, ADR 005) + the lore corpus (D28)._ **Both live gates are now stacked:
+Phase 9 (HP survives restart) AND Phase 10 half 1 (rule question from the book) — one circlejerk
+session can cover both.**
+
 **Post-roll robustness round (D43 → ADR 018) after the 2026-06-12 echo collapse: code-complete,
 live-unverified — the Phase-9 gate is STILL pending (the gate attempt ran in the wrong channel).**
 Tobi's session "fühlt sich nicht mehr wie ein Gamemaster an" diagnosed from `debug.log` +
@@ -46,7 +62,35 @@ world-state block (CLAUDE.md prompt order). **Model: mistral-nemo.** Recommended
 gate / any follow-up: **Opus 4.8 / xhigh**.
 
 ## Last session
-**The 2026-06-12 echo collapse → diagnosis + the D43/ADR-018 robustness round.** Tobi reported the
+**Phase 10a built — the 3-stage hybrid (same day as D43, after the "perfect gamemaster"
+discussion).** Tobi bought *Chemical Burn* (53 pp.), put it in `data/pdfs/`, and asked for a deep
+joint planning round ("stell mir sehr viele fragen"). Decisions (via discussion): 3-stage hybrid
+over pure RAG, story as guardrail (not railroad), priorities = plot coherence + W5 question
+precision, German scene prep, auto-extracted NPC statblocks, story pipeline before Timo's
+Tailscale model test (which runs independently via `OLLAMA_HOST`). Built end to end:
+- **Compendium:** `tools/pdf_to_md.py` on the story PDF → I read all 53 pages and authored
+  `data/adventures/chemical_burn/adventure.json` (15 German scene cards: description, NPCs,
+  opportunities with profile-aligned skills/difficulties, secrets flagged "NIE aussprechen",
+  leads_to, off-script guidance) + `npcs.json` (24 statblocks from the Core-Rulebook bestiary +
+  adventure mods; wounds/TB/armour engine-ready). **Local-only** (public repo — derivative of a
+  bought book, like the PDFs). _Tobi: review the cards for tone/quality._
+- **Loader + wiring:** `dmbot/rag/adventure.py` (pure, tested); `WorldState.scene_id` (persists
+  like HP); prompt order extended (recap → **adventure** → state → **Regelwerk** → hint);
+  `DM_ADVENTURE` env; `!join` announces adventure + scene; `!ort <id>`/`!szenen`; `!npc add`
+  resolves compendium statblocks (explicit numbers override).
+- **Rulebook RAG:** `dmbot/rag/ingest.py` (heading-aware ~400-tok chunks, long pdf_to_md
+  paragraph lines split at sentence ends; meta table pins embedder+dim) + `retrieve.py`
+  (threshold 0.45 cosine, k=2, source=rulebook only, degrades silently). **Embedder switched
+  nomic→bge-m3 after a failed sanity check** (German questions vs English text — exactly the
+  CLAUDE.md "inspect a real chunk" reality check). Store: 1505 chunks. Verified: crit/difficulty
+  questions hit CRITICAL HIT / DIFFICULTY; "ich gehe zur Tür" stays silent.
+- **W4 guard:** `is_self_repetition` (SequenceMatcher ≥0.75, normalized, <60 chars exempt) joins
+  the D43 echo guard — catches the live "Warum sind wir hier?" pronoun-swap re-description;
+  retry with own nudge, then suppress; streamed-too-late repetitions logged loudly.
+- **Tests 157→176** (+`test_adventure.py`, `test_rag.py`; compendium test skips on fresh clones).
+  New dep `sqlite-vec` (§3 justified); `bge-m3` pulled. → **ADR 019**, D44/D45.
+
+**(Same day, earlier) The 2026-06-12 echo collapse → diagnosis + the D43/ADR-018 robustness round.** Tobi reported the
 bot "fühlt sich nicht mehr wie ein Gamemaster an" with a live log. Diagnosis from `debug.log` +
 `data/sessions/1355307134559981709/history.jsonl`:
 - **Wrong channel:** the session ran in `1355307134559981709`, not circlejerk (`1343673766487654464`)
@@ -415,14 +459,25 @@ _(Prior session — voice-stack hardening, ADR 006 — and Phases 3–6 (the pla
 in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 
 ## Next concrete step
-**The live gate run — in circlejerk this time (Tobi).** The 2026-06-12 attempt ran in the wrong
-channel and collapsed (see Last session); the D43/ADR-018 fixes are landed but **unproven**. The
-next run must start with `!j` **in circlejerk** — the `!join` post now names the party (expect
-**Garran Vex, Eli Castor, Magos Yann**; a ⚠ warning instead means wrong channel, stop and switch).
-New D43 checks on top of the existing list: a post-roll turn **narrates the consequence** (no
-parroted player line — watch for the `echo guard` WARNING in the log); an attack action gets a
-**combat-skill** button (router decides, not the marker); `history.jsonl` pairs stay correct when
-the 🎲 is clicked while the DM still speaks. Dial: **Opus 4.8 / xhigh**.
+**ONE live session in circlejerk covers everything (Tobi).** Before it: **review the compendium**
+(`data/adventures/chemical_burn/adventure.json` + `npcs.json` — spot-check scene cards for tone
+and the never-say secrets). Then `!j` **in circlejerk** and check in this order:
+1. **Join line-up:** party named (**Garran Vex, Eli Castor, Magos Yann** — a ⚠ warning = wrong
+   channel, stop) + `📖 Abenteuer: Chemical Burn — Szene: Der Auftrag`.
+2. **Phase 10 gate half 1:** ask a rule question by voice („Was passiert bei einem kritischen
+   Erfolg?") → answer grounded in the book (a `📚 Regelwerk:` line appears in `debug.log`).
+3. **Plot coherence (D44):** the DM opens with Halikarns Auftrag, not improv; `!ort mud_gate` →
+   the narration moves to the harbour; a part-1 „wer steckt dahinter?" stays unspoiled.
+4. **D43 checks:** post-roll turn narrates the consequence (no parroted player line — watch for
+   `echo guard` WARNINGs); attack → **combat-skill** button (router decides); `history.jsonl`
+   pairs correct when 🎲 is clicked mid-speech.
+5. **Phase 9 gate:** `!npc add Kultist` (statblock auto-fills now) → attack → `💥 …` → **restart**
+   → `!j` → wounds unchanged; recap flow as before.
+6. **W4/W5:** ask „Warum sind wir hier?" twice — expect an answer, not a re-description (watch
+   for the self-repetition WARNING). Then fill the Phase-9 + Phase-10(half) VERIFY EVIDENCE.
+Watch `ctx=` in the `[latency]` lines — the adventure block adds ~1k tokens; the D36 warning
+fires above 85% of 8192. Dial: **Opus 4.8 / xhigh** (roadmap recommends opusplan/high for
+Phase 10 planning; the building is done — the run is verification).
 
 **✅ Prerequisite resolved (2026-06-10) — party registered + session reset.** The
 `circlejerk` channel (`1343673766487654464`) now has a hand-authored
@@ -557,6 +612,8 @@ create the next-numbered ADR.
 | D41 | History autosave | **Third session artifact** `data/sessions/<id>/history.jsonl` (`dmbot/memory/history.py`) — append-only, one line per turn (`{ts, user_msg, answer, redo}`), appended off-loop after each turn, restored into an empty `DMBrain` history on `!join`, rotated to `history.<ts>.jsonl` on `!leave`. `DM_AUTOSAVE=1` | World state already persists (ADR 015); a crash still lost the conversational thread. Code-owned like `state.json` (the read-only `characters.json` split is unchanged). Append-only (no atomic dance; torn tail tolerated); a `redo` record replaces the prior turn. `_last_turn` not restored → `!redo` unavailable for the restored last turn (documented). Extends ADR 015's artifact set → D-entry, no new ADR |
 | D42 | Streaming content tuning (first live run) | **(a)** skip TTS+post of a **content-less** answer (`has_speakable_content`: no letter/digit) — a marker-only / code-fenced turn no longer makes XTTS read a lone quote for ~15 s; the dice button still posts. **(b)** `_sanitize` strips **code-fence backticks** (`` ` ``) like markdown `*`. **(c)** suppress inline `<<TEST>>` markers on **results-only turns** (`_last_action is None`) so a post-roll consequence narration can't request a new roll | First live streaming run: the model emitted marker-only turns (15 s of lone-quote audio each) and a `<<TEST>>` on every turn incl. consequence narrations → an endless attack→roll→narrate+marker→roll **dice loop**. (a)/(b) are output cleanup (ADR 016 family); (c) is the real flow decision — a consequence narration legitimately *never* needs a fresh roll; the router handles real player-action rolls on the next turn. Builds on ADR 014/D40 + ADR 016/017 → D-entry, no new ADR |
 | D43 | Post-roll robustness (echo collapse, 2026-06-12) | **(a) Echo guard** — pure `is_echo()` flags an answer that parrots a player line (normalized exact/fragment/≥90%-coverage); retry once with a corrective nudge, then **suppress the turn** (nothing spoken, the pair stays out of history); `restore_history` skips empty answers. **(b) Roll-feedback directive** — a results-only `[Würfel]` turn appends "Beschreibe als Spielleitung kurz die Folgen …". **(c) Router wins the dedupe** (flips D40's marker-wins; `roll_button_source` replaces `should_post_router`) — inline markers stripped but discarded when the router is on. **(d) Autosave race fix** — the cog snapshots `user_msg` at generation end and passes it to `_autosave_turn` (a dice click during playback overwrites `_last_turn`). **(e) ADR 016 partial rollback** — `num_predict` 160→220, persona "zwei bis vier Sätze". Plus: `!join` names the party + warns loudly on the `_example` fallback; `chat_stream` read timeout 120→300 s | The 2026-06-12 session collapsed: a nonsense marker roll (Heimlichkeit for an attack — the unreliable marker won the dedupe over the validated router) + a bare `[Würfel]` feedback line made nemo predict the *next player line*; the label-strip turned it into a clean-looking echo that was spoken, stored, and self-reinforced ("Ich greife den Kultisten an." three turns straight). Deterministic guards over persona hopes (the ADR 016 lesson); the brevity squeeze predates streaming and the praised sessions ran at 220 → ADR 018 |
+| D44 | Adventure into the DM (Phase 10a) | **3-stage hybrid** instead of pure vector RAG: (1) a ~300-token German **adventure summary** always in the prompt; (2) a deterministic **scene tracker** — the adventure hand-authored once into German scene cards (`data/adventures/<id>/adventure.json` + `npcs.json` statblocks; local-only, not in git — derivative of a bought book in a public repo), pointer = `WorldState.scene_id`, moved by humans via `!ort`/`!szenen`, never by the model; `!npc add` resolves compendium statblocks; (3) **rulebook-only RAG** — heading-aware chunks → Ollama embed → `sqlite-vec`, threshold-gated `## Regelwerk` block per turn (offline CLI `python -m dmbot.rag.ingest`). The adventure is deliberately NOT in the vector store | Similarity search can't answer "wo sind wir im Plot" (the loudest player critique: the DM improvised from nothing) and surfaces part-3 spoilers in part 1; plot position must be code state (golden rule #3). Matches Timo's independently-formed architecture (prepared docs + state outside the narrator). First compendium: **Chemical Burn** (15 scenes, 24 statblocks). `DM_ADVENTURE` env; profile bootstrap (gate half 2) stays open → ADR 019 |
+| D45 | Embedder + W4 guard | **(a)** RAG embedder = **`bge-m3`** (multilingual), replacing D28's `nomic-embed-text` for the store; the store's meta table pins model+dim so retrieval always matches. **(b)** Echo guard extended by **`is_self_repetition`** (SequenceMatcher ≥0.75 on normalized text, <60 chars exempt): retry with a "beantworte die Frage direkt"-nudge, then suppress; streamed long repetitions only logged (audio can't be retracted) | (a) Verified against real questions: German queries barely matched the English rulebook with nomic ("kritischer Erfolg" → miss/wrong hit); bge-m3 hits DIFFICULTY/CRITICAL HIT while table talk stays under the 0.45 threshold. (b) W4 from the wishlist, seen live 2026-06-12: "Warum sind wir hier?" → near-verbatim re-description with pronoun swaps — substring checks miss that, fuzzy ratio catches it → ADR 019 (extends ADR 018) |
 
 ### Phase → ADR map (read these when you enter the phase)
 
@@ -570,7 +627,7 @@ create the next-numbered ADR.
 | 6–7 — Full loop, turn-taking, registration | ADR 003 (conversational control, registration, turn-taking) + **ADR 011** (STT latency: push-to-talk gate) + **ADR 013** (pause control) |
 | 8 — Dice engine, IM profile, marker flow | ADR 005 (engine + profile) + ADR 004 (test marker, character data) + ADR 001 (IM specifics) + **ADR 012** (difficulty ladder, character store, marker grammar) + **ADR 014** (roll-detection router; timing now D40 — fires concurrent with playback) + **ADR 018** (router wins the dedupe; echo guard + roll-feedback directive on post-roll turns) |
 | 9 — Memory (JSON + recaps) | ADR 004 (character/state JSON) + **ADR 015** (sheet/state split, auto-combat damage) |
-| 10 — RAG + profile bootstrap | ADR 005 (profile bootstrap) |
+| 10 — RAG + profile bootstrap | ADR 005 (profile bootstrap) + **ADR 019** (3-stage hybrid: scene tracker + rulebook-only RAG, bge-m3, W4 guard) |
 
 ---
 
@@ -809,10 +866,16 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   (`weapon + SL − soak`, clamp ≥0) and the profile `combat` accessors are seeded-tested. _Live Discord
   gate (HP survives a real restart; recap shown + in-prompt on the next `!join`): **pending Tobi.**_
 
-### ⬜ Phase 10 — RAG over PDFs + system-profile bootstrap
-- [ ] Ingestion (PDF → chunks → embeddings → store) for rulebook/lore/adventure
-- [ ] Retrieval into the prompt
+### 🔄 Phase 10 — adventure + rulebook into the DM + system-profile bootstrap
+- [x] **10a (ADR 019, code-complete 2026-06-12, live-unverified):** adventure as 3-stage hybrid —
+  summary + deterministic scene tracker (`data/adventures/chemical_burn/`, `!ort`/`!szenen`,
+  `WorldState.scene_id`, `!npc add` statblocks) instead of vector RAG; **rulebook** ingestion
+  (`dmbot/rag/ingest.py` → `sqlite-vec`, bge-m3, 1505 chunks) + threshold-gated retrieval into
+  the prompt. The adventure is deliberately NOT in the vector store (spoilers).
+- [ ] **Gate half 1 (live):** a concrete rule question answered correctly from the PDF
+- [ ] Lore corpus (D28: Fandom + Lexicanum → further `source`s) — later
 - [ ] Profile bootstrap: DM proposes a draft system profile from the rulebook → user confirms → saved
+- VERIFY EVIDENCE: _(pending the circlejerk run)_
 - **Decided approach (D28, 2026-06-08 — lore + RAG; full plan in this session's plan file):**
   - **Lore = RAG, never fact-fine-tuning** (golden rule #7). Fine-tuning only later as a **tone-LoRA**
     (style, on `logs/transcript.log`), Part-2 backlog — facts always stay in RAG.

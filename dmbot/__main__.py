@@ -73,6 +73,7 @@ class DMBot(commands.Bot):
                 dm_num_predict=self._config.dm_num_predict,
                 dm_max_lines=self._config.dm_max_lines,
                 system=self._config.system,
+                adventure=self._config.adventure,
                 push_to_talk=self._config.push_to_talk,
                 pause_vad_while_speaking=self._config.pause_vad_while_speaking,
                 button_autosend=self._config.button_autosend,
