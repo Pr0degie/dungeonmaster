@@ -13,12 +13,8 @@ Windows (SETUP B6) so incoming Opus can be decoded to PCM.
 
 from __future__ import annotations
 
-import itertools
 import logging
 import signal
-import sys
-import threading
-import time
 
 import discord
 from discord.ext import commands
@@ -26,6 +22,7 @@ from discord.ext import commands
 from .config import Config
 from .llm.preflight import check_ollama
 from .logsetup import setup_logging
+from .shutdown import progress
 from .voice.commands import VoiceReceiveCog
 
 log = logging.getLogger("dmbot")
@@ -100,28 +97,44 @@ class DMBot(commands.Bot):
             return
         log.error("command error in %r: %r", getattr(ctx, "command", None), error)
 
+    async def close(self) -> None:
+        """Step-wise teardown with an `[i/n]` console display (dmbot.shutdown.progress), so the
+        operator sees what is being shut down, how many steps remain, and which one is slow —
+        the bare dots animation hid all of that. Voice disconnects + cog teardown are pulled in
+        front of ``super().close()`` so each gets its own counted step; the cogs report their
+        own substeps (``TEARDOWN_STEPS``)."""
+        if self.is_closed():
+            return
+        voice = list(self.voice_clients)
+        cog_steps = sum(getattr(c, "TEARDOWN_STEPS", 0) for c in self.cogs.values())
+        progress.begin(len(voice) + cog_steps + 1)
+        for vc in voice:
+            with progress.step(f"Voice-Channel verlassen ({getattr(vc, 'channel', '?')})"):
+                try:
+                    await vc.disconnect(force=True)
+                except Exception:
+                    log.exception("voice disconnect failed (continuing shutdown)")
+        for name in list(self.cogs):
+            try:
+                await self.remove_cog(name)  # runs the cog's cog_unload → its progress steps
+            except Exception:
+                log.exception("cog teardown failed (continuing shutdown)")
+        with progress.step("Discord-Verbindung schließen (Gateway + HTTP)"):
+            await super().close()
+        progress.finish()
+
 
 _YELLOW = "\033[93m"
 _RED = "\033[91m"
 _RESET = "\033[0m"
 
 
-def _animate_shutdown() -> None:
-    """Animate 'Shutting down' with cycling dots on one line (carriage-return) so the operator sees
-    the teardown is progressing, not hung. Runs in a daemon thread → killed when the process exits."""
-    for dots in itertools.cycle(("   ", ".  ", ".. ", "...")):
-        sys.stdout.write(f"\r{_RED}Shutting down{dots}{_RESET}")
-        sys.stdout.flush()
-        time.sleep(0.3)
-
-
 def _install_sigint_guard() -> None:
     """Two-stage Ctrl+C: the **first** press asks ("Quit?") and keeps running, the **second**
     shuts down. discord.py 2.7.1's ``run()`` installs no SIGINT handler (verified), so ours stays
     in effect; the second press raises ``KeyboardInterrupt``, which ``run()`` catches and tears
-    down cleanly (``cog_unload`` → transcriber/brain/bridge close). Avoids killing a session on a
-    single fat-fingered Ctrl+C. The second press also starts an animated 'Shutting down…' line so
-    the (sometimes second-long) teardown visibly does something rather than looking frozen.
+    down cleanly (``DMBot.close()`` → per-step progress display → cog teardown). Avoids killing
+    a session on a single fat-fingered Ctrl+C.
     """
     armed = {"v": False}
 
@@ -130,9 +143,7 @@ def _install_sigint_guard() -> None:
             armed["v"] = True
             print(f"\n{_YELLOW}Quit? Nochmal Strg+C zum Beenden.{_RESET}", flush=True)
             return
-        sys.stdout.write(f"\n{_RED}Shutting down{_RESET}")  # instant paint; the thread animates the dots
-        sys.stdout.flush()
-        threading.Thread(target=_animate_shutdown, daemon=True).start()
+        print(f"\n{_RED}Shutting down …{_RESET}", flush=True)  # instant; close() lists the steps
         raise KeyboardInterrupt
 
     signal.signal(signal.SIGINT, _handler)

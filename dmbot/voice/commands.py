@@ -45,6 +45,7 @@ from ..rules.marker import TestRequest, extract_tests
 from ..rules.summary import rules_pages_de
 from ..memory.state import WorldState, world_state_summary_de
 from ..memory import history as history_store
+from ..shutdown import progress, to_daemon_thread
 from ..rag.adventure import Adventure
 from ..rag.retrieve import RulebookRetriever
 
@@ -380,16 +381,24 @@ class VoiceReceiveCog(commands.Cog):
         # listener no-ops and the Discord ⏸ button still works. Runs for the whole bot lifetime.
         self._esc_task = asyncio.create_task(self._esc_key_listener())
 
+    # Number of progress.step() calls in cog_unload — DMBot.close() sums this across cogs to
+    # announce the total shutdown step count up front. Keep in sync with cog_unload.
+    TEARDOWN_STEPS = 4
+
     async def cog_unload(self) -> None:
-        for task in (self._esc_task, self._anim_task):
-            if task is not None:
-                task.cancel()
-        # stop() does a (short) thread.join — run it off the event loop so the gateway heartbeat
-        # keeps beating during shutdown (otherwise Ctrl+C logs "voice heartbeat blocked").
-        await asyncio.to_thread(self._transcriber.stop)
-        await self._brain.aclose()
-        await self._retriever.aclose()
-        await self._bridge.aclose()
+        with progress.step("STT-Transcriber stoppen (Backlog wird verworfen, max 2s)"):
+            for task in (self._esc_task, self._anim_task):
+                if task is not None:
+                    task.cancel()
+            # stop() does a (short) thread.join — run it off the event loop so the gateway
+            # heartbeat keeps beating during shutdown (otherwise "voice heartbeat blocked").
+            await asyncio.to_thread(self._transcriber.stop)
+        with progress.step("LLM-Client (Ollama) schließen"):
+            await self._brain.aclose()
+        with progress.step("RAG-Retriever schließen"):
+            await self._retriever.aclose()
+        with progress.step("Bridge zu Bot A schließen"):
+            await self._bridge.aclose()
 
     async def _speak(self, text: str, guild_id: int | None,
                      timing: _TurnTiming | None = None) -> bool:
@@ -404,7 +413,9 @@ class VoiceReceiveCog(commands.Cog):
             return False
         try:
             t0 = time.perf_counter()
-            wav = await asyncio.to_thread(self._tts.synthesize, text)
+            # Daemon thread, not asyncio.to_thread: a GPU synth in flight at Ctrl+C must not
+            # join-block shutdown (the WAV is moot once we're quitting). See dmbot/shutdown.py.
+            wav = await to_daemon_thread(self._tts.synthesize, text)
             tts_ms = round((time.perf_counter() - t0) * 1000)
             log.info("🔊 TTS %d ms → speaking", tts_ms)
         except Exception:
@@ -595,7 +606,9 @@ class VoiceReceiveCog(commands.Cog):
                     continue
                 try:
                     t0 = time.perf_counter()
-                    wav = await asyncio.to_thread(self._tts.synthesize, s)
+                    # Daemon thread (see dmbot/shutdown.py): a streamed-sentence synth in flight
+                    # at Ctrl+C is abandoned, never join-blocking the shutdown.
+                    wav = await to_daemon_thread(self._tts.synthesize, s)
                 except Exception:
                     log.exception("TTS synthesis failed (streamed sentence) — skipping it")
                     continue
