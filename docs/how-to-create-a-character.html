@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How to Create a Character — Imperium Maledictum</title>
+<style>
+  :root {
+    --bg: #0d0b09;
+    --panel: #16120e;
+    --panel-2: #1d1813;
+    --ink: #d8cfc0;
+    --ink-dim: #9a8f7d;
+    --gold: #c9a227;
+    --gold-soft: #8a6f1f;
+    --blood: #8e2f2f;
+    --teal: #4f8a8b;
+    --border: #2e2620;
+    --ok: #6f9e57;
+    --bad: #b05050;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    background-image: radial-gradient(ellipse at 50% -10%, #1d160d 0%, var(--bg) 60%);
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    line-height: 1.6;
+    font-size: 17px;
+  }
+  .page { max-width: 880px; margin: 0 auto; padding: 32px 22px 80px; }
+  header { text-align: center; padding: 28px 0 8px; }
+  .eyebrow { letter-spacing: .35em; text-transform: uppercase; font-size: 12px; color: var(--gold-soft); margin-bottom: 10px; }
+  h1 {
+    font-size: clamp(30px, 6vw, 46px); margin: 0 0 6px; color: var(--gold);
+    letter-spacing: .04em; font-variant: small-caps; text-shadow: 0 0 28px rgba(201,162,39,.18);
+  }
+  .subtitle { color: var(--ink-dim); font-style: italic; margin: 0; }
+  .rule-line { height: 1px; margin: 26px auto; width: 70%; background: linear-gradient(90deg, transparent, var(--gold-soft), transparent); }
+  h2 {
+    color: var(--gold); font-variant: small-caps; letter-spacing: .05em; font-size: 26px;
+    margin: 48px 0 6px; border-bottom: 1px solid var(--border); padding-bottom: 6px;
+  }
+  h2 .num { color: var(--gold-soft); margin-right: 10px; font-size: 20px; }
+  h3 { color: var(--ink); font-size: 19px; margin: 26px 0 6px; }
+  p { margin: 10px 0; }
+  strong { color: #efe6d2; }
+  .dim { color: var(--ink-dim); font-size: 15px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 18px 20px; margin: 18px 0; }
+  .panel.gold { border-color: var(--gold-soft); background: linear-gradient(180deg, #1c160c, var(--panel)); }
+  .panel-title { font-variant: small-caps; letter-spacing: .08em; color: var(--gold); font-size: 15px; margin-bottom: 6px; }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 16px; }
+  th { text-align: left; color: var(--gold); font-variant: small-caps; letter-spacing: .05em; border-bottom: 1px solid var(--gold-soft); padding: 8px 10px; font-weight: normal; }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  td.mod { font-family: Consolas, monospace; }
+  .example {
+    background: var(--panel-2); border: 1px solid var(--border); border-left: 4px solid var(--teal);
+    border-radius: 6px; padding: 14px 18px; margin: 14px 0; font-size: 15.5px;
+  }
+  .example .ex-title { color: var(--teal); font-variant: small-caps; letter-spacing: .06em; font-size: 14px; margin-bottom: 4px; }
+  .example .die { font-family: Consolas, monospace; color: #efe6d2; }
+  .flow { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+  .flow .step { flex: 1 1 140px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; font-size: 14.5px; }
+  .flow .step b { display: block; color: var(--gold); font-variant: small-caps; font-size: 14px; margin-bottom: 3px; }
+  code { background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-size: 14.5px; color: #efe6d2; font-family: Consolas, monospace; }
+  footer { margin-top: 56px; text-align: center; color: var(--ink-dim); font-size: 13.5px; }
+  .crest { text-align: center; font-size: 26px; color: var(--gold-soft); margin: 4px 0; }
+
+  /* ---- Formular ---- */
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin: 12px 0; }
+  .field { display: flex; flex-direction: column; gap: 3px; }
+  .field label { font-size: 13px; color: var(--ink-dim); font-variant: small-caps; letter-spacing: .05em; }
+  input, select, textarea {
+    background: #0f0c0a; color: #efe6d2; border: 1px solid var(--border); border-radius: 5px;
+    padding: 7px 9px; font-size: 15px; font-family: Georgia, serif;
+  }
+  input:focus, select:focus, textarea:focus { outline: 1px solid var(--gold-soft); }
+  input[type=number] { font-family: Consolas, monospace; width: 100%; }
+  .char-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); gap: 8px; }
+  .char-cell { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 8px; text-align: center; }
+  .char-cell label { display: block; font-size: 13px; color: var(--gold); font-variant: small-caps; }
+  .char-cell .final { font-size: 12.5px; color: var(--ink-dim); margin-top: 3px; font-family: Consolas, monospace; }
+  .budget { font-family: Consolas, monospace; font-size: 15px; padding: 6px 10px; border-radius: 5px; display: inline-block; margin: 6px 0; border: 1px solid var(--border); background: var(--panel-2); }
+  .budget.ok { color: var(--ok); border-color: var(--ok); }
+  .budget.bad { color: var(--bad); border-color: var(--bad); }
+  .skill-row { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; padding: 4px 0; border-bottom: 1px dotted var(--border); font-size: 15px; }
+  .skill-row .sk-val { font-family: Consolas, monospace; color: #efe6d2; min-width: 46px; text-align: right; }
+  .skill-row select { padding: 3px 6px; }
+  #jsonOut {
+    width: 100%; min-height: 220px; font-family: Consolas, monospace; font-size: 13px;
+    background: #0a0908; color: #cfe0c0; border: 1px solid var(--border); border-radius: 6px; padding: 12px;
+    white-space: pre; overflow: auto;
+  }
+  .btn {
+    background: linear-gradient(180deg, #2a2010, #1c160c); color: var(--gold); border: 1px solid var(--gold-soft);
+    border-radius: 6px; padding: 10px 22px; font-size: 16px; font-variant: small-caps; letter-spacing: .06em;
+    cursor: pointer; font-family: Georgia, serif;
+  }
+  .btn:hover:not(:disabled) { background: #34281382; box-shadow: 0 0 12px rgba(201,162,39,.25); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .copied { color: var(--ok); margin-left: 12px; font-size: 14px; opacity: 0; transition: opacity .3s; }
+  .copied.show { opacity: 1; }
+  .problems { color: var(--bad); font-size: 14px; margin: 6px 0; min-height: 1.2em; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <div class="crest">⚜</div>
+  <div class="eyebrow">Warhammer 40.000 Roleplay · Imperium Maledictum</div>
+  <h1>How to Create a Character</h1>
+  <p class="subtitle">In sieben Schritten zum eigenen Akolythen — Formular unten füllt sich von selbst aus</p>
+  <div class="rule-line"></div>
+</header>
+
+<p class="dim" style="text-align:center; max-width: 640px; margin: 0 auto;">So funktioniert es:
+Lies die Schritte I–VI (≈ 10 Minuten), triff deine Entscheidungen direkt im
+<strong>Formular in Abschnitt VII</strong> — es zählt Punkte mit, rechnet Wunden aus und baut
+am Ende den fertigen Datenblock, den du nur noch kopieren und an Tobi schicken musst.</p>
+
+<!-- ================================================================== -->
+<h2><span class="num">I</span>Das Konzept</h2>
+<p>Bevor du Zahlen verteilst: <strong>Wer bist du — und warum hat Inquisitor Halikarn
+ausgerechnet dich rekrutiert?</strong> Ein Satz genügt. Drei bewährte Richtungen
+(frei abwandelbar, mischen erlaubt):</p>
+<div class="flow">
+  <div class="step"><b>⚔ Der Kämpfer</b>Ex-Soldat, Ganger, Pit-Fighter — hohe WS oder BS, viel Zähigkeit. Löst Probleme, die zurückschlagen.</div>
+  <div class="step"><b>👁 Der Späher</b>Schmuggler, Jäger, Hive-Ratte — Agilität &amp; Wahrnehmung. Sieht alles, wird selten gesehen.</div>
+  <div class="step"><b>⚙ Der Gelehrte</b>Adept, Medicus, Tech-Bastler — Intelligenz &amp; Auftreten. Weiß Dinge, die andere nicht mal googeln könnten (weil Heresie).</div>
+</div>
+<p class="dim">Tipp an die Gruppe: Sprecht euch ab. Drei Kämpfer überleben den ersten Kampf —
+aber niemand kann danach die Wunden nähen oder den Daten-Slate knacken.</p>
+
+<!-- ================================================================== -->
+<h2><span class="num">II</span>Die neun Eigenschaften</h2>
+<p>Eigenschaften sind dein Rohpotenzial (menschlicher Schnitt: 30–40). Die
+<strong>Zehnerstelle</strong> ist der <strong>Bonus</strong> (Str 39 → StrB 3) — er bestimmt
+u.&nbsp;a. Wunden und Tragkraft.</p>
+<table>
+  <tr><th>Eigenschaft</th><th>Kürzel</th><th>Wofür</th></tr>
+  <tr><td>Kampfgeschick</td><td class="mod">WS</td><td class="dim">Nahkampf — zuschlagen und parieren</td></tr>
+  <tr><td>Ballistik</td><td class="mod">BS</td><td class="dim">Fernkampf — treffen, was wegläuft</td></tr>
+  <tr><td>Stärke</td><td class="mod">Str</td><td class="dim">Heben, klettern, härter zuschlagen</td></tr>
+  <tr><td>Zähigkeit</td><td class="mod">Tgh</td><td class="dim">Einstecken, Gift, Wunden (×2!)</td></tr>
+  <tr><td>Agilität</td><td class="mod">Ag</td><td class="dim">Schleichen, ausweichen, zuerst handeln</td></tr>
+  <tr><td>Intelligenz</td><td class="mod">Int</td><td class="dim">Wissen, Technik, Schlussfolgern</td></tr>
+  <tr><td>Wahrnehmung</td><td class="mod">Per</td><td class="dim">Gefahr zuerst sehen, Lügen riechen</td></tr>
+  <tr><td>Willenskraft</td><td class="mod">Wil</td><td class="dim">Furcht widerstehen, klar bleiben</td></tr>
+  <tr><td>Charisma</td><td class="mod">Fel</td><td class="dim">Überreden, führen, einschüchtern</td></tr>
+</table>
+<div class="panel">
+  <div class="panel-title">Zwei Wege (beide regelkonform)</div>
+  <p style="margin:6px 0;"><strong>A — Punkte verteilen (Standard):</strong> Jede Eigenschaft
+  startet bei <code>20</code>. Du hast <strong>90 Punkte</strong>; pro Eigenschaft musst du
+  mindestens <code>+4</code> und darfst höchstens <code>+18</code> vergeben (Endwerte also
+  24–38, <em>bevor</em> die Herkunft dazukommt). Das Formular zählt für dich.</p>
+  <p style="margin:6px 0;"><strong>B — Würfeln (für Schicksalsgläubige):</strong> Neunmal
+  <code>2W10+20</code>, Ergebnisse frei den Eigenschaften zuordnen. Im Formular den Schalter
+  „selbst gewürfelt" setzen und die Werte eintragen.</p>
+</div>
+
+<!-- ================================================================== -->
+<h2><span class="num">III</span>Die Herkunft</h2>
+<p>Wo bist du aufgewachsen? Die Herkunft gibt <strong>+5 auf eine feste Eigenschaft</strong>
+und <strong>+5 auf eine von drei wählbaren</strong>. Such dir eine aus — oder würfle W100 und
+nimm, was das Schicksal liefert:</p>
+<table>
+  <tr><th>W100</th><th>Herkunft</th><th>Boni</th></tr>
+  <tr><td class="mod">01–10</td><td>Agrarwelt</td><td class="dim">+5 Str und +5 auf Tgh, Ag oder Wil</td></tr>
+  <tr><td class="mod">11–20</td><td>Feudalwelt</td><td class="dim">+5 WS und +5 auf Str, Wil oder Fel</td></tr>
+  <tr><td class="mod">21–30</td><td>Wildwelt</td><td class="dim">+5 Tgh und +5 auf WS, Str oder Per</td></tr>
+  <tr><td class="mod">31–40</td><td>Schmiedewelt</td><td class="dim">+5 Int und +5 auf BS, Tgh oder Ag</td></tr>
+  <tr><td class="mod">41–70</td><td>Makropolwelt</td><td class="dim">+5 Ag und +5 auf BS, Per oder Fel</td></tr>
+  <tr><td class="mod">71–80</td><td>Schreinwelt</td><td class="dim">+5 Wil und +5 auf Int, Per oder Fel</td></tr>
+  <tr><td class="mod">81–90</td><td>Schola Progenium</td><td class="dim">+5 Fel und +5 auf WS, BS oder Tgh</td></tr>
+  <tr><td class="mod">91–00</td><td>Leerengeboren</td><td class="dim">+5 Per und +5 auf Ag, Int oder Wil</td></tr>
+</table>
+<p class="dim">Die Boni kommen <em>auf</em> deine Startwerte — damit darf eine Eigenschaft auch
+über 38 landen. Das Formular addiert automatisch.</p>
+
+<!-- ================================================================== -->
+<h2><span class="num">IV</span>Die Fertigkeiten</h2>
+<p>Eine Fertigkeit baut auf einer Eigenschaft auf. <strong>Ungelernt</strong> würfelst du auf
+den puren Eigenschaftswert; <strong>Steigerungen</strong> geben je <code>+5</code> obendrauf.
+Du hast <strong>6 Steigerungen</strong>, höchstens <strong>2 pro Fertigkeit</strong> (also max.
++10):</p>
+<table>
+  <tr><th>Fertigkeit</th><th>Eigenschaft</th><th>Beispiele</th></tr>
+  <tr><td>Nahkampf</td><td class="mod">WS</td><td class="dim">Kettenschwert, Messer, Fäuste</td></tr>
+  <tr><td>Fernkampf</td><td class="mod">BS</td><td class="dim">Lasgewehr, Pistolen</td></tr>
+  <tr><td>Athletik</td><td class="mod">Str</td><td class="dim">Klettern, rennen, ringen</td></tr>
+  <tr><td>Heimlichkeit</td><td class="mod">Ag</td><td class="dim">Schleichen, verstecken, stehlen</td></tr>
+  <tr><td>Wahrnehmung</td><td class="mod">Per</td><td class="dim">Spuren, Hinterhalte, Details</td></tr>
+  <tr><td>Technologie</td><td class="mod">Int</td><td class="dim">Maschinen, Schlösser, Cogitatoren</td></tr>
+  <tr><td>Wissen</td><td class="mod">Int</td><td class="dim">Lore, Untersuchungen, Logik</td></tr>
+  <tr><td>Medizin</td><td class="mod">Int</td><td class="dim">Heilen, stabilisieren, Gifte</td></tr>
+  <tr><td>Überreden</td><td class="mod">Fel</td><td class="dim">Charme, Verhandeln, Lügen</td></tr>
+  <tr><td>Einschüchtern</td><td class="mod">Fel</td><td class="dim">Drohen, Verhör, Präsenz</td></tr>
+</table>
+<div class="example">
+  <div class="ex-title">⚖ Beispiel</div>
+  Du hast Int <span class="die">38</span> (mit Herkunft) und steckst 2 Steigerungen in
+  <em>Wissen</em>: Wissen <span class="die">38 + 10 = 48</span>. <em>Medizin</em> bleibt
+  ungelernt — gewürfelt wird dann auf die nackte <span class="die">38</span>.
+</div>
+
+<!-- ================================================================== -->
+<h2><span class="num">V</span>Wunden</h2>
+<div class="panel gold">
+  <p style="text-align:center; font-size: 20px; margin: 6px 0;">
+  Maximale Wunden <span style="color: var(--gold-soft);">=</span> StrB
+  <span style="color: var(--gold-soft);">+</span> 2 × TghB
+  <span style="color: var(--gold-soft);">+</span> WilB</p>
+  <p class="dim" style="text-align:center; margin: 0;">Boni = Zehnerstellen der Endwerte.
+  Zähigkeit zählt doppelt — Frontkämpfer wissen, warum. Das Formular rechnet automatisch.</p>
+</div>
+
+<!-- ================================================================== -->
+<h2><span class="num">VI</span>Waffe &amp; Ausrüstung</h2>
+<p>Wähle <strong>eine Hauptwaffe</strong> (der Schaden kommt aus der Systemtabelle) und
+3–5 Gegenstände, die zu deinem Konzept passen (Seil, Medikit, Datenslate, Lampe, Werkzeug …
+— kein Shopping-Katalog, sondern was dein Charakter plausibel bei sich trägt):</p>
+<table>
+  <tr><th>Waffe</th><th>Schaden</th><th></th></tr>
+  <tr><td>Kettenschwert</td><td class="mod">1W10+5</td><td class="dim">laut, brutal, unhöflich</td></tr>
+  <tr><td>Schwert</td><td class="mod">1W10+4</td><td class="dim">der Klassiker</td></tr>
+  <tr><td>Kettenmesser</td><td class="mod">1W10+3</td><td class="dim">kompakt, fies</td></tr>
+  <tr><td>Kampfmesser</td><td class="mod">1W10+1</td><td class="dim">leise, unauffällig</td></tr>
+  <tr><td>Lasgewehr</td><td class="mod">1W10+4</td><td class="dim">zuverlässig, Reichweite</td></tr>
+  <tr><td>Stubber</td><td class="mod">1W10+4</td><td class="dim">laut, Munitionsfresser</td></tr>
+  <tr><td>Laspistole</td><td class="mod">1W10+3</td><td class="dim">leicht, verlässlich</td></tr>
+  <tr><td>Autopistole</td><td class="mod">1W10+3</td><td class="dim">schnell, dreckig</td></tr>
+  <tr><td>Andere / improvisiert</td><td class="mod">1W10</td><td class="dim">alles Unbekannte (z.&nbsp;B. Schockstab)</td></tr>
+</table>
+
+<!-- ================================================================== -->
+<h2><span class="num">VII</span>Das Formular</h2>
+<p>Fülle aus — unten entsteht live dein Datenblock. <strong>Kopieren → an Tobi schicken →
+fertig.</strong></p>
+
+<div class="panel">
+  <div class="form-grid">
+    <div class="field"><label>Charaktername</label><input id="cname" type="text" placeholder="z. B. Vex Marlow"></div>
+    <div class="field"><label>Dein Discord-Name</label><input id="cplayer" type="text" placeholder="z. B. SezBoss69"></div>
+    <div class="field"><label>Konzept (1 Satz)</label><input id="cconcept" type="text" placeholder="Ex-Vigilit mit Schulden"></div>
+  </div>
+
+  <h3>Eigenschaften</h3>
+  <div class="field" style="flex-direction: row; gap: 14px; align-items: center; margin-bottom: 8px;">
+    <label style="font-size: 14.5px;"><input type="radio" name="mode" value="buy" checked> Punkte verteilen (20 + 90 Punkte)</label>
+    <label style="font-size: 14.5px;"><input type="radio" name="mode" value="roll"> selbst gewürfelt (2W10+20)</label>
+  </div>
+  <div class="char-grid" id="charGrid"></div>
+  <div class="budget" id="pointBudget">Punkte: 0 / 90</div>
+  <div class="problems" id="charProblems"></div>
+
+  <h3>Herkunft</h3>
+  <div class="form-grid">
+    <div class="field"><label>Herkunft</label><select id="origin"></select></div>
+    <div class="field"><label>Wahl-Bonus (+5)</label><select id="originChoice"></select></div>
+  </div>
+  <p class="dim" id="originInfo" style="margin-top: 2px;"></p>
+
+  <h3>Fertigkeiten — 6 Steigerungen à +5, max. 2 pro Fertigkeit</h3>
+  <div id="skillRows"></div>
+  <div class="budget" id="skillBudget">Steigerungen: 0 / 6</div>
+
+  <h3>Waffe &amp; Inventar</h3>
+  <div class="form-grid">
+    <div class="field"><label>Hauptwaffe</label><select id="weapon"></select></div>
+    <div class="field" style="grid-column: span 2;"><label>Inventar (Komma-getrennt, 3–5 Dinge)</label>
+      <input id="inventory" type="text" placeholder="Seil, Medikit, Lumen-Lampe"></div>
+  </div>
+
+  <div class="panel gold" style="margin-top: 18px;">
+    <div class="panel-title">Errechnet</div>
+    <p style="margin: 4px 0;">Maximale Wunden: <strong id="woundsOut" style="font-size: 20px;">—</strong>
+    <span class="dim" id="woundsCalc"></span></p>
+  </div>
+
+  <h3>Dein Datenblock</h3>
+  <div class="problems" id="allProblems"></div>
+  <pre id="jsonOut">{ }</pre>
+  <p>
+    <button class="btn" id="copyBtn">⚜ JSON kopieren</button>
+    <span class="copied" id="copiedMsg">In die Zwischenablage kopiert — ab damit an Tobi!</span>
+  </p>
+</div>
+
+<!-- ================================================================== -->
+<h2><span class="num">VIII</span>Und dann? — Einspeisen</h2>
+<div class="flow">
+  <div class="step"><b>1 · Schicken</b>Jeder schickt seinen kopierten JSON-Block an Tobi (Discord-DM reicht).</div>
+  <div class="step"><b>2 · Prüfen &amp; bauen</b>Tobi gibt die Blöcke an den Spielleiter-Assistenten weiter — der prüft Budgets &amp; Formeln und baut die Party-Datei.</div>
+  <div class="step"><b>3 · Frischer Start</b>Der alte Spielstand wird zurückgesetzt; beim nächsten <code>!j</code> begrüßt der Spielleiter die neue Party.</div>
+  <div class="step"><b>4 · Bögen</b>Jeder bekommt seinen offiziellen IM-Charakterbogen ausgefüllt als PDF zurück.</div>
+</div>
+<p class="dim">Technisch: Die Blöcke landen in
+<code>data/sessions/&lt;channel&gt;/characters.json</code> (samt Discord-Name→Charakter-Aliasen);
+<code>state.json</code>, <code>history</code> und <code>recap</code> werden gelöscht, damit die
+Kampagne sauber neu aufsetzt.</p>
+
+<footer>
+  <div class="rule-line"></div>
+  <div class="crest">☠</div>
+  <p>Eigene Erstellungs-Anleitung für die Heimrunde · basiert auf <em>Warhammer 40,000 Roleplay:
+  Imperium Maledictum</em> (Cubicle 7) · kein offizielles Produkt</p>
+  <p style="letter-spacing:.2em; font-variant: small-caps; color: var(--gold-soft);">
+  Der Imperator kennt deinen Namen bereits. Schreib ihn trotzdem auf.</p>
+</footer>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var CHARS = ["WS", "BS", "Str", "Tgh", "Ag", "Int", "Per", "Wil", "Fel"];
+  var CHAR_LABELS = { WS: "Kampfg. (WS)", BS: "Ballistik (BS)", Str: "Stärke", Tgh: "Zähigkeit",
+                      Ag: "Agilität", Int: "Intelligenz", Per: "Wahrnehm.", Wil: "Wille", Fel: "Charisma" };
+  var ORIGINS = {
+    "Agrarwelt":        { fixed: "Str", choices: ["Tgh", "Ag", "Wil"] },
+    "Feudalwelt":       { fixed: "WS",  choices: ["Str", "Wil", "Fel"] },
+    "Wildwelt":         { fixed: "Tgh", choices: ["WS", "Str", "Per"] },
+    "Schmiedewelt":     { fixed: "Int", choices: ["BS", "Tgh", "Ag"] },
+    "Makropolwelt":     { fixed: "Ag",  choices: ["BS", "Per", "Fel"] },
+    "Schreinwelt":      { fixed: "Wil", choices: ["Int", "Per", "Fel"] },
+    "Schola Progenium": { fixed: "Fel", choices: ["WS", "BS", "Tgh"] },
+    "Leerengeboren":    { fixed: "Per", choices: ["Ag", "Int", "Wil"] }
+  };
+  var SKILLS = [
+    ["Nahkampf", "WS"], ["Fernkampf", "BS"], ["Athletik", "Str"], ["Heimlichkeit", "Ag"],
+    ["Wahrnehmung", "Per"], ["Technologie", "Int"], ["Wissen", "Int"], ["Medizin", "Int"],
+    ["Überreden", "Fel"], ["Einschüchtern", "Fel"]
+  ];
+  var WEAPONS = ["Kettenschwert", "Schwert", "Kettenmesser", "Kampfmesser", "Lasgewehr",
+                 "Stubber", "Laspistole", "Autopistole", "Andere (1W10)"];
+
+  // ---- build the inputs --------------------------------------------------
+  var charGrid = document.getElementById("charGrid");
+  CHARS.forEach(function (c) {
+    var cell = document.createElement("div");
+    cell.className = "char-cell";
+    cell.innerHTML = '<label>' + CHAR_LABELS[c] + '</label>' +
+      '<input type="number" id="ch_' + c + '" value="24" min="1" max="100">' +
+      '<div class="final" id="fin_' + c + '">→ 24</div>';
+    charGrid.appendChild(cell);
+  });
+  var originSel = document.getElementById("origin");
+  Object.keys(ORIGINS).forEach(function (o) {
+    var opt = document.createElement("option"); opt.value = o; opt.textContent = o;
+    originSel.appendChild(opt);
+  });
+  var skillRows = document.getElementById("skillRows");
+  SKILLS.forEach(function (s) {
+    var row = document.createElement("div");
+    row.className = "skill-row";
+    row.innerHTML = '<span>' + s[0] + ' <span class="dim">(' + s[1] + ')</span></span>' +
+      '<select id="sk_' + s[0] + '"><option value="0">+0</option><option value="1">+5</option><option value="2">+10</option></select>' +
+      '<span class="sk-val" id="skv_' + s[0] + '">—</span>';
+    skillRows.appendChild(row);
+  });
+  var weaponSel = document.getElementById("weapon");
+  WEAPONS.forEach(function (w) {
+    var opt = document.createElement("option"); opt.value = w; opt.textContent = w;
+    weaponSel.appendChild(opt);
+  });
+
+  // ---- state + recompute --------------------------------------------------
+  function mode() { return document.querySelector('input[name="mode"]:checked').value; }
+  function val(id) { return document.getElementById(id); }
+
+  function rebuildOriginChoices() {
+    var o = ORIGINS[originSel.value];
+    var sel = val("originChoice");
+    sel.innerHTML = "";
+    o.choices.forEach(function (c) {
+      var opt = document.createElement("option"); opt.value = c;
+      opt.textContent = CHAR_LABELS[c];
+      sel.appendChild(opt);
+    });
+    val("originInfo").textContent = "Fest: +5 " + CHAR_LABELS[o.fixed] + " · Wahl: +5 auf eine der drei Optionen.";
+  }
+
+  function recompute() {
+    var problems = [];
+    var buy = mode() === "buy";
+
+    // characteristics + budget
+    var base = {}, spent = 0;
+    CHARS.forEach(function (c) {
+      var v = parseInt(val("ch_" + c).value, 10);
+      if (isNaN(v)) { v = 0; }
+      base[c] = v;
+      spent += (v - 20);
+    });
+    var budgetEl = val("pointBudget");
+    if (buy) {
+      budgetEl.textContent = "Punkte: " + spent + " / 90";
+      budgetEl.className = "budget " + (spent === 90 ? "ok" : "bad");
+      if (spent !== 90) { problems.push("Punkte-Budget: genau 90 verteilen (aktuell " + spent + ")."); }
+      CHARS.forEach(function (c) {
+        if (base[c] < 24 || base[c] > 38) {
+          problems.push(CHAR_LABELS[c] + ": Startwert muss 24–38 sein (min +4, max +18).");
+        }
+      });
+    } else {
+      budgetEl.textContent = "selbst gewürfelt — Budget aus";
+      budgetEl.className = "budget";
+      CHARS.forEach(function (c) {
+        if (base[c] < 22 || base[c] > 40) {
+          problems.push(CHAR_LABELS[c] + ": 2W10+20 ergibt 22–40 (" + base[c] + "?).");
+        }
+      });
+    }
+
+    // origin bonuses → final characteristics
+    var o = ORIGINS[originSel.value];
+    var choice = val("originChoice").value || o.choices[0];
+    var fin = {};
+    CHARS.forEach(function (c) {
+      fin[c] = base[c] + (c === o.fixed ? 5 : 0) + (c === choice ? 5 : 0);
+      val("fin_" + c).textContent = "→ " + fin[c];
+    });
+
+    // skills + budget
+    var adv = 0, skills = {};
+    SKILLS.forEach(function (s) {
+      var a = parseInt(val("sk_" + s[0]).value, 10);
+      adv += a;
+      var v = fin[s[1]] + a * 5;
+      skills[s[0]] = v;
+      val("skv_" + s[0]).textContent = v;
+    });
+    var sb = val("skillBudget");
+    sb.textContent = "Steigerungen: " + adv + " / 6";
+    sb.className = "budget " + (adv === 6 ? "ok" : "bad");
+    if (adv !== 6) { problems.push("Fertigkeiten: genau 6 Steigerungen vergeben (aktuell " + adv + ")."); }
+
+    // wounds
+    var sB = Math.floor(fin.Str / 10), tB = Math.floor(fin.Tgh / 10), wB = Math.floor(fin.Wil / 10);
+    var wounds = sB + 2 * tB + wB;
+    val("woundsOut").textContent = wounds;
+    val("woundsCalc").textContent = "(StrB " + sB + " + 2×TghB " + tB + " + WilB " + wB + ")";
+
+    // identity
+    var name = val("cname").value.trim();
+    var player = val("cplayer").value.trim();
+    if (!name) { problems.push("Charaktername fehlt."); }
+    if (!player) { problems.push("Discord-Name fehlt (wird zum Alias)."); }
+
+    // inventory
+    var weapon = weaponSel.value.replace(" (1W10)", "");
+    var inv = val("inventory").value.split(",").map(function (x) { return x.trim(); }).filter(Boolean);
+    var inventory = [weapon].concat(inv.filter(function (x) { return x.toLowerCase() !== weapon.toLowerCase(); }));
+
+    // JSON
+    var block = {
+      name: name || "—",
+      player: player || "—",
+      concept: val("cconcept").value.trim(),
+      origin: originSel.value,
+      characteristics: fin,
+      skills: skills,
+      wounds: wounds,
+      max_wounds: wounds,
+      inventory: inventory
+    };
+    val("jsonOut").textContent = JSON.stringify(block, null, 2);
+
+    var probEl = val("allProblems");
+    probEl.textContent = problems.length ? "⚠ " + problems.join("  ") : "";
+    val("copyBtn").disabled = problems.length > 0;
+  }
+
+  // ---- copy ---------------------------------------------------------------
+  val("copyBtn").addEventListener("click", function () {
+    var text = val("jsonOut").textContent;
+    function done() {
+      var m = val("copiedMsg");
+      m.classList.add("show");
+      setTimeout(function () { m.classList.remove("show"); }, 2500);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done);
+    } else {
+      var ta = document.createElement("textarea");
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      document.execCommand("copy"); document.body.removeChild(ta); done();
+    }
+  });
+
+  // ---- wire up ------------------------------------------------------------
+  document.addEventListener("input", recompute);
+  document.addEventListener("change", function (e) {
+    if (e.target === originSel) { rebuildOriginChoices(); }
+    recompute();
+  });
+  rebuildOriginChoices();
+  recompute();
+})();
+</script>
+</body>
+</html>

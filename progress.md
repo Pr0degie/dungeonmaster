@@ -62,7 +62,26 @@ world-state block (CLAUDE.md prompt order). **Model: mistral-nemo.** Recommended
 gate / any follow-up: **Opus 4.8 / xhigh**.
 
 ## Last session
-**Spieler-Doku (gleicher Tag, Abschluss):** `docs/how-to-play.html` — deutsches Regel-Primer
+**Charaktererstellung (gleicher Tag, Runde 2 der Spieler-Doku).** Die Runde will neue
+Charaktere (ersetzen Garran/Eli/Yann; Chemical Burn startet dann frisch). Gebaut:
+- **`docs/how-to-create-a-character.html`** — deutsche Anleitung (IM-treuer geführter Build:
+  Punkte-Kauf 20+90 oder 2W10+20; echte Origin-Tabelle +5/+5; 6 Skill-Steigerungen à +5, max 2
+  je Skill; Wunden = StrB+2×TghB+WilB, Buch-verifiziert) **plus interaktives Formular**
+  (Vanilla-JS: Live-Punktezähler, Origin-Boni automatisch, Wunden-Autoberechnung,
+  Budget-Validierung sperrt den Copy-Button, Live-JSON). JSON-Shape = Character-Schema +
+  `player`-Feld (→ Alias; landet harmlos in `raw`, gegen `Character.from_dict` verifiziert).
+- **`tools/fill_character_sheet.py`** — füllt den offiziellen IM-Bogen
+  (`data/pdfs/…Character sheet.pdf`, KEINE Formularfelder/Text → Koordinaten-Overlay, an
+  100-dpi-Renderings kalibriert): Name/Origin/Konzept/Patron, 9 Eigenschaften, Skill-Adv+Totals
+  (Adv rekonstruiert aus Wert−Eigenschaft), Initiative, Wunden, Waffenzeile (Testwert + Schaden
+  ausm Profil), Inventar ins Equipment-Grid. Sichtgeprüft an der aktuellen Party (3 PDFs nach
+  `data/sessions/<id>/sheets/` — git-ignoriert, Ableitung des gekauften Bogens).
+- **Einspeise-Prozess (wenn die JSONs kommen):** Spieler → Tobi → Claude validiert (Budgets,
+  Formeln, Waffen) → baut `characters.json` + Aliases → löscht circlejerk-State/History/Recap →
+  Bögen füllen + verschicken → **how-to-play-Charakterkarten + Checklisten-Namen
+  aktualisieren** (Gates sind charakterunabhängig). Suite unverändert 177/177.
+
+**(Same day, earlier) Spieler-Doku (Abschluss):** `docs/how-to-play.html` — deutsches Regel-Primer
 (~10 min Lesezeit, gestyltes Standalone-HTML, grimdark): d100-Kernschleife, Schwierigkeitsleiter,
 EG, Crits, Kampf mit Schadensformel, Fortgeschrittenes (Vorteil, Zustände, Überlegenheit,
 Einfluss/Patron, Korruption) — Beispiele mit den echten Party-Werten durchgerechnet (gegen das
