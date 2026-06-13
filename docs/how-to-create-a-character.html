@@ -423,6 +423,26 @@ fertig.</strong></p>
       <input id="inventory" type="text" placeholder="Seil, Medikit, Lumen-Lampe"></div>
   </div>
 
+  <h3>Augmetik &amp; Implantate <span class="dim" style="font-weight: normal;">(optional)</span></h3>
+  <p class="dim" style="margin: 2px 0 8px;">Kybernetische Erweiterungen. Faustregel-Grenze: höchstens
+  so viele wie dein <strong>Zähigkeits-Bonus</strong> (Zehnerstelle der Zähigkeit). Rüstung und
+  Merkmals-Boni rechnet das Spiel später automatisch in deine Würfe ein.</p>
+  <div class="char-grid" id="augmeticGrid"></div>
+  <div class="budget" id="augmeticBudget">Implantate: 0</div>
+
+  <h3>Psioniker <span class="dim" style="font-weight: normal;">(optional)</span></h3>
+  <label style="font-size: 14.5px;"><input type="checkbox" id="isPsyker"> Diese Figur ist ein
+  Psioniker (Psi-Begabter — kann psychische Kräfte wirken)</label>
+  <div id="psykerBox" style="display: none; margin-top: 10px;">
+    <p class="dim" style="margin: 2px 0 8px;">Wähle Disziplinen und die bekannten Kräfte. Jeder
+    Psioniker beherrscht <strong>Smite</strong>. Du brauchst zudem die Fertigkeit
+    <strong>Psi-Meisterschaft</strong> (Manifestieren) — gib sie bei Bedarf bei der Übergabe an.</p>
+    <p style="margin: 6px 0 2px; font-size: 14px; color: var(--gold-soft);">Disziplinen</p>
+    <div class="char-grid" id="disciplineGrid"></div>
+    <p style="margin: 10px 0 2px; font-size: 14px; color: var(--gold-soft);">Bekannte Kräfte</p>
+    <div class="char-grid" id="powerGrid"></div>
+  </div>
+
   <div class="panel gold" style="margin-top: 18px;">
     <div class="panel-title">Errechnet</div>
     <p style="margin: 4px 0;">Maximale Wunden: <strong id="woundsOut" style="font-size: 20px;">—</strong>
@@ -485,6 +505,21 @@ Kampagne sauber neu aufsetzt.</p>
   ];
   var WEAPONS = ["Kettenschwert", "Schwert", "Kettenmesser", "Kampfmesser", "Lasgewehr",
                  "Stubber", "Laspistole", "Autopistole", "Andere (1W10)"];
+  // Augmetik + Psyker catalogs — names MUST match the system profile's catalogs exactly so the
+  // engine finds them (data/systems/imperium_maledictum.json: augmetics.catalog / psyker.powers).
+  var AUGMETICS = ["Augmetischer Arm", "Augmetisches Bein", "Augmetisches Herz",
+    "Augmetische Ketten/Räder", "Augmetisches Atemsystem", "Augmetische Sinnesorgane",
+    "Augur-Array", "Calculus-Logi-Upgrade", "Ballistik-Mechadendrit", "Manipulator-Mechadendrit",
+    "Medicae-Mechadendrit", "Optischer Mechadendrit", "Utility-Mechadendrit", "Mind-Impulse-Unit",
+    "Biomechanische Schnittstelle", "Vox-Implantat", "Kampfdrüse", "Memory-Partition-Cogitator",
+    "Hexagrammische Wards"];
+  var DISCIPLINES = ["Minor", "Biomancy", "Divination", "Pyromancy", "Telekinesis", "Telepathy"];
+  var POWERS = ["Smite", "Sear", "Call Vermin", "Combustion", "Dread Presence", "Dull Pain",
+    "Float", "Ignite", "Luck", "Ill Omen", "Jinx", "Nova", "Preternatural Senses",
+    "Psychic Scrutiny", "Scalding Glance", "Seal Wounds", "Psychic Static", "Soulsight", "Spasm",
+    "Spectral Hands", "Lull", "Affliction", "Bio-Lightning", "Ferrocrete Flesh", "Haemorrhage",
+    "Iron Limb", "Life Leech", "Auditory Manipulation", "Cipher Seed", "Force Bolt",
+    "Immolation Directive", "Mark", "Induce Panic", "Ossify", "Stimulating Jolt"];
 
   // ---- build the inputs --------------------------------------------------
   var charGrid = document.getElementById("charGrid");
@@ -515,6 +550,25 @@ Kampagne sauber neu aufsetzt.</p>
     var opt = document.createElement("option"); opt.value = w; opt.textContent = w;
     weaponSel.appendChild(opt);
   });
+  function buildChecks(containerId, items, prefix) {
+    var box = document.getElementById(containerId);
+    items.forEach(function (it, i) {
+      var cell = document.createElement("label");
+      cell.style.cssText = "display:flex; gap:6px; align-items:center; font-size:13.5px;";
+      cell.innerHTML = '<input type="checkbox" id="' + prefix + i + '" value="' +
+        it.replace(/"/g, "&quot;") + '"> ' + it;
+      box.appendChild(cell);
+    });
+  }
+  buildChecks("augmeticGrid", AUGMETICS, "aug_");
+  buildChecks("disciplineGrid", DISCIPLINES, "disc_");
+  buildChecks("powerGrid", POWERS, "pow_");
+  function checkedValues(containerId) {
+    var out = [];
+    document.querySelectorAll("#" + containerId + " input[type=checkbox]:checked")
+      .forEach(function (cb) { out.push(cb.value); });
+    return out;
+  }
 
   // ---- state + recompute --------------------------------------------------
   function mode() { return document.querySelector('input[name="mode"]:checked').value; }
@@ -604,6 +658,17 @@ Kampagne sauber neu aufsetzt.</p>
     var inv = val("inventory").value.split(",").map(function (x) { return x.trim(); }).filter(Boolean);
     var inventory = [weapon].concat(inv.filter(function (x) { return x.toLowerCase() !== weapon.toLowerCase(); }));
 
+    // augmetics (soft limit = Toughness Bonus; warn but don't block)
+    var augmetics = checkedValues("augmeticGrid");
+    var tghBonus = Math.floor((fin.Tgh || 0) / 10);
+    var augBudget = val("augmeticBudget");
+    augBudget.textContent = "Implantate: " + augmetics.length + " / " + tghBonus + " (Zähigkeits-Bonus)";
+    augBudget.className = "budget " + (augmetics.length <= tghBonus ? "ok" : "bad");
+
+    // psyker
+    var isPsyker = val("isPsyker").checked;
+    val("psykerBox").style.display = isPsyker ? "block" : "none";
+
     // JSON
     var block = {
       name: name || "—",
@@ -616,6 +681,15 @@ Kampagne sauber neu aufsetzt.</p>
       max_wounds: wounds,
       inventory: inventory
     };
+    if (augmetics.length) { block.augmetics = augmetics; }
+    if (isPsyker) {
+      block.psyker = true;
+      var disc = checkedValues("disciplineGrid");
+      if (disc.length) { block.disciplines = disc; }
+      var powers = checkedValues("powerGrid");
+      if (powers.indexOf("Smite") === -1) { powers.unshift("Smite"); }  // every psyker knows Smite
+      block.known_powers = powers;
+    }
     val("jsonOut").textContent = JSON.stringify(block, null, 2);
 
     var probEl = val("allProblems");

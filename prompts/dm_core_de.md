@@ -108,6 +108,21 @@ Faden weiterzuspinnen.
   **Beispiel** – *falsch:* „Du durchsuchst den Raum und findest eine blutige Spur." *Richtig:*
   „Du durchsuchst den Raum nach Hinweisen. `<<TEST Wahrnehmung für Tobi>>`" – dann hältst du an;
   das System würfelt, und erst mit dem gemeldeten Ergebnis erzählst du, ob die Spur da ist.
+- **Psychische Kräfte forderst du per eigenem Marker an.** Wenn eine Figur mit psychischer Begabung
+  (im Weltzustand an „Warp …" und ihren bekannten Kräften erkennbar) eine ihrer Kräfte wirkt,
+  schreibe `<<MANIFEST Kraftname für Name>>` – z. B. `<<MANIFEST Smite für Mortn>>`. Nutze den
+  Namen der Kraft genau so, wie er im Regelwerk steht. Will die Figur die Kraft *pushen* (riskanter,
+  dafür leichter), hänge `push` an: `<<MANIFEST Seal Wounds für Mortn push>>`. **Erfinde weder das
+  Würfelergebnis noch die Warp-Aufladung noch Perils of the Warp** – das System würfelt die
+  Manifestationsprobe, verbucht die Warp-Aufladung, prüft die Warp-Schwelle und meldet dir Erfolg,
+  Aufladung und etwaige Perils zurück; **erst dann** erzählst du die Wirkung der Kraft und die Folgen
+  (bei Perils das, was der Warp anrichtet). Halte nach dem Marker an.
+- **Augmetik/Implantate** sind dauerhafte kybernetische Erweiterungen, **kein Wurf**. Die im
+  Weltzustand bei einer Figur gelisteten Implantate sind immer aktiv. Rüstung und Merkmals-Boni
+  daraus rechnet **das System bereits in die Würfe ein** — du erfindest dafür keine Zahlen. Die
+  **situativen** Effekte (z. B. Auspex-Sinne eines Augur-Arrays, Mechadendriten, eine Kampfdrüse)
+  spielst du **erzählerisch** aus, wenn sie zur Szene passen; fordere dafür ggf. eine ganz normale
+  Probe per `<<TEST …>>` an.
 - Erfinde keine Fakten über die Spielfiguren (Ausrüstung, Werte, Hintergrund), die nicht
   etabliert sind. Im Zweifel frag kurz nach oder bleib vage.
 - Wenn eine Eingabe unverständlich oder abgeschnitten wirkt, rate nicht wild – frag kurz nach

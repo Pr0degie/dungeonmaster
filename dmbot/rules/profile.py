@@ -42,6 +42,8 @@ class SystemProfile:
     auto_fail_min: int = 0      # rolls >= this always fail (0 = no band). IM: 96.
     damage: "str | dict" = ""   # free-text ("weapon_damage + SL") or structured, per architecture §9
     combat: dict = field(default_factory=dict)  # attack skills, weapon damage table, soak source (§7/§9)
+    psyker: dict = field(default_factory=dict)   # psychic powers catalog + Warp/Perils tables (ADR 022)
+    augmetics: dict = field(default_factory=dict)  # augmetics catalog + limit (ADR 023)
     character_schema: dict = field(default_factory=dict)
     raw: dict = field(default_factory=dict)  # full source dict, for forward-compat reads
 
@@ -68,6 +70,8 @@ class SystemProfile:
             auto_fail_min=int(data.get("auto_fail_min", 0)),
             damage=data.get("damage", "") or "",
             combat=dict(data.get("combat", {}) or {}),
+            psyker=dict(data.get("psyker", {}) or {}),
+            augmetics=dict(data.get("augmetics", {}) or {}),
             character_schema=dict(data.get("character_schema", {}) or {}),
             raw=dict(data),
         )
@@ -153,6 +157,88 @@ class SystemProfile:
         """How the soak characteristic becomes a bonus: 'tens' (IM Toughness Bonus = tens digit) or
         'value'. Default 'tens'."""
         return (self.combat.get("soak", {}) or {}).get("mode", "tens") or "tens"
+
+    # -- psyker / Warp (ADR 022) ----------------------------------------------------------
+    # All optional: a profile without a "psyker" block has no Warp flow. The engine reads the
+    # power's Warp Rating + Difficulty and the Perils/Phenomena tables from here and stays
+    # system-agnostic — the catalog is data, not code.
+
+    def psyker_enabled(self) -> bool:
+        return bool(self.psyker.get("powers"))
+
+    def psyker_test_skill(self) -> str:
+        """The Skill rolled to Manifest a power (IM: 'Psychic Mastery'). Play-language name."""
+        return self.psyker.get("test_skill", "") or ""
+
+    def psyker_purge_skill(self) -> str:
+        """The Skill rolled to Purge Warp Charge (IM: 'Discipline (Psychic)')."""
+        return self.psyker.get("purge_skill", "") or ""
+
+    def power(self, name: str | None) -> dict | None:
+        """A psychic power's stat block from the catalog (case-insensitive), or ``None``."""
+        if not name:
+            return None
+        key = name.strip().lower()
+        for pname, stats in (self.psyker.get("powers", {}) or {}).items():
+            if pname.strip().lower() == key:
+                return {"name": pname, **(stats or {})}
+        return None
+
+    def power_names(self) -> list[str]:
+        """All catalogued power names (declaration order) — for the prompt/classifier."""
+        return list(self.psyker.get("powers", {}) or {})
+
+    def warp_threshold(self, willpower_value: int | None) -> int:
+        """Warp Threshold from a character's governing characteristic (IM: Willpower Bonus =
+        tens digit of Willpower). Driven by ``psyker.threshold`` = {characteristic, mode}."""
+        if willpower_value is None:
+            return 0
+        cfg = self.psyker.get("threshold", {}) or {}
+        mode = cfg.get("mode", "tens")
+        return willpower_value // 10 if mode == "tens" else int(willpower_value)
+
+    def threshold_characteristic(self) -> str:
+        """Which characteristic feeds the Warp Threshold (IM: 'Wil')."""
+        return (self.psyker.get("threshold", {}) or {}).get("characteristic", "") or ""
+
+    def perils_table(self) -> list[dict]:
+        """The d100 Perils of the Warp table (banded rows with name/effect/corruption)."""
+        return list(self.psyker.get("perils_table", []) or [])
+
+    def phenomena_table(self) -> list[dict]:
+        """The d100 Psychic Phenomena table (banded rows; some redirect to perils/phenomena)."""
+        return list(self.psyker.get("phenomena_table", []) or [])
+
+    # -- augmetics / cybernetics (ADR 023) ------------------------------------------------
+    # All optional, like the combat/psyker blocks. Augmetics are passive (no roll): the engine
+    # applies their 'armour' (soak) and 'characteristic' effects; 'skill_sl'/'special' effects are
+    # narrative (the DM applies them, prose from RAG). A profile with no 'augmetics' block has none.
+
+    def augmetics_enabled(self) -> bool:
+        return bool(self.augmetics.get("catalog"))
+
+    def augmetic(self, name: str | None) -> dict | None:
+        """An augmetic's stat block from the catalog (case-insensitive), or ``None``."""
+        if not name:
+            return None
+        key = name.strip().lower()
+        for aname, stats in (self.augmetics.get("catalog", {}) or {}).items():
+            if aname.strip().lower() == key:
+                return {"name": aname, **(stats or {})}
+        return None
+
+    def augmetic_names(self) -> list[str]:
+        """All catalogued augmetic names (declaration order) — for the prompt / creation form."""
+        return list(self.augmetics.get("catalog", {}) or {})
+
+    def augmetic_limit(self, toughness_value: int | None) -> int:
+        """Max number of augmetics (IM: Toughness Bonus = tens of Toughness; 'Flesh is Weak'
+        doubles it, applied by the caller). 0 if no characteristic value is known."""
+        if toughness_value is None:
+            return 0
+        cfg = self.augmetics.get("limit", {}) or {}
+        mode = cfg.get("mode", "tens")
+        return toughness_value // 10 if mode == "tens" else int(toughness_value)
 
 
 def systems_dir() -> Path:

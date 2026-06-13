@@ -133,13 +133,14 @@ ID_FIELDS = {  # name: (left_px, line_px, width_px, size, source_key)
 # the same row y. Getting the start/step exactly right stops the drift down the table.
 _SKILL_ROWS = [
     ("Athletics", 384, 225, 260, "Athletik", "Str"), ("Awareness", 404, 225, 260, "Wahrnehmung", "Per"),
-    ("Dexterity", 424, 225, 260, None, None), ("Discipline", 444, 225, 260, None, None),
+    ("Dexterity", 424, 225, 260, None, None),
+    ("Discipline", 444, 225, 260, "Disziplin (Psi)", "Wil"),
     ("Fortitude", 464, 225, 260, None, None), ("Intuition", 484, 225, 260, None, None),
     ("Linguistics", 504, 225, 260, None, None), ("Logic", 524, 225, 260, None, None),
     ("Lore", 544, 225, 260, "Wissen", "Int"), ("Medicae", 564, 225, 260, "Medizin", "Int"),
     ("Melee", 384, 488, 526, "Nahkampf", "WS"), ("Navigation", 404, 488, 526, None, None),
     ("Presence", 424, 488, 526, "Einschüchtern", "Fel"), ("Piloting", 444, 488, 526, None, None),
-    ("PsychicMastery", 464, 488, 526, None, None), ("Ranged", 484, 488, 526, "Fernkampf", "BS"),
+    ("PsychicMastery", 464, 488, 526, "Psi-Meisterschaft", "Wil"), ("Ranged", 484, 488, 526, "Fernkampf", "BS"),
     ("Rapport", 504, 488, 526, "Überreden", "Fel"), ("Reflexes", 524, 488, 526, None, None),
     ("Stealth", 544, 488, 526, "Heimlichkeit", "Ag"), ("Tech", 564, 488, 526, "Technologie", "Int"),
 ]
@@ -201,7 +202,29 @@ def _weapons_from(char: dict, weapons_table: dict, default_damage: str) -> list[
              "damage": weapons_table.get(w, default_damage).replace("d", "W")}]
 
 
-def fill_sheet(char: dict, weapons_table: dict, default_damage: str, out_path: Path) -> None:
+def _psy_rows_from(char: dict, psyker_profile: dict) -> list[dict]:
+    """Build the psychic-powers grid rows from char['known_powers'] × the profile's psyker catalog
+    (ADR 022/023). Each power's stats (Warp Rating, Difficulty, Range, Target, Duration, effect)
+    come from the catalog; an Overt power gets a trailing '*'. Unknown powers still print by name."""
+    catalog = (psyker_profile or {}).get("powers", {}) or {}
+    rows = []
+    for name in (char.get("known_powers") or []):
+        s = catalog.get(name) or {}
+        rows.append({
+            "name": str(name) + ("*" if s.get("overt") else ""),
+            "wr": str(s.get("warp_rating", "")),
+            "difficulty": str(s.get("difficulty", "")),
+            "range": str(s.get("range", "")),
+            "target": str(s.get("target", "")),
+            "duration": str(s.get("duration", "")),
+            "effect": str(s.get("effect", "")),
+        })
+    return rows
+
+
+def fill_sheet(char: dict, weapons_table: dict, default_damage: str, out_path: Path,
+               profile: dict | None = None) -> None:
+    profile = profile or {}
     doc = fitz.open(SHEET)
     p1, p2 = doc[0], doc[1]
     chars = {k: int(v) for k, v in (char.get("characteristics") or {}).items()}
@@ -279,9 +302,14 @@ def fill_sheet(char: dict, weapons_table: dict, default_damage: str, out_path: P
     # --- page 2: combat notes (open) + equipment (3 columns) ---------------------------------
     _multiline(p2, "combat_notes", (45, 600, 422, 790), char.get("combat_notes", ""))
     equip = [str(i) for i in (char.get("equipment") or list(char.get("inventory") or [])[1:])]
+    # The bought sheet has no dedicated augmetics box → list implants in the middle equipment
+    # column (left column = gear, middle = "Augmetik: …"). Names match the profile catalog (ADR 023).
+    augmetics = [str(a) for a in (char.get("augmetics") or [])]
+    aug_col = (["Augmetik:"] + augmetics) if augmetics else []
     for col, ex in enumerate(_EQUIP_COLS_X):
+        items = equip if col == 0 else (aug_col if col == 1 else [])
         for r in range(_EQUIP_ROWS):
-            val = equip[r] if col == 0 and r < len(equip) else ""  # fill the left column only
+            val = items[r] if r < len(items) else ""
             _field(p2, f"equip_{col}_{r}", ex, _EQUIP_Y0 + r * _EQUIP_DY, 150, val, size=9)
     _field(p2, "enc_current", 720, 756, 30, str(char.get("encumbrance_current", "")),
            align=CENTER, center=True)
@@ -289,9 +317,13 @@ def fill_sheet(char: dict, weapons_table: dict, default_damage: str, out_path: P
            align=CENTER, center=True)
 
     # --- page 2: psychic powers + warp charge ------------------------------------------------
-    _grid(p2, "psy", _PSY_ROWS, _PSY_COLS, [], size=8)
-    _field(p2, "warp_current", 720, 1012, 30, "", align=CENTER, center=True)
-    _field(p2, "warp_threshold", 785, 1012, 30, "", align=CENTER, center=True)
+    # Fill the psychic-powers table from known_powers × the profile catalog; Warp Threshold =
+    # Willpower Bonus (ADR 022). A non-psyker leaves these empty + editable, as before.
+    _grid(p2, "psy", _PSY_ROWS, _PSY_COLS, _psy_rows_from(char, profile.get("psyker") or {}), size=8)
+    threshold = _bonus(chars["Wil"]) if (char.get("psyker") and "Wil" in chars) else ""
+    _field(p2, "warp_current", 720, 1012, 30, "0" if char.get("psyker") else "",
+           align=CENTER, center=True)
+    _field(p2, "warp_threshold", 785, 1012, 30, str(threshold), align=CENTER, center=True)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(out_path)
@@ -319,7 +351,7 @@ def main() -> int:
     for char in chars:
         name = str(char.get("name", "unbenannt")).replace(" ", "_")
         out = out_dir / f"{name}.pdf"
-        fill_sheet(char, weapons, default_damage, out)
+        fill_sheet(char, weapons, default_damage, out, profile)
         print(f"[OK] {out}")
     return 0
 

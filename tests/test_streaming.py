@@ -124,7 +124,7 @@ def test_history_parity_with_the_batch_sanitizer_chain():
     for deltas in cases:
         spoken, res, _ = _run(deltas, profile=_IM)
         raw = "".join(deltas)
-        expected, _tests = finalize_answer(raw, LABELS, _IM)
+        expected, _tests, _manifests = finalize_answer(raw, LABELS, _IM)
         # the stored answer is byte-identical to the batch path on the same raw text
         assert res.answer == expected
         # and the concatenation of what was spoken equals the stored answer (modulo whitespace)
@@ -163,7 +163,7 @@ def test_respond_streaming_stores_the_canonical_answer_and_speaks_it():
 
     answer = asyncio.run(brain.respond_streaming(ch, on_sentence=on_s))
     raw = "".join(deltas)
-    expected, _ = finalize_answer(raw, ["Timo", *_ROLE_LABELS], None)
+    expected, _, _ = finalize_answer(raw, ["Timo", *_ROLE_LABELS], None)
     assert answer == expected  # the trailing "Was tut ihr?" is stripped
     assert brain._history[ch][-1]["content"] == answer  # stored == returned
     assert _norm(" ".join(spoken)) == _norm(answer)  # spoken == stored

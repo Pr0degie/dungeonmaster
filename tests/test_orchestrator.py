@@ -49,7 +49,7 @@ def test_finalize_marker_only_in_backticks_is_empty() -> None:
     # the live failure: the model emits ONLY a marker wrapped in backticks → nothing to speak, but
     # the dice request still surfaces (the cog then posts the button and stays silent).
     raw = "`<<TEST Kampf Schwer für Mortn>>`"
-    answer, tests = finalize_answer(raw, ["Mortn", *_ROLE_LABELS], _IM)
+    answer, tests, _manifests = finalize_answer(raw, ["Mortn", *_ROLE_LABELS], _IM)
     assert answer == ""
     assert tests and tests[0].skill == "Kampf"
 

@@ -23,8 +23,10 @@ from dataclasses import dataclass
 from .profile import SystemProfile
 
 _MARKER_RE = re.compile(r"<<\s*TEST\b(.*?)>>", re.IGNORECASE | re.DOTALL)
+_MANIFEST_RE = re.compile(r"<<\s*MANIFEST\b(.*?)>>", re.IGNORECASE | re.DOTALL)
 _FUER_RE = re.compile(r"\b(?:für|fuer|for)\b", re.IGNORECASE)
 _MOD_RE = re.compile(r"([+\-−]\s*\d+)")  # ASCII +/- and the unicode minus the LLM may emit
+_PUSH_RE = re.compile(r"\b(?:push|gepusht|pushen)\b", re.IGNORECASE)  # Pushing a Manifest Test
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,4 +98,54 @@ def extract_tests(text: str, profile: SystemProfile) -> tuple[str, list[TestRequ
     """Strip every ``<<TEST …>>`` from ``text`` and return (clean narration, parsed requests)."""
     requests = [_parse_one(m.group(1), profile) for m in _MARKER_RE.finditer(text)]
     clean = _clean(_MARKER_RE.sub("", text))
+    return clean, requests
+
+
+@dataclass(frozen=True, slots=True)
+class ManifestRequest:
+    """A parsed (or fallback) psychic-power Manifest request from a DM turn (ADR 022).
+
+    Grammar (tolerant): ``<<MANIFEST <power> [für <name>] [push]>>``, e.g.
+    ``<<MANIFEST Smite für Mortn>>`` or ``<<MANIFEST Seal Wounds für Mortn push>>``. The power
+    name is matched against the active profile's catalog when resolved; the difficulty + Warp
+    Rating stay in code (golden rule #2)."""
+
+    power: str
+    target_name: str | None = None  # the psyker named after "für"
+    pushed: bool = False            # the psyker Pushed the Manifest Test
+    raw: str = ""
+    parsed: bool = True
+
+
+def _parse_manifest(inner: str, profile: SystemProfile) -> ManifestRequest:
+    raw = f"<<MANIFEST{inner}>>"
+    body = inner.strip()
+    target_name: str | None = None
+    m = _FUER_RE.search(body)
+    if m:
+        target_name = body[m.end():].strip(" :.-") or None
+        body = body[: m.start()].strip()
+
+    pushed = False
+    push_m = _PUSH_RE.search(body)
+    if push_m:  # "push" may sit before or after "für …"; strip it from wherever it lands
+        pushed = True
+        body = (body[: push_m.start()] + body[push_m.end():]).strip()
+    # also allow a trailing "push" that ended up in the target name (e.g. "Mortn push")
+    if target_name:
+        t_push = _PUSH_RE.search(target_name)
+        if t_push:
+            pushed = True
+            target_name = _PUSH_RE.sub("", target_name).strip(" :.-") or None
+
+    power = re.sub(r"\s{2,}", " ", body).strip(" :,-")
+    if not power:
+        return ManifestRequest(power="", target_name=target_name, pushed=pushed, raw=raw, parsed=False)
+    return ManifestRequest(power=power, target_name=target_name, pushed=pushed, raw=raw, parsed=True)
+
+
+def extract_manifests(text: str, profile: SystemProfile) -> tuple[str, list[ManifestRequest]]:
+    """Strip every ``<<MANIFEST …>>`` from ``text`` and return (clean narration, parsed requests)."""
+    requests = [_parse_manifest(m.group(1), profile) for m in _MANIFEST_RE.finditer(text)]
+    clean = _clean(_MANIFEST_RE.sub("", text))
     return clean, requests

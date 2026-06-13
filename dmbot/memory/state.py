@@ -51,6 +51,10 @@ class Combatant:
     toughness_bonus: int = 0
     is_npc: bool = False
     attitude: str = ""  # NPCs only (§7): "hostile" | "neutral" | … ; empty for PCs
+    # Psyker resource (ADR 022): accumulated Warp Charge and the powers being Sustained. Mutable +
+    # code-owned, like wounds — advanced by the Manifest/Purgation flow, never by LLM free text.
+    warp_charge: int = 0
+    sustained_powers: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         d: dict = {"name": self.name, "wounds": self.wounds, "max_wounds": self.max_wounds}
@@ -64,6 +68,10 @@ class Combatant:
             d["toughness_bonus"] = self.toughness_bonus
         if self.attitude:
             d["attitude"] = self.attitude
+        if self.warp_charge:
+            d["warp_charge"] = self.warp_charge
+        if self.sustained_powers:
+            d["sustained_powers"] = list(self.sustained_powers)
         return d
 
     @classmethod
@@ -79,6 +87,8 @@ class Combatant:
             toughness_bonus=int(d.get("toughness_bonus", 0) or 0),
             is_npc=is_npc,
             attitude=str(d.get("attitude", "") or ""),
+            warp_charge=int(d.get("warp_charge", 0) or 0),
+            sustained_powers=list(d.get("sustained_powers", []) or []),
         )
 
 
@@ -272,6 +282,38 @@ class WorldState:
             existing.attitude = attitude
         return existing
 
+    # -- psyker / Warp Charge (ADR 022) ---------------------------------------------------
+
+    def set_warp_charge(self, name: str, value: int) -> Combatant | None:
+        """Set a combatant's Warp Charge to ``value`` (clamped ≥ 0). Returns the combatant or
+        ``None`` if unknown. The engine computes the new total; this only stores it."""
+        c = self.find(name)
+        if c is not None:
+            c.warp_charge = max(0, int(value))
+        return c
+
+    def reduce_warp_charge(self, name: str, amount: int) -> Combatant | None:
+        """Shed ``amount`` Warp Charge (Purgation), never below the total Warp Rating the combatant
+        is Sustaining is the caller's concern; here we only clamp at 0."""
+        c = self.find(name)
+        if c is not None:
+            c.warp_charge = max(0, c.warp_charge - max(0, int(amount)))
+        return c
+
+    def reset_warp_charge(self, name: str) -> Combatant | None:
+        """Reset Warp Charge to 0 and drop all Sustained powers — what Perils of the Warp does."""
+        c = self.find(name)
+        if c is not None:
+            c.warp_charge = 0
+            c.sustained_powers = []
+        return c
+
+    def sustain_power(self, name: str, power: str) -> Combatant | None:
+        c = self.find(name)
+        if c is not None and power and power not in c.sustained_powers:
+            c.sustained_powers.append(power)
+        return c
+
     def set_location(self, location: str) -> None:
         self.location = location.strip()
 
@@ -305,6 +347,11 @@ def _combatant_line_de(c: Combatant) -> str:
     elif c.wounds < c.max_wounds:
         tags.append("verwundet")
     tags.extend(c.conditions)
+    if c.warp_charge or c.sustained_powers:
+        warp = f"Warp {c.warp_charge}"
+        if c.sustained_powers:
+            warp += f", hält: {', '.join(c.sustained_powers)}"
+        tags.append(warp)
     suffix = f" ({', '.join(tags)})" if tags else ""
     head = f"{c.name} {c.wounds}/{c.max_wounds}"
     if c.is_npc and c.attitude:

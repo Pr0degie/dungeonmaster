@@ -22,6 +22,46 @@ bootstrap (gate half 2, ADR 005); the lore corpus is now covered for the needed 
 gates are now stacked: Phase 9 (HP survives restart) AND Phase 10 half 1 (rule question from the
 book) — one circlejerk session can cover both.**
 
+**Psyker / Warp subsystem (D51 → ADR 022, 2026-06-13): code-complete, live-unverified.** Tobi
+wanted psykers **voll regeltreu** (not narrative-only) and pointed at the Inquisition Player's
+Guide. Built as a **profile-driven** subsystem (engine stays system-agnostic, ADR 005): the IM data
+— power catalog (Warp Rating + Difficulty per power), Warp-Threshold formula (= Willpower Bonus),
+and the d100 Perils-of-the-Warp + Psychic Phenomena tables — lives in a new `psyker` block in
+`data/systems/imperium_maledictum.json`; the engine gains pure functions `resolve_manifest`
+(Manifest Test via `resolve_test`, Warp Charge per p.163 incl. Critical/Fumble/**Push**=Advantage),
+`resolve_perils`/`resolve_phenomena` (banded d100), and `reverse_d100` + an `advantage` kwarg for
+IM's reverse-the-digits Advantage (p.189). New `<<MANIFEST power [für name] [push]>>` marker mirrors
+the `<<TEST>>` flow (marker → `ManifestRequest` → cog button → engine rolls + bookkeeps → fed back
+to narrate). Warp Charge is a code-owned mutable resource on `Combatant` (persisted, shown in the
+state summary). Catalog = all Core minor powers + core Biomancy + representative Player's Guide
+Inquisition powers; full per-power prose comes from RAG (golden rule #7). The example psyker is
+**Mortn** (Psi-Meisterschaft 45, Wil 48 → Schwelle 4). **Suite 220/220** (29 new fixed-seed psyker
+tests, `tests/test_psyker.py`). _Timing simplification: the end-of-turn containment Test is resolved
+at the end of the manifesting action (the conversational loop has no hard round boundary) — see ADR
+022. Open: the Psychic Phenomena table has OCR-merged band boundaries to verify against the book;
+`Psi-Meisterschaft`/`Disziplin (Psi)` skill names to confirm against the German edition; the
+Inquisition Player's Guide is extracted to Markdown but **not yet embedded** (Ollama was down) —
+run `uv run python -m dmbot.rag.ingest "data/pdfs/md/Imperium_Maledictum_Inqusition_Player's_Guide.md" --source player_guide` (bge-m3, the store's pinned model) when Ollama is up so the DM retrieves the full Inquisition catalog._
+
+**Augmetik/Implantate + Psyker-Erstellungs-Backfill (D52 → ADR 023, 2026-06-13): code-complete,
+live-unverified.** Implantate nachgezogen, im selben profil-getriebenen Muster wie Psyker (ADR 022)
+— aber **passiv, kein Wurf** (kein Marker/Button). Neuer `augmetics`-Block im IM-Profil (Katalog:
+Core-Augmetika S.152-154 + Inquisition-PG S.94-96, mit Körperzone/Verfügbarkeit/Kosten/`effects`;
+weiches Limit = Zähigkeits-Bonus). `effects.type` `armour` → addiert zur PC-Soak in
+`_apply_attack_damage`; `characteristic` (z. B. Augur-Array +5 Per) → addiert in `resolve_target`,
+gematcht über Merkmalsname **oder** optionale `skills`-Liste am Effekt (Augur→Wahrnehmung);
+`skill_sl`/`special` (Auspex, Mechadendrite, Kampfdrüse …) bleiben narrativ (Prompt-Block + RAG).
+Helfer `augmetic_armour`/`augmetic_bonus` in `characters.py`; `_augmetic_block` im State-Summary;
+Persona-Hinweis in `dm_core_de.md`. **Erstellungs-Backfill (dieselben Dateien, die für Psyker noch
+fehlten):** `docs/how-to-create-a-character.html` bekam eine Augmetik-Checkbox-Liste (weicher
+Zähigkeits-Limit-Hinweis) + eine Psioniker-Sektion (Disziplinen + Kräfte) → JSON-Block-Felder
+(Katalognamen hartkodiert = müssen zum Profil passen); `tools/fill_character_sheet.py` füllt jetzt
+die schon vorhandene (aber leere) Psi-Tabelle aus `known_powers` × Profil-Katalog + Warp-Schwelle =
+WillkürB, und rendert Augmetika in die mittlere Ausrüstungsspalte (kein eigenes Bogenfeld). Beispiel:
+Vask hat „Augmetischer Arm", Mortn „Augur-Array". **Suite 230/230** (+10 Augmetik-Tests,
+`tests/test_augmetics.py`). _Offen: Katalognamen HTML↔Profil synchron halten; deutsche
+Fertigkeits-/Merkmalsnamen gegen die deutsche Edition prüfen._
+
 **Visible, fast shutdown (D47 → ADR 020, 2026-06-13): code-complete, live-unverified.** Tobi: "der
 Bot geht nur sehr schwer aus und das dauert sehr lange" + wanted to see what/how many things shut
 down. Two causes, two fixes. **(1) The slow exit** was TTS synth on `asyncio.to_thread` — asyncio's
@@ -624,6 +664,19 @@ and the never-say secrets). Then `!j` **in circlejerk** and check in this order:
 9. **`!lore` (D49):** `!lore` blättert (◀/▶), `!lore wer ist der Imperator?` antwortet als
    Embed (Retrieval offline schon verifiziert — hier nur checken, dass Embed + Buttons im
    echten Discord rendern).
+10. **Psyker (D51/ADR 022):** with a psyker in the party (the example **Mortn**, or a new build
+    with a `psyker: true` + `known_powers` + a `Psi-Meisterschaft` skill), have them wield a power
+    by voice → a `🌀 Manifestation angefordert` button appears; click it → a `🌀 … Warp X/4` line,
+    and the DM narrates the effect. Push a power a few times to drive Warp Charge over the threshold
+    → a `🜏 Perils of the Warp` line fires and Warp resets; the value survives a restart. First do
+    the **Player's Guide RAG ingest** (command in Current focus) so a psyker rule question
+    („Was sind Perils of the Warp?") retrieves the book.
+11. **Augmetik + Erstellung (D52/ADR 023):** ein Charakter mit Implantat (Beispiel: Vask
+    „Augmetischer Arm", Mortn „Augur-Array"). Greif Vask an → Soak +1 (1 Wunde weniger); ein
+    Wahrnehmungs-Wurf für Mortn liegt +5 höher. Im Weltzustand erscheint der
+    `## Augmetik/Implantate`-Block. Erstellung: `docs/how-to-create-a-character.html` öffnen →
+    Implantate/Psioniker wählen → JSON enthält `augmetics`/`known_powers`;
+    `tools/fill_character_sheet.py` → Psi-Tabelle, Warp-Schwelle und Augmetik-Spalte sind im PDF gefüllt.
 Watch `ctx=` in the `[latency]` lines — the adventure block adds ~1k tokens; the D36 warning
 fires above 85% of 8192. Dial: **Opus 4.8 / xhigh** (roadmap recommends opusplan/high for
 Phase 10 planning; the building is done — the run is verification).
@@ -780,6 +833,8 @@ create the next-numbered ADR.
 | D47 | Visible, fast shutdown | **(a)** TTS synth runs on an **abandonable daemon thread** (`dmbot/shutdown.py` `to_daemon_thread`, replacing `asyncio.to_thread` in `_speak` + the streaming `synth_worker`) so a synth in flight at Ctrl+C is dropped, never join-blocking exit. **(b)** A thread-safe **`[i/n] label` step display** (`ShutdownProgress`/`progress`): `DMBot.close()` declares the count up front (voice disconnects + each cog's `TEARDOWN_STEPS` + the Discord close) and wraps every stage; `cog_unload` reports its four closes; a final summary names any dropped synth. Outside a shutdown, `step()` is a plain log line | Tobi: the bot quit slowly and silently. Cause of the slowness: asyncio's default executor threads are **non-daemon**, so the interpreter joined a multi-second GPU XTTS synth at exit — pure dead wait, the WAV is moot once quitting. Daemon-abandon is the only real lever (XTTS isn't cancelable). The display answers "what/how many is being shut down". Targeted to TTS only (close paths keep normal threads) → **ADR 020** |
 | D48 | Curated German lore compendium | **Hand-authored `data/lore/imperium.md` + `chaos.md`** (German, grimdark in-world; **committed** — own wording of freely available 40k common knowledge, revised same day from the initial local-only stance) → two new RAG sources **`lore_imperium`/`lore_chaos`**, grouped as `## Weltwissen (Imperium …)` / `## Weltwissen (Chaos — verbotenes Wissen …)`, block order rules → broad lore → local Rokarth. Threshold stays 0.45 global. Tobi's calls: two files/two sources, both ausführlich, grimdark | Live probe (2026-06-13): human lore retrieves from the English rulebook (Imperium d=0.27) but **Chaos cosmology doesn't exist in the IM books** ("vier Chaosgötter" d=0.53 miss — by design, Chaos as hidden horror); RAG can't retrieve what was never written, and German-vs-English inflates distances. German authored text wins TOP_K for German lore questions (verified 0.28–0.44) while rules keep hitting the rulebook. Wiki dump (D28) stays the later breadth step; Tyranids/Necrons/T'au deliberately absent (Tobi) → **ADR 021** |
 | D50 | `!rules <frage>` command | **Two modes** — `!rules` (alias `!regeln`) still pages the system's short rules (◀/▶); **`!rules <frage>`** retrieves the matching rulebook chunks (`RulebookRetriever.lookup(sources=("rulebook",), k=3, max_distance=0.55)`) and the new **`DMBrain.answer_rules`** has the LLM synthesise a short German answer grounded **only** in those excerpts (golden rule #7: no invented rules; "Regelbuch hergibt nichts" when uncovered). No hits → honest "nichts im Regelbuch". Read-only embed, never spoken; +3 unit tests | Counterpart to D49's `!lore <frage>`, but the rulebook is **English layout-soup**, so raw chunk display (the `!lore` model) is unreadable — a rule question needs an LLM translate/condense step, unlike curated German lore. Grounding it in retrieved chunks (not the model's gut) is golden rule #7 applied, not a new trade-off → D-entry, no ADR. Verified end-to-end against the live store (Ausweichen, kritischer Treffer → correct) |
+| D52 | Augmetik/Implantate + Psyker-Erstellungs-Backfill | **Profile-driven, passiv (kein Wurf).** Neuer optionaler `augmetics`-Block im IM-Profil (Katalog mit Körperzone/Verfügbarkeit/Kosten/`effects` + weiches Limit = Zähigkeits-Bonus). `Character.augmetics`. Engine wendet `armour` (→ PC-Soak in `_apply_attack_damage`) und `characteristic` (→ `resolve_target`, via Merkmalsname oder optionale `skills`-Liste am Effekt) deterministisch an; `skill_sl`/`special` narrativ (Prompt-Block `_augmetic_block` + RAG). Backfill derselben Erstellungs-Dateien, die Psyker noch nicht kannten: HTML-Creator (Augmetik-Checkliste + Psioniker-Sektion → JSON-Felder) und `fill_character_sheet.py` (leere Psi-Tabelle aus `known_powers`×Katalog + Warp-Schwelle füllen; Augmetik in Ausrüstungsspalte). +10 Tests (230 grün) | Tobi: Implantate „auch nachziehen" + in die nötigen Dateien integrieren. Engine bleibt system-agnostisch (ADR 005) → Katalog ist Profildaten. Effekte, die die Würfel betreffen, gehören in Code (golden rule #2): Rüstung/Merkmal auto, der konditionale Rest (Auspex/Mechadendrite/EG-Boni) bleibt DM-narrativ aus dem RAG statt unsicherer Auto-Anwendung. Psyker-Backfill mitgenommen, weil dieselben Dateien offen waren und Psyker sonst nicht eingebbar/druckbar sind → **ADR 023** |
+| D51 | Psyker / Warp subsystem | **Profile-driven, voll regeltreu (IM ch. VI).** New optional `psyker` block in `data/systems/imperium_maledictum.json` (power catalog with Warp Rating + Difficulty; Warp-Threshold = Willpower Bonus; d100 Perils-of-the-Warp + Psychic Phenomena tables). Engine gains pure `resolve_manifest` (Manifest Test via `resolve_test`; Warp Charge per p.163 incl. Critical/Fumble/Push), `resolve_perils`/`resolve_phenomena` (banded d100), `reverse_d100` + `advantage` kwarg (IM reverse-the-digits, p.189). New `<<MANIFEST power [für name] [push]>>` marker → `ManifestRequest` → cog button → engine rolls + bookkeeps Warp Charge (code-owned on `Combatant`, persisted) → fed back to narrate. Catalog = Core minor + core Biomancy + PG Inquisition powers; prose via RAG. +29 fixed-seed tests (220 green) | Tobi chose full fidelity over narrative-only and pointed at the Inquisition Player's Guide. Engine must stay system-agnostic (ADR 005) → tables/threshold are profile data, not code; per-power bespoke effects stay LLM-narrated from RAG (golden rule #7) rather than re-encoded. Timing: end-of-turn containment Test resolved at the manifesting action's end (no hard round boundary in the voice loop) → **ADR 022** |
 | D49 | `!lore` command | **Weltwissen, two modes** — `!lore [topic]` (alias `!hintergrund`) pages `data/lore/<topic>.md` (no arg → `imperium`, `!lore chaos` → Chaos) through the existing `RulesView` (◀/▶); **`!lore <frage>`** (same-day extension, Tobi) looks the question up in the vector store and posts the best-matching compendium sections as an embed — new `RulebookRetriever.lookup()` (caller-picked sources = `lore_imperium`/`lore_chaos`/`setting` only, k=2, **own ceiling 0.52**), deterministic chunk display, no LLM. New pure `dmbot/rag/lore.py` (`lore_pages`: heading = page, H1 + `>`-source-note skipped, >4000-char guard; `available_topics`). Read-only — no TTS, no DM turn. Plus `tools/lore_to_html.py` → `docs/lore.html` (grimdark standalone, review/handout view, re-run after lore edits) | Tobi wants players to read an ausführlicher human-lore rundown (reviewed via HTML first) AND ask direct lore questions; the readable file covers the rundown case. Single source of truth: command, RAG Weltwissen and handout all read the same committed files. Lookup ceiling tuned on live probes: looser than the 0.45 prompt gate (narrative phrasings ~0.48 deserve an answer on an explicit ask) but under 0.54 where the off-corpus Tyranid question grabbed the nearest wrong chunk — "steht nichts im Weltwissen" beats a misleading hit. Rulebook excluded (English layout soup; rule questions → `!rules`/DM turn). Applies existing patterns → D-entry, no ADR |
 
 ### Phase → ADR map (read these when you enter the phase)

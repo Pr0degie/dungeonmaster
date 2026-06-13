@@ -33,6 +33,14 @@ class Character:
     max_wounds: int | None = None
     inventory: tuple[str, ...] = ()
     conditions: tuple[str, ...] = ()
+    # Psyker fields (ADR 022) — optional; a non-psyker leaves these falsy. ``known_powers`` are
+    # names that index the active profile's psyker catalog (the stat block lives there, not here).
+    psyker: bool = False
+    disciplines: tuple[str, ...] = ()
+    known_powers: tuple[str, ...] = ()
+    # Augmetics (ADR 023) — names that index the active profile's augmetics catalog (the effects
+    # live there, not here). Passive: no roll; the engine reads their armour/characteristic effects.
+    augmetics: tuple[str, ...] = ()
     raw: dict = field(default_factory=dict)
 
     @classmethod
@@ -45,6 +53,10 @@ class Character:
             max_wounds=data.get("max_wounds"),
             inventory=tuple(data.get("inventory", []) or []),
             conditions=tuple(data.get("conditions", []) or []),
+            psyker=bool(data.get("psyker", False)),
+            disciplines=tuple(data.get("disciplines", []) or []),
+            known_powers=tuple(data.get("known_powers", []) or []),
+            augmetics=tuple(data.get("augmetics", []) or []),
             raw=dict(data),
         )
 
@@ -159,6 +171,47 @@ class CharacterStore:
         return list(dict.fromkeys(n for n in names if n))  # dedupe, keep order
 
 
+def augmetic_armour(profile: SystemProfile, character: Character | None) -> int:
+    """Total armour an augmetic character adds to soak (ADR 023): sum of every ``armour`` effect
+    across the character's catalogued augmetics. 0 for a non-augmetic character. Engine-applied
+    because dice/soak = code (golden rule #2)."""
+    if character is None or not character.augmetics or not profile.augmetics_enabled():
+        return 0
+    total = 0
+    for name in character.augmetics:
+        stats = profile.augmetic(name)
+        if stats is None:
+            continue
+        for eff in stats.get("effects", []) or []:
+            if eff.get("type") == "armour":
+                total += int(eff.get("value", 0) or 0)
+    return total
+
+
+def augmetic_bonus(profile: SystemProfile, character: Character | None, *, characteristic: str) -> int:
+    """The augmetic bonus to a test on ``characteristic`` (ADR 023): sum of every ``characteristic``
+    effect whose boosted characteristic matches by name, or whose optional ``skills`` list contains
+    ``characteristic`` (so e.g. an Augur-Array's +5 Perception lifts Wahrnehmung Tests). Skills not
+    listed there aren't auto-boosted (governance isn't modelled) — the DM applies those from the
+    prompt block. 0 when nothing matches."""
+    if character is None or not character.augmetics or not profile.augmetics_enabled() or not characteristic:
+        return 0
+    key = characteristic.strip().lower()
+    total = 0
+    for name in character.augmetics:
+        stats = profile.augmetic(name)
+        if stats is None:
+            continue
+        for eff in stats.get("effects", []) or []:
+            if eff.get("type") != "characteristic":
+                continue
+            names = [str(eff.get("characteristic", "")).lower()]
+            names += [str(s).lower() for s in (eff.get("skills", []) or [])]
+            if key in names:
+                total += int(eff.get("value", 0) or 0)
+    return total
+
+
 def resolve_target(
     profile: SystemProfile,
     store: CharacterStore | None,
@@ -175,6 +228,8 @@ def resolve_target(
     """
     character = store.get(target_name) if store is not None else None
     base = store.skill_value(character, skill) if store is not None else None
+    if base is not None:  # augmetic characteristic bonuses (e.g. Augur-Array +5 Per) lift the value
+        base += augmetic_bonus(profile, character, characteristic=skill)
 
     if modifier is not None:
         mod, label = modifier, None  # explicit ±N override from the marker
@@ -189,4 +244,56 @@ def resolve_target(
     target = base + mod if base is not None else None
     return ResolvedTest(
         skill=skill, character=character, base=base, modifier=mod, difficulty=label, target=target
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedManifest:
+    """A Manifest request resolved against a character + profile, ready for the engine (ADR 022).
+
+    ``target`` is ``None`` when the Psi-Meisterschaft value is unknown (no character or the
+    psyker skill isn't on the sheet) — the caller still rolls but can't compute SL/Warp Charge."""
+
+    power: str                    # the power name (canonical, from the catalog)
+    character: Character | None
+    stats: dict | None            # the power's catalog stat block (warp_rating, difficulty, …)
+    warp_rating: int              # the power's base Warp Rating
+    base: int | None              # the Psi-Meisterschaft skill value, before difficulty
+    modifier: int                 # the power's Difficulty modifier
+    difficulty: str | None        # canonical difficulty label, for display
+    target: int | None            # base + modifier (None if base is None)
+    willpower_bonus: int          # tens of Willpower (drives Warp Charge gain on a Critical)
+    threshold: int                # Warp Threshold (= Willpower Bonus in IM)
+
+
+def resolve_manifest_request(
+    profile: SystemProfile,
+    store: CharacterStore | None,
+    *,
+    power: str,
+    target_name: str | None = None,
+) -> ResolvedManifest | None:
+    """Resolve a parsed Manifest request into the numbers :func:`engine.resolve_manifest` needs.
+
+    Looks the power up in the profile catalog (its Warp Rating + Difficulty), reads the psyker's
+    Psi-Meisterschaft value and Willpower from the sheet, and computes the test target + Warp
+    Threshold — all in code (golden rule #2). Returns ``None`` if the profile has no psyker block
+    or the power isn't catalogued, so the caller can fall back to a plain narration."""
+    if not profile.psyker_enabled():
+        return None
+    stats = profile.power(power)
+    if stats is None:
+        return None
+    character = store.get(target_name) if store is not None else None
+    base = store.skill_value(character, profile.psyker_test_skill()) if store is not None else None
+    mod = profile.difficulty_modifier(stats.get("difficulty")) or 0
+    label = profile.canonical_difficulty(stats.get("difficulty"))
+    wil_value = store.skill_value(character, profile.threshold_characteristic()) if store else None
+    wb = (wil_value // 10) if wil_value is not None else 0
+    return ResolvedManifest(
+        power=stats["name"], character=character, stats=stats,
+        warp_rating=int(stats.get("warp_rating", 0) or 0),
+        base=base, modifier=mod, difficulty=label,
+        target=(base + mod) if base is not None else None,
+        willpower_bonus=wb, threshold=profile.warp_threshold(wil_value),
     )

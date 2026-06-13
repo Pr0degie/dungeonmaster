@@ -16,15 +16,20 @@
       "skills": { "Nahkampf": 55, "Einschüchtern": 47, "Athletik": 44, "Wahrnehmung": 35 },
       "wounds": 14, "max_wounds": 14,
       "inventory": ["Kettenschwert", "Flak-Rüstung"],
-      "conditions": []
+      "conditions": [],
+      "augmetics": ["Augmetischer Arm"]
     },
     {
       "name": "Mortn",
       "characteristics": { "WS": 30, "BS": 33, "Str": 28, "Tgh": 32, "Ag": 36, "Int": 52, "Per": 44, "Wil": 48, "Fel": 41 },
-      "skills": { "Wissen": 54, "Überreden": 46, "Wahrnehmung": 44, "Medizin": 38, "Heimlichkeit": 33 },
+      "skills": { "Wissen": 54, "Überreden": 46, "Wahrnehmung": 44, "Medizin": 38, "Heimlichkeit": 33, "Psi-Meisterschaft": 45, "Disziplin (Psi)": 42 },
       "wounds": 9, "max_wounds": 9,
       "inventory": ["Daten-Slate", "Auspex", "Laspistole"],
-      "conditions": []
+      "conditions": [],
+      "psyker": true,
+      "disciplines": ["Biomancy", "Divination"],
+      "known_powers": ["Smite", "Seal Wounds", "Psychic Scrutiny", "Haemorrhage", "Soulsight"],
+      "augmetics": ["Augur-Array"]
     }
   ],
   "aliases": {
