@@ -255,7 +255,18 @@ class VadSink(PcmLogSink):
         self._on_utterance = on_utterance
         self._resamplers: dict[int, StereoResampler] = {}
         self._segmenters: dict[int, UtteranceSegmenter] = {}
-        self._muted = False  # feedback protection layer 2: True while Bot A speaks (ADR 003)
+        # Feedback protection layer 2 (ADR 003): muted while Bot A speaks. A DEPTH COUNTER, not a
+        # bool, because two independent owners nest: the DM-speaking paths in dmcog (_speak /
+        # _deliver_streaming, balanced mute/unmute around /speak) and the operator pause/resume in
+        # voicecog.set_paused. If the operator resumes mid-playback, a plain bool's unconditional
+        # unmute would flip muting off while Bot A is still talking (FINDING #8). Counting keeps it
+        # muted until BOTH owners have released. Read effective state via the `_muted` property.
+        self._mute_depth = 0
+
+    @property
+    def _muted(self) -> bool:
+        """Effective layer-2 mute state: muted while any owner holds the mute (depth > 0)."""
+        return self._mute_depth > 0
 
     def _pipeline_for(
         self, user_id: int, name: str
@@ -301,18 +312,26 @@ class VadSink(PcmLogSink):
         Called from the event loop around the blocking ``/speak``. Flushes any in-progress
         utterance first so a player's pre-DM speech is captured instead of being glued across the
         DM's playback gap to whatever they say afterwards; thereafter :meth:`_on_pcm` drops every
-        frame until :meth:`unmute`. Idempotent.
+        frame until the matching :meth:`unmute`.
+
+        Reentrant via a depth counter: independent owners (DM-speaking vs. operator pause) nest, so
+        an inner unmute can't reopen the VAD while an outer owner is still speaking (FINDING #8).
+        The flush only fires on the 0→1 transition; a nested second mute does not re-flush.
         """
         with self._lock:
-            if self._muted:
-                return
-            self._muted = True
-            self._flush_all_locked()
+            self._mute_depth += 1
+            if self._mute_depth == 1:  # 0→1 transition: first owner to mute flushes the open table
+                self._flush_all_locked()
 
     def unmute(self) -> None:
-        """Resume segmentation once Bot A has finished speaking (ADR 003)."""
+        """Release one mute hold; resume segmentation only once the last owner has unmuted (ADR 003).
+
+        Clamped at 0 so a stray unmute (more unmutes than mutes) can't drive the depth negative and
+        leave the VAD wedged shut on the next mute.
+        """
         with self._lock:
-            self._muted = False
+            if self._mute_depth > 0:
+                self._mute_depth -= 1
 
     def flush_open(self) -> None:
         """Cut any in-progress utterance now (emit it). The cog calls this when the push-to-talk

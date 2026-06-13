@@ -28,10 +28,10 @@ class SceneChangeView(discord.ui.View):
         self.part = part
         self._on_confirm = on_confirm
         self._confirm_btn: discord.ui.Button = discord.ui.Button(
-            label="Wechseln"[:80], style=discord.ButtonStyle.primary, emoji="📖"
+            label="Wechseln", style=discord.ButtonStyle.primary, emoji="📖"
         )
         self._cancel_btn: discord.ui.Button = discord.ui.Button(
-            label="Abbrechen"[:80], style=discord.ButtonStyle.secondary
+            label="Abbrechen", style=discord.ButtonStyle.secondary
         )
         self._confirm_btn.callback = self._on_confirm_click
         self._cancel_btn.callback = self._on_cancel_click

@@ -217,12 +217,19 @@ class DMCog(commands.Cog):
             log.info("(inhaltslose Antwort — nichts gepostet/gesprochen; nur ggf. Würfel)")
         dice_task = asyncio.create_task(self._rt.handle_dice(channel))
         scene_task = asyncio.create_task(self._handle_scene(channel))  # ADR 026: propose a scene move
-        if speak_task is not None:
-            await speak_task
-        timing.end = time.monotonic()  # /speak returned → total stops here (mic re-anchor excluded)
-        timing.log_line()
-        await dice_task  # the dice button must land before the mic button re-anchors at the bottom
-        await scene_task  # likewise the scene-change proposal lands before the mic re-anchors
+        # dice_task/scene_task must ALWAYS be awaited — even if _speak raises a bridge-side error.
+        # Otherwise the dice button is never posted and the orphaned tasks log "Task exception was
+        # never retrieved". The finally awaits them (logging, not dropping, their own exceptions) and
+        # lets a speak_task error propagate to the caller's handler afterwards.
+        try:
+            if speak_task is not None:
+                await speak_task
+            timing.end = time.monotonic()  # /speak returned → total stops here (mic re-anchor excluded)
+            timing.log_line()
+        finally:
+            # The dice button must land before the mic button re-anchors at the bottom; likewise the
+            # scene-change proposal. await_dice_scene awaits both and logs (never drops) their errors.
+            await self._await_dice_scene(dice_task, scene_task)
         await self._autosave_turn(channel, answer, user_msg=saved_user_msg,
                                   redo=timing.kind == "redo")
         # Keep the mic button reachable: move it back to the bottom after the message + speech.
@@ -231,6 +238,21 @@ class DMCog(commands.Cog):
         # Rolling auto-recap (D56): if this turn's prompt neared the num_ctx cap, compact the history
         # now — off the hot path (the turn is fully delivered above), so it never adds turn latency.
         await self._maybe_compact(channel, timing)
+
+    @staticmethod
+    async def _await_dice_scene(dice_task: asyncio.Task | None,
+                                scene_task: asyncio.Task | None) -> None:
+        """Await the concurrent dice-button and scene-proposal tasks, retrieving (and logging, never
+        dropping) any exception each raised. Used by both delivery paths so a failing task can't leave
+        a 'Task exception was never retrieved' warning. Order matters: dice first, then scene, so both
+        land before the mic button re-anchors at the bottom."""
+        for task, what in ((dice_task, "dice button"), (scene_task, "scene proposal")):
+            if task is None:
+                continue
+            try:
+                await task
+            except Exception:
+                log.exception("%s task failed", what)
 
     async def _deliver_streaming(self, channel, guild_id: int | None, timing: _TurnTiming, *,
                                  redo: bool = False, extra_text: str | None = None,
@@ -343,17 +365,39 @@ class DMCog(commands.Cog):
                     await self._rt._send_with_retry(channel, answer)
                 dice_task = asyncio.create_task(self._rt.handle_dice(channel))
                 scene_task = asyncio.create_task(self._handle_scene(channel))  # ADR 026
-            await asyncio.gather(sw, pw)  # wait for the last sentence to finish playing
+            # gather() re-raises the FIRST worker exception WITHOUT cancelling its siblings — so if
+            # play_worker dies on a mid-stream bridge 5xx, synth_worker would hang forever on the
+            # bounded wav_q.put and leak its temp WAV. Log a worker failure here; the finally then
+            # cancels any still-running pipeline task and drains the queue (no orphan task / WAV leak).
+            try:
+                await asyncio.gather(sw, pw)  # wait for the last sentence to finish playing
+            except Exception:
+                log.exception("streaming synth/play worker failed mid-stream")
         finally:
             if sink is not None:
                 sink.unmute()
+            # Cancel any pipeline task still pending (producer/synth/play) after a mid-stream failure
+            # and await its cancellation, then drain any temp WAVs the synth worker had queued so a
+            # failed turn doesn't leave a hung task or leaked file behind. A clean run finds them all
+            # done and the queue empty — this is a no-op then.
+            for task in (prod, sw, pw):
+                if not task.done():
+                    task.cancel()
+            for task in (prod, sw, pw):
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception:
+                    log.exception("streaming pipeline task failed during cleanup")
+            while not wav_q.empty():
+                leftover = wav_q.get_nowait()
+                if leftover is not None:
+                    _safe_remove(leftover)
         if holder["answer"] is not None:
             timing.end = time.monotonic()  # last /speak returned
             timing.log_line()
-            if dice_task is not None:
-                await dice_task
-            if scene_task is not None:
-                await scene_task
+            await self._await_dice_scene(dice_task, scene_task)
             await self._autosave_turn(channel, holder["answer"], user_msg=saved_user_msg, redo=redo)
             if self._rt._push_to_talk and self._rt._sink is not None:
                 await self._rt.reanchor_mic(channel)
