@@ -40,8 +40,10 @@ from ..discord_ui.rules import RulesView
 from ..discord_ui.target import TargetSelectView
 from ..rules import engine, profile as profile_mod
 from ..rules.profile import ProfileError, SystemProfile
-from ..rules.characters import Character, CharacterStore, resolve_target
-from ..rules.marker import TestRequest, extract_tests
+from ..rules.characters import (
+    Character, CharacterStore, augmetic_armour, resolve_manifest_request, resolve_target,
+)
+from ..rules.marker import ManifestRequest, TestRequest, extract_tests
 from ..rules.summary import rules_pages_de
 from ..memory.state import WorldState, world_state_summary_de
 from ..memory import history as history_store
@@ -505,6 +507,10 @@ class VoiceReceiveCog(commands.Cog):
         elif source == "marker":
             for req in markers:
                 await self._post_dice_button(channel, req)
+        # Psychic Manifest requests (ADR 022) are independent of the skill-roll router: post a
+        # button for each so the engine rolls the Manifest Test + bookkeeps Warp Charge.
+        for m in self._brain.take_pending_manifests(self._brain_channel(channel)):
+            await self._post_manifest_button(channel, m)
 
     async def _autosave_turn(self, channel, answer: str, *, user_msg: str | None = None,
                              redo: bool = False) -> None:
@@ -963,9 +969,64 @@ class VoiceReceiveCog(commands.Cog):
         adventure_block = ""
         if self._adventure is not None:
             adventure_block = self._adventure.adventure_block_de(state.scene_id)
+        summary = world_state_summary_de(state)
+        for block in (self._psyker_block(state), self._augmetic_block()):
+            if block:
+                summary = f"{summary}\n\n{block}" if summary else block
         self._brain.set_context(
-            cid, recap=state.recap, state_summary=world_state_summary_de(state),
-            adventure_block=adventure_block,
+            cid, recap=state.recap, state_summary=summary, adventure_block=adventure_block,
+        )
+
+    def _psyker_block(self, state: WorldState) -> str:
+        """A compact German block listing each psyker's known powers, Psi-Meisterschaft value, Warp
+        Threshold and current Warp Charge — so the DM knows what can be manifested and how close the
+        psyker is to Perils (ADR 022). Empty if the profile has no psyker rules or nobody is a psyker.
+        Powers are static (the sheet); Warp Charge is the live value from the world state."""
+        if self._profile is None or not self._profile.psyker_enabled() or self._characters is None:
+            return ""
+        lines: list[str] = []
+        for char in self._characters.characters():
+            if not char.psyker:
+                continue
+            psi = self._characters.skill_value(char, self._profile.psyker_test_skill())
+            wil = self._characters.skill_value(char, self._profile.threshold_characteristic())
+            threshold = self._profile.warp_threshold(wil)
+            combatant = state.find(char.name)
+            warp = combatant.warp_charge if combatant is not None else 0
+            stats = [f"Psi-Meisterschaft {psi}" if psi is not None else "Psi-Meisterschaft ?",
+                     f"Warp-Schwelle {threshold}", f"aktuell Warp {warp}"]
+            powers = ", ".join(char.known_powers) if char.known_powers else "—"
+            lines.append(f"{char.name} ({', '.join(stats)}): {powers}")
+        if not lines:
+            return ""
+        return (
+            "## Psioniker (psychische Kräfte — wirke sie per `<<MANIFEST Kraft für Name>>`)\n"
+            + "\n".join(lines)
+        )
+
+    def _augmetic_block(self) -> str:
+        """A compact German block listing each character's augmetics + a short effect, so the DM
+        narrates with them in mind (ADR 023). Augmetics are passive: the engine already applies
+        their armour + characteristic bonuses to rolls; the listed effects remind the DM of the
+        situational ones (Auspex, Mechadendrites, …). Static (from the sheet) — empty if the profile
+        has no augmetics rules or nobody has an implant."""
+        if self._profile is None or not self._profile.augmetics_enabled() or self._characters is None:
+            return ""
+        lines: list[str] = []
+        for char in self._characters.characters():
+            if not char.augmetics:
+                continue
+            parts: list[str] = []
+            for name in char.augmetics:
+                stats = self._profile.augmetic(name)
+                text = (stats or {}).get("text", "")
+                parts.append(f"{name} — {text}" if text else name)
+            lines.append(f"{char.name}: " + "; ".join(parts))
+        if not lines:
+            return ""
+        return (
+            "## Augmetik/Implantate (dauerhaft, kein Wurf — Rüstung/Merkmals-Boni rechnet die "
+            "Engine bereits dazu; situative Effekte erzählst du)\n" + "\n".join(lines)
         )
 
     def _toughness_bonus(self, target: Character | None) -> int:
@@ -1091,6 +1152,97 @@ class VoiceReceiveCog(commands.Cog):
 
         return _roll
 
+    async def _post_manifest_button(self, channel, req: ManifestRequest) -> None:
+        """Resolve a Manifest request (power → Warp Rating + Difficulty + the psyker's Psi-Meisterschaft
+        value, all in code) and post its button (ADR 022)."""
+        resolved = resolve_manifest_request(
+            self._profile, self._characters, power=req.power, target_name=req.target_name,
+        )
+        if resolved is None:  # no psyker block or the power isn't catalogued — note it, don't crash
+            note = f"„{req.power}“" if req.power else "Kraft"
+            await self._send_with_retry(
+                channel, f"🌀 Unbekannte psychische Kraft {note} — nicht im Regelprofil hinterlegt.",
+            )
+            return
+        who = (resolved.character.name if resolved.character else req.target_name) or "Psioniker"
+        diff = f" ({resolved.difficulty})" if resolved.difficulty else ""
+        push = " · Push" if req.pushed else ""
+        label = f"{who} manifestiert: {resolved.power}{diff}{push}"
+        await self._send_with_retry(
+            channel, "🌀 Manifestation angefordert:",
+            view=DiceTestView(label, self._make_manifest_roll(channel, req, resolved)),
+        )
+
+    def _make_manifest_roll(self, channel, req: ManifestRequest, resolved):
+        """Build the roll callback for a Manifest button: the engine rolls the Psychic Mastery Test,
+        bookkeeps Warp Charge against the Threshold, resolves Perils when triggered, persists the
+        psyker's Warp Charge, and feeds every line back so the DM narrates the consequence."""
+        power = resolved.power
+        who = resolved.character.name if resolved.character else req.target_name
+
+        async def _roll(interaction: discord.Interaction) -> None:
+            guild_id = channel.guild.id if channel.guild else None
+            cid = self._brain_channel(channel)
+            state = self._state.get(cid)
+            combatant = state.find(who) if (state and who) else None
+            if resolved.target is None:  # no Psi-Meisterschaft value on the sheet — roll, ask to compare
+                d = engine.roll(self._profile.dice, self._rng)
+                lines = [f"🌀 {power}: {d.total} — kein Psi-Meisterschaft-Wert hinterlegt, "
+                         "vergleicht mit eurem Bogen."]
+            else:
+                current = combatant.warp_charge if combatant is not None else 0
+                result = engine.resolve_manifest(
+                    self._profile, test_target=resolved.target, power=power,
+                    warp_rating=resolved.warp_rating, current_charge=current,
+                    willpower_bonus=resolved.willpower_bonus, threshold=resolved.threshold,
+                    pushed=req.pushed, rng=self._rng,
+                )
+                lines = [engine.describe_manifest_de(result, character=who)]
+                if state is not None and combatant is not None:
+                    state.set_warp_charge(who, result.warp_charge)
+                    if result.test.success and (resolved.stats or {}).get("duration", "") == "Anhaltend":
+                        state.sustain_power(who, power)
+                    lines += self._resolve_warp_consequences(state, who, resolved, result)
+                    self._persist_and_refresh(channel)
+            line = "\n".join(lines)
+            log.info("%s", lines[0])
+            try:
+                await interaction.message.edit(content=line, view=None)
+            except discord.HTTPException:
+                await self._send_with_retry(channel, line)
+            for ln in lines:
+                self._brain.add_test_result(cid, ln)
+            await self._run_and_deliver(channel, guild_id)
+
+        return _roll
+
+    def _resolve_warp_consequences(self, state, who, resolved, result) -> list[str]:
+        """Resolve the Perils-of-the-Warp risk a manifest just created (ADR 022). A Push-Fumble
+        triggers Perils immediately (IM p.163); otherwise, if Warp Charge now exceeds the Threshold,
+        the psyker makes the Challenging containment Test — on success the energy is held (powers
+        turn Overt), on failure Perils erupt. Timing note: IM runs the containment check at the
+        psyker's end of turn; the conversational loop has no hard turn boundary, so we resolve it at
+        the end of the manifesting action — deterministic and visible rather than left to the LLM."""
+        if not (result.immediate_perils or result.over_threshold):
+            return []
+        over_by = max(0, result.warp_charge - result.threshold)
+        lines: list[str] = []
+        if not result.immediate_perils:  # over threshold → containment Test first
+            contain_target = (resolved.base or 0) + (self._profile.difficulty_modifier("Herausfordernd") or 0)
+            contain = engine.resolve_test(self._profile, contain_target, self._rng)
+            lines.append(engine.describe_result_de(
+                contain, skill="Warp-Kontrolle", character=who, difficulty="Herausfordernd"))
+            if contain.success:
+                lines.append(f"🜏 {who} hält die Warp-Energie zurück — alle gewirkten Kräfte gelten "
+                             "bis zur Beruhigung als offen (Overt).")
+                return lines
+        perils = engine.resolve_perils(self._profile, over_by=over_by, rng=self._rng)
+        lines.append(engine.describe_perils_de(perils, character=who))
+        if perils.effect:
+            lines.append(f"   → {perils.effect}")
+        state.reset_warp_charge(who)  # Perils resets Warp Charge to 0 and ends Sustained powers
+        return lines
+
     def _choose_weapon(self, attacker: Character | None) -> tuple[str | None, str]:
         """Pick the attacker's weapon + its damage notation: the first inventory item the profile
         knows a damage value for, else the profile's default damage. ('', '') if neither exists."""
@@ -1158,12 +1310,15 @@ class VoiceReceiveCog(commands.Cog):
         target = state.find(target_name)
         if target is None:  # picker only lists state names, but guard: register an ad-hoc enemy
             target = state.add_or_update_npc(target_name, wounds=10)
+        augm_armour = 0
         if target.is_npc:
             tb = target.toughness_bonus
         else:
             sheet = self._characters.get(target_name) if self._characters else None
             tb = self._toughness_bonus(sheet)
-        soak = tb + target.armour
+            if self._profile is not None:  # augmetic armour adds to a PC's soak (ADR 023)
+                augm_armour = augmetic_armour(self._profile, sheet)
+        soak = tb + target.armour + augm_armour
         weapon_roll = engine.roll_damage(notation, self._rng)
         dmg = engine.resolve_damage(weapon_roll, result.degrees, soak)
         state.apply_damage(target_name, dmg.applied)
@@ -1334,9 +1489,14 @@ class VoiceReceiveCog(commands.Cog):
     async def lore(self, ctx: commands.Context, *, arg: str = "") -> None:
         """Weltwissen: `!lore` / `!lore chaos` blättert den Rundown (◀/▶); `!lore <frage>`
         schlägt die passenden Kompendiums-Abschnitte nach (`!lore wer ist der Imperator?`).
-        Lese-Material, kein DM-Turn — wird nicht gesprochen. Alias: !hintergrund"""
+        `!lore tts [thema]` liest das Kompendium über Bot A vor. Sonst Lese-Material, kein
+        DM-Turn — wird nicht gesprochen. Alias: !hintergrund"""
         lore_dir = _DATA_DIR / "lore"
         topic = arg.lower().strip()
+        head, _, rest = topic.partition(" ")
+        if head == "tts":
+            await self._lore_speak(ctx, lore_dir, rest.strip() or "imperium")
+            return
         if not topic or (lore_dir / f"{topic}.md").is_file():
             await self._lore_rundown(ctx, lore_dir, topic or "imperium")
             return
@@ -1357,6 +1517,39 @@ class VoiceReceiveCog(commands.Cog):
             return
         view = RulesView(pages, self._LORE_TITLES.get(topic, topic.title()))
         await self._send_with_retry(ctx.channel, view=view, embed=view.embed())
+
+    async def _lore_speak(self, ctx: commands.Context, lore_dir, topic: str) -> None:
+        """`!lore tts [thema]` — read the data/lore/<topic>.md compendium aloud via Piper +
+        Bot A, section by section. Lese-Material that *is* spoken on demand (opposite of the
+        silent rundown); reuses ``_speak`` so the feedback guard + WAV cleanup are identical to
+        a DM turn. Pages are spoken one at a time so /speak blocks per section, not the whole
+        file at once."""
+        if self._tts is None:
+            await ctx.send("Keine TTS-Stimme geladen (siehe SETUP B5).")
+            return
+        path = lore_dir / f"{topic}.md"
+        if not path.is_file():
+            topics = available_topics(lore_dir)
+            hint = ", ".join(f"`{t}`" for t in topics) if topics else "—"
+            await ctx.send(f"Kein Lore-Thema `{topic}`. Verfügbar: {hint}")
+            return
+        text = await asyncio.to_thread(path.read_text, encoding="utf-8")
+        pages = lore_pages(text)
+        if not pages:
+            await ctx.send(f"`{path.name}` enthält keine lesbaren Abschnitte.")
+            return
+        title = self._LORE_TITLES.get(topic, topic.title())
+        guild_id = ctx.guild.id if ctx.guild else None
+        await ctx.send(f"🔊 Lese **{title}** vor … ({len(pages)} Abschnitte)")
+        log.info("📚 !lore tts %r → speaking %d sections", topic, len(pages))
+        for heading, body in pages:
+            if not await self._speak(f"{heading}. {body}", guild_id):
+                await ctx.send(
+                    "Konnte nicht abspielen — läuft **Bot A** und ist es im selben Voice-Channel? "
+                    "Prüfe `!vstatus`; Details im Log (`logs/debug.log`)."
+                )
+                return
+        await ctx.send("✅ Vorgelesen.")
 
     async def _lore_question(self, ctx: commands.Context, question: str) -> None:
         """`!lore <frage>` — show the best-matching Weltwissen sections (deterministic chunk
