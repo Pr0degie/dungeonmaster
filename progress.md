@@ -39,9 +39,19 @@ Inquisition powers; full per-power prose comes from RAG (golden rule #7). The ex
 tests, `tests/test_psyker.py`). _Timing simplification: the end-of-turn containment Test is resolved
 at the end of the manifesting action (the conversational loop has no hard round boundary) — see ADR
 022. Open: the Psychic Phenomena table has OCR-merged band boundaries to verify against the book;
-`Psi-Meisterschaft`/`Disziplin (Psi)` skill names to confirm against the German edition; the
-Inquisition Player's Guide is extracted to Markdown but **not yet embedded** (Ollama was down) —
-run `uv run python -m dmbot.rag.ingest "data/pdfs/md/Imperium_Maledictum_Inqusition_Player's_Guide.md" --source player_guide` (bge-m3, the store's pinned model) when Ollama is up so the DM retrieves the full Inquisition catalog._
+`Psi-Meisterschaft`/`Disziplin (Psi)` skill names to confirm against the German edition._
+
+**Inquisition guides embedded into the RAG (2026-06-13, follow-up to D51).** Both Inquisition
+books are now in `rag.db` (bge-m3): the **Player's Guide** whole (`player_guide`, 502 chunks →
+`## Regelwerk`) and the **GM-Guide spoiler-trimmed** (`gm_guide`, 226 chunks → `## Weltwissen`,
+only p4–61/74–83/172–174 = Ordos/Philosophien, Lex Imperialis, Signs of Chaos/Xenos, Rosetten,
+Radical Methods, Bestiarium). **Deliberately out** (same discipline as the Setting Guide's p1–57):
+the *Heresies Macharia* campaign (p84–121), Sector-Threat villains, Open Case Files, the Inquisitor
+patron sheets incl. **Halikarn** (p62–73), and the index (p175). Both sources wired into
+`dmbot/rag/retrieve.py` `_SOURCES`. Verified: psyker/Monodominant/Forbidden-Knowledge questions hit
+the new sources; spoiler probes ("Heresies Macharia", "Halikarn's secret") return nothing usable
+(secret pages aren't in the DB; generic hits sit >0.45, gated out). Store now **2469 chunks**; suite
+**230 green**. The generated `…GM-Guide.md` + `rag.db` stay git-ignored (bought-book derivatives)._
 
 **Augmetik/Implantate + Psyker-Erstellungs-Backfill (D52 → ADR 023, 2026-06-13): code-complete,
 live-unverified.** Implantate nachgezogen, im selben profil-getriebenen Muster wie Psyker (ADR 022)

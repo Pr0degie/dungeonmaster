@@ -10,7 +10,7 @@ steht im [README → „Running on another machine"](../README.md) und in [`SETU
 |---|---|---|
 | `data/pdfs/` | gekaufte PDFs **+ der `md/`-Unterordner** (Konvertierungen) | RAG-Quelltexte, Charakterbogen-Filler |
 | `data/adventures/chemical_burn/` | `adventure.json` + `npcs.json` — Szenenkarten + Statblocks | das Abenteuer im DM (ADR 019) |
-| `data/vectordb/rag.db` | fertige Vektor-DB (rulebook 1505 / setting 201 / lore_imperium 18 / lore_chaos 17 Chunks, bge-m3) | Retrieval — kopieren spart den Neuaufbau |
+| `data/vectordb/rag.db` | fertige Vektor-DB (rulebook 1505 / player_guide 502 / gm_guide 226 / setting 201 / lore_imperium 18 / lore_chaos 17 Chunks, bge-m3) | Retrieval — kopieren spart den Neuaufbau |
 
 Alles davon liegt absichtlich nicht im (öffentlichen) Repo — Ableitungen gekaufter Bücher.
 Privat weitergeben ist ok, nicht hochladen. (Das Lore-Kompendium `data/lore/` ist dagegen
@@ -36,14 +36,22 @@ Aus dem Repo-Root:
 
 ```
 uv run python tools/pdf_to_md.py "data/pdfs/Starter Set/IM_SS_Setting_Guide_Book_240722.pdf" --pages 1-57
+uv run python tools/pdf_to_md.py "data/pdfs/Imperium Maledictum Inquisition GM-Guide.pdf" --pages 4-61,74-83,172-174 -o "data/pdfs/md/Imperium Maledictum Inquisition GM-Guide.md"
 uv run python -m dmbot.rag.ingest "data/pdfs/md/Imperium Maledictum Core Rulebook.md" --source rulebook
 uv run python -m dmbot.rag.ingest "data/pdfs/md/IM_SS_Setting_Guide_Book_240722.md" --source setting
+uv run python -m dmbot.rag.ingest "data/pdfs/md/Imperium_Maledictum_Inqusition_Player's_Guide.md" --source player_guide
+uv run python -m dmbot.rag.ingest "data/pdfs/md/Imperium Maledictum Inquisition GM-Guide.md" --source gm_guide
 uv run python -m dmbot.rag.ingest "data/lore/imperium.md" --source lore_imperium
 uv run python -m dmbot.rag.ingest "data/lore/chaos.md" --source lore_chaos
 ```
 
-(Setting Guide bewusst nur Seite 1–57 — das „Villains on Voll"-Kapitel ist Spoiler und
-bleibt bis zum Kampagnenfinale draußen.)
+Bewusste Spoiler-Schnitte (wie „Villains on Voll"): der **Setting Guide** nur Seite 1–57; der
+**Inquisition GM-Guide** nur Seite 4–61, 74–83, 172–174 (= Ordos/Philosophien, Lex Imperialis,
+Signs of Chaos/Xenos, Rosetten, Radical Methods, Bestiarium). **Draußen:** die *Heresies-Macharia*-
+Kampagne (S. 84–121), die Sector-Threat-Villains, die Open Case Files, die Inquisitor-Steckbriefe
+(inkl. Patron Halikarn, S. 62–73) und der Index (S. 175, nennt alle Geheimnis-Einträge). Der
+**Player's Guide** kommt komplett rein (spielerseitig). Reihenfolge/Labels der Quellen stehen in
+`dmbot/rag/retrieve.py` (`_SOURCES`).
 
 ## 4. Spielrunde
 
