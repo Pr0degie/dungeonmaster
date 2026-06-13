@@ -68,6 +68,40 @@ def test_summarize_empty_history_returns_none() -> None:
     assert asyncio.run(DMBrain(_CapClient()).summarize(404)) is None
 
 
+class _CapUserClient(_CapClient):
+    """Also captures the user message (the rulebook context + question for !rules <frage>)."""
+
+    def __init__(self, answer: str = "Eine Regelauskunft.") -> None:
+        super().__init__(answer)
+        self.user: str | None = None
+
+    async def chat(self, system, messages, options=None, format=None) -> str:
+        self.user = messages[-1]["content"] if messages else None
+        return await super().chat(system, messages, options=options, format=format)
+
+
+def test_answer_rules_grounds_prompt_in_context_and_question() -> None:
+    client = _CapUserClient(answer="Du würfelst 1W100 unter deinem Wert.")
+    brain = DMBrain(client)
+    answer = asyncio.run(brain.answer_rules(
+        "Wie würfle ich eine Probe?",
+        "[TESTS]\nRoll 1d100 under your skill.",
+        system_name="Imperium Maledictum",
+    ))
+    assert answer == "Du würfelst 1W100 unter deinem Wert."
+    assert "Imperium Maledictum" in client.system        # system name reaches the prompt
+    assert "erfinde keine regeln" in client.system.lower()  # the no-hallucination guard
+    assert "Roll 1d100 under your skill." in client.user  # the retrieved chunk is the grounding
+    assert "Wie würfle ich eine Probe?" in client.user
+
+
+def test_answer_rules_strips_markdown_and_empty_is_none() -> None:
+    assert asyncio.run(DMBrain(_CapUserClient(answer="  *Fett*  ")).answer_rules(
+        "x", "ctx", system_name="IM")) == "Fett"
+    assert asyncio.run(DMBrain(_CapUserClient(answer="   ")).answer_rules(
+        "x", "ctx", system_name="IM")) is None
+
+
 def test_build_recap_user_renders_history_and_skips_empty() -> None:
     history = [
         {"role": "user", "content": "Timo: Wir öffnen die Tür."},

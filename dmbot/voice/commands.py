@@ -1270,8 +1270,12 @@ class VoiceReceiveCog(commands.Cog):
         await self._post_turn_order(ctx.channel)
 
     @commands.command(name="rules", aliases=["regeln"])
-    async def rules(self, ctx: commands.Context) -> None:
-        """Show the essential rules of the active system; page through with ◀/▶. Alias: !regeln"""
+    async def rules(self, ctx: commands.Context, *, question: str = "") -> None:
+        """`!rules` blättert die Kurzregeln des aktiven Systems (◀/▶); `!rules <frage>` beantwortet
+        eine Regelfrage aus dem Regelbuch (`!rules wie funktioniert ausweichen?`). Alias: !regeln"""
+        if question.strip():
+            await self._rules_question(ctx, question.strip())
+            return
         if self._profile is None:
             await ctx.send("Kein Systemprofil geladen — keine Regeln verfügbar (siehe Log).")
             return
@@ -1282,6 +1286,41 @@ class VoiceReceiveCog(commands.Cog):
         source = self._profile.raw.get("_source", "") if isinstance(self._profile.raw, dict) else ""
         view = RulesView(pages, self._profile.display_name or self._profile.name, source=source)
         await self._send_with_retry(ctx.channel, view=view, embed=view.embed())
+
+    async def _rules_question(self, ctx: commands.Context, question: str) -> None:
+        """`!rules <frage>` — retrieve the matching rulebook chunks (English layout-soup) and let
+        the LLM synthesise a short German rules answer from them (golden rule #7: grounded in the
+        book, not the model's gut). Reading material, not a DM turn — never spoken."""
+        if not self._retriever.available():
+            await ctx.send("Kein RAG-Store vorhanden — `!rules <frage>` braucht `data/vectordb/rag.db`.")
+            return
+        hits = await self._retriever.lookup(question, sources=("rulebook",), k=3, max_distance=0.55)
+        if not hits:
+            await ctx.send(
+                f"Dazu finde ich nichts im Regelbuch: *{question}*\n"
+                f"(Ohne Frage zeigt `!rules` die Kurzregeln; Weltwissen: `!lore`.)"
+            )
+            return
+        context = "\n\n".join(f"[{heading}]\n{text}" for _s, heading, text, _d in hits)
+        for s, h, _t, d in hits:
+            log.info("📖 !rules %r → %s:%r (d=%.2f)", question, s, h, d)
+        system_name = (self._profile.display_name or self._profile.name) if self._profile else "Imperium Maledictum"
+        try:
+            answer = await self._brain.answer_rules(question, context, system_name=system_name)
+        except Exception:
+            log.exception("rules question LLM call failed")
+            await ctx.send("Der Regel-Assistent ist gerade nicht erreichbar (läuft Ollama? siehe Log).")
+            return
+        if not answer:
+            await ctx.send(f"Keine klare Regelauskunft möglich zu: *{question}*")
+            return
+        sources = ", ".join(dict.fromkeys(h for _s, h, _t, _d in hits))  # unique headings, in order
+        embed = discord.Embed(
+            title="📖 Regelauskunft", description=answer[:4000], color=discord.Color.blurple()
+        )
+        embed.add_field(name="Quelle (Regelbuch)", value=sources[:1000] or "Regelbuch", inline=False)
+        embed.set_footer(text=f"Frage: {question[:200]}")
+        await self._send_with_retry(ctx.channel, embed=embed)
 
     # Display names for the curated lore topics (data/lore/<topic>.md, ADR 021); unknown
     # (future) files fall back to topic.title().

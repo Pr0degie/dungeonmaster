@@ -901,6 +901,27 @@ class DMBrain:
         text = raw.replace("*", "").strip()
         return _ROLE_LABEL.sub("", text).strip() or None
 
+    async def answer_rules(self, question: str, context: str, *, system_name: str) -> str | None:
+        """Answer a player's rules question (``!rules <frage>``) in German, grounded ONLY in the
+        retrieved rulebook excerpts ``context``. The rulebook is English layout-soup, so the model
+        translates + condenses it — but must not invent rules (golden rule #7): if the excerpts
+        don't cover it, it says so. Stateless (no channel history). ``None`` on an empty reply."""
+        system = (
+            f"Du bist ein Regel-Assistent für das Tabletop-Rollenspiel {system_name}. Beantworte "
+            "die Regelfrage des Spielers kurz, klar und auf Deutsch — ausschließlich auf Grundlage "
+            "der folgenden Auszüge aus dem (englischen) Regelbuch. Übersetze sinngemäß. Erfinde "
+            "keine Regeln und keine Zahlen: Deckt der Text die Frage nicht ab, sag offen, dass das "
+            "Regelbuch hier dazu nichts hergibt. Höchstens etwa fünf Sätze."
+        )
+        user = f"Regelbuch-Auszüge:\n{context}\n\nRegelfrage: {question}"
+        raw = await self._client.chat(
+            system,
+            [{"role": "user", "content": user}],
+            options={"temperature": 0.2, "num_predict": 320},
+        )
+        text = raw.replace("*", "").strip()
+        return _ROLE_LABEL.sub("", text).strip() or None
+
     def reset(self, channel_id: int) -> None:
         """Forget a channel's history and pending lines (e.g. new session)."""
         with self._lock:
