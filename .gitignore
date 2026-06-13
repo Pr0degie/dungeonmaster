@@ -35,9 +35,13 @@ data/**
 !data/pdfs/
 !data/sessions/
 !data/vectordb/
+!data/lore/
+!data/lore/*.md
 !data/**/.gitkeep
-# …but DO track hand-written/checked-in fixtures (ADR 005/012): the hand-written system profiles
-# and the example party. Real per-channel session state (data/sessions/<id>/) stays ignored.
+# …but DO track hand-written/checked-in fixtures (ADR 005/012/021): the hand-written system
+# profiles, the example party, and the curated lore compendium (data/lore/ — own wording of
+# freely available 40k common knowledge, not book-derivative). Real per-channel session state
+# (data/sessions/<id>/) stays ignored.
 !data/systems/*.json
 !data/sessions/_example/
 !data/sessions/_example/*.json

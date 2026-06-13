@@ -88,8 +88,10 @@ Horror); Tyraniden/Necrons/T'au ebenfalls leer (Tobi: bewusst ok). Beschlossen +
   Imperator/Thron/Astronomican/Custodes/Ekklesiarchie, High Lords/Zehnt, Astartes, Militarum,
   Flotte, Mechanicus, Inquisition+Ordos, Astropathen, Navigatoren, Psioniker, Macharian-Kontext.
   Chaos: Warp/Gellerfeld, die vier Götter (je eigene Sektion), Großes Spiel, Dämonen-Taxonomie,
-  Korruption/Kulte, Horus-Häresie + Horus, Chaos Space Marines, Antwort des Imperiums. Lokal,
-  untracked (`data/**`), wie das Abenteuer-Kompendium.
+  Korruption/Kulte, Horus-Häresie + Horus, Chaos Space Marines, Antwort des Imperiums.
+  **Committed** (Tobi, Nachrunde gleicher Tag): anders als das Abenteuer-Kompendium keine
+  Buch-Ableitung, sondern eigene Formulierung frei zugänglichen 40k-Allgemeinwissens —
+  `.gitignore`-Allowlist um `data/lore/*.md` erweitert.
 - **`retrieve.py`:** `_SOURCES` + `lore_imperium`/`lore_chaos` (→ `## Weltwissen`), Reihenfolge
   Regeln → breite Lore → lokales Rokarth; `setting`-Label um „lokaler Hintergrund" geschärft.
   Selbstverdrahtend, sonst kein Code-Change. Schwelle bleibt 0.45 global.
@@ -99,6 +101,12 @@ Horror); Tyraniden/Necrons/T'au ebenfalls leer (Tobi: bewusst ok). Beschlossen +
   → rulebook, Rokarth → setting, Table-Talk + Voll-Spoilerfrage stumm). Tests +2 (Weltwissen-
   Block + Block-Reihenfolge), Suite **183/183**. _Live-Gate offen: `📚 lore_…`-Logzeile in einer
   echten Session._
+- **Nachrunde (Doku für den Kollegen):** **`docs/CHECKLIST.md`** (von Tobi aus HANDOVER.md
+  umbenannt) — was eine fremde Maschine privat von Tobi braucht (PDFs+md, Abenteuer-Kompendium,
+  `rag.db` oder die Rebuild-Befehle) vs. was der Clone mitbringt; **SETUP.md**: B2 stale
+  `nomic-embed-text` → `bge-m3` korrigiert + neue **B9-Sektion** (RAG-Store kopieren/neu bauen,
+  `DM_ADVENTURE`, `📚`-Sanity-Check) + TL;DR-Schritt 8; README-Transfer-Sektion gefixt
+  (bge-m3, CHECKLIST-Link).
 
 **(Davor) Charaktererstellung (2026-06-12, Runde 2 der Spieler-Doku).** Die Runde will neue
 Charaktere (ersetzen Garran/Eli/Yann; Chemical Burn startet dann frisch). Gebaut:
@@ -722,7 +730,7 @@ create the next-numbered ADR.
 | D45 | Embedder + W4 guard | **(a)** RAG embedder = **`bge-m3`** (multilingual), replacing D28's `nomic-embed-text` for the store; the store's meta table pins model+dim so retrieval always matches. **(b)** Echo guard extended by **`is_self_repetition`** (SequenceMatcher ≥0.75 on normalized text, <60 chars exempt): retry with a "beantworte die Frage direkt"-nudge, then suppress; streamed long repetitions only logged (audio can't be retracted) | (a) Verified against real questions: German queries barely matched the English rulebook with nomic ("kritischer Erfolg" → miss/wrong hit); bge-m3 hits DIFFICULTY/CRITICAL HIT while table talk stays under the 0.45 threshold. (b) W4 from the wishlist, seen live 2026-06-12: "Warum sind wir hier?" → near-verbatim re-description with pronoun swaps — substring checks miss that, fuzzy ratio catches it → ADR 019 (extends ADR 018) |
 | D46 | Starter Set as lore + patron source | **(a)** The Starter Set's **Setting Guide → `source=setting`** in the existing RAG store (pages 1–57 only — the „Villains on Voll" chapter with the Mireclaw reveal stays out until the campaign finale); retrieval searches rulebook+setting and groups hits as `## Regelwerk` / `## Weltwissen (… nur als Färbung nutzen)`, TOP_K=3 total. **(b)** The **Aegidius-Halikarn patron sheet** folded into the chemical_burn compendium (Motivation Information, Auftreten undurchschaubar, Boons incl. Sanctum-Obscurus-Ausstattung in der Thaler-Szene). „The Blazing Seraph" (SS adventure book) wird erst NACH dem Chemical-Burn-Live-Test zum zweiten Kompendium | The Setting Guide is a better first lore source than D28's wiki plan: campaign-specific (Chemical Burn plays in Rokarth), curated, already owned — wikis stay the later broad-lore step. Spoiler discipline (ADR 019) applies to lore too: similarity must not surface the villain chapter on „wer steckt dahinter?" (verified: the question returns nothing). Applies ADR 019, no new trade-off → D-entry, no new ADR |
 | D47 | Visible, fast shutdown | **(a)** TTS synth runs on an **abandonable daemon thread** (`dmbot/shutdown.py` `to_daemon_thread`, replacing `asyncio.to_thread` in `_speak` + the streaming `synth_worker`) so a synth in flight at Ctrl+C is dropped, never join-blocking exit. **(b)** A thread-safe **`[i/n] label` step display** (`ShutdownProgress`/`progress`): `DMBot.close()` declares the count up front (voice disconnects + each cog's `TEARDOWN_STEPS` + the Discord close) and wraps every stage; `cog_unload` reports its four closes; a final summary names any dropped synth. Outside a shutdown, `step()` is a plain log line | Tobi: the bot quit slowly and silently. Cause of the slowness: asyncio's default executor threads are **non-daemon**, so the interpreter joined a multi-second GPU XTTS synth at exit — pure dead wait, the WAV is moot once quitting. Daemon-abandon is the only real lever (XTTS isn't cancelable). The display answers "what/how many is being shut down". Targeted to TTS only (close paths keep normal threads) → **ADR 020** |
-| D48 | Curated German lore compendium | **Hand-authored `data/lore/imperium.md` + `chaos.md`** (German, grimdark in-world, local-only like the adventure compendium) → two new RAG sources **`lore_imperium`/`lore_chaos`**, grouped as `## Weltwissen (Imperium …)` / `## Weltwissen (Chaos — verbotenes Wissen …)`, block order rules → broad lore → local Rokarth. Threshold stays 0.45 global. Tobi's calls: two files/two sources, both ausführlich, grimdark | Live probe (2026-06-13): human lore retrieves from the English rulebook (Imperium d=0.27) but **Chaos cosmology doesn't exist in the IM books** ("vier Chaosgötter" d=0.53 miss — by design, Chaos as hidden horror); RAG can't retrieve what was never written, and German-vs-English inflates distances. German authored text wins TOP_K for German lore questions (verified 0.28–0.44) while rules keep hitting the rulebook. Wiki dump (D28) stays the later breadth step; Tyranids/Necrons/T'au deliberately absent (Tobi) → **ADR 021** |
+| D48 | Curated German lore compendium | **Hand-authored `data/lore/imperium.md` + `chaos.md`** (German, grimdark in-world; **committed** — own wording of freely available 40k common knowledge, revised same day from the initial local-only stance) → two new RAG sources **`lore_imperium`/`lore_chaos`**, grouped as `## Weltwissen (Imperium …)` / `## Weltwissen (Chaos — verbotenes Wissen …)`, block order rules → broad lore → local Rokarth. Threshold stays 0.45 global. Tobi's calls: two files/two sources, both ausführlich, grimdark | Live probe (2026-06-13): human lore retrieves from the English rulebook (Imperium d=0.27) but **Chaos cosmology doesn't exist in the IM books** ("vier Chaosgötter" d=0.53 miss — by design, Chaos as hidden horror); RAG can't retrieve what was never written, and German-vs-English inflates distances. German authored text wins TOP_K for German lore questions (verified 0.28–0.44) while rules keep hitting the rulebook. Wiki dump (D28) stays the later breadth step; Tyranids/Necrons/T'au deliberately absent (Tobi) → **ADR 021** |
 
 ### Phase → ADR map (read these when you enter the phase)
 
@@ -985,7 +993,8 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   `source=setting`, gruppiert als `## Weltwissen`; Patron-Sheet ins Kompendium. Wiki-Korpus
   (D28: Fandom + Lexicanum) bleibt der spätere Breiten-Ausbau.
 - [x] **Lore source 2 (D48, 2026-06-13 → ADR 021):** kuratiertes deutsches Lore-Kompendium
-  `data/lore/imperium.md` + `chaos.md` (grimdark, lokal, untracked) als `source=lore_imperium`/
+  `data/lore/imperium.md` + `chaos.md` (grimdark, **committed** — eigene Formulierung freien
+  40k-Wissens, keine Buch-Ableitung) als `source=lore_imperium`/
   `lore_chaos` → `## Weltwissen`. Schließt die Tobi-Anforderung „Menschen- + Chaos-Lore";
   Chaos-Kosmologie steht in keinem IM-Buch (verifiziert: „vier Chaosgötter" d=0.53 miss → jetzt
   d=0.43 hit). 24-Fragen-Offline-Probe grün; Tyraniden/Necrons/T'au bewusst draußen.

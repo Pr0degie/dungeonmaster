@@ -41,7 +41,8 @@ Runtime is **Windows** (see decision log D16). Check the items off.
 - [ ] Pull model(s):
   - `ollama pull mistral-nemo` (starting recommendation, ~12B)
   - `ollama pull qwen2.5:14b` (optional, for the taste test)
-  - `ollama pull nomic-embed-text` (embeddings for RAG)
+  - `ollama pull bge-m3` (embeddings for RAG — multilingual; replaced the original
+    `nomic-embed-text` plan, which failed German→English retrieval, ADR 019/D45)
 - [ ] **Verification (= Phase 0 gate):**
       `curl http://localhost:11434/api/generate -d "{\"model\":\"mistral-nemo\",\"prompt\":\"Say something grim in German.\",\"stream\":false}"`
       → plausible German answer.
@@ -111,6 +112,30 @@ The dice engine, `!test` and the unit tests already run against an **example par
       to tweak labels. (Phase 10's RAG profile bootstrap will later propose such profiles from the PDF
       automatically.)
 
+### B9 — Phase 10: RAG store + adventure (one-time per machine)
+
+On Tobi's box this is all ✅ done — these steps matter on a **fresh machine**. What git does
+NOT carry (PDFs, the adventure compendium, optionally the prebuilt `rag.db`) is listed in
+[`CHECKLIST.md`](CHECKLIST.md); copy that over first. The curated lore (`data/lore/*.md`,
+ADR 021) IS in the repo and comes with the clone.
+
+- [ ] **Vector store** — either copy `data/vectordb/rag.db` from a built machine, **or**
+      rebuild it (Ollama with `bge-m3` running; from the repo root):
+      ```
+      uv run python tools/pdf_to_md.py "data/pdfs/Imperium Maledictum Core Rulebook.pdf"
+      uv run python tools/pdf_to_md.py "data/pdfs/Starter Set/IM_SS_Setting_Guide_Book_240722.pdf" --pages 1-57
+      uv run python -m dmbot.rag.ingest "data/pdfs/md/Imperium Maledictum Core Rulebook.md" --source rulebook
+      uv run python -m dmbot.rag.ingest "data/pdfs/md/IM_SS_Setting_Guide_Book_240722.md" --source setting
+      uv run python -m dmbot.rag.ingest "data/lore/imperium.md" --source lore_imperium
+      uv run python -m dmbot.rag.ingest "data/lore/chaos.md" --source lore_chaos
+      ```
+      The Setting Guide is deliberately pages 1–57 only — the "Villains on Voll" spoiler
+      chapter stays out until the campaign finale (D46). Re-runs are idempotent per source.
+- [ ] **Adventure** — `data/adventures/chemical_burn/` in place (from CHECKLIST.md) and
+      `DM_ADVENTURE=chemical_burn` set in `.env`, otherwise the DM loads no adventure.
+- [ ] **Sanity check:** ask a Chaos or lore question in a live session — a `📚 lore_…:` line
+      must appear in `debug.log`; a rule question shows `📚 rulebook:…`.
+
 ---
 
 ## C. Only needed later (not for the MVP)
@@ -133,5 +158,6 @@ The dice engine, `!test` and the unit tests already run against an **example par
 5. Discord apps + tokens + intents + invite (B4)
 6. Piper voice + Opus DLL (B5/B6)
 7. Rulebook & story PDF into `data/pdfs/` (B7)
+8. RAG store + adventure: copy or rebuild `rag.db`, set `DM_ADVENTURE` (B9)
 
 Tailscale & character JSON come later (C).

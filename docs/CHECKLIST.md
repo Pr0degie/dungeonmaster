@@ -1,4 +1,4 @@
-# Handover — was du von Tobi brauchst, um den DM laufen zu lassen
+# Checkliste — was du von Tobi brauchst, um den DM laufen zu lassen
 
 Kurzcheckliste für eine fremde Maschine (z. B. die 5080-Box). Die allgemeine Installation
 steht im [README → „Running on another machine"](../README.md) und in [`SETUP.md`](SETUP.md)
@@ -9,12 +9,12 @@ steht im [README → „Running on another machine"](../README.md) und in [`SETU
 | Pfad | Inhalt | Wofür |
 |---|---|---|
 | `data/pdfs/` | gekaufte PDFs **+ der `md/`-Unterordner** (Konvertierungen) | RAG-Quelltexte, Charakterbogen-Filler |
-| `data/lore/` | `imperium.md` + `chaos.md` — kuratierte deutsche Lore (ADR 021) | Weltwissen Imperium + Chaos |
 | `data/adventures/chemical_burn/` | `adventure.json` + `npcs.json` — Szenenkarten + Statblocks | das Abenteuer im DM (ADR 019) |
 | `data/vectordb/rag.db` | fertige Vektor-DB (rulebook 1505 / setting 201 / lore_imperium 18 / lore_chaos 17 Chunks, bge-m3) | Retrieval — kopieren spart den Neuaufbau |
 
 Alles davon liegt absichtlich nicht im (öffentlichen) Repo — Ableitungen gekaufter Bücher.
-Privat weitergeben ist ok, nicht hochladen.
+Privat weitergeben ist ok, nicht hochladen. (Das Lore-Kompendium `data/lore/` ist dagegen
+**im Repo** — eigene Formulierung frei zugänglichen 40k-Wissens, kommt mit dem Clone.)
 
 **Nicht kopieren:** Tobis `.env` (Tokens!). Eigene `.env` aus `.env.example` bauen — eigene
 Discord-Tokens (ein Token = eine Live-Verbindung), `OLLAMA_HOST`, GPU-Profil. Wichtig:
@@ -31,7 +31,8 @@ Discord-Tokens (ein Token = eine Live-Verbindung), `OLLAMA_HOST`, GPU-Profil. Wi
 
 ## 3. `rag.db` neu bauen (nur falls nicht kopiert)
 
-Ollama mit `bge-m3` muss laufen; PDFs + `data/lore/` müssen da sein. Aus dem Repo-Root:
+Ollama mit `bge-m3` muss laufen; die PDFs müssen da sein (`data/lore/` kommt mit dem Clone).
+Aus dem Repo-Root:
 
 ```
 uv run python tools/pdf_to_md.py "data/pdfs/Starter Set/IM_SS_Setting_Guide_Book_240722.pdf" --pages 1-57

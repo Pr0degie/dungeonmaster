@@ -56,7 +56,7 @@ bot on its `dungeon_master` branch, in the same voice channel). Full step-by-ste
 
 The project is two processes plus Ollama, all local. Note that the game content (bought PDFs,
 the adventure compendium, the curated lore, the vector store) is deliberately **not in git** —
-[`docs/HANDOVER.md`](docs/HANDOVER.md) lists exactly what to copy over privately. To bring the
+[`docs/CHECKLIST.md`](docs/CHECKLIST.md) lists exactly what to copy over privately. To bring the
 stack up on a fresh Windows + NVIDIA machine:
 
 1. **Clone both repos.** This one (DMbot) and the music bot, `Pr0degie/musicbot` on branch

@@ -4,8 +4,8 @@
 - **Date:** 2026-06-13
 - **Refs:** decision log D48 in `progress.md`; partially resolves **D28** (the open Phase-10
   lore-corpus item — the user-facing factions, not the broad wiki corpus). Extends **ADR 019**
-  (3-stage hybrid: joins `rulebook`/`setting` as stage-3 sources, same licensing boundary —
-  local-only derivative content) and the **D46** `setting` precedent. Content-authoring
+  (3-stage hybrid: joins `rulebook`/`setting` as stage-3 sources; tracking differs — see
+  Consequences) and the **D46** `setting` precedent. Content-authoring
   precedent: the hand-authored `data/adventures/chemical_burn/` compendium (ADR 019).
   Suite 181 → 183. No new deps.
 
@@ -30,8 +30,8 @@ silent or shallow there is acceptable.
 
 ## Decision
 
-Hand-author a **curated German lore compendium** under `data/lore/` (local-only, untracked —
-`data/**` already ignores it) and ingest it as **two new RAG sources**:
+Hand-author a **curated German lore compendium** under `data/lore/` (committed — see the
+revised tracking note under Consequences) and ingest it as **two new RAG sources**:
 
 - `data/lore/imperium.md` → `--source lore_imperium` → label
   `## Weltwissen (Imperium — Hintergrund, nur als Färbung nutzen)`. Full German primer
@@ -82,9 +82,10 @@ Design points:
   probe): all target Imperium + Chaos questions hit the right chunk under 0.45 (typically
   0.28–0.44); regressions clean — rules → `rulebook`, Rokarth → `setting`, table talk and the
   Voll spoiler question stay silent.
-- **Binding:** `data/lore/` stays untracked (public repo; derivative of GW material — same
-  boundary as the PDFs and the adventure compendium). A fresh clone needs the two files
-  re-authored or copied before `ingest` can rebuild the sources.
+- **Tracking (revised same day, Tobi):** `data/lore/` is **committed**. Unlike the adventure
+  compendium (a retelling of a bought book), the lore is an *own-wording* digest of freely
+  available 40k common knowledge — no licensing boundary applies. A fresh clone carries the
+  two files; only the `ingest` runs are needed to rebuild the sources.
 - Golden rule #7 ("lore from PDFs") gains a second sanctioned deviation after the adventure
   compendium: *curated* content — but the facts still live in RAG, never fine-tuned into the
   model, and the engine/profile split is untouched.
