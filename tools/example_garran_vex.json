@@ -1,0 +1,53 @@
+{
+  "_note": "Fully fleshed-out EXAMPLE character for the IM sheet filler (tools/fill_character_sheet.py). Own invented flavour (Eisenhorn grimdark tone), free to commit — only the generated PDF is a derivative of the bought sheet and stays git-ignored. Mechanical stats match the live 'circlejerk' party's Garran Vex; the rest is example flavour to show every field filled.",
+  "system": "imperium_maledictum",
+  "characters": [
+    {
+      "name": "Garran Vex",
+      "origin": "Makropolwelt",
+      "faction": "Adeptus Arbites",
+      "concept": "Vollstrecker",
+      "patron": "Halikarn",
+      "age": "41",
+      "eyes": "grau",
+      "hair": "kahl",
+      "height": "1,92 m",
+      "weight": "104 kg",
+      "handedness": "rechts",
+      "distinguishing": "Vernarbtes Gesicht, Aquila-Tätowierung am Hals",
+      "xp_total": "850",
+      "xp_spent": "780",
+      "fate_current": "2",
+      "fate_total": "3",
+      "corruption": "1",
+
+      "characteristics": { "WS": 55, "BS": 35, "Str": 50, "Tgh": 52, "Ag": 40, "Int": 28, "Per": 33, "Wil": 38, "Fel": 30 },
+      "skills": { "Nahkampf": 58, "Einschüchtern": 45, "Athletik": 48, "Wahrnehmung": 32 },
+      "wounds": 16, "max_wounds": 16,
+      "conditions": [],
+
+      "weapons": [
+        { "name": "Kettenschwert", "test": "58", "damage": "1W10+5", "range": "Nah", "mag": "—", "enc": "1", "traits": "Reißend" },
+        { "name": "Laspistole", "test": "35", "damage": "1W10+3", "range": "15 m", "mag": "30", "enc": "1", "traits": "Zuverlässig" }
+      ],
+      "armour": [
+        { "name": "Flak-Rüstung", "locations": "Körper, Glieder", "armour": "3", "enc": "2", "traits": "—" }
+      ],
+      "hit_location_armour": { "Head": "0", "Left Arm": "3", "Right Arm": "3", "Left Leg": "3", "Right Leg": "3", "Body": "3" },
+      "equipment": ["Lumen-Lampe", "Vox-Funkgerät", "Vorratsration ×3", "Arbites-Mantel", "Schmerzmittel", "Handschellen"],
+      "encumbrance_current": "5",
+      "encumbrance_max": "10",
+
+      "talents": [
+        { "name": "Hammerschlag", "effect": "Bei vollem Nahkampfangriff +2 Schaden." },
+        { "name": "Furchtlos", "effect": "Immun gegen Furcht (1)." },
+        { "name": "Zäh wie Plasstahl", "effect": "Erste kritische Wunde pro Szene um 2 reduziert." }
+      ],
+
+      "goals": "Kurzfristig: Den Schmuggelring in Rokarth zerschlagen.\nLangfristig: Den Verräter finden, der seine alte Einheit ans Messer lieferte.",
+      "connections": "Sergeant Vannik — alte Arbites-Einheit, schuldet ihm einen Gefallen.\n„Krähe\" — Informant in den Unterstädten von Rokarth.",
+      "notes": "Misstraut Psykern. Trinkt nicht im Dienst. Betet zum Gott-Imperator vor jedem Gefecht."
+    }
+  ],
+  "aliases": { "Pr0degie": "Garran Vex", "Tobi": "Garran Vex" }
+}
