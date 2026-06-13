@@ -37,6 +37,9 @@
       "equipment": ["Lumen-Lampe", "Vox-Funkgerät", "Vorratsration ×3", "Arbites-Mantel", "Schmerzmittel", "Handschellen"],
       "encumbrance_current": "5",
       "encumbrance_max": "10",
+      "init_melee": "58",
+      "init_ranged": "35",
+      "init_reflexes": "40",
 
       "talents": [
         { "name": "Hammerschlag", "effect": "Bei vollem Nahkampfangriff +2 Schaden." },

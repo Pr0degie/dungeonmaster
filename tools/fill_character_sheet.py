@@ -256,8 +256,10 @@ def fill_sheet(char: dict, weapons_table: dict, default_damage: str, out_path: P
     if "Per" in chars and "Ag" in chars:
         _field(p2, "initiative", 95, 122, 40, str(_bonus(chars["Per"]) + _bonus(chars["Ag"])),
                align=CENTER, center=True)
+    # Quick-reference boxes under Initiative for the three combat-reaction skills (not a derived
+    # stat — optional). Fill from explicit fields if given, else leave blank + editable.
     for cx, key in ((70, "init_melee"), (108, "init_ranged"), (150, "init_reflexes")):
-        _field(p2, key, cx, 178, 32, "", align=CENTER, center=True)
+        _field(p2, key, cx, 178, 32, str(char.get(key, "")), align=CENTER, center=True)
     wounds = char.get("max_wounds") or char.get("wounds")
     if wounds is not None:
         _field(p2, "wounds_current", 212, 124, 30, str(wounds), align=CENTER, center=True)
