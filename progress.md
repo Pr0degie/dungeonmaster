@@ -138,6 +138,23 @@ world-state block (CLAUDE.md prompt order). **Model: mistral-nemo.** Recommended
 gate / any follow-up: **Opus 4.8 / xhigh**.
 
 ## Last session
+**Interactive `!lore tts` reader + anti-repetition persona rule (2026-06-13).** Three asks (eval'd
+in plan mode against efficiency/speed/correctness):
+- **`!lore tts` is now a manual block-by-block reader** (`dmbot/discord_ui/lore_read.py` →
+  `LoreReadView`, modelled on `RulesView`): each lore block's **text is shown in chat** and read
+  aloud; **⏭ Weiter** advances to + reads the next block (a fast click-through coalesces to the
+  latest shown block — Bot A's `/speak` blocks per WAV with no stop, so a running block can't be
+  cut mid-playback, one speak task in flight), **🔊 Nochmal**, **⏹ Stopp**. `_lore_speak` rewritten
+  to build/post the view; dispatch unchanged.
+- **Repetition** (DM re-explained established facts in full): persona rule in `prompts/dm_core_de.md`
+  — what's in "Was bisher geschah", the world state and the ongoing scene is **already known to the
+  players**; reference it briefly, describe only **new** things + consequences — and the recap label
+  in `_build_request` sharpened to "(den Spielenden bereits bekannt — nicht erneut ausführlich
+  erzählen)". Prompt-only; live-observe nemo's adherence (a code guard is the fallback, not built).
+- **"Reads each block twice":** verified **NOT in DMbot** (lore_pages 17 clean pages, loop/synth/
+  concat all 1×, no custom `on_message`) → it's **Bot A's playback** (separate musicbot repo). Beleg
+  beim Test: one `🔊 TTS … speaking` + one `/speak` per block in `debug.log`. Suite **234**.
+
 **RAG calibration + a German conditions glossary source (2026-06-13).** Reviewed the open task
 prompts 2/5/6 against the goal (efficiency/speed/correctness): did **prompt 5** (RAG calibration —
 highest value/risk ratio), deferred 6 (gated on the unmet Phase-9 live gate), skipped 2 (pure
@@ -707,14 +724,18 @@ _(Prior session — voice-stack hardening, ADR 006 — and Phases 3–6 (the pla
 in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 
 ## Next concrete step
-**Schritt 0 — neue Charaktere (blockiert den Gate-Run).** Die Runde erstellt neue Charaktere
-(`docs/how-to-create-a-character.html` → Formular → JSON-Block je Spieler). Sobald Tobi die drei
-Blöcke pastet: **Claude validiert** (Punkte-/Steigerungs-Budget, Skill-Namen, Wunden-Formel,
-Waffe gegen das Profil), baut `data/sessions/1343673766487654464/characters.json` + Aliases
-(Discord→Charakter), **löscht** dort `state.json`/`history*.jsonl`/`recap.md` (frischer
-Chemical-Burn-Start), füllt die Bögen (`tools/fill_character_sheet.py`) und verschickt sie, und
-**aktualisiert die how-to-play-Charakterkarten + die Namen unten in dieser Checkliste** (die
-Gates selbst sind charakterunabhängig). _Erst danach Schritt 1ff._
+**Schritt 0 — neue Party: ERLEDIGT (2026-06-13).** Die drei neuen Charaktere (Fridolin / Gellicus /
+Rektalus) sind gebaut, validiert, zur `data/sessions/1343673766487654464/characters.json` + Aliases
+gemergt und **committet** (allowlisted → läuft beim Kollegen); kein `state.json` → erster `!join`
+seedet frisch; die alten Party-Bögen sind archiviert, neue Bögen gefüllt. **→ Der Blocker für den
+Gate-Run ist weg.** _(Sezgin könnte Rektalus' Werte noch finalisieren, sonst startklar.)_
+
+**Zusätzlich diese Session live zu verifizieren** (alle code-complete, unverifiziert) — fällt im
+selben circlejerk-Run mit ab:
+- **Schneller Start** (ADR 024): Konsole erreicht zügig „logged in"; `!join` zeigt ggf. ⏳/⚠-TTS-Hinweis; erster Satz wird gesprochen.
+- **`!lore tts`**-Reader: Block-Text im Chat + ⏭/🔊/⏹; **Doppel-Beleg** in `debug.log` (eine `🔊 TTS … speaking` + ein `/speak` pro Block ⇒ Doppeln liegt an **Bot A**).
+- **Conditions/`!rules`**: „Was bewirkt Blutend/Betäubt?" → korrekte deutsche Antwort (neue `conditions`-Quelle); Inquisitions-Fragen treffen player_guide/gm_guide.
+- **Wiederholung**: verweist der DM auf Etabliertes knapp, statt es neu auszuerzählen?
 
 **ONE live session in circlejerk covers everything (Tobi).** Before it: **review the compendium**
 (`data/adventures/chemical_burn/adventure.json` + `npcs.json` — spot-check scene cards for tone
@@ -1235,6 +1256,14 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 ---
 
 ## Open questions / to clarify
+
+**Cross-repo (Bot A):**
+- **`!lore tts` reads each block twice** — verified NOT in DMbot (lore_pages/loop/synth/concat all
+  1×, no custom `on_message`). If the live `debug.log` shows **one** `🔊 TTS … speaking` + **one**
+  `/speak` per block, the doubling is **Bot A's playback** (separate `Pr0degie/musicbot` repo) → fix
+  there (two-bot isolation). A Bot-A `/stop` would also enable true mid-block skip in the lore reader.
+- **Weapon / stat-block tables don't retrieve** (calibration finding, ADR 025) — table-row chunking;
+  a German weapon glossary under `data/rules_de/` (same pattern as `conditions.md`) is the likely fix.
 
 **From the lore work (2026-06-13):**
 - **`!lore`-Antworten zu Rokarth sind englisch** — die `setting`-Quelle ist der englische
