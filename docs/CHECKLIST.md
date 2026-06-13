@@ -48,8 +48,15 @@ bleibt bis zum Kampagnenfinale draußen.)
 ## 4. Spielrunde
 
 - Pro Voice-Channel braucht der DM eine Party: `data/sessions/<channel-id>/characters.json`.
-  Erstellung: `docs/how-to-create-a-character.html` (Formular → JSON), Regeln-Primer für
-  Spieler: `docs/how-to-play.html`, Setting-Hintergrund: `docs/lore.html` (oder in Discord
-  `!lore` / `!lore chaos`).
+  **Die aktuelle circlejerk-Party (Channel `1343673766487654464`: Fridolin / Gellicus /
+  Rektalus) liegt bereits im Repo** und kommt mit dem Clone — spielt ihr denselben Channel,
+  ist hier nichts zu tun. **Anderer Channel-ID?** Die Datei in den Ordner mit *eurer* ID
+  kopieren (`data/sessions/<eure-id>/characters.json`), sonst greift der Beispiel-Fallback.
+  Nur diese `characters.json` ist getrackt; Laufzeit-State (`state.json`/History/Recap) und die
+  Bogen-PDFs unter `sheets/` bleiben lokal.
+- Neue Charaktere erstellen: `docs/how-to-create-a-character.html` (Formular → JSON) **oder** der
+  Ein-Prompt-Weg `docs/character-creation-prompt.md` (Spieler interviewt sich selbst → fertiges
+  JSON). Regeln-Primer für Spieler: `docs/how-to-play.html`, Setting-Hintergrund: `docs/lore.html`
+  (oder in Discord `!lore` / `!lore chaos`).
 - Beide Bots in denselben Voice-Channel (`!join`), dann läuft die Runde. Schnelltest, ob die
   Lore da ist: eine Chaos-Frage stellen — im Log muss eine `📚 lore_chaos:`-Zeile auftauchen.
