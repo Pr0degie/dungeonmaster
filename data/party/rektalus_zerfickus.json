@@ -1,0 +1,35 @@
+{
+  "_note": "Spieler-Charakter 'Rektalus Zerfickus' (Sezgin, Discord 'SezBoss69'). Vom Spieler gelieferte Werte 1:1 übernommen. Sanity: Wunden = StrB(4) + 2×TghB(3) + WilB(2) = 12 ✓. Herkunft Feudalwelt (+5 WS / +5 Str, Wil oder Fel) passt zum Nahkampf-/Athletik-Schönling. Kein Psyker. Waffen: Kampfmesser (1W10+1) im Profil; Handgranate ist nicht in der Profil-Waffentabelle → fällt auf default_damage 1W10 zurück (Wurf über Fernkampf). 'player'/aliases = Discord-Name.",
+  "name": "Rektalus Zerfickus",
+  "player": "SezBoss69",
+  "system": "imperium_maledictum",
+  "origin": "Feudalwelt",
+  "concept": "Reicher Schönling",
+  "characteristics": { "WS": 29, "BS": 24, "Str": 40, "Tgh": 35, "Ag": 35, "Int": 24, "Per": 30, "Wil": 28, "Fel": 35 },
+  "skills": {
+    "Nahkampf": 39,
+    "Fernkampf": 24,
+    "Athletik": 50,
+    "Heimlichkeit": 40,
+    "Wahrnehmung": 35,
+    "Technologie": 24,
+    "Wissen": 24,
+    "Medizin": 24,
+    "Überreden": 35,
+    "Einschüchtern": 35
+  },
+  "wounds": 12, "max_wounds": 12,
+  "conditions": [],
+  "inventory": [
+    "Kampfmesser",
+    "Medikit",
+    "Handgranate",
+    "Ein Nacktfoto von Timo Fendt",
+    "Brot mit Eintopf",
+    "Wasser"
+  ],
+  "weapons": [
+    { "name": "Kampfmesser", "test": "39", "damage": "1W10+1", "range": "Nah", "mag": "—", "enc": "0", "traits": "Leise" },
+    { "name": "Handgranate", "test": "24", "damage": "1W10", "range": "Wurf", "mag": "1", "enc": "1", "traits": "Explosiv (nicht in Profiltabelle → 1W10 Standard)" }
+  ]
+}

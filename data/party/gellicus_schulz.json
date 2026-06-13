@@ -1,0 +1,41 @@
+{
+  "_note": "Spieler-Charakter 'Gellicus Schulz' (Timo, Discord 'Timo'). Vom Spieler gelieferte Werte 1:1 übernommen. Sanity: Wunden = StrB(2) + 2×TghB(3) + WilB(4) = 12 ✓. Herkunft Schreinwelt (+5 Wil/+5 Fel) passt zum hohen Wil 41 / Fel 43. Kein Psyker. Waffen: Kampfmesser ist im Profil (1W10+1); alle skills sind Zielwerte für die Engine. 'player'/aliases = Discord-Name.",
+  "name": "Gellicus Schulz",
+  "player": "Timo",
+  "system": "imperium_maledictum",
+  "origin": "Schreinwelt",
+  "concept": "Serial-Seducer mit dem Lebensziel, den Gott-Imperator zu verführen",
+  "characteristics": { "WS": 26, "BS": 24, "Str": 24, "Tgh": 32, "Ag": 28, "Int": 32, "Per": 30, "Wil": 41, "Fel": 43 },
+  "skills": {
+    "Nahkampf": 26,
+    "Fernkampf": 24,
+    "Athletik": 24,
+    "Heimlichkeit": 28,
+    "Wahrnehmung": 40,
+    "Technologie": 32,
+    "Wissen": 37,
+    "Medizin": 37,
+    "Überreden": 53,
+    "Einschüchtern": 43
+  },
+  "wounds": 12, "max_wounds": 12,
+  "conditions": [],
+  "inventory": [
+    "Kampfmesser",
+    "Halskette mit dem Bild vom Gott-Imperator",
+    "Lectitio Divinitatus",
+    "Viagra"
+  ],
+  "weapons": [
+    { "name": "Kampfmesser", "test": "26", "damage": "1W10+1", "range": "Nah", "mag": "—", "enc": "0", "traits": "Leise" }
+  ],
+
+  "height": "1,70 m",
+  "hair": "blond, lang",
+  "distinguishing": "Arrogant, aber er weiß genau, wie er die Leute um den Finger wickelt. Langes blondes Haar, kein Bartwuchs, stets gebügelte Kleidung; schlank.",
+  "goals": "Den Gott-Imperator treffen und verführen.",
+  "connections": "Viele flüchtige, meist sexuelle Bekanntschaften — jederzeit über einen Datalink erreichbar.",
+  "notes": "Aus seinem Dorf vertrieben, weil er anders war und seine Liebe zu Männern und später zum Gott-Imperator offen auslebte. Seither gibt er sich ganz seinen Indulgenzen hin und pflegt eine parasoziale Beziehung zum Gott-Imperator. Der Gruppe ist er nur beigetreten, um endlich seinen einzig Wahren — den Gott-Imperator — zu treffen und zu verführen; ihre Mitglieder sind für ihn nichts weiter als Mittel zum Zweck.",
+  "combat_notes": "Kämpft hinterhältig, tut aber alles, um direkte Konfrontation zu vermeiden.",
+  "divination": "Für meinen Gott-Imperator."
+}
