@@ -1943,7 +1943,11 @@ class VoiceReceiveCog(commands.Cog):
         cid = self._brain_channel(ctx.channel)
         await ctx.send("📜 Ich fasse die Sitzung zusammen …")
         try:
-            recap = await self._brain.summarize(cid)
+            # Cumulative, like the rolling auto-recap (D57): fold the recap already in the prompt into
+            # the new one. The auto-recap may have cleared the running history mid-session, so the
+            # visible history alone no longer covers the start — without this the manual wrap-up would
+            # overwrite the stored recap with only the recent tail and lose the earlier part.
+            recap = await self._brain.summarize(cid, prior_recap=self._brain.current_recap(cid))
         except Exception:
             log.exception("recap generation failed")
             await ctx.send("Konnte keine Zusammenfassung erstellen (siehe Log).")

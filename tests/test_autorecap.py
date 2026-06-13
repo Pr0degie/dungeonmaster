@@ -206,3 +206,40 @@ def test_maybe_compact_guards_against_double_trigger() -> None:
     timing = _TurnTiming(turn=1, trigger=0.0, prompt_eval=999, num_ctx=1000)
     asyncio.run(cog._maybe_compact(_Chan(), timing))
     assert brain.history_len(_Chan.id) == before  # the guard blocked the second compaction
+
+
+# ---- !wrap up must stay cumulative once the auto-recap can clear history ------------------
+
+def test_wrapup_folds_in_the_current_recap() -> None:
+    """`!wrap up` must fold the recap already in the prompt into the new one. Once the rolling
+    auto-recap can clear the running history mid-session, summarising the visible history alone
+    would overwrite the stored recap and lose the earlier part — this guards that regression."""
+    captured: dict = {}
+
+    class _Cap(_CapClient):
+        async def chat(self, system, messages, options=None, format=None) -> str:
+            captured["user"] = messages[-1]["content"] if messages else None
+            return await super().chat(system, messages, options=options, format=format)
+
+    brain = DMBrain(_Cap(answer="Kumulativer Recap."))
+    cog = _bare_cog(brain)
+    cog._persist_recap = lambda *a, **k: None  # bypass state.json/recap.md — not under test here
+
+    class _Chan:
+        id = 55
+
+    cid = _Chan.id
+    brain.set_context(cid, recap="FRÜHERER_RECAP_SENTINEL")  # the recap currently in the prompt
+    brain.add_player_line(cid, "Timo", "Wir kämpfen weiter.")
+    asyncio.run(brain.respond(cid))  # a fresh turn to summarise
+
+    class _Ctx:
+        channel = _Chan()
+
+        async def send(self, _msg) -> None:
+            pass
+
+    asyncio.run(VoiceReceiveCog.wrap.callback(cog, _Ctx()))
+
+    # The prior recap reached the summariser prompt → the wrap-up is cumulative, not plain.
+    assert captured["user"] is not None and "FRÜHERER_RECAP_SENTINEL" in captured["user"]

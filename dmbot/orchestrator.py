@@ -1012,10 +1012,11 @@ class DMBrain:
         trigger, D14). Code stores the returned string in the world state; this only generates it.
         ``None`` if there's no history to summarise.
 
-        ``prior_recap`` (the auto-compaction trigger, D56) folds an earlier recap into the transcript
-        so the new recap is **cumulative**: when the running history is cleared, the older recap still
-        covers what scrolled out of it, and the new recap supersedes-and-extends it. ``!wrap up``
-        passes nothing (plain summary of the visible history)."""
+        ``prior_recap`` folds an earlier recap into the transcript so the new recap is **cumulative**:
+        when the running history is cleared, the older recap still covers what scrolled out of it, and
+        the new recap supersedes-and-extends it. Both the rolling auto-compaction (D57) AND ``!wrap up``
+        pass the current recap so neither loses the part an earlier (auto-)recap already folded away;
+        "" gives a plain summary of the visible history (e.g. a session's very first recap)."""
         history = self._history.get(channel_id) or []
         if not history:
             return None
