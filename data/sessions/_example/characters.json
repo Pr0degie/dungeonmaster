@@ -8,7 +8,13 @@
       "skills": { "Wahrnehmung": 48, "Heimlichkeit": 52, "Spurenlesen": 41, "Nahkampf": 45, "Fernkampf": 35 },
       "wounds": 11, "max_wounds": 11,
       "inventory": ["Laspistole", "Kampfmesser", "Vox-Caster"],
-      "conditions": []
+      "conditions": [],
+      "distinguishing": "Schmale Narbe an der Wange, ruhelose Augen",
+      "goals": "Den Hinterhalt überleben, der die letzte Fährte gekostet hat.",
+      "connections": "Schuldet einem Hehler in den Unterstädten von Rokarth einen Gefallen.",
+      "notes": "Vertraut niemandem ganz; schläft mit der Hand an der Laspistole.",
+      "combat_notes": "Erst aus der Deckung — Heimlichkeit (52) für den ersten Schuss.",
+      "divination": "Wer zuerst sieht, lebt am längsten."
     },
     {
       "name": "Vask",
@@ -17,7 +23,13 @@
       "wounds": 14, "max_wounds": 14,
       "inventory": ["Kettenschwert", "Flak-Rüstung"],
       "conditions": [],
-      "augmetics": ["Augmetischer Arm"]
+      "augmetics": ["Augmetischer Arm"],
+      "distinguishing": "Augmetischer linker Arm, mehrfach gebrochene Nase",
+      "goals": "Den Schläger finden, der ihm den Arm nahm — und es heimzahlen.",
+      "connections": "Alte Grubenkampf-Kontakte in den Unterstädten.",
+      "notes": "Spricht wenig, schlägt zuerst. Stolz auf die Augmetik.",
+      "combat_notes": "Kettenschwert offen tragen, Einschüchtern (47) vor dem ersten Schlag.",
+      "divination": "Stahl hält, wo Fleisch versagt."
     },
     {
       "name": "Mortn",
@@ -29,7 +41,13 @@
       "psyker": true,
       "disciplines": ["Biomancy", "Divination"],
       "known_powers": ["Smite", "Seal Wounds", "Psychic Scrutiny", "Haemorrhage", "Soulsight"],
-      "augmetics": ["Augur-Array"]
+      "augmetics": ["Augur-Array"],
+      "distinguishing": "Bleiche Haut, das Augur-Array glimmt schwach hinter dem rechten Auge",
+      "goals": "Sein verbotenes Wissen vor der Inquisition verbergen und doch nutzen.",
+      "connections": "Heimlicher Briefwechsel mit einem Astropathen der Schwarzen Schiffe.",
+      "notes": "Sanktioniert, aber stets misstrauisch beäugt. Fürchtet die eigene Gabe.",
+      "combat_notes": "Smite aus Distanz; Warp-Aufladung im Blick behalten (Schwelle 4), sonst drohen Perils.",
+      "divination": "Das Wissen ist eine Tür — und hinter ihr lauert etwas."
     }
   ],
   "aliases": {
