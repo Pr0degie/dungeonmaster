@@ -128,6 +128,24 @@ world-state block (CLAUDE.md prompt order). **Model: mistral-nemo.** Recommended
 gate / any follow-up: **Opus 4.8 / xhigh**.
 
 ## Last session
+**New player party assembled + deployed, Inquisition guides into the RAG (2026-06-13).** A
+player-prep + content session, no core-pipeline change.
+- **New party (replaces Garran/Eli/Yann):** built **Fridolin Feuchtgebietheld** (Schreinwelt
+  Inquisition interrogator + stealth psyker) via the §how-to rules + ADR 022 (all `known_powers`
+  hit the catalog); **Gellicus Schulz** (Timo) + **Rektalus Zerfickus** (Sezgin) came from a parallel
+  session, validated (budget 90 / wounds / weapons) and given full backstory. All three live under a
+  **committed `data/party/`** (one JSON per player; `.gitignore` allowlist) with filled PDF sheets
+  (sheets stay local — bought-sheet derivatives).
+- **Deployed to circlejerk:** merged the three into `data/sessions/1343673766487654464/characters.json`
+  (+ aliases) and **committed it** (allowlisted) so the bot loads the party on a teammate's clone; the
+  old party's sheets archived to `…/archive/2026-06-13_alte_party/`. No `state.json` → first `!join`
+  seeds fresh. _Caveat: a different Discord channel needs the file copied into its own `<id>/` folder._
+- **Self-service character creation:** `docs/character-creation-prompt.md` — a standalone prompt that
+  interviews a new player and emits a budget-correct character JSON (stats + optional psyker + augmetics).
+- **Inquisition guides into the RAG** (see Current focus): Player's Guide whole (`player_guide`, 502)
+  + GM-Guide spoiler-trimmed (`gm_guide`, 226); `!rules <frage>` now also searches both. Store 2469
+  chunks, suite **230**. Docs synced (bge-m3 everywhere, CHECKLIST/SETUP rebuild lists, augmetics).
+
 **Player-prep tooling + `!rules <frage>` (2026-06-13, D50).** A session of player-facing prep and one
 new command, no core-pipeline change.
 - **`!rules <frage>` answers a rule question from the book (D50).** `!rules` with no arg still pages
