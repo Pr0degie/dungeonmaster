@@ -507,7 +507,7 @@ the contract in §3. Do not create a `bot_a_bridge/` folder here.
 ```
 cogitator/                 # = the DMbot repo
 ├── dmbot/                 # the DM bot
-│   ├── voice/             # recv, resample, VAD
+│   ├── voice/             # recv, resample, VAD + the Discord cogs (voicecog/dicecog/dmcog)
 │   ├── stt/               # faster-whisper wrapper
 │   ├── tts/               # piper wrapper
 │   ├── llm/               # Ollama client, prompt building
@@ -515,7 +515,8 @@ cogitator/                 # = the DMbot repo
 │   ├── memory/            # JSON state + recaps
 │   ├── rules/             # engine.py (generic) + profile loader (+ tests)  ← deterministic core
 │   ├── discord_ui/        # buttons, turn-order view
-│   └── orchestrator.py    # wires everything together
+│   ├── orchestrator.py    # the DM brain (history + buffer → LLM)
+│   └── runtime.py         # SessionRuntime — shared session state/services, injected into the cogs (ADR 029)
 ├── data/
 │   ├── systems/           # system profiles, e.g. imperium_maledictum.json (§9)
 │   ├── pdfs/              # loaded rulebook/lore/adventure PDFs (for RAG)

@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 
 from dmbot.llm.client import OllamaClient
-from dmbot.voice.commands import _TurnTiming
+from dmbot.runtime import _TurnTiming
 
 
 class _FakeResp:

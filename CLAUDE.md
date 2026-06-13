@@ -108,7 +108,8 @@ This is the **DMbot repo**. Bot A is a separate repo (the music bot) — not her
 
 ```
 dmbot/          the DM bot
-  voice/        recv, resample, VAD
+  runtime.py    SessionRuntime — shared session state/services, injected into every cog (ADR 029)
+  voice/        recv, resample, VAD + the Discord cogs (voicecog / dicecog / dmcog)
   stt/          faster-whisper wrapper
   tts/          piper + xtts (Coqui XTTS v2) wrappers
   llm/          Ollama client, prompt building

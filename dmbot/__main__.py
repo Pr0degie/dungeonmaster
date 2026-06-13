@@ -22,8 +22,11 @@ from discord.ext import commands
 from .config import Config
 from .llm.preflight import check_ollama
 from .logsetup import setup_logging
+from .runtime import SessionRuntime
 from .shutdown import progress
-from .voice.commands import VoiceReceiveCog
+from .voice.voicecog import VoiceCog
+from .voice.dicecog import DiceCog
+from .voice.dmcog import DMCog
 
 log = logging.getLogger("dmbot")
 
@@ -57,38 +60,14 @@ class DMBot(commands.Bot):
         self._config = config
 
     async def setup_hook(self) -> None:
-        await self.add_cog(
-            VoiceReceiveCog(
-                self,
-                bot_a_user_id=self._config.bot_a_user_id,
-                whisper_model=self._config.whisper_model,
-                whisper_device=self._config.whisper_device,
-                whisper_compute=self._config.whisper_compute,
-                dump_utterances=self._config.dump_utterances,
-                ollama_host=self._config.ollama_host,
-                ollama_model=self._config.ollama_model,
-                ollama_num_ctx=self._config.ollama_num_ctx,
-                dm_num_predict=self._config.dm_num_predict,
-                dm_max_lines=self._config.dm_max_lines,
-                system=self._config.system,
-                adventure=self._config.adventure,
-                push_to_talk=self._config.push_to_talk,
-                pause_vad_while_speaking=self._config.pause_vad_while_speaking,
-                button_autosend=self._config.button_autosend,
-                roll_router=self._config.roll_router,
-                streaming=self._config.streaming,
-                autosave=self._config.autosave,
-                autorecap=self._config.autorecap,
-                scene_mode=self._config.scene_mode,
-                tts_engine=self._config.tts_engine,
-                tts_voice=self._config.tts_voice,
-                tts_speaker=self._config.tts_speaker,
-                tts_device=self._config.tts_device,
-                bridge_host=self._config.bridge_host,
-                bridge_port=self._config.bridge_port,
-                bridge_secret=self._config.bridge_secret,
-            )
-        )
+        # Build the shared session state/services once from the config, then register the three
+        # cogs that share it (VoiceCog/DiceCog/DMCog). The kwarg avalanche moved into SessionRuntime
+        # (ADR 029); cross-cog flow goes through the runtime's hooks, not bot.get_cog. VoiceCog is
+        # added first so its cog_unload (which closes the shared services) runs first on shutdown.
+        runtime = SessionRuntime(self._config)
+        await self.add_cog(VoiceCog(self, runtime))
+        await self.add_cog(DiceCog(self, runtime))
+        await self.add_cog(DMCog(self, runtime))
 
     async def on_ready(self) -> None:
         log.info("logged in as %s (id=%s)", self.user, self.user and self.user.id)

@@ -19,7 +19,8 @@ import asyncio
 from dmbot.memory.recap import build_recap_user
 from dmbot.memory.state import WorldState
 from dmbot.orchestrator import DMBrain
-from dmbot.voice.commands import VoiceReceiveCog, _TurnTiming
+from dmbot.runtime import _TurnTiming
+from dmbot.voice.dmcog import DMCog
 
 
 # ---- the cumulative recap builder (recap.py) -----------------------------------------------
@@ -101,17 +102,40 @@ def test_clear_history_empties_history_but_keeps_recap_and_buffer() -> None:
 
 # ---- the cog's compaction flow (off the hot path) ------------------------------------------
 
-def _bare_cog(brain: DMBrain, *, autorecap: bool = True) -> VoiceReceiveCog:
-    """A VoiceReceiveCog without the heavy __init__ (no TTS thread / transcriber / profile load):
-    wire only the attributes _maybe_compact / _persist_recap touch. _persist_and_refresh is given a
-    minimal real body (save + inject the recap) so the test exercises real persistence + injection."""
-    cog = object.__new__(VoiceReceiveCog)
-    cog._brain = brain
-    cog._autorecap = autorecap
-    cog._compacting = set()
-    cog._active_vc_id = None
-    cog._state = {}
-    cog._text_channel = None  # no Discord note in the test
+class _StubRuntime:
+    """A minimal stand-in for SessionRuntime carrying only the shared state the auto-recap path
+    touches. The cog split (ADR 029) moved these off the cog onto the runtime, so the bare cog now
+    holds a stub runtime instead of flat attributes. ``_state_path`` / ``_persist_and_refresh`` are
+    monkeypatched per-test (as before), now on the runtime."""
+
+    def __init__(self, brain: DMBrain, *, autorecap: bool = True) -> None:
+        self._brain = brain
+        self._autorecap = autorecap
+        self._compacting: set[int] = set()
+        self._active_vc_id = None
+        self._state: dict = {}
+        self._text_channel = None  # no Discord note in the test
+
+    def _brain_channel(self, channel) -> int:
+        return self._active_vc_id if self._active_vc_id is not None else channel.id
+
+    # These exist so the persistence test can monkeypatch them (as it did on the cog before the
+    # split); they're always replaced before use (only _persist_recap reaches them, and the only
+    # test that gets there patches both with a tmp_path body).
+    def _state_path(self, channel_id):  # pragma: no cover - always monkeypatched
+        raise NotImplementedError
+
+    def _persist_and_refresh(self, channel):  # pragma: no cover - always monkeypatched
+        raise NotImplementedError
+
+
+def _bare_cog(brain: DMBrain, *, autorecap: bool = True) -> DMCog:
+    """A DMCog without the heavy cog/runtime __init__ (no TTS thread / transcriber / profile load):
+    a stub runtime wired with only the attributes _maybe_compact / _persist_recap touch.
+    _persist_and_refresh is given a minimal real body (save + inject the recap) so the test
+    exercises real persistence + injection."""
+    cog = object.__new__(DMCog)
+    cog._rt = _StubRuntime(brain, autorecap=autorecap)
     return cog
 
 
@@ -124,20 +148,20 @@ def test_maybe_compact_persists_recap_and_empties_history(tmp_path, monkeypatch)
 
     cid = _Chan.id
     state = WorldState(session_id=str(cid), recap="Alter Recap.")
-    cog._state[cid] = state
+    cog._rt._state[cid] = state
 
     # Point the state path at tmp and give _persist_and_refresh a minimal real body (the production
     # one pulls in the profile/adventure machinery we don't need here): save + re-inject the recap,
     # exactly the parts the auto-recap relies on.
     state_path = tmp_path / "state.json"
-    monkeypatch.setattr(cog, "_state_path", lambda c: state_path)
+    monkeypatch.setattr(cog._rt, "_state_path", lambda c: state_path)
 
     def _refresh(channel) -> None:
-        st = cog._state[cog._brain_channel(channel)]
-        st.save(cog._state_path(cog._brain_channel(channel)))
-        brain.set_context(cog._brain_channel(channel), recap=st.recap)
+        st = cog._rt._state[cog._rt._brain_channel(channel)]
+        st.save(cog._rt._state_path(cog._rt._brain_channel(channel)))
+        brain.set_context(cog._rt._brain_channel(channel), recap=st.recap)
 
-    monkeypatch.setattr(cog, "_persist_and_refresh", _refresh)
+    monkeypatch.setattr(cog._rt, "_persist_and_refresh", _refresh)
 
     # Seed a real history turn so there's something to compact, and inject the prior recap like join.
     brain.set_context(cid, recap="Alter Recap.")
@@ -156,7 +180,7 @@ def test_maybe_compact_persists_recap_and_empties_history(tmp_path, monkeypatch)
     recap_md = tmp_path / "recap.md"
     assert recap_md.is_file()
     assert "Neue, kumulative Zusammenfassung." in recap_md.read_text(encoding="utf-8")
-    assert cog._compacting == set()  # the in-progress guard was released
+    assert cog._rt._compacting == set()  # the in-progress guard was released
 
 
 def test_maybe_compact_noop_below_threshold() -> None:
@@ -166,7 +190,7 @@ def test_maybe_compact_noop_below_threshold() -> None:
     class _Chan:
         id = 7
 
-    cog._state[_Chan.id] = WorldState(session_id="7")
+    cog._rt._state[_Chan.id] = WorldState(session_id="7")
     brain.add_player_line(_Chan.id, "Timo", "Hallo.")
     asyncio.run(brain.respond(_Chan.id))
     before = brain.history_len(_Chan.id)
@@ -182,7 +206,7 @@ def test_maybe_compact_disabled_by_flag() -> None:
     class _Chan:
         id = 8
 
-    cog._state[_Chan.id] = WorldState(session_id="8")
+    cog._rt._state[_Chan.id] = WorldState(session_id="8")
     brain.add_player_line(_Chan.id, "Timo", "Hallo.")
     asyncio.run(brain.respond(_Chan.id))
     before = brain.history_len(_Chan.id)
@@ -198,11 +222,11 @@ def test_maybe_compact_guards_against_double_trigger() -> None:
     class _Chan:
         id = 9
 
-    cog._state[_Chan.id] = WorldState(session_id="9")
+    cog._rt._state[_Chan.id] = WorldState(session_id="9")
     brain.add_player_line(_Chan.id, "Timo", "Hallo.")
     asyncio.run(brain.respond(_Chan.id))
     before = brain.history_len(_Chan.id)
-    cog._compacting.add(_Chan.id)  # a compaction already in flight for this channel
+    cog._rt._compacting.add(_Chan.id)  # a compaction already in flight for this channel
     timing = _TurnTiming(turn=1, trigger=0.0, prompt_eval=999, num_ctx=1000)
     asyncio.run(cog._maybe_compact(_Chan(), timing))
     assert brain.history_len(_Chan.id) == before  # the guard blocked the second compaction
@@ -239,7 +263,7 @@ def test_wrapup_folds_in_the_current_recap() -> None:
         async def send(self, _msg) -> None:
             pass
 
-    asyncio.run(VoiceReceiveCog.wrap.callback(cog, _Ctx()))
+    asyncio.run(DMCog.wrap.callback(cog, _Ctx()))
 
     # The prior recap reached the summariser prompt → the wrap-up is cumulative, not plain.
     assert captured["user"] is not None and "FRÜHERER_RECAP_SENTINEL" in captured["user"]

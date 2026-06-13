@@ -4,6 +4,13 @@ Living status document. A phase counts as done only when its **verification gate
 met and the proof is recorded here.
 
 ## Current focus
+**Cog-Split-Refactor gelandet (2026-06-13, D60 → ADR 029): code-complete, Suite 263 grün.** Die
+2300-Zeilen-`VoiceReceiveCog` ist in ein injiziertes `SessionRuntime` (`dmbot/runtime.py`) +
+VoiceCog/DiceCog/DMCog zerlegt — rein strukturell, Verhalten exakt unverändert; `commands.py`
+gelöscht, Cross-Cog-Fluss über fünf Runtime-Hooks (kein `bot.get_cog`). Kein eigenes Live-Gate:
+ein Smoke-Test (`!join`→sprechen→`!dm`→Würfel-Button→`!leave`) deckt es ab; die Live-Prioritäten
+unten (Playtest-Fixes) bleiben unverändert.
+
 **Erste Live-Runde gespielt (2026-06-13) → Playtest-Fix-Runde gelandet (D57–D59, ADR 027/028),
 live-unverified.** Hauptbefund: die Klage „geht null auf die Story ein" war eine **stille
 `num_ctx`-Trunkierung** (8192 hartkodiert → Persona+Abenteuer fielen mitten in der Session aus dem
@@ -145,6 +152,39 @@ world-state block (CLAUDE.md prompt order). **Model: mistral-nemo.** Recommended
 gate / any follow-up: **Opus 4.8 / xhigh**.
 
 ## Last session
+**Cog-Split-Refactor (2026-06-13, D60 → ADR 029). Code-complete, Suite 263 grün, live-unverified
+(Smoke-Test reicht).** Reiner Struktur-Refactor (Tobi-Spec `prompts/prompt-2-cog-split.md`), Plan-
+Modus zuerst, Umsetzung über parallele Agenten auf disjunkten Dateien.
+- **Schnitt:** `dmbot/runtime.py` `SessionRuntime` hält allen geteilten State (Brain+OllamaClient,
+  STT/TTS, Bridge, Profil+Characters, RAG, Adventure, per-Channel-WorldState, Pause/PTT/Mute-Flags)
+  + die State-Helfer (`_persist_and_refresh`/`_set_scene`/`_load_*`/`_send_with_retry`) + die STT/VAD-
+  Callbacks (der Transcriber wird hier mit `_on_transcript` gebaut). In `__main__.setup_hook` einmal
+  aus `Config` gebaut, in jede Cog injiziert — die 26 Konstruktor-kwargs sind weg.
+- **3 Cogs (Tobi-Entscheid statt 4):** VoiceCog (join/leave/vstatus/mic/pause, VAD-Sink),
+  DiceCog (roll/test/turn/rules/npc/damage/heal, Würfel+Manifest-Buttons, Auto-Kampf, Turn-Order),
+  DMCog (Delivery batch+streaming, `_speak`, Auto-Recap, !dm/!redo/!start/!wrap/!say/!voice + Szenen
+  !ort/!szenen/!ortmodus + `<<ORT>>`-Marker + !lore). **Kein `bot.get_cog`:** 5 Runtime-Hooks
+  (`run_and_deliver`/`auto_dm_turn`/`handle_dice`/`reanchor_mic`/`post_turn_order`), je von der
+  besitzenden Cog im `__init__` registriert.
+- **Verschoben statt umgeschrieben:** Methoden-Bodies byte-identisch, nur `self._X → self._rt._X` +
+  Hook-Calls; Agenten belegten das per AST/Reverse-Rename-Diff, plus mein Spot-Check der untesteten
+  Streaming-Pipeline (`_deliver_streaming`). Boot-Pfad unverändert (Preflights einmal, gleiche
+  Reihenfolge); `TEARDOWN_STEPS`-Summe bleibt 4 → Shutdown-Anzeige byte-identisch.
+- **Zeilenbilanz:** `commands.py` 2300 (1 Klasse) → runtime 565 / voicecog 412 / dicecog 568 /
+  dmcog 838 = 2383 über 4 Module (Mehr = 4× Header/Imports/`__init__`-Gerüst; kein Code verloren).
+- **Tests:** 263 grün. Nur Import-Pfade angepasst (`test_context_budget`, `test_autorecap`) + **eine**
+  Fixture-Verdrahtung (`test_autorecap` baut die Bare-Cog jetzt mit einer Stub-Runtime statt flacher
+  Attribute) — Assertions unverändert; gemeldet, da über reine Imports hinaus (Spec-Smell-Check).
+- **Funktional gegengeprüft (ohne Discord):** der `!rules`/`!lore`-Pfad — den die Cogs jetzt über
+  `self._rt._retriever` / `self._rt._brain` aufrufen — live gegen `rag.db` + Ollama getestet: 4 Fragen
+  (kritischer Erfolg, Zustand Blutend, Gott-Imperator, vier Chaosgötter) treffen die richtigen Quellen
+  (d=0.29–0.40) und liefern korrekte, gegroundete Antworten. Offen bleibt nur der **Voice-Smoke-Test**
+  (`!join`→sprechen→`!dm`→Würfel→`!leave`), der die zwei Bots im Channel braucht.
+- _Kosmetisch (kein Verhaltens-/String-Change): verschobene Log-Calls tragen ihren neuen Modulnamen
+  in der opt-in `debug.log`-`%(name)s`-Spalte + in WARNING-Konsolenzeilen (`runtime`/`voice.dmcog`
+  statt `voice.commands`); die Log-Messages + Green-Chat/Transcript-Formatierung sind unverändert
+  (Filter keyen auf Message-Inhalt + `dmbot`-Präfix, verifiziert)._
+
 **Erste Live-Runde → Playtest-Fix-Runde (2026-06-13, D57–D59, ADR 027/028). Code-complete,
 live-unverified.** Die erste echte Runde (Channel circlejerk, Party Gellicus/Fridolin/Rektalus)
 lief „teils besser als davor", aber die Hauptklage war: **der Bot geht null auf die Story ein,
@@ -784,6 +824,10 @@ _(Prior session — voice-stack hardening, ADR 006 — and Phases 3–6 (the pla
 in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 
 ## Next concrete step
+**Cog-Split-Refactor: ERLEDIGT (2026-06-13, D60 → ADR 029).** Code-complete, Suite 263 grün;
+abzunehmen mit einem **Smoke-Test** (`!join` → sprechen → `!dm` → Würfel-Button → `!leave`) — kein
+eigenes Live-Gate. Die Live-Prioritäten unten (Playtest-Fixes + Phase-9/10-Gates) sind unberührt.
+
 **Schritt 0 — neue Party: ERLEDIGT (2026-06-13).** Die drei neuen Charaktere (Fridolin / Gellicus /
 Rektalus) sind gebaut, validiert, zur `data/sessions/1343673766487654464/characters.json` + Aliases
 gemergt und **committet** (allowlisted → läuft beim Kollegen); kein `state.json` → erster `!join`
@@ -1001,6 +1045,7 @@ create the next-numbered ADR.
 | D57 | Context budget (1st live round) | **(a) `num_ctx` configurable + high.** New `OLLAMA_NUM_CTX` env (Config `ollama_num_ctx`, default **24576**), threaded config → cog → `OllamaClient(num_ctx=…)` → request `options`; removes the hardcoded 8192. **(b) Rolling auto-recap (`DM_AUTORECAP`, default on).** When `prompt_eval` crosses `ctx_over_budget` (0.85·num_ctx), *after* the turn is spoken (off the hot path): a **cumulative** recap (`summarize(cid, prior_recap=…)`) is generated, persisted like `!wrap up`, and the in-memory history **cleared** — so the next prompt's head (persona + adventure) is never truncated. Per-channel `_compacting` guard. +18 tests (262 green) | The 1st live round's loudest failure ("geht null auf die Story ein") was a **silent truncation**: `num_ctx` ran at 8192 (the 24000 Tobi thought he'd set was read nowhere); from ~turn 16 the prompt head (persona + adventure summary) fell out — simultaneously causing story-ignored, runaway length, puppeting, pre-roll resolution. Two layers (big window + proactive compaction) close it GPU-independently. Chose compact-and-clear on the real budget signal over the `prompt-6` fold-before-trim spec → **ADR 027** |
 | D58 | `!start` briefing + persona steer | **(a) `!start`** (aliases `!briefing`/`!auftrag`): a dedicated opening turn — the DM narrates the `auftrag` briefing (Halikarn message, mission, leads as atmosphere) via the existing stream/speak path; a thin `respond_opening*` path leaves `_last_action` None so dice routing is suppressed; sets `scene_id` to the start scene if unset. **(b) Persona** (`prompts/dm_core_de.md`): keep the current scene's goal in view + steer gently toward open leads (not a list, not railroad); every turn ends with the **world in motion** (an NSC acts/speaks or a concrete hook), never a flat description that stops; **spotlight** — bring other named/silent characters in by name | 1st-round complaints: "am Anfang nicht gesagt, was abgeht" (`!join` only printed status), the DM stopped on static descriptions with passive NPCs, and one player sat idle all session. Prompt/feature tuning in ADR 016's persona-discipline domain (like D54) — effective only because D57 stops the persona being truncated → D-entry, no new ADR. Live-unverified |
 | D59 | RAG junk-shape filter | **Distance-independent `_is_junk_hit`** in `fetch_block` (per-turn narration gate only; `!rules`/`!lore`/`lookup` untouched): drops dash-run headings (`-{4,}`), statblock-tag headings (`(eLite)`/`(trOOP)`/`(LeaDer)`), and picture-text bodies. `MAX_DISTANCE` stays **0.45**. 103/2482 chunks become narration-ineligible; recall@1/@3 **unchanged** (52%/81%) | 1st round: pure-RP turns injected OCR/TOC garbage at the 0.43–0.45 edge (`WARRIOR`, `MACHARIAN TOMES`, `--- PSYCHIC POWERS ---`), wasting the context budget D57 fights. Calibration (ADR 025) showed tightening the threshold costs real recall (`CRITICAL HIT` @0.439) — a shape filter is surgical instead. Known gap: `WARRIOR`-style epigraph rows need ingest-level re-chunking (out of scope) → **ADR 028** |
+| D60 | Voice cog split → SessionRuntime | **Pure structural refactor (zero behaviour change).** The 2300-line `VoiceReceiveCog` split into a shared **`SessionRuntime`** (`dmbot/runtime.py`, built once from `Config`, injected into every cog — the 26 ctor kwargs collapse into it) + three thin cogs: **VoiceCog** (join/leave/vstatus/mic/pause, VAD-sink), **DiceCog** (roll/test/turn/rules/npc/damage/heal, dice+manifest buttons, auto-combat, turn-order render), **DMCog** (batch+streaming delivery, TTS speak, auto-recap, !dm/!redo/!start/!wrap/!say/!voice **and** scenes !ort/!szenen/!ortmodus + the `<<ORT>>` marker + !lore). **No `bot.get_cog`** — five hooks registered on the runtime (`run_and_deliver`/`auto_dm_turn`/`handle_dice`/`reanchor_mic`/`post_turn_order`). `commands.py` deleted; suite **263 green** (only test-import paths + one `test_autorecap` fixture rewired to a stub runtime — assertions unchanged) | The file had become a god-cog with a 26-kwarg ctor; every session paid for the whole thing and the concern boundaries had blurred. Moved-not-rewritten (per-agent AST/reverse-rename diffs + a streaming-pipeline spot-check confirm byte-identical bodies; only `self._X`→`self._rt._X` renames + the hook calls). Boot path unchanged (preflights once, same order; `TEARDOWN_STEPS` sum still 4 → shutdown display byte-identical). Binds later work: Phase 10b profile bootstrap hangs off the runtime, not a cog → **ADR 029** |
 
 ### Phase → ADR map (read these when you enter the phase)
 
@@ -1331,6 +1376,15 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   there (two-bot isolation). A Bot-A `/stop` would also enable true mid-block skip in the lore reader.
 - **Weapon / stat-block tables don't retrieve** (calibration finding, ADR 025) — table-row chunking;
   a German weapon glossary under `data/rules_de/` (same pattern as `conditions.md`) is the likely fix.
+
+**From the cog-split refactor (2026-06-13, D60 / ADR 029):**
+- **Kosmetik, kein Verhaltens-Change:** ein Docstring-Beispiel in `dmbot/logsetup.py` (`_short_name`)
+  nennt noch das gelöschte `dmbot.voice.commands` als Beispiel; und verschobene Log-Calls tragen ihren
+  neuen Modulnamen in der opt-in `debug.log`-`%(name)s`-Spalte + WARNING-Konsolenzeilen
+  (`runtime`/`voice.dmcog` statt `voice.commands`). Bewusst nicht angefasst (außerhalb des
+  Refactor-Scopes); Log-Messages + Green-Chat/Transcript-Format unverändert. Bei Gelegenheit putzen.
+- **Smoke-Test offen:** der Schnitt ist test-grün (263), aber live nur per Smoke-Test abzunehmen
+  (`!join`→sprechen→`!dm`→Würfel→`!leave`) — siehe „Next concrete step".
 
 **From the lore work (2026-06-13):**
 - **`!lore`-Antworten zu Rokarth sind englisch** — die `setting`-Quelle ist der englische
