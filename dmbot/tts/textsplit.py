@@ -10,6 +10,7 @@ Pure (no torch / no audio deps) so it stays unit-testable on its own.
 from __future__ import annotations
 
 import re
+import unicodedata
 
 # Stay safely under XTTS's 253-char German limit.
 TTS_CHAR_LIMIT = 240
@@ -39,33 +40,38 @@ def split_completed(text: str) -> tuple[list[str], str]:
     tail = "" if _ENDS_SENTENCE.search(parts[-1]) else parts.pop()
     return [p.strip() for p in parts if p.strip()], tail.strip()
 
-# Glyphs XTTS reads out or stumbles over when spoken (players: "er liest die Interpunktion mit vor
-# — Komma, Punkt, Ausrufezeichen … das ist Müll"): quotation marks of every flavour, brackets and
-# stray symbols. Dropped before synthesis. We deliberately KEEP . , ! ? ; : (they carry the voice's
-# intonation + pauses, which the players want — "durch die Betonung erkennt man es sowieso") and the
-# word hyphen "-" (Hive-Stadt). Em/en dashes and the ellipsis get mapped to a pause separately.
-_DROP_CHARS = "".join([
-    '"', "'", "«", "»", "‹", "›", "„", "“", "”", "‚", "‘", "’",
-    "*", "_", "#", "`", "~", "|", "<", ">", "(", ")", "[", "]", "{", "}",
-    "/", "\\", "&", "%", "$", "@", "=", "+",
-])
-_TTS_DROP = str.maketrans("", "", _DROP_CHARS)
+# What the voice may SAY: the prosody-bearing punctuation we keep (intonation + pauses the players
+# want — "durch die Betonung erkennt man es sowieso") plus the word hyphen "-" (Hive-Stadt).
+# Everything else non-alphanumeric is dropped before synthesis — a whitelist, so emojis, arrows,
+# bullets, the middle dot "·", quotes, brackets and any future stray symbol never reach XTTS, which
+# otherwise verbalises them as noise/gibberish (players: "er liest die Interpunktion mit vor … das
+# ist Müll", and lone symbols make XTTS hallucinate). Em/en/figure/minus dashes + the ellipsis are
+# mapped to a spoken pause first so they don't just vanish.
+_KEEP_PUNCT = frozenset(".,!?;:-")
+_WS_RE = re.compile(r"[\xa0  ​‌‍﻿]")  # NBSP / narrow / zero-width / BOM
+_DASH_RE = re.compile(r"\s*[—–―‒‑−]\s*")  # dash & minus variants → pause; ASCII "-" stays in words
+_APOSTROPHE_RE = re.compile(r"[’‘ʼ']")    # drop apostrophes outright so names/contractions don't split
 
 
 def normalize_for_tts(text: str) -> str:
-    """Clean a DM answer for **speech only** (never the text posted to Discord): drop the glyphs
-    XTTS verbalises or mangles — quotes, ellipses, em/en dashes, brackets, stray symbols — while
-    keeping the prosody-bearing ``. , ! ? ; :`` and word hyphens. The fix for the players' "stop
-    reading the punctuation aloud" wish. Falls back to the stripped original if cleaning empties it
-    (an all-symbol answer is implausible, but never feed TTS an empty string)."""
-    cleaned = text.replace("…", ".")                    # ellipsis → period (else read as dots)
-    cleaned = re.sub(r"\s*[—–]\s*", ", ", cleaned)      # em/en dash as a pause → comma (keeps "-" in words)
-    cleaned = cleaned.translate(_TTS_DROP)              # drop quotes / brackets / stray symbols
-    cleaned = re.sub(r"\s+([.,!?;:])", r"\1", cleaned)  # no space before punctuation (left by removed quotes)
+    """Clean a DM answer for **speech only** (never the text posted to Discord): keep letters,
+    digits, whitespace and the prosody-bearing ``. , ! ? ; :`` + word hyphen; drop everything else
+    (emojis, arrows, bullets, ``·``, quotes, brackets, stray symbols) — a whitelist so nothing new
+    can leak through to XTTS as gibberish. Dashes/ellipsis become a spoken pause first. May return
+    ``""`` when there's nothing speakable left (the caller/chunker guards against synthesising it)."""
+    cleaned = unicodedata.normalize("NFKC", text)
+    cleaned = _WS_RE.sub(" ", cleaned)                 # exotic whitespace → normal space
+    cleaned = _APOSTROPHE_RE.sub("", cleaned)          # drop apostrophes (no word split)
+    cleaned = cleaned.replace("…", ".")                # ellipsis → period (else read as dots)
+    cleaned = _DASH_RE.sub(", ", cleaned)              # dashes as a pause → comma (keeps "-" in words)
+    cleaned = "".join(                                 # whitelist: drop any other non-speakable glyph
+        ch if (ch.isalnum() or ch.isspace() or ch in _KEEP_PUNCT) else " " for ch in cleaned
+    )
+    cleaned = re.sub(r"\s+([.,!?;:])", r"\1", cleaned)  # no space before punctuation (left by removals)
     cleaned = re.sub(r"([.!?])\s*,", r"\1", cleaned)    # a comma stranded after a sentence-ender → drop
-    cleaned = re.sub(r"([.!?,;:])\1+", r"\1", cleaned)  # collapse repeats: "!!"→"!", ",,"→","
+    cleaned = re.sub(r"([.,!?;:])\1+", r"\1", cleaned)  # collapse repeats: "!!"→"!", ",,"→","
     cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()   # tidy whitespace from removals
-    return cleaned or text.strip()
+    return cleaned
 
 
 def has_speakable_content(text: str) -> bool:
@@ -104,4 +110,6 @@ def chunk_text(text: str, limit: int = TTS_CHAR_LIMIT) -> list[str]:
             current = f"{current} {sentence}".strip()
     if current:
         chunks.append(current)
-    return chunks or [text.strip()]
+    # Drop chunks that carry nothing speakable (e.g. a lone "." split off a sentence) — XTTS reads a
+    # bare punctuation chunk for ~15 s or hallucinates. Empty list = nothing to synthesise.
+    return [c for c in chunks if has_speakable_content(c)]

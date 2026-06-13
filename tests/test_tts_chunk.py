@@ -69,5 +69,29 @@ def test_normalize_maps_ellipsis_and_dashes_to_pauses() -> None:
 
 
 def test_normalize_never_returns_empty() -> None:
-    assert normalize_for_tts('"..."') == "."  # all-symbol → falls back rather than feed TTS ""
+    assert normalize_for_tts('"..."') == "."  # quotes drop, the dots collapse to one period
     assert normalize_for_tts("   ") == ""
+
+
+def test_normalize_strips_emojis_and_symbols() -> None:
+    # the live bug: emojis + Unicode symbols XTTS turns into gibberish — now dropped (whitelist).
+    assert normalize_for_tts("Der Kult weicht zurück 🎲") == "Der Kult weicht zurück"
+    assert normalize_for_tts("er weicht → zurück") == "er weicht zurück"   # arrow → space, no word merge
+    assert normalize_for_tts("Treffer 💥 am Arm") == "Treffer am Arm"
+    assert normalize_for_tts("1 EG · Warp") == "1 EG Warp"                 # middle dot gone
+    assert normalize_for_tts("• Erster Punkt") == "Erster Punkt"           # bullet gone
+    assert normalize_for_tts("Bann 🜏 Ende") == "Bann Ende"
+
+
+def test_normalize_keeps_german_letters_digits_and_nbsp() -> None:
+    assert normalize_for_tts("Schädel, Würfel 2 von 4!") == "Schädel, Würfel 2 von 4!"
+    assert normalize_for_tts("Wort\xa0Wort") == "Wort Wort"                # NBSP → normal space
+
+
+def test_chunk_drops_unspeakable_chunks() -> None:
+    # a turn that cleans down to nothing speakable must yield no chunks (XTTS never sees junk)
+    assert chunk_text(normalize_for_tts("🎲🌀🜏")) == []
+    assert chunk_text("") == []
+    # every chunk of a real (emoji-laced) answer is speakable
+    chunks = chunk_text(normalize_for_tts("Du öffnest die Tür. 🎲 Was tut ihr?"))
+    assert chunks and all(has_speakable_content(c) for c in chunks)

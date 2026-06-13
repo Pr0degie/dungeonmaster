@@ -86,3 +86,18 @@ Hier ist die korrekte Antwort:" self-correction frame the model emitted once.
   wishes not addressed here:** within-session repetition (W4), answering the *exact* question asked
   (W5), engaging provocative content (W8) — persona/adherence/Phase-9 items; deep latency (W2) is
   Part-2 streaming TTS. The Phase-9 memory gate (HP survives restart + recap) is still unrun.
+
+## Follow-up (2026-06-13, D53) — TTS normalization hardened to a whitelist
+
+Decision #3's `normalize_for_tts` was a **blocklist** (it dropped only an enumerated set of
+ASCII/Latin-1 symbols + smart quotes). Live, the voice still spoke gibberish "especially at
+punctuation" — the blocklist missed **emojis** (🎲🌀🜏💥, including the engine's `describe_*`
+glyphs the model can echo), **arrows/bullets/middle-dot** (→ • ·), dash/minus variants and exotic
+whitespace; none of which show in the transcript. Two changes (suite 233):
+- `normalize_for_tts` is now a **whitelist**: NFKC-normalize, map dash/minus variants + ellipsis to a
+  spoken pause, then keep only letters/digits/whitespace and `. , ! ? ; : -`, dropping everything
+  else. Future stray glyphs can't leak through. It may now legitimately return `""`.
+- A **per-chunk speakability guard**: `chunk_text` drops chunks with no letter/digit, and the XTTS/
+  Piper `synthesize` paths emit a short silence (never call the model) when nothing is speakable —
+  so a lone-punctuation chunk can't make XTTS read a bare "." for ~15 s or hallucinate.
+- Deferred (only if needed after live test): XTTS `repetition_penalty` / `enable_text_splitting=False`.

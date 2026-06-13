@@ -46,6 +46,17 @@ def _concat_wavs(parts: list[str], out_path: str, gap_s: float = _CHUNK_GAP_S) -
                 out.writeframes(gap)
 
 
+def _silent_wav(path: str, *, seconds: float = 0.2, framerate: int = 24000) -> None:
+    """Write a short silent 24 kHz mono WAV (XTTS's output format). Used when an answer has nothing
+    speakable after cleanup, so the caller still gets a valid, playable path instead of XTTS being
+    handed a bare-punctuation chunk (which it reads for ~15 s or turns into gibberish)."""
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(framerate)
+        w.writeframes(b"\x00" * (int(framerate * seconds) * 2))
+
+
 def _resolve_device(requested: str) -> str:
     """Honour ``requested`` but degrade to CPU if CUDA is unusable, never crash.
 
@@ -120,6 +131,9 @@ class XttsTTS:
         fd, path = tempfile.mkstemp(prefix="dm_tts_", suffix=".wav")
         os.close(fd)
         chunks = chunk_text(normalize_for_tts(text))  # speech-only cleanup, then split for XTTS's char limit
+        if not chunks:  # nothing speakable (emoji-/punctuation-only) → silence, never feed XTTS junk
+            _silent_wav(path)
+            return path
         if len(chunks) <= 1:
             self._tts.tts_to_file(
                 text=chunks[0], speaker=self._speaker, language=self._language, file_path=path
