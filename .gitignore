@@ -26,9 +26,13 @@ voices/
 # Logs (pipeline PCM/transcript/debug logs)
 *.log
 
-# Generated data — PDFs, real session state, vector store (not hand-edited).
-# Ignore the contents, but keep the directory skeleton via .gitkeep so a fresh clone has
-# the structure to write into.
+# data/ — ALLOWLIST: ignore everything, then re-track only the curated SEED/REFERENCE files that
+# ship with the repo (hand-written/checked-in: system profiles, the German lore + rules glossary,
+# the live party JSONs, the _example session, the live channel's characters.json). Everything
+# GENERATED or bought-book-derived stays local: PDFs, adventures/ scene cards, real per-channel
+# state (state.json/history/recap/sheets), vectordb/rag.db. .gitkeep keeps the empty dir skeleton.
+# GOTCHA when adding data: a new committed file needs its OWN `!`-rule below, and the `*.json` /
+# `*.md` rules match the folder's TOP level only — a new subfolder or channel needs a new line.
 data/**
 !data/
 !data/systems/

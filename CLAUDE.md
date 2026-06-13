@@ -120,7 +120,7 @@ dmbot/          the DM bot
   orchestrator.py   the DM brain (history + buffer → LLM)
   bridge.py     HTTP client to Bot A's /speak
   logsetup.py   console (green chat) + file logging
-data/           systems/ (profiles), pdfs/ (RAG), adventures/ (scene cards — local-only, derivative of bought books), sessions/ (state+recaps), vectordb/  ← generated/local, not hand-edited
+data/           committed seed/reference: systems/ (profiles), lore/ + rules_de/ (curated DE setting/rules), party/ (party JSONs), sessions/_example + the live channel's characters.json. Generated/local (git-ignored — see the .gitignore allowlist): pdfs/ (RAG sources), adventures/ (scene cards, bought-book derivatives), sessions/<id>/ state+recaps, vectordb/ (rag.db)
 prompts/        dm_core_de.md (generic GM persona) + campaign_tone_de.md (campaign overlay)  — GERMAN, game content
 docs/           SETUP.md, decisions/ (ADRs)
 ```
