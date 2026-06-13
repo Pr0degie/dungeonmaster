@@ -123,24 +123,27 @@ ID_FIELDS = {  # name: (left_px, line_px, width_px, size, source_key)
     "height":        (560, 124, 70, 9, "height"),
     "weight":        (645, 124, 70, 9, "weight"),
     "handedness":    (728, 124, 100, 9, "handedness"),
-    "distinguishing": (306, 169, 360, 9, "distinguishing"),
-    "xp_total":      (715, 178, 28, 8, "xp_total"),
-    "xp_spent":      (758, 178, 28, 8, "xp_spent"),
+    "distinguishing": (306, 154, 360, 9, "distinguishing"),
+    "xp_total":      (715, 154, 28, 8, "xp_total"),
+    "xp_spent":      (758, 154, 28, 8, "xp_spent"),
 }
-# all 20 skill rows: (sheet_id, line_y, adv_x, tot_x, german_or_None, gov_or_None)
+# all 20 skill rows: (sheet_id, line_y, adv_x, tot_x, german_or_None, gov_or_None).
+# The skill grid's row separators sit every 20 px (…368, 388, 408…); a cell's center is the rule
+# midpoint and our box baseline = center + 6, so row i (0-based) = 384 + 20*i. Both columns share
+# the same row y. Getting the start/step exactly right stops the drift down the table.
 _SKILL_ROWS = [
-    ("Athletics", 381, 225, 260, "Athletik", "Str"), ("Awareness", 400, 225, 260, "Wahrnehmung", "Per"),
-    ("Dexterity", 419, 225, 260, None, None), ("Discipline", 438, 225, 260, None, None),
-    ("Fortitude", 457, 225, 260, None, None), ("Intuition", 477, 225, 260, None, None),
-    ("Linguistics", 496, 225, 260, None, None), ("Logic", 516, 225, 260, None, None),
-    ("Lore", 537, 225, 260, "Wissen", "Int"), ("Medicae", 557, 225, 260, "Medizin", "Int"),
-    ("Melee", 381, 488, 526, "Nahkampf", "WS"), ("Navigation", 400, 488, 526, None, None),
-    ("Presence", 420, 488, 526, "Einschüchtern", "Fel"), ("Piloting", 439, 488, 526, None, None),
-    ("PsychicMastery", 458, 488, 526, None, None), ("Ranged", 478, 488, 526, "Fernkampf", "BS"),
-    ("Rapport", 498, 488, 526, "Überreden", "Fel"), ("Reflexes", 517, 488, 526, None, None),
-    ("Stealth", 537, 488, 526, "Heimlichkeit", "Ag"), ("Tech", 557, 488, 526, "Technologie", "Int"),
+    ("Athletics", 384, 225, 260, "Athletik", "Str"), ("Awareness", 404, 225, 260, "Wahrnehmung", "Per"),
+    ("Dexterity", 424, 225, 260, None, None), ("Discipline", 444, 225, 260, None, None),
+    ("Fortitude", 464, 225, 260, None, None), ("Intuition", 484, 225, 260, None, None),
+    ("Linguistics", 504, 225, 260, None, None), ("Logic", 524, 225, 260, None, None),
+    ("Lore", 544, 225, 260, "Wissen", "Int"), ("Medicae", 564, 225, 260, "Medizin", "Int"),
+    ("Melee", 384, 488, 526, "Nahkampf", "WS"), ("Navigation", 404, 488, 526, None, None),
+    ("Presence", 424, 488, 526, "Einschüchtern", "Fel"), ("Piloting", 444, 488, 526, None, None),
+    ("PsychicMastery", 464, 488, 526, None, None), ("Ranged", 484, 488, 526, "Fernkampf", "BS"),
+    ("Rapport", 504, 488, 526, "Überreden", "Fel"), ("Reflexes", 524, 488, 526, None, None),
+    ("Stealth", 544, 488, 526, "Heimlichkeit", "Ag"), ("Tech", 564, 488, 526, "Technologie", "Int"),
 ]
-_SPEC_ROWS = [388, 408, 428, 448, 468, 488, 508, 528, 548]
+_SPEC_ROWS = [384, 404, 424, 444, 464, 484, 504, 524, 544]  # same grid as the skill rows
 _SPEC_COLS = [{"key": "spec", "x": 562, "w": 125}, {"key": "skill", "x": 688, "w": 55},
               {"key": "adv", "x": 752, "w": 24, "center": True, "align": CENTER},
               {"key": "tot", "x": 788, "w": 26, "center": True, "align": CENTER}]
