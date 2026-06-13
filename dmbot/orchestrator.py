@@ -27,6 +27,7 @@ from .rules.marker import (
     ManifestRequest,
     SceneRequest,
     TestRequest,
+    clean_narration,
     extract_manifests,
     extract_scenes,
     extract_tests,
@@ -356,13 +357,19 @@ class StreamAssembler:
         """The leading-sanitised, marker-stripped speakable view of the cut buffer, or None while
         the first chunk is still being held back."""
         text = cut.replace("*", "")
-        idx = _open_marker_index(text)
-        if idx is not None:
-            text = text[:idx]  # withhold from an unmatched "<<" (a marker may span deltas)
-        if self._profile is not None:
-            text, _ = extract_tests(text, self._profile)  # strip complete <<TEST …>> markers
-            text, _ = extract_manifests(text, self._profile)  # strip complete <<MANIFEST …>> markers
-        text, _ = extract_scenes(text)  # strip complete <<ORT …>> markers (never spoken, ADR 026)
+        if "<<" not in text:
+            # Fast path: no marker can be present, so the three regex extractors would each only run
+            # their trailing _clean over the whole buffer (O(n) × 3 per delta → O(n²) across a turn).
+            # Apply that same tidy once instead — byte-identical output, the marker scans skipped.
+            text = clean_narration(text)
+        else:
+            idx = _open_marker_index(text)
+            if idx is not None:
+                text = text[:idx]  # withhold from an unmatched "<<" (a marker may span deltas)
+            if self._profile is not None:
+                text, _ = extract_tests(text, self._profile)  # strip complete <<TEST …>> markers
+                text, _ = extract_manifests(text, self._profile)  # strip complete <<MANIFEST …>> markers
+            text, _ = extract_scenes(text)  # strip complete <<ORT …>> markers (never spoken, ADR 026)
         text = _sanitize_leading(text)
         text = _strip_leading_label(text, self._labels)
         if not self._released:
@@ -428,6 +435,12 @@ class DMBrain:
         self._max_buffer_lines = max_buffer_lines
         self._history: dict[int, list[dict[str, str]]] = {}
         self._buffer: dict[int, list[tuple[str, str]]] = {}
+        # How many history messages the last :meth:`summarize` folded into the recap, per channel.
+        # The auto-compaction clears history right after the (awaited) summarize, but a dice-button
+        # turn can append to the live list *during* that await — :meth:`clear_history` removes only
+        # these first N messages so that concurrent turn survives both the recap and the history
+        # (Finding #4). Cleared once consumed; absent → clear_history falls back to a full wipe.
+        self._compact_consumed: dict[int, int] = {}
         # Pending dice tests parsed from the last DM turn (per channel) — the cog drains these and
         # posts a dice button for each. Test results fed back in (engine roll → narrate consequence)
         # are buffered here and prepended to the next turn, exempt from the player-line cap.
@@ -1020,6 +1033,10 @@ class DMBrain:
         history = self._history.get(channel_id) or []
         if not history:
             return None
+        # Record how many messages this recap consumes *before* the await, so a turn appended to the
+        # live list while the LLM runs is preserved by clear_history (Finding #4). build_recap_user
+        # reads the list synchronously here; the await below is where a concurrent append can land.
+        self._compact_consumed[channel_id] = len(history)
         user = build_recap_user(history, prior_recap)
         raw = await self._client.chat(
             RECAP_SYSTEM_DE,
@@ -1049,8 +1066,22 @@ class DMBrain:
         because the just-generated cumulative recap now carries that thread forward. The next prompt
         is then persona + adventure + (longer) recap + state + empty history, safely under budget, so
         the persona/adventure are never the truncated head again. ``_last_turn`` is also cleared so a
-        stale ``!redo`` can't replay a turn that's no longer in history."""
-        self._history.pop(channel_id, None)
+        stale ``!redo`` can't replay a turn that's no longer in history.
+
+        Removes only the messages the matching :meth:`summarize` actually folded into the recap
+        (recorded in ``_compact_consumed``): a dice-button turn appended to the live list *during*
+        the summarize await would otherwise be lost from both the recap and the history (Finding #4).
+        With no recorded count (a direct call, not via the auto-compaction) it falls back to a full
+        wipe; the count is clamped to the current length in case the list shrank meanwhile."""
+        consumed = self._compact_consumed.pop(channel_id, None)
+        history = self._history.get(channel_id)
+        if consumed is None or history is None:
+            self._history.pop(channel_id, None)  # no recorded count → original full-clear behaviour
+        else:
+            n = min(consumed, len(history))
+            del history[:n]  # keep any turn appended after summarize captured its transcript
+            if not history:
+                self._history.pop(channel_id, None)  # empty list → drop the key (full-clear parity)
         self._last_turn.pop(channel_id, None)
 
     async def answer_rules(self, question: str, context: str, *, system_name: str) -> str | None:
@@ -1080,6 +1111,7 @@ class DMBrain:
             self._buffer.pop(channel_id, None)
         self._history.pop(channel_id, None)
         self._last_turn.pop(channel_id, None)
+        self._compact_consumed.pop(channel_id, None)
         self._pending_tests.pop(channel_id, None)
         self._pending_manifests.pop(channel_id, None)
         self._pending_scenes.pop(channel_id, None)

@@ -22,9 +22,17 @@ from dataclasses import dataclass
 
 from .profile import SystemProfile
 
-_MARKER_RE = re.compile(r"<<\s*TEST\b(.*?)>>", re.IGNORECASE | re.DOTALL)
-_MANIFEST_RE = re.compile(r"<<\s*MANIFEST\b(.*?)>>", re.IGNORECASE | re.DOTALL)
-_ORT_RE = re.compile(r"<<\s*ORT\b(.*?)>>", re.IGNORECASE | re.DOTALL)
+# Match the keyword then take everything up to ``>>`` as the payload. A ``\b`` boundary after the
+# keyword would *reject* a glued id — ``<<ORT1>>``, ``<<ORTmud_gate>>``, ``<<TEST1>>``,
+# ``<<MANIFESTSmite>>`` — so the marker would survive into the spoken text AND the test/manifest/
+# scene action would never fire. Instead consume any whitespace/colon separator after the keyword
+# (zero or more, so the glued form matches too) and capture the rest. ``_``/``-`` are NOT swallowed
+# here: a leading ``-N`` on a TEST is a modifier, not a separator; the parsers strip a leading
+# ``_``/``-`` only where it is unambiguously an id separator (scenes). No other keyword shares a
+# prefix in this grammar, so capturing the remainder can't eat a different word.
+_MARKER_RE = re.compile(r"<<\s*TEST[\s:]*(.*?)>>", re.IGNORECASE | re.DOTALL)
+_MANIFEST_RE = re.compile(r"<<\s*MANIFEST[\s:]*(.*?)>>", re.IGNORECASE | re.DOTALL)
+_ORT_RE = re.compile(r"<<\s*ORT[\s:]*(.*?)>>", re.IGNORECASE | re.DOTALL)
 _FUER_RE = re.compile(r"\b(?:für|fuer|for)\b", re.IGNORECASE)
 _MOD_RE = re.compile(r"([+\-−]\s*\d+)")  # ASCII +/- and the unicode minus the LLM may emit
 _PUSH_RE = re.compile(r"\b(?:push|gepusht|pushen)\b", re.IGNORECASE)  # Pushing a Manifest Test
@@ -59,8 +67,7 @@ def _split_trailing_difficulty(text: str, phrases: list[str]) -> tuple[str, str 
     return text.strip(), None
 
 
-def _parse_one(inner: str, profile: SystemProfile) -> TestRequest:
-    raw = f"<<TEST{inner}>>"
+def _parse_one(inner: str, profile: SystemProfile, raw: str) -> TestRequest:
     body = inner.strip()
     target_name: str | None = None
     m = _FUER_RE.search(body)
@@ -95,9 +102,15 @@ def _clean(text: str) -> str:
     return text.strip()
 
 
+# Public alias: the streaming assembler's no-marker fast path applies the same tidy as the three
+# extractors do (each ends in ``_clean``), so it can skip the regex marker scans on a ``<<``-free
+# buffer while keeping the spoken text byte-identical. Idempotent, so re-cleaning is harmless.
+clean_narration = _clean
+
+
 def extract_tests(text: str, profile: SystemProfile) -> tuple[str, list[TestRequest]]:
     """Strip every ``<<TEST …>>`` from ``text`` and return (clean narration, parsed requests)."""
-    requests = [_parse_one(m.group(1), profile) for m in _MARKER_RE.finditer(text)]
+    requests = [_parse_one(m.group(1), profile, m.group(0)) for m in _MARKER_RE.finditer(text)]
     clean = _clean(_MARKER_RE.sub("", text))
     return clean, requests
 
@@ -118,8 +131,7 @@ class ManifestRequest:
     parsed: bool = True
 
 
-def _parse_manifest(inner: str, profile: SystemProfile) -> ManifestRequest:
-    raw = f"<<MANIFEST{inner}>>"
+def _parse_manifest(inner: str, profile: SystemProfile, raw: str) -> ManifestRequest:
     body = inner.strip()
     target_name: str | None = None
     m = _FUER_RE.search(body)
@@ -147,7 +159,7 @@ def _parse_manifest(inner: str, profile: SystemProfile) -> ManifestRequest:
 
 def extract_manifests(text: str, profile: SystemProfile) -> tuple[str, list[ManifestRequest]]:
     """Strip every ``<<MANIFEST …>>`` from ``text`` and return (clean narration, parsed requests)."""
-    requests = [_parse_manifest(m.group(1), profile) for m in _MANIFEST_RE.finditer(text)]
+    requests = [_parse_manifest(m.group(1), profile, m.group(0)) for m in _MANIFEST_RE.finditer(text)]
     clean = _clean(_MANIFEST_RE.sub("", text))
     return clean, requests
 
@@ -176,7 +188,9 @@ def extract_scenes(text: str) -> tuple[str, list[SceneRequest]]:
     ``<<ORT >>`` is still stripped and yields a ``parsed=False`` request the cog ignores."""
     requests: list[SceneRequest] = []
     for m in _ORT_RE.finditer(text):
-        scene_id = re.sub(r"\s{2,}", " ", m.group(1)).strip(" :,-")
-        requests.append(SceneRequest(scene_id=scene_id, raw=f"<<ORT{m.group(1)}>>", parsed=bool(scene_id)))
+        # Strip a leading ``_``/``-`` separator too (``<<ORT_mud>>`` / ``<<ORT-mud>>`` glued forms),
+        # not just spaces/colons — an id never *starts* with a separator, so this only peels the glue.
+        scene_id = re.sub(r"\s{2,}", " ", m.group(1)).strip(" :,-_")
+        requests.append(SceneRequest(scene_id=scene_id, raw=m.group(0), parsed=bool(scene_id)))
     clean = _clean(_ORT_RE.sub("", text))
     return clean, requests

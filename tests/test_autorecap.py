@@ -86,6 +86,52 @@ def test_summarize_passes_prior_recap_through_to_the_builder() -> None:
     assert "FRÜHERER_RECAP_SENTINEL" in captured["user"]
 
 
+def test_clear_history_preserves_a_turn_appended_during_summarize() -> None:
+    """Finding #4: a dice-button turn appended to the live history *while* summarize awaits the LLM
+    must survive clear_history — it was never in the recap, so dropping it would lose it from both."""
+    ch = 3
+    holder: dict = {}
+
+    class _AppendDuringChat(_CapClient):
+        """While 'summarizing', a concurrent turn lands in the live history (a dice consequence)."""
+
+        async def chat(self, system, messages, options=None, format=None) -> str:
+            # Simulate the dice-button turn that appended mid-await (what _stream_and_store does):
+            # it lands on the live list AFTER summarize captured its transcript synchronously.
+            holder["brain"]._history[ch].append({"role": "user", "content": "[Würfel] Erfolg"})
+            holder["brain"]._history[ch].append({"role": "assistant", "content": "Die Tür springt auf."})
+            return await super().chat(system, messages, options=options, format=format)
+
+    brain = DMBrain(_AppendDuringChat())
+    holder["brain"] = brain
+    # Seed a clean, known 2-message history so the consumed-count maths is unambiguous.
+    brain._history[ch] = [
+        {"role": "user", "content": "Timo: Wir schleichen vor."},
+        {"role": "assistant", "content": "Ihr steht vor einer Tür."},
+    ]
+
+    asyncio.run(brain.summarize(ch))  # consumes the 2 seeded messages; the client appends 2 more
+    assert brain.history_len(ch) == 4  # the concurrent dice turn is now in the live list
+
+    brain.clear_history(ch)
+    # Only the 2 summarized messages are gone; the dice turn appended during the await survives.
+    assert brain.history_len(ch) == 2
+    assert brain._history[ch][-1]["content"] == "Die Tür springt auf."
+
+
+def test_clear_history_after_summarize_with_no_concurrent_append_clears_everything() -> None:
+    """The normal case: nothing landed during the await, so clear_history empties the whole history
+    that was summarized (parity with the pre-fix full wipe)."""
+    brain = DMBrain(_CapClient())
+    ch = 13
+    brain.add_player_line(ch, "Timo", "Eine Zeile.")
+    asyncio.run(brain.respond(ch))
+    assert brain.history_len(ch) > 0
+    asyncio.run(brain.summarize(ch))  # records the consumed count
+    brain.clear_history(ch)
+    assert brain.history_len(ch) == 0  # everything summarized is gone
+
+
 def test_clear_history_empties_history_but_keeps_recap_and_buffer() -> None:
     brain = DMBrain(_CapClient())
     ch = 2
