@@ -153,7 +153,7 @@ gate / any follow-up: **Opus 4.8 / xhigh**.
 
 ## Last session
 **Cog-Split-Refactor (2026-06-13, D60 → ADR 029). Code-complete, Suite 263 grün, live-unverified
-(Smoke-Test reicht).** Reiner Struktur-Refactor (Tobi-Spec `prompts/prompt-2-cog-split.md`), Plan-
+(Smoke-Test reicht).** Reiner Struktur-Refactor (nach Tobis Cog-Split-Spec), Plan-
 Modus zuerst, Umsetzung über parallele Agenten auf disjunkten Dateien.
 - **Schnitt:** `dmbot/runtime.py` `SessionRuntime` hält allen geteilten State (Brain+OllamaClient,
   STT/TTS, Bridge, Profil+Characters, RAG, Adventure, per-Channel-WorldState, Pause/PTT/Mute-Flags)
