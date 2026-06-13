@@ -39,6 +39,7 @@ TEIL 1 — DEINE FRAGEN AN MICH
 5. Herkunftswelt-Gefühl: bodenständig-agrarisch / adelig-feudal / wild & rau / techy-Schmiedewelt /
    Großstadt-Moloch (Hive) / fromm-religiös / militärisch gedrillt / im-Raum-zwischen-Sternen-geboren?
 6. Lieblingswaffe? (Nahkampf oder Fernwaffe — beschreib sie, ich nehme die passende aus der Liste.)
+   Hast du kybernetische Implantate (Augmetik)? Falls ja, welche?
 7. Aussehen: Alter, Haare, Augen, Größe, Statur, ein auffälliges Merkmal.
 8. Hintergrund: Woher kommt er, warum zieht er los, was will er kurzfristig und im großen Ganzen?
 9. Verbindungen: Wen kennt/vertraut/misstraut er? (Mitspieler, an die du anknüpfen kannst:
@@ -93,6 +94,12 @@ PSIONIKER (nur falls gewählt):
 • Füge ein Talent {"name":"Psioniker","effect":"Kann psychische Kräfte manifestieren; Manifest über
   Psi-Meisterschaft, Warp-Schwelle = WillkürB."} hinzu.
 
+AUGMETIK (optional, für alle): kybernetische Implantate (z.B. Augmetischer Arm, Augur-Array,
+Mechadendrit, Bionisches Auge). Dauerhaft, kein Wurf. Faustregel-Grenze: höchstens so viele wie der
+ZähigkeitsBonus (Zehnerstelle von Tgh). Rüstungs-/Merkmalsboni rechnet das Spiel ein, situative
+Effekte (Auspex, Mechadendriten …) spielt der Spielleiter aus. Als Liste ins Feld "augmetics" —
+leer lassen, wenn keine.
+
 ────────────────────────────────────────
 TEIL 3 — SELBST-CHECK, DANN AUSGABE
 ────────────────────────────────────────
@@ -100,6 +107,7 @@ Prüfe VOR der Ausgabe und fasse das Ergebnis im "_note" zusammen:
 ✓ Summe aller Verteilungspunkte = genau 90, jede Eigenschaft +4…+18 (vor Herkunft)
 ✓ Herkunfts-Boni korrekt addiert    ✓ 6 Steigerungen, keine Fertigkeit über +2
 ✓ Wunden = StrB + 2×TghB + WilB     ✓ (falls Psioniker) 5 gültige known_powers
+✓ Augmetik (falls vorhanden) ≤ ZähigkeitsBonus
 
 Gib dann GENAU EINEN JSON-Block aus (deutsche Texte, grimdark-Ton, Psioniker-Felder nur wenn Psioniker):
 {
@@ -112,6 +120,7 @@ Gib dann GENAU EINEN JSON-Block aus (deutsche Texte, grimdark-Ton, Psioniker-Fel
   "wounds": 0, "max_wounds": 0, "conditions": [],
   "inventory": [],
   "weapons": [ { "name":"","test":"","damage":"","range":"","mag":"","enc":"","traits":"" } ],
+  "augmetics": [],
   "psyker": false, "disciplines": [], "known_powers": [],
   "age":"","eyes":"","hair":"","height":"","weight":"","handedness":"",
   "distinguishing":"",

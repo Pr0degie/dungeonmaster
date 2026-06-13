@@ -460,7 +460,8 @@ Starting recommendation (runs on the 4070, later also on the 5080):
 - **Primary: Mistral Nemo 12B (instruct).** Strong German, 128k context (good for long
   sessions + RAG), ~7–9 GB at Q4 — lots of headroom, runs on the 4070 too.
 - **More quality: Mistral Small 24B (Q4 ~14 GB)** or **Qwen2.5 14B** — stronger, but tighter.
-- **Embeddings:** `nomic-embed-text` (tiny).
+- **Embeddings:** `bge-m3` (multilingual; the initial `nomic-embed-text` plan failed
+  German→English retrieval — ADR 019).
 - **TTS voice:** `de_DE-thorsten-medium` as a start; test `thorsten_emotional` for more
   expression.
 

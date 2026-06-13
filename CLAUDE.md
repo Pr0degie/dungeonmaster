@@ -178,7 +178,7 @@ here is its contract, which DMbot calls:
 
 ## RAG (`dmbot/rag/`)
 
-- Ingestion: PDF → chunks → `nomic-embed-text` → vector store. **40k rulebooks are
+- Ingestion: PDF → chunks → `bge-m3` → vector store. **40k rulebooks are
   multi-column/table-heavy** — extracted text comes out scrambled. Inspect a real chunk
   before trusting retrieval.
 - Answer rule questions from rulebook chunks; attach the source to the context.

@@ -10,7 +10,7 @@ Runtime is **Windows**, Python **3.12**, managed with **uv**.
 
 - **uv** installed, and Python 3.12.
 - **Ollama** running locally with the DM model pulled:
-  `ollama pull mistral-nemo` (and `nomic-embed-text` for later RAG).
+  `ollama pull mistral-nemo` (and `bge-m3` for the RAG embeddings).
 - **Bot A** — the music bot from its **own repo** (`Pr0degie/musicbot`), checked out on the
   **`dungeon_master`** branch (that branch has the `cogs/dm_bridge.py` `/speak` server; `main`
   does **not**). ffmpeg comes with the music bot.

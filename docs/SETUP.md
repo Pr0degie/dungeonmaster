@@ -124,13 +124,19 @@ ADR 021) IS in the repo and comes with the clone.
       ```
       uv run python tools/pdf_to_md.py "data/pdfs/Imperium Maledictum Core Rulebook.pdf"
       uv run python tools/pdf_to_md.py "data/pdfs/Starter Set/IM_SS_Setting_Guide_Book_240722.pdf" --pages 1-57
+      uv run python tools/pdf_to_md.py "data/pdfs/Imperium_Maledictum_Inqusition_Player's_Guide.pdf"
+      uv run python tools/pdf_to_md.py "data/pdfs/Imperium Maledictum Inquisition GM-Guide.pdf" --pages 4-61,74-83,172-174 -o "data/pdfs/md/Imperium Maledictum Inquisition GM-Guide.md"
       uv run python -m dmbot.rag.ingest "data/pdfs/md/Imperium Maledictum Core Rulebook.md" --source rulebook
       uv run python -m dmbot.rag.ingest "data/pdfs/md/IM_SS_Setting_Guide_Book_240722.md" --source setting
+      uv run python -m dmbot.rag.ingest "data/pdfs/md/Imperium_Maledictum_Inqusition_Player's_Guide.md" --source player_guide
+      uv run python -m dmbot.rag.ingest "data/pdfs/md/Imperium Maledictum Inquisition GM-Guide.md" --source gm_guide
       uv run python -m dmbot.rag.ingest "data/lore/imperium.md" --source lore_imperium
       uv run python -m dmbot.rag.ingest "data/lore/chaos.md" --source lore_chaos
       ```
-      The Setting Guide is deliberately pages 1–57 only — the "Villains on Voll" spoiler
-      chapter stays out until the campaign finale (D46). Re-runs are idempotent per source.
+      Deliberate spoiler cuts: the Setting Guide pages 1–57 only ("Villains on Voll" stays out,
+      D46); the Inquisition GM-Guide only its safe reference half (pages 4–61, 74–83, 172–174) —
+      the Heresies Macharia campaign, Sector-Threat villains, Open Case Files, the patron sheets
+      (incl. Halikarn) and the index stay out. The Player's Guide is whole. Idempotent per source.
 - [ ] **Adventure** — `data/adventures/chemical_burn/` in place (from CHECKLIST.md) and
       `DM_ADVENTURE=chemical_burn` set in `.env`, otherwise the DM loads no adventure.
 - [ ] **Sanity check:** ask a Chaos or lore question in a live session — a `📚 lore_…:` line
