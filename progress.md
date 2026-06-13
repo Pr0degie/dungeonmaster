@@ -166,6 +166,17 @@ world-state block (CLAUDE.md prompt order). **Model: mistral-nemo.** Recommended
 gate / any follow-up: **Opus 4.8 / xhigh**.
 
 ## Last session
+**Dev-Tooling: projekt-eigene Claude-Code-Skills + Test-Hook (2026-06-14). Kein Bot-/Phasen-Change, Suite
+unverändert 293 grün.** Tobi fragte nach Skills für den schnelleren Ausbau. Angelegt unter `.claude/skills/`
+(committed via `.gitignore`-Allowlist; `settings.local.json` bleibt lokal): **playtest-triage** (Live-Log →
+diagnostizieren → deterministisch fixen → Suite → committen), **rules-subsystem** (neues Profil-Subsystem im
+Psyker/Augmetik-Muster), **rag-ingest** (PDF → ingest → kalibrieren → verifizieren), **character-build**
+(IM-Charakter validieren+einbauen, Session-Merge erst nach Bestätigung), **session-ritual** (Handshake +
+Wrap-up + nächste ADR). Plus ein `Stop`-Hook (`tools/hooks/test-on-change.sh` + committed
+`.claude/settings.json`): Suite nur bei Änderungen unter `dmbot/`/`tests/`/`data/systems`, **still bei Grün**
+(Output nur bei Rot); `.gitattributes` pinnt `*.sh` auf LF. Index aller Skills in `.claude/skills/README.md`.
+_Kein D-Eintrag/ADR — Dev-Workflow-Infra, kein Bot-Design; Rationale im Skills-README._
+
 **Code-Review-Korrektheitsrunde (2026-06-13, D61 → ADR 030). Suite 293 grün, live-unverified.**
 Tobi: `/code-review` über die Tagescommits, „Funktionalität soll bleiben", danach „fix alles fan out".
 Review als Multi-Agent-Fan-out (9 Finder-Winkel über `5d672b6~1..HEAD` + Pro-Fund-Verifizierer); Fixes
