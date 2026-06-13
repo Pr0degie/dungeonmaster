@@ -1449,10 +1449,15 @@ class VoiceReceiveCog(commands.Cog):
         if not self._retriever.available():
             await ctx.send("Kein RAG-Store vorhanden — `!rules <frage>` braucht `data/vectordb/rag.db`.")
             return
-        hits = await self._retriever.lookup(question, sources=("rulebook",), k=3, max_distance=0.55)
+        # Search the rules corpora that need LLM synthesis (English layout-soup): the Core Rulebook
+        # plus the Inquisition Player's Guide (powers/talents) and the GM-Guide's safe reference
+        # half (Radical Methods, philosophies). Curated German Weltwissen stays on `!lore`.
+        hits = await self._retriever.lookup(
+            question, sources=("rulebook", "player_guide", "gm_guide"), k=3, max_distance=0.55
+        )
         if not hits:
             await ctx.send(
-                f"Dazu finde ich nichts im Regelbuch: *{question}*\n"
+                f"Dazu finde ich nichts in den Regeltexten: *{question}*\n"
                 f"(Ohne Frage zeigt `!rules` die Kurzregeln; Weltwissen: `!lore`.)"
             )
             return
@@ -1473,7 +1478,7 @@ class VoiceReceiveCog(commands.Cog):
         embed = discord.Embed(
             title="📖 Regelauskunft", description=answer[:4000], color=discord.Color.blurple()
         )
-        embed.add_field(name="Quelle (Regelbuch)", value=sources[:1000] or "Regelbuch", inline=False)
+        embed.add_field(name="Quelle (Regeltexte)", value=sources[:1000] or "Regelbuch", inline=False)
         embed.set_footer(text=f"Frage: {question[:200]}")
         await self._send_with_retry(ctx.channel, embed=embed)
 
