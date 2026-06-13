@@ -123,7 +123,8 @@ Horror); Tyraniden/Necrons/T'au ebenfalls leer (Tobi: bewusst ok). Beschlossen +
   Topic-Blättern bleibt (`!lore` / `!lore chaos`). Live gegen die DB verifiziert (7 Fragen:
   Gott-Imperator/Dunkle Götter/Navigator/Rokarth treffen; Tyraniden + Regelfrage korrekt
   stumm mit Hinweis). Plus „Dunkle Götter"-Synonym in chaos.md (war knapp drüber). Tests +2,
-  Suite **189/189**.
+  Suite **189/189**. Polish nach Tobis erstem Blick: der Frage-Footer im Antwort-Embed flog
+  raus (die Frage steht direkt darüber in der Command-Nachricht).
 
 **(Davor) Charaktererstellung (2026-06-12, Runde 2 der Spieler-Doku).** Die Runde will neue
 Charaktere (ersetzen Garran/Eli/Yann; Chemical Burn startet dann frisch). Gebaut:
@@ -593,6 +594,9 @@ and the never-say secrets). Then `!j` **in circlejerk** and check in this order:
 8. **Lore (D48/ADR 021):** eine Chaos-Frage („Was weiß man über die Chaosgötter?") → grimdark
    Antwort mit Kompendiums-Färbung (`📚`-Logzeile zeigt `lore_chaos:`); eine Imperiums-Frage
    („Was ist das Astronomican?") zeigt `lore_imperium:`.
+9. **`!lore` (D49):** `!lore` blättert (◀/▶), `!lore wer ist der Imperator?` antwortet als
+   Embed (Retrieval offline schon verifiziert — hier nur checken, dass Embed + Buttons im
+   echten Discord rendern).
 Watch `ctx=` in the `[latency]` lines — the adventure block adds ~1k tokens; the D36 warning
 fires above 85% of 8192. Dial: **Opus 4.8 / xhigh** (roadmap recommends opusplan/high for
 Phase 10 planning; the building is done — the run is verification).
@@ -1071,6 +1075,13 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 ---
 
 ## Open questions / to clarify
+
+**From the lore work (2026-06-13):**
+- **`!lore`-Antworten zu Rokarth sind englisch** — die `setting`-Quelle ist der englische
+  Setting-Guide-Text; eine Rokarth-Frage liefert also rohe englische Chunks ins Spieler-Embed
+  (Imperium/Chaos kommen deutsch aus dem Kompendium). Kosmetik; Optionen wären eine deutsche
+  Rokarth-Sektion im Kompendium oder `setting` aus den `!lore`-Quellen nehmen. Erst mal
+  beobachten, ob es die Runde stört.
 
 **From the Phase-7 playtests (2026-06-06) — carry into Phase 8 / quality work:**
 - ✅ **(gemma3) Taste test done (2026-06-08).** gemma3:12b narrates cleaner than nemo (no
