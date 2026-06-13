@@ -123,3 +123,22 @@ settled context at length in the first place. That is a persona-shaping problem,
 - **Prompt-only by intent.** No code guard was built here — D45's fuzzy guard remains the safety net
   for the verbatim-echo failure mode. To verify live: observe nemo's adherence; if it keeps
   re-narrating despite the rule, a code-side length/overlap guard on settled context is the fallback.
+
+## Follow-up (2026-06-13, D56) — XTTS sentence-splitter off + repetition penalty up
+
+D53 hardened the *text* fed to XTTS (whitelist + speakability guard) and deferred two XTTS sampling
+levers "only if needed after a live test". The live test needed them: the voice still went haywire
+**at punctuation** ("Psychosen bei Satzzeichen") — autoregressive looping/babble around commas and
+sentence ends, not a normalization leak. Two changes in `dmbot/tts/xtts.py` (`_SYNTH_KWARGS`, passed
+to both `tts_to_file` calls):
+- **`split_sentences=False`.** `textsplit` already splits the answer into <240-char, sentence-grouped
+  chunks. With the default `split_sentences=True`, XTTS re-tokenises each chunk with its own pysbd
+  splitter, and on the tiny punctuation-heavy fragments that produces the GPT decoder loops. Disabling
+  it makes XTTS render our already-clean chunk as one unit. Safe because our chunks are sub-limit.
+- **`repetition_penalty=10.0`** (env `XTTS_REPETITION_PENALTY`). The downloaded model **config** ships
+  `5.0`; XTTS's own `inference` default is the stronger anti-loop `10.0`. The high-level path used the
+  config's 5.0 — we lift it back to 10.0 via a kwarg (verified it flows `tts_to_file` → `Synthesizer.tts`
+  → `Xtts.synthesize`, which does `inference_settings.update(kwargs)`).
+- **Live-unverified** (audio can't be unit-tested): suite stays green (246) and the kwarg plumbing is
+  confirmed by API inspection, but whether the babble is gone is Tobi's ear on the next session.
+  If it persists: lower `temperature` (config 0.75) is the next lever.

@@ -31,6 +31,19 @@ _DEFAULT_SPEAKER = "Dionisio Schuyler"
 
 _CHUNK_GAP_S = 0.15  # a little silence between re-joined chunks so they don't run together
 
+# XTTS sampling overrides, passed straight to ``tts_to_file`` (ADR 016 follow-up, D56). Two levers
+# D53 deferred until a live test proved them needed — it did ("Psychosen bei Satzzeichen"):
+#   * ``split_sentences=False`` — we already split into <240-char, sentence-grouped chunks
+#     (``textsplit``), so XTTS's own pysbd splitter only re-tokenises them, and on the tiny
+#     punctuation fragments it produces the autoregressive GPT loops/babbles at sentence ends.
+#   * ``repetition_penalty=10.0`` — the model config ships 5.0; XTTS's own inference default is the
+#     stronger anti-loop 10.0. Lift it back to that (tunable via ``XTTS_REPETITION_PENALTY``).
+try:
+    _REPETITION_PENALTY = float(os.environ.get("XTTS_REPETITION_PENALTY", "10.0"))
+except ValueError:
+    _REPETITION_PENALTY = 10.0
+_SYNTH_KWARGS = {"split_sentences": False, "repetition_penalty": _REPETITION_PENALTY}
+
 
 def _concat_wavs(parts: list[str], out_path: str, gap_s: float = _CHUNK_GAP_S) -> None:
     """Concatenate same-format WAV files into ``out_path`` with a short silence between each."""
@@ -127,7 +140,9 @@ class XttsTTS:
         """Render ``text`` in the active speaker's voice to a fresh WAV; return its path.
 
         Long answers are split into <240-char chunks (XTTS truncates a longer single chunk for
-        German) — each chunk is synthesised separately and the WAVs are concatenated."""
+        German) — each chunk is synthesised separately and the WAVs are concatenated. XTTS's own
+        sentence splitter is disabled (``_SYNTH_KWARGS``) so it renders our clean chunks as-is
+        instead of re-tokenising them into punctuation fragments it then babbles on."""
         fd, path = tempfile.mkstemp(prefix="dm_tts_", suffix=".wav")
         os.close(fd)
         chunks = chunk_text(normalize_for_tts(text))  # speech-only cleanup, then split for XTTS's char limit
@@ -136,7 +151,8 @@ class XttsTTS:
             return path
         if len(chunks) <= 1:
             self._tts.tts_to_file(
-                text=chunks[0], speaker=self._speaker, language=self._language, file_path=path
+                text=chunks[0], speaker=self._speaker, language=self._language, file_path=path,
+                **_SYNTH_KWARGS,
             )
             return path
         parts: list[str] = []
@@ -145,7 +161,8 @@ class XttsTTS:
                 cfd, cpath = tempfile.mkstemp(prefix="dm_tts_part_", suffix=".wav")
                 os.close(cfd)
                 self._tts.tts_to_file(
-                    text=chunk, speaker=self._speaker, language=self._language, file_path=cpath
+                    text=chunk, speaker=self._speaker, language=self._language, file_path=cpath,
+                    **_SYNTH_KWARGS,
                 )
                 parts.append(cpath)
             _concat_wavs(parts, path)
