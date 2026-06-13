@@ -15,7 +15,7 @@ loudest failure — *the DM improvises from nothing* — needed Phase 10 pulled 
 threshold-gated `## Regelwerk` block; store built offline, 1505 chunks, verified: "kritischer
 Erfolg"/"Schwierigkeit" hit the right sections, table talk stays silent). Plus the **W4
 self-repetition guard** (fuzzy match against the DM's own previous answer, retry-then-suppress).
-Suite **189/189**. `DM_ADVENTURE=chemical_burn` is set in `.env`. _Open in Phase 10: the profile
+Suite **191/191**. `DM_ADVENTURE=chemical_burn` is set in `.env`. _Open in Phase 10: the profile
 bootstrap (gate half 2, ADR 005); the lore corpus is now covered for the needed factions —
 **D48/ADR 021** curated German Imperium+Chaos compendium (`data/lore/`, sources `lore_imperium`/
 `lore_chaos`), offline-verified; only D28's broad wiki corpus stays a later option._ **Both live
@@ -78,6 +78,33 @@ world-state block (CLAUDE.md prompt order). **Model: mistral-nemo.** Recommended
 gate / any follow-up: **Opus 4.8 / xhigh**.
 
 ## Last session
+**Player-prep tooling + `!rules <frage>` (2026-06-13, D50).** A session of player-facing prep and one
+new command, no core-pipeline change.
+- **`!rules <frage>` answers a rule question from the book (D50).** `!rules` with no arg still pages
+  the system's short rules; with a question it retrieves the matching rulebook chunks
+  (`source=rulebook`, `lookup(..., max_distance=0.55)`) and the new `DMBrain.answer_rules` has the
+  LLM synthesise a **short German answer grounded only in those excerpts** (golden rule #7 — say so
+  when the book doesn't cover it; never invent rules). Unlike `!lore <frage>` (raw curated German
+  chunks), the rulebook is English layout-soup → an LLM translate/condense step is needed. No hits →
+  honest "nichts im Regelbuch". Reading material, never spoken. Verified end-to-end against the live
+  store (Ausweichen, kritischer Treffer → correct grounded answers); +3 unit tests. **Suite 191.**
+- **Character-creation guide made self-explanatory** (`docs/how-to-create-a-character.html`): a new
+  un-numbered **glossary** ("Begriffe") explaining dice notation (1W10+5), bonus = tens digit, how a
+  d100 roll-under Probe + difficulty ladder + EG work, and — the main stumbling block — wounds/soak/
+  kampfunfähig (`Waffe + EG − Soak`, 0 = down), plus origin and inventory explainers; all grounded in
+  the profile + `engine.resolve_damage`. Compact at-a-glance **homeworld** and **weapon** tables added
+  at the form's dropdowns so you don't click through.
+- **Character-sheet filler reworked to editable PDFs** (`tools/fill_character_sheet.py`): the bought
+  sheet is a graphical raster, so every value is now a real **AcroForm text field** (transparent fill)
+  pre-filled with the computed value — editable in any reader. **Every** fillable area is a field now
+  (all skill rows, weapon/armour/hit-location tables, talents, influence, psychic powers, equipment,
+  multi-line goals/connections/notes/combat-notes), with grid/multiline helpers; positions read off
+  the raster by pixel analysis (fixed weapon-row drift, the page-1 skill/spec 20-px cumulative drift,
+  distinguishing/XP, encumbrance, Body hit-location). New `tools/example_garran_vex.json` (own grimdark
+  flavour, committed) drives a fully filled Garran Vex example → `data/pdfs/Garran_Vex.pdf` (git-ignored
+  derivative). Back-compat: the mechanical party file still renders. Note: the three Initiative
+  Melee/Ranged/Reflexes boxes are a quick-reference (not a required derived stat, IM p.88).
+
 **Lore-Korpus: kuratiertes deutsches Imperium+Chaos-Kompendium (2026-06-13, D48 → ADR 021).**
 Tobi fragte „ist die Lore drin?" → Live-Probe gegen `rag.db`: Menschen-Lore trifft aus dem
 englischen Rulebook (Imperium d=0.27, Inquisition d=0.34), aber **Chaos-Kosmologie existiert in
@@ -752,6 +779,7 @@ create the next-numbered ADR.
 | D46 | Starter Set as lore + patron source | **(a)** The Starter Set's **Setting Guide → `source=setting`** in the existing RAG store (pages 1–57 only — the „Villains on Voll" chapter with the Mireclaw reveal stays out until the campaign finale); retrieval searches rulebook+setting and groups hits as `## Regelwerk` / `## Weltwissen (… nur als Färbung nutzen)`, TOP_K=3 total. **(b)** The **Aegidius-Halikarn patron sheet** folded into the chemical_burn compendium (Motivation Information, Auftreten undurchschaubar, Boons incl. Sanctum-Obscurus-Ausstattung in der Thaler-Szene). „The Blazing Seraph" (SS adventure book) wird erst NACH dem Chemical-Burn-Live-Test zum zweiten Kompendium | The Setting Guide is a better first lore source than D28's wiki plan: campaign-specific (Chemical Burn plays in Rokarth), curated, already owned — wikis stay the later broad-lore step. Spoiler discipline (ADR 019) applies to lore too: similarity must not surface the villain chapter on „wer steckt dahinter?" (verified: the question returns nothing). Applies ADR 019, no new trade-off → D-entry, no new ADR |
 | D47 | Visible, fast shutdown | **(a)** TTS synth runs on an **abandonable daemon thread** (`dmbot/shutdown.py` `to_daemon_thread`, replacing `asyncio.to_thread` in `_speak` + the streaming `synth_worker`) so a synth in flight at Ctrl+C is dropped, never join-blocking exit. **(b)** A thread-safe **`[i/n] label` step display** (`ShutdownProgress`/`progress`): `DMBot.close()` declares the count up front (voice disconnects + each cog's `TEARDOWN_STEPS` + the Discord close) and wraps every stage; `cog_unload` reports its four closes; a final summary names any dropped synth. Outside a shutdown, `step()` is a plain log line | Tobi: the bot quit slowly and silently. Cause of the slowness: asyncio's default executor threads are **non-daemon**, so the interpreter joined a multi-second GPU XTTS synth at exit — pure dead wait, the WAV is moot once quitting. Daemon-abandon is the only real lever (XTTS isn't cancelable). The display answers "what/how many is being shut down". Targeted to TTS only (close paths keep normal threads) → **ADR 020** |
 | D48 | Curated German lore compendium | **Hand-authored `data/lore/imperium.md` + `chaos.md`** (German, grimdark in-world; **committed** — own wording of freely available 40k common knowledge, revised same day from the initial local-only stance) → two new RAG sources **`lore_imperium`/`lore_chaos`**, grouped as `## Weltwissen (Imperium …)` / `## Weltwissen (Chaos — verbotenes Wissen …)`, block order rules → broad lore → local Rokarth. Threshold stays 0.45 global. Tobi's calls: two files/two sources, both ausführlich, grimdark | Live probe (2026-06-13): human lore retrieves from the English rulebook (Imperium d=0.27) but **Chaos cosmology doesn't exist in the IM books** ("vier Chaosgötter" d=0.53 miss — by design, Chaos as hidden horror); RAG can't retrieve what was never written, and German-vs-English inflates distances. German authored text wins TOP_K for German lore questions (verified 0.28–0.44) while rules keep hitting the rulebook. Wiki dump (D28) stays the later breadth step; Tyranids/Necrons/T'au deliberately absent (Tobi) → **ADR 021** |
+| D50 | `!rules <frage>` command | **Two modes** — `!rules` (alias `!regeln`) still pages the system's short rules (◀/▶); **`!rules <frage>`** retrieves the matching rulebook chunks (`RulebookRetriever.lookup(sources=("rulebook",), k=3, max_distance=0.55)`) and the new **`DMBrain.answer_rules`** has the LLM synthesise a short German answer grounded **only** in those excerpts (golden rule #7: no invented rules; "Regelbuch hergibt nichts" when uncovered). No hits → honest "nichts im Regelbuch". Read-only embed, never spoken; +3 unit tests | Counterpart to D49's `!lore <frage>`, but the rulebook is **English layout-soup**, so raw chunk display (the `!lore` model) is unreadable — a rule question needs an LLM translate/condense step, unlike curated German lore. Grounding it in retrieved chunks (not the model's gut) is golden rule #7 applied, not a new trade-off → D-entry, no ADR. Verified end-to-end against the live store (Ausweichen, kritischer Treffer → correct) |
 | D49 | `!lore` command | **Weltwissen, two modes** — `!lore [topic]` (alias `!hintergrund`) pages `data/lore/<topic>.md` (no arg → `imperium`, `!lore chaos` → Chaos) through the existing `RulesView` (◀/▶); **`!lore <frage>`** (same-day extension, Tobi) looks the question up in the vector store and posts the best-matching compendium sections as an embed — new `RulebookRetriever.lookup()` (caller-picked sources = `lore_imperium`/`lore_chaos`/`setting` only, k=2, **own ceiling 0.52**), deterministic chunk display, no LLM. New pure `dmbot/rag/lore.py` (`lore_pages`: heading = page, H1 + `>`-source-note skipped, >4000-char guard; `available_topics`). Read-only — no TTS, no DM turn. Plus `tools/lore_to_html.py` → `docs/lore.html` (grimdark standalone, review/handout view, re-run after lore edits) | Tobi wants players to read an ausführlicher human-lore rundown (reviewed via HTML first) AND ask direct lore questions; the readable file covers the rundown case. Single source of truth: command, RAG Weltwissen and handout all read the same committed files. Lookup ceiling tuned on live probes: looser than the 0.45 prompt gate (narrative phrasings ~0.48 deserve an answer on an explicit ask) but under 0.54 where the off-corpus Tyranid question grabbed the nearest wrong chunk — "steht nichts im Weltwissen" beats a misleading hit. Rulebook excluded (English layout soup; rule questions → `!rules`/DM turn). Applies existing patterns → D-entry, no ADR |
 
 ### Phase → ADR map (read these when you enter the phase)
