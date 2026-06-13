@@ -31,7 +31,7 @@ _DEFAULT_SPEAKER = "Dionisio Schuyler"
 
 _CHUNK_GAP_S = 0.15  # a little silence between re-joined chunks so they don't run together
 
-# XTTS sampling overrides, passed straight to ``tts_to_file`` (ADR 016 follow-up, D56). Two levers
+# XTTS sampling overrides, passed straight to ``tts_to_file`` (ADR 016 follow-up, D55). Two levers
 # D53 deferred until a live test proved them needed — it did ("Psychosen bei Satzzeichen"):
 #   * ``split_sentences=False`` — we already split into <240-char, sentence-grouped chunks
 #     (``textsplit``), so XTTS's own pysbd splitter only re-tokenises them, and on the tiny

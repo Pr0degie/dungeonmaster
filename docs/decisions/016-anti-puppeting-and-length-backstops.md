@@ -124,7 +124,7 @@ settled context at length in the first place. That is a persona-shaping problem,
   for the verbatim-echo failure mode. To verify live: observe nemo's adherence; if it keeps
   re-narrating despite the rule, a code-side length/overlap guard on settled context is the fallback.
 
-## Follow-up (2026-06-13, D56) — XTTS sentence-splitter off + repetition penalty up
+## Follow-up (2026-06-13, D55) — XTTS sentence-splitter off + repetition penalty up
 
 D53 hardened the *text* fed to XTTS (whitelist + speakability guard) and deferred two XTTS sampling
 levers "only if needed after a live test". The live test needed them: the voice still went haywire
