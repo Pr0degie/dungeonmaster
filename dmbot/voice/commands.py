@@ -11,6 +11,7 @@ Foreign voice-recv wiring stays inside ``voice/`` (CLAUDE.md). Bot replies are G
 from __future__ import annotations
 
 import asyncio
+import threading
 import logging
 import os
 import random
@@ -318,18 +319,31 @@ class VoiceReceiveCog(commands.Cog):
             retriever=self._retriever if self._retriever.available() else None,
         )
         self._bridge = BridgeClient(bridge_host, bridge_port, secret=bridge_secret)
-        # Load the TTS backend once. xtts is imported lazily so Piper users don't pull torch.
-        # If loading fails, keep running text-only (answers still post, just aren't spoken).
+        # Load the TTS backend OFF the boot path so the bot is ready fast (ADR 020 made shutdown
+        # fast; this does the same for startup). The XTTS/Coqui load is several seconds of torch +
+        # GPU; a daemon thread builds it while Discord connects, and the synth paths wait on
+        # _tts_ready *in their worker thread* (never blocking the event loop). on_ready fires
+        # immediately and the model is virtually always loaded before anyone !joins and speaks.
+        # xtts is imported lazily so Piper users don't pull torch; a load failure → text-only.
         self._tts = None
-        try:
-            if tts_engine == "xtts":
-                from ..tts.xtts import XttsTTS  # heavy import (torch) — only when selected
+        self._tts_enabled = True            # a backend is configured; flips False if the load fails
+        self._tts_ready = threading.Event()  # set once the load thread finishes (success or failure)
 
-                self._tts = XttsTTS(tts_speaker, device=tts_device)
-            else:
-                self._tts = PiperTTS(tts_voice) if tts_voice else PiperTTS()
-        except Exception:
-            log.exception("TTS unavailable (%s) — DM answers won't be spoken", tts_engine)
+        def _load_tts() -> None:
+            try:
+                if tts_engine == "xtts":
+                    from ..tts.xtts import XttsTTS  # heavy import (torch) — only when selected
+
+                    self._tts = XttsTTS(tts_speaker, device=tts_device)
+                else:
+                    self._tts = PiperTTS(tts_voice) if tts_voice else PiperTTS()
+            except Exception:
+                log.exception("TTS unavailable (%s) — DM answers won't be spoken", tts_engine)
+                self._tts_enabled = False
+            finally:
+                self._tts_ready.set()
+
+        threading.Thread(target=_load_tts, name="tts-load", daemon=True).start()
         # STT worker (Phase 4): loads faster-whisper in its own thread, transcribes off the
         # audio path. Started here so a broken cuDNN surfaces at boot, not on first utterance.
         self._transcriber = Transcriber(
@@ -403,6 +417,15 @@ class VoiceReceiveCog(commands.Cog):
         with progress.step("Bridge zu Bot A schließen"):
             await self._bridge.aclose()
 
+    def _synthesize(self, text: str) -> str | None:
+        """Synthesise ``text`` to a WAV path, first waiting on the boot-time TTS preload
+        (``_tts_ready``) so the very first spoken line waits for the model if it's still loading.
+        Runs in a worker thread (``to_daemon_thread``), so the wait never blocks the event loop.
+        ``None`` when no backend is available (load failed)."""
+        self._tts_ready.wait()
+        tts = self._tts
+        return tts.synthesize(text) if tts is not None else None
+
     async def _speak(self, text: str, guild_id: int | None,
                      timing: _TurnTiming | None = None) -> bool:
         """Synthesise ``text`` and play it via Bot A's /speak bridge. Returns True if it played.
@@ -412,13 +435,16 @@ class VoiceReceiveCog(commands.Cog):
         DMbot does not transcribe its own DM voice even without pausing the VAD. ``timing`` (when
         a DM turn passes one) collects the tts / wav / bridge_wait stages for the [latency] line.
         """
-        if self._tts is None:
+        if not self._tts_enabled:
             return False
         try:
             t0 = time.perf_counter()
             # Daemon thread, not asyncio.to_thread: a GPU synth in flight at Ctrl+C must not
             # join-block shutdown (the WAV is moot once we're quitting). See dmbot/shutdown.py.
-            wav = await to_daemon_thread(self._tts.synthesize, text)
+            # _synthesize waits for the boot-time TTS preload inside the thread (never the loop).
+            wav = await to_daemon_thread(self._synthesize, text)
+            if wav is None:
+                return False
             tts_ms = round((time.perf_counter() - t0) * 1000)
             log.info("🔊 TTS %d ms → speaking", tts_ms)
         except Exception:
@@ -490,7 +516,7 @@ class VoiceReceiveCog(commands.Cog):
     def _use_streaming(self) -> bool:
         """Stream the answer (ADR 017) only when streaming is on AND a TTS backend loaded — a
         text-only run has nothing to stream audio for, so it takes the byte-identical batch path."""
-        return self._streaming and self._tts is not None
+        return self._streaming and self._tts_enabled
 
     async def _handle_dice(self, channel) -> None:
         """Post the turn's dice button. The router wins when it's on (D43, flips D40's dedupe):
@@ -609,13 +635,16 @@ class VoiceReceiveCog(commands.Cog):
                 if s is None:
                     await wav_q.put(None)
                     return
-                if self._paused or self._tts is None:
+                if self._paused or not self._tts_enabled:
                     continue
                 try:
                     t0 = time.perf_counter()
                     # Daemon thread (see dmbot/shutdown.py): a streamed-sentence synth in flight
-                    # at Ctrl+C is abandoned, never join-blocking the shutdown.
-                    wav = await to_daemon_thread(self._tts.synthesize, s)
+                    # at Ctrl+C is abandoned, never join-blocking the shutdown. _synthesize waits
+                    # for the boot-time TTS preload inside the thread (never the event loop).
+                    wav = await to_daemon_thread(self._synthesize, s)
+                    if wav is None:
+                        continue
                 except Exception:
                     log.exception("TTS synthesis failed (streamed sentence) — skipping it")
                     continue
@@ -1529,7 +1558,7 @@ class VoiceReceiveCog(commands.Cog):
         silent rundown); reuses ``_speak`` so the feedback guard + WAV cleanup are identical to
         a DM turn. Pages are spoken one at a time so /speak blocks per section, not the whole
         file at once."""
-        if self._tts is None:
+        if not self._tts_enabled:
             await ctx.send("Keine TTS-Stimme geladen (siehe SETUP B5).")
             return
         path = lore_dir / f"{topic}.md"
@@ -1752,7 +1781,7 @@ class VoiceReceiveCog(commands.Cog):
     @commands.command(name="say")
     async def say(self, ctx: commands.Context, *, text: str) -> None:
         """Speak arbitrary text through Piper + Bot A — a TTS/bridge smoke test."""
-        if self._tts is None:
+        if not self._tts_enabled:
             await ctx.send("Keine TTS-Stimme geladen (siehe SETUP B5).")
             return
         if await self._speak(text, ctx.guild.id if ctx.guild else None):

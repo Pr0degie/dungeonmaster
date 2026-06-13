@@ -61,11 +61,13 @@ if errorlevel 1 (
     echo [i] OLLAMA_HOST is remote ^(%OLLAMA_HOST_CFG%^) - not starting a local Ollama.
     goto after_ollama
 )
-echo Warming up Ollama ^(starts the daemon if needed, loads %OLLAMA_MODEL_CFG% - may take ~15s on a cold start^)...
-REM 'ollama list' boots the Windows Ollama app if it isn't already running.
+echo Warming up Ollama in the background ^(daemon + model load run in parallel with the bot^)...
+REM 'ollama list' boots the Windows Ollama app if it isn't already running (quick).
 ollama list >nul 2>nul
-REM One tiny generation loads the model into VRAM so the first DM turn is instant.
-ollama run %OLLAMA_MODEL_CFG% "ok" >nul 2>nul
+REM Load the model into VRAM in the BACKGROUND so the bot launches immediately instead of waiting
+REM ~15s on a cold start; the model is ready well before the first DM turn (which needs a !join +
+REM speech first). Single-GPU Ollama just queues the first turn behind the warm-up if it's not done.
+start "" /b cmd /c "ollama run %OLLAMA_MODEL_CFG% ok >nul 2>&1"
 :after_ollama
 
 echo Starting DMbot ...  (press Ctrl+C to stop)
