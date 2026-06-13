@@ -1,0 +1,73 @@
+{
+  "_note": "Spieler-Charakter 'Fridolin Feuchtgebietheld' (Interrogator der Inquisition, Stealth-Psioniker). Gebaut nach docs/how-to-create-a-character.html (90-Punkte-Kauf, Herkunft Schreinwelt +5 Wil/+5 Fel, 6 Skill-Steigerungen, Wunden = StrB + 2xTghB + WilB = 10). Psyker-Paket 'Schatten & Verhoer' (alle known_powers sind Katalog-Schluessel in data/systems/imperium_maledictum.json -> <<MANIFEST>>-Flow funktioniert). ANNAHME (anpassbar): Psi-Meisterschaft 51 / Disziplin (Psi) 46 sind das Psyker-Paket und liegen AUSSERHALB der 6 Mundan-Steigerungen, die die Anleitung nicht fuer Psyker-Skills budgetiert. 'player'/aliases ggf. auf den richtigen Discord-Namen aendern.",
+  "system": "imperium_maledictum",
+  "characters": [
+    {
+      "name": "Fridolin Feuchtgebietheld",
+      "player": "Pr0degie",
+      "origin": "Schreinwelt",
+      "faction": "Inquisition",
+      "concept": "Interrogator & Psioniker — verdeckter Ermittler mit verborgener Laspistole",
+      "patron": "Aegidius Halikarn",
+      "age": "34",
+      "eyes": "blass-grau",
+      "hair": "dunkel, kurzgeschoren",
+      "height": "1,78 m",
+      "weight": "71 kg",
+      "handedness": "links",
+      "distinguishing": "Unscheinbar bis zur Unsichtbarkeit; ein kaum sichtbares Aquila-Brandmal in der linken Handfläche",
+      "xp_total": "0",
+      "xp_spent": "0",
+      "fate_current": "3",
+      "fate_total": "3",
+      "corruption": "0",
+
+      "characteristics": { "WS": 28, "BS": 28, "Str": 24, "Tgh": 26, "Ag": 38, "Int": 26, "Per": 32, "Wil": 41, "Fel": 37 },
+      "skills": {
+        "Heimlichkeit": 48,
+        "Überreden": 42,
+        "Wahrnehmung": 37,
+        "Nahkampf": 33,
+        "Fernkampf": 33,
+        "Psi-Meisterschaft": 51,
+        "Disziplin (Psi)": 46
+      },
+      "wounds": 10, "max_wounds": 10,
+      "conditions": [],
+
+      "inventory": ["Laspistole", "Kampfmesser", "Inquisitorisches Siegel", "Tarnumhang", "Daten-Slate"],
+
+      "psyker": true,
+      "disciplines": ["Telepathie"],
+      "known_powers": ["Smite", "Psychic Static", "Psychic Scrutiny", "Dread Presence", "Soulsight"],
+
+      "weapons": [
+        { "name": "Laspistole", "test": "33", "damage": "1W10+3", "range": "15 m", "mag": "30", "enc": "1", "traits": "Verlässlich, Verborgen (am Körper kaschiert)" },
+        { "name": "Kampfmesser", "test": "33", "damage": "1W10+1", "range": "Nah", "mag": "—", "enc": "0", "traits": "Leise" }
+      ],
+      "armour": [
+        { "name": "Gewachster Tarnmantel (eingenähte Flak-Einlagen)", "locations": "Körper", "armour": "1", "enc": "1", "traits": "Unauffällig" }
+      ],
+      "hit_location_armour": { "Head": "0", "Left Arm": "0", "Right Arm": "0", "Left Leg": "0", "Right Leg": "0", "Body": "1" },
+      "equipment": ["Inquisitorisches Siegel (verdeckt)", "Tarnumhang", "Daten-Slate", "Dietrich-Set", "Schattenbrille (Dämmerungssicht)", "Vorratsration ×2"],
+      "encumbrance_current": "3",
+      "encumbrance_max": "6",
+      "init_melee": "33",
+      "init_ranged": "33",
+      "init_reflexes": "38",
+
+      "talents": [
+        { "name": "Psioniker", "effect": "Kann psychische Kräfte manifestieren (Minor-Kräfte + Telepathie-Flavor). Manifest über Psi-Meisterschaft; Warp-Schwelle 4 (WillkürB)." },
+        { "name": "Leichtfüßig", "effect": "Bewegt sich lautlos; im Schatten kaum auszumachen — Rückhalt für hohe Heimlichkeit." },
+        { "name": "Glatte Zunge", "effect": "Findet im Verhör und Gespräch den richtigen Hebel — Rückhalt für Überreden." }
+      ],
+
+      "goals": "Kurzfristig: Den eigentlichen Drahtzieher hinter dem aktuellen Fall stellen, bevor er untertaucht.\nLangfristig: Beweisen, dass seine Gabe ein Werkzeug des Imperators ist und kein Makel — und nicht selbst dem Warp anheimfallen.",
+      "connections": "Inquisitor Aegidius Halikarn — sein Patron; deckt ihn, solange er liefert.\nEine namenlose Stimme im Vox — Informant aus den Unterstädten, bezahlt in Gefälligkeiten.",
+      "notes": "Trägt die Pistole stets verborgen und zieht sie erst im letzten Moment. Tritt höflich und harmlos auf, hört mehr zu als er spricht. Misstraut seiner eigenen Gabe — wirkt Kräfte sparsam, um unter der Warp-Schwelle (4) zu bleiben.",
+      "divination": "Im Schatten wartet der Diener; im Licht spricht der Herr.",
+      "combat_notes": "Erst aus der Deckung / aus dem Schatten heraus. 'Psychic Static' (Leicht) macht ihn psionisch unsichtbar — damit anschleichen oder entkommen. 'Psychic Scrutiny' (Leicht) vor dem Verhör/Gespräch, um die Schwäche des Ziels zu lesen. 'Dread Presence' bricht eine Übermacht. 'Smite' (ignoriert Rüstung) als Notnagel. Nahkampf nur, wenn lautlos nötig (Kampfmesser). WICHTIG: Jede gewirkte Kraft erhöht die Warp-Aufladung — über Schwelle 4 droht am Handlungsende die Perils-of-the-Warp-Probe."
+    }
+  ],
+  "aliases": { "Pr0degie": "Fridolin Feuchtgebietheld", "Tobi": "Fridolin Feuchtgebietheld" }
+}
