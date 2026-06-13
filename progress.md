@@ -128,6 +128,23 @@ world-state block (CLAUDE.md prompt order). **Model: mistral-nemo.** Recommended
 gate / any follow-up: **Opus 4.8 / xhigh**.
 
 ## Last session
+**Faster startup — background TTS load + parallel Ollama warm-up (2026-06-13 → ADR 024).** Tobi
+liked the fast shutdown (ADR 020) and asked for a faster start, then "robust und zuverlässig".
+Two synchronous boot costs blocked "bot ready": the XTTS/Coqui load (torch + GPU, several seconds)
+in the cog `__init__`, and `start_dmbot.bat`'s `ollama run` warm-up (~15 s cold) *before* launch.
+- **TTS now loads on a daemon thread** → `on_ready` fires immediately. A `_tts_enabled` flag drives
+  the is-speech-on checks (replacing `self._tts is not None`), and `_synthesize()` waits on a
+  `_tts_ready` event **inside the worker thread** (never the loop), so the first spoken line waits
+  for the model only if still loading (virtually always warm by first `!join`+speech).
+- **`start_dmbot.bat`** backgrounds the model warm-up (`start /b`) so it overlaps boot; the
+  boot-time `check_ollama` preflight (reachability + model pulled) is unchanged — only residency is
+  deferred. Single-GPU Ollama queues the first turn behind the warm-up; 300 s read timeout covers it.
+- **Robustness hardening** (restores ADR 020-era fail-fast without re-blocking boot): bounded wait
+  (`_TTS_LOAD_TIMEOUT_S` 90 s → a hung load degrades to text-only, not a frozen synth); loud boot
+  logging (`loading … / ready in N s / FAILED`); a `!join` guard that announces ⚠ no-speech / ⏳
+  still-loading. Suite **230**. _Live-verify: console reaches "logged in as" fast; `!join` shows the
+  notice when relevant; first DM sentence is spoken._
+
 **New player party assembled + deployed, Inquisition guides into the RAG (2026-06-13).** A
 player-prep + content session, no core-pipeline change.
 - **New party (replaces Garran/Eli/Yann):** built **Fridolin Feuchtgebietheld** (Schreinwelt
