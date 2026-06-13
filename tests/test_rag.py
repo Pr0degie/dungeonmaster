@@ -12,7 +12,7 @@ from pathlib import Path
 import sqlite_vec
 
 from dmbot.rag.ingest import chunk_markdown, ensure_schema
-from dmbot.rag.retrieve import RulebookRetriever, _is_junk_hit
+from dmbot.rag.retrieve import RulebookRetriever, _conn_cache, _is_junk_hit, _vec_conn
 
 
 # --- chunking ----------------------------------------------------------------------------------
@@ -49,6 +49,7 @@ def test_long_sections_split_into_multiple_chunks() -> None:
 # --- retrieval (fixture DB, fake 4-dim embeddings) ------------------------------------------------
 
 def _fixture_db(tmp_path: Path) -> Path:
+    tmp_path.mkdir(parents=True, exist_ok=True)  # callers may pass a not-yet-created subdir
     db = tmp_path / "rag.db"
     conn = sqlite3.connect(db)
     conn.enable_load_extension(True)
@@ -212,3 +213,88 @@ def test_lookup_respects_ceiling_and_degrades_silently(tmp_path) -> None:
 
     r._embed_query = boom  # type: ignore[method-assign]
     assert asyncio.run(r.lookup("Frage?", sources=("lore_chaos",))) == []  # never breaks the command
+
+
+# --- cached vec connection (efficiency: don't reload the extension every call) -------------------
+
+def _clear_conn_cache() -> None:
+    """Drop any thread-local connections so a test starts from a cold cache."""
+    cache = getattr(_conn_cache, "conns", None)
+    if cache:
+        for conn in cache.values():
+            try:
+                conn.close()
+            except sqlite3.Error:
+                pass
+        cache.clear()
+
+
+def test_search_returns_identical_rows_across_repeated_calls(tmp_path) -> None:
+    """The cached connection must not change what _search returns — same rows, same order, same
+    distances on the second (cache-hit) call as on the first (cache-miss) call."""
+    _clear_conn_cache()
+    db = _fixture_db(tmp_path)
+    r = _retriever(db, [1.0, 0.0, 0.0, 0.0])
+    vec = [1.0, 0.0, 0.0, 0.0]
+    first = r._search(vec)
+    second = r._search(vec)
+    assert first == second
+    assert first  # the DIFFICULTY chunk sits on the query vector → at least one hit
+    assert first[0][1] == "DIFFICULTY"  # heading, best-first ordering preserved
+    _clear_conn_cache()
+
+
+def test_vec_conn_is_reused_within_a_thread(tmp_path) -> None:
+    """Same thread + same db path → the very same connection object, so the vec extension is
+    loaded only once."""
+    _clear_conn_cache()
+    db = _fixture_db(tmp_path)
+    c1 = _vec_conn(db)
+    c2 = _vec_conn(db)
+    assert c1 is c2
+    _clear_conn_cache()
+
+
+def test_vec_conn_is_keyed_by_db_path(tmp_path) -> None:
+    """A second store at a different path gets its own connection — a new Retriever on another db
+    must not be served the first db's handle."""
+    _clear_conn_cache()
+    db_a = _fixture_db(tmp_path / "a")
+    db_b = _fixture_db(tmp_path / "b")
+    ca = _vec_conn(db_a)
+    cb = _vec_conn(db_b)
+    assert ca is not cb
+    assert _vec_conn(db_a) is ca  # still cached per path
+    _clear_conn_cache()
+
+
+def test_vec_conn_recreates_a_closed_connection(tmp_path) -> None:
+    """A stale/closed cached handle is detected by the liveness probe and replaced, so retrieval
+    keeps working instead of raising on a dead connection."""
+    _clear_conn_cache()
+    db = _fixture_db(tmp_path)
+    c1 = _vec_conn(db)
+    c1.close()  # simulate a connection that died out from under the cache
+    c2 = _vec_conn(db)
+    assert c2 is not c1
+    c2.execute("SELECT 1")  # the fresh handle is usable
+    _clear_conn_cache()
+
+
+def test_fetch_block_and_lookup_still_work_with_the_cached_connection(tmp_path) -> None:
+    """End-to-end smoke over the cache: fetch_block and lookup return the same shaped results as
+    before, including across repeated calls that exercise the cache-hit path."""
+    _clear_conn_cache()
+    db = _fixture_db(tmp_path)
+    r = _retriever(db, [1.0, 0.0, 0.0, 0.0])
+    block_first = asyncio.run(r.fetch_block("Wie funktioniert die Schwierigkeit?"))
+    block_second = asyncio.run(r.fetch_block("Wie funktioniert die Schwierigkeit?"))
+    assert block_first == block_second
+    assert "[Quelle: DIFFICULTY]" in block_first
+
+    lore = _retriever(db, [0.0, 0.0, 1.0, 0.0])
+    hits_first = asyncio.run(lore.lookup("Chaosgötter?", sources=("lore_chaos",)))
+    hits_second = asyncio.run(lore.lookup("Chaosgötter?", sources=("lore_chaos",)))
+    assert hits_first == hits_second
+    assert hits_first and hits_first[0][1] == "DIE VIER CHAOSGOETTER"
+    _clear_conn_cache()

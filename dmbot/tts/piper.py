@@ -20,6 +20,7 @@ from pathlib import Path
 from piper import PiperVoice
 
 from .textsplit import has_speakable_content, normalize_for_tts
+from .wavio import write_silent_wav
 
 log = logging.getLogger(__name__)
 
@@ -52,12 +53,9 @@ class PiperTTS:
         fd, path = tempfile.mkstemp(prefix="dm_tts_", suffix=".wav")
         os.close(fd)
         cleaned = normalize_for_tts(text)  # speech-only punctuation cleanup (whitelist)
-        with wave.open(path, "wb") as wav_file:
-            if has_speakable_content(cleaned):
+        if has_speakable_content(cleaned):
+            with wave.open(path, "wb") as wav_file:
                 self._voice.synthesize_wav(cleaned, wav_file)
-            else:  # emoji-/punctuation-only → write a touch of silence, don't synthesise junk
-                wav_file.setnchannels(1)
-                wav_file.setsampwidth(2)
-                wav_file.setframerate(22050)
-                wav_file.writeframes(b"\x00" * (22050 // 5 * 2))
+        else:  # emoji-/punctuation-only → write a touch of silence, don't synthesise junk
+            write_silent_wav(path, 22050)
         return path

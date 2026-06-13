@@ -23,6 +23,7 @@ os.environ.setdefault("COQUI_TOS_AGREED", "1")  # accept the model licence non-i
 from TTS.api import TTS  # noqa: E402 — heavy (torch); only imported when XTTS is selected
 
 from .textsplit import chunk_text, normalize_for_tts  # noqa: E402
+from .wavio import write_silent_wav  # noqa: E402
 
 log = logging.getLogger(__name__)
 
@@ -57,17 +58,6 @@ def _concat_wavs(parts: list[str], out_path: str, gap_s: float = _CHUNK_GAP_S) -
                 out.writeframes(w.readframes(w.getnframes()))
             if i < len(parts) - 1:
                 out.writeframes(gap)
-
-
-def _silent_wav(path: str, *, seconds: float = 0.2, framerate: int = 24000) -> None:
-    """Write a short silent 24 kHz mono WAV (XTTS's output format). Used when an answer has nothing
-    speakable after cleanup, so the caller still gets a valid, playable path instead of XTTS being
-    handed a bare-punctuation chunk (which it reads for ~15 s or turns into gibberish)."""
-    with wave.open(path, "wb") as w:
-        w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(framerate)
-        w.writeframes(b"\x00" * (int(framerate * seconds) * 2))
 
 
 def _resolve_device(requested: str) -> str:
@@ -147,7 +137,7 @@ class XttsTTS:
         os.close(fd)
         chunks = chunk_text(normalize_for_tts(text))  # speech-only cleanup, then split for XTTS's char limit
         if not chunks:  # nothing speakable (emoji-/punctuation-only) → silence, never feed XTTS junk
-            _silent_wav(path)
+            write_silent_wav(path, 24000)  # XTTS's 24 kHz mono output format
             return path
         if len(chunks) <= 1:
             self._tts.tts_to_file(

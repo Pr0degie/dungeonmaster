@@ -19,6 +19,7 @@ import json
 import logging
 import re
 import sqlite3
+import threading
 from pathlib import Path
 
 import httpx
@@ -71,6 +72,39 @@ def _is_junk_hit(source: str, heading: str, text: str) -> bool:
     if _JUNK_DASH_RUN.search(heading) or _JUNK_STATBLOCK.search(heading):
         return True
     return _JUNK_PICTURE_TEXT in text.lstrip()[:64].lower()
+
+
+# Per-thread, per-db-path read connection cache. Retrieval runs inside ``asyncio.to_thread`` (a
+# thread pool), so a single shared connection would violate sqlite's threading rules — each thread
+# keeps its own. Loading the sqlite-vec extension is a dlopen+init we don't want to repeat on every
+# hot turn, so the connection (with the extension already loaded) is reused for the thread's life.
+_conn_cache = threading.local()
+
+
+def _vec_conn(db_path: Path) -> sqlite3.Connection:
+    """A vec-loaded sqlite connection for this thread + ``db_path``, created on first use and
+    cached. Recreated if a previously cached connection is closed/stale (a probe query fails)."""
+    cache: dict[str, sqlite3.Connection] = getattr(_conn_cache, "conns", None)
+    if cache is None:
+        cache = _conn_cache.conns = {}
+    key = str(db_path)
+    conn = cache.get(key)
+    if conn is not None:
+        try:
+            conn.execute("SELECT 1")  # cheap liveness probe — catches a closed/stale handle
+            return conn
+        except sqlite3.Error:
+            try:
+                conn.close()
+            except sqlite3.Error:
+                pass
+            cache.pop(key, None)
+    conn = sqlite3.connect(db_path)
+    conn.enable_load_extension(True)
+    sqlite_vec.load(conn)
+    conn.enable_load_extension(False)
+    cache[key] = conn
+    return conn
 
 
 class RulebookRetriever:
@@ -129,21 +163,15 @@ class RulebookRetriever:
         sources = sources or tuple(_SOURCES)
         k = k or self._k
         placeholders = ",".join("?" for _ in sources)
-        conn = sqlite3.connect(self._db_path)
-        try:
-            conn.enable_load_extension(True)
-            sqlite_vec.load(conn)
-            conn.enable_load_extension(False)
-            rows = conn.execute(
-                "SELECT c.source, c.heading, c.text, v.distance FROM chunks_vec v "
-                "JOIN chunks c ON c.id = v.rowid "
-                f"WHERE v.embedding MATCH ? AND v.k = ? AND c.source IN ({placeholders}) "
-                "ORDER BY v.distance",
-                (json.dumps(vector), k * 3, *sources),  # over-fetch: the filter prunes
-            ).fetchall()
-        finally:
-            conn.close()
-        return [(s, h, t, d) for s, h, t, d in rows][:k]
+        conn = _vec_conn(self._db_path)  # cached per thread + db path; vec extension already loaded
+        rows = conn.execute(
+            "SELECT c.source, c.heading, c.text, v.distance FROM chunks_vec v "
+            "JOIN chunks c ON c.id = v.rowid "
+            f"WHERE v.embedding MATCH ? AND v.k = ? AND c.source IN ({placeholders}) "
+            "ORDER BY v.distance",
+            (json.dumps(vector), k * 3, *sources),  # over-fetch: the filter prunes
+        ).fetchall()
+        return rows[:k]
 
     async def lookup(
         self,
@@ -168,7 +196,7 @@ class RulebookRetriever:
         except Exception:
             log.exception("lore lookup failed")
             return []
-        return [(s, h, t, d) for s, h, t, d in hits if d <= max_distance]
+        return [hit for hit in hits if hit[3] <= max_distance]
 
     async def fetch_block(self, query: str) -> str:
         """The ``## Regelwerk`` / ``## Weltwissen`` prompt block(s) for ``query``, or ``""`` when
