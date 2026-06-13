@@ -117,9 +117,128 @@
 </header>
 
 <p class="dim" style="text-align:center; max-width: 640px; margin: 0 auto;">So funktioniert es:
-Lies die Schritte I–VI (≈ 10 Minuten), triff deine Entscheidungen direkt im
+Lies einmal die <strong>Begriffe</strong> unten (≈ 4 Minuten — danach verstehst du jede Wahl),
+dann die Schritte I–VI, und triff deine Entscheidungen direkt im
 <strong>Formular in Abschnitt VII</strong> — es zählt Punkte mit, rechnet Wunden aus und baut
 am Ende den fertigen Datenblock, den du nur noch kopieren und an Tobi schicken musst.</p>
+
+<!-- ================================================================== -->
+<h2>Begriffe — einmal lesen, dann verstehst du jede Wahl</h2>
+<p>Diese Seite benutzt ein paar Wörter, die im Rollenspiel selbstverständlich sind, aber nicht
+jeder kennt. Hier sind sie alle — du brauchst kein anderes Dokument daneben.</p>
+
+<h3>Würfel-Notation: was <code>1W10+5</code> heißt</h3>
+<p><strong>W</strong> steht für Würfel, die Zahl davor sagt <em>wie viele</em>, die Zahl danach
+<em>welche Augenzahl</em>. Ein <code>+</code> ist ein fester Aufschlag, der immer dazukommt:</p>
+<table>
+  <tr><th>Schreibweise</th><th>Bedeutung</th><th>Möglicher Wert</th></tr>
+  <tr><td class="mod">1W10</td><td class="dim">ein zehnseitiger Würfel</td><td class="mod">1–10</td></tr>
+  <tr><td class="mod">1W10+5</td><td class="dim">ein W10, dann +5 drauf</td><td class="mod">6–15</td></tr>
+  <tr><td class="mod">2W10+20</td><td class="dim">zwei W10 zusammen, dann +20</td><td class="mod">22–40</td></tr>
+  <tr><td class="mod">W100 (= d100)</td><td class="dim">„Prozentwurf": Ergebnis von 01 bis 100</td><td class="mod">01–00</td></tr>
+</table>
+<div class="example">
+  <div class="ex-title">⚖ Beispiel</div>
+  Das Kettenschwert macht <span class="die">1W10+5</span> Schaden. Der Würfel zeigt eine
+  <span class="die">4</span> → Schaden <span class="die">4 + 5 = 9</span>. Höchstens wären es
+  <span class="die">15</span>, mindestens <span class="die">6</span> gewesen.
+</div>
+<p class="dim">Wichtig: <strong>du würfelst beim Erstellen fast nie selbst</strong> — die
+Notation taucht nur auf, damit du die Waffen vergleichen kannst. Am Tisch würfelt der Spielleiter
+für dich.</p>
+
+<h3>Eigenschaftswert &amp; Bonus (die Zehnerstelle)</h3>
+<p>Jede der neun Eigenschaften ist eine Zahl, meist zwischen <code>20</code> und <code>50</code>
+(menschlicher Schnitt 30–40). Aus jedem Wert leitet sich ein <strong>Bonus</strong> ab — und der
+ist einfach die <strong>Zehnerstelle</strong>:</p>
+<div class="panel">
+  <p style="margin:6px 0;">Zähigkeit <code>52</code> → Zähigkeits-Bonus (<strong>TghB</strong>)
+  <code>5</code>. &nbsp; Stärke <code>38</code> → StrB <code>3</code>. &nbsp; Willenskraft
+  <code>29</code> → WilB <code>2</code>.</p>
+  <p class="dim" style="margin:6px 0 0;">Diese kleinen Bonus-Zahlen (meist 2–5) treiben fast alles
+  Abgeleitete: deine <strong>Wunden</strong>, deinen <strong>Soak</strong> und deine Tragkraft.
+  Deshalb lohnt sich ein hoher Wert doppelt.</p>
+</div>
+
+<h3>Die Probe: wie eine Aktion gelingt oder scheitert</h3>
+<p>Immer wenn der Ausgang einer Handlung unsicher ist, macht ihr eine <strong>Probe</strong>. Der
+Spielleiter würfelt <strong>für dich</strong> einen <code>W100</code>, und du willst
+<strong>gleich oder unter deinem Fertigkeitswert</strong> landen — „so niedrig wie möglich"
+(das nennt man <em>roll-under</em>).</p>
+<div class="panel gold">
+  <div class="panel-title">⚖ Die einzige Grundregel</div>
+  <p style="margin:6px 0;">Wurf <strong>≤ Zielwert</strong> = Erfolg. &nbsp; Wurf
+  <strong>&gt; Zielwert</strong> = Fehlschlag.</p>
+</div>
+<p>Der Zielwert ist normalerweise dein Fertigkeitswert. Wie <strong>schwer</strong> die Aufgabe
+ist, verschiebt ihn rauf oder runter (leichter = mehr Spielraum, schwerer = weniger):</p>
+<table>
+  <tr><th>Schwierigkeit</th><th>Änderung am Zielwert</th></tr>
+  <tr><td>Sehr leicht</td><td class="mod">+60</td></tr>
+  <tr><td>Leicht</td><td class="mod">+40</td></tr>
+  <tr><td>Routine</td><td class="mod">+20</td></tr>
+  <tr><td>Herausfordernd <span class="dim">(Standard)</span></td><td class="mod">±0</td></tr>
+  <tr><td>Schwierig</td><td class="mod">−10</td></tr>
+  <tr><td>Schwer</td><td class="mod">−20</td></tr>
+  <tr><td>Sehr schwer</td><td class="mod">−30</td></tr>
+</table>
+<p class="dim">Egal wie die Zahlen stehen: ein Wurf von <code>01–05</code> gelingt
+<strong>immer</strong>, ein Wurf von <code>96–00</code> scheitert <strong>immer</strong>. Eine
+ausführliche Tischrunde mit allen Spielsituationen steht in „How to Play".</p>
+<div class="example">
+  <div class="ex-title">⚖ Beispiel — Eli schießt</div>
+  Eli hat <em>Fernkampf</em> <span class="die">45</span>. Das Ziel duckt sich (Schwierig
+  <span class="die">−10</span>) → Zielwert <span class="die">35</span>. Der Spielleiter würfelt
+  <span class="die">22</span> → unter 35 → <strong>Treffer</strong>.
+</div>
+
+<h3>Erfolgsgrade (EG): <em>wie gut</em> es lief</h3>
+<p>Eine Probe ist nicht nur Ja/Nein. Wie deutlich du triffst, misst sich in
+<strong>Erfolgsgraden</strong> — der Unterschied der <strong>Zehnerstellen</strong> zwischen
+Zielwert und Wurf. Im Beispiel oben: Zielwert <code>35</code> (Zehner 3) gegen Wurf
+<code>22</code> (Zehner 2) → <strong>1 EG</strong>. Im Kampf werden die EG zum Schaden
+<em>addiert</em> — ein satter Treffer tut mehr weh. Zeigt der Würfel einen <strong>Pasch</strong>
+(beide Ziffern gleich, z.&nbsp;B. <code>33</code>), wird es im Kampf ein <em>kritischer Treffer</em>
+(bei Erfolg) oder ein <em>Patzer</em> (bei Fehlschlag).</p>
+
+<h3>Wunden, Soak &amp; „kampfunfähig" — was Schaden wirklich bedeutet</h3>
+<p>Das ist der wichtigste Begriff, den man am Anfang unterschätzt.</p>
+<div class="panel">
+  <p style="margin:6px 0;"><strong>Wunden</strong> sind dein Polster gegen Schaden — <em>nicht</em>
+  eine große Lebensleiste, die man im Laden auffüllt. Ein Akolyth hat typisch nur
+  <strong>8–12</strong> Wunden. Jeder Treffer zieht davon ab.</p>
+  <p style="margin:6px 0;"><strong>Soak</strong> ist, wie viel Schaden dein Körper (+ Rüstung)
+  <em>schluckt</em>, bevor er an die Wunden geht. Dein Soak ist dein
+  <strong>Zähigkeits-Bonus</strong> (Zehnerstelle von Tgh) plus eventuelle Rüstung.</p>
+  <p style="margin:6px 0;">Ein Treffer kostet also: <strong>Waffenschaden + EG − Soak</strong>
+  (nie weniger als 0).</p>
+  <p style="margin:6px 0 0;">Fallen deine Wunden auf <strong>0</strong>, bist du
+  <strong>kampfunfähig</strong> — raus aus dem Kampf, aber nicht sofort tot. Heilung bringt dich
+  wieder über 0.</p>
+</div>
+<div class="example">
+  <div class="ex-title">⚖ Beispiel — ein Kettenschwert-Treffer</div>
+  Schaden <span class="die">1W10+5</span>, gewürfelt <span class="die">8</span>, dazu
+  <span class="die">+1 EG</span> = <span class="die">9</span>. Das Ziel hat TghB
+  <span class="die">4</span> und keine Rüstung (Soak 4) → <span class="die">9 − 4 = 5</span>
+  Wunden weg. Bei 11 Wunden bleibt es bei <span class="die">6/11</span>.
+</div>
+
+<h3>Herkunft — was sie dir bringt</h3>
+<p>Deine <strong>Herkunftswelt</strong> ist, wo du aufgewachsen bist. Mechanisch bringt sie genau
+<strong>zwei Dinge</strong>: <code>+5</code> auf eine <em>feste</em> Eigenschaft und
+<code>+5</code> auf eine, die du aus drei Optionen <em>wählst</em>. Mehr Regeln stecken nicht
+dahinter — der Rest ist <strong>Hintergrund &amp; Identität</strong> (eine Makropol-Ratte
+verhält sich anders als ein Schreinwelt-Pilger). Die volle Tabelle steht in
+<strong>Abschnitt III</strong>.</p>
+
+<h3>Inventar — was du dabei hast</h3>
+<p>Dein <strong>Inventar</strong> ist schlicht, was dein Charakter <em>plausibel bei sich trägt</em>
+— eine Erzähl-Ebene, kein Punkte-Einkauf. Nur deine <strong>Hauptwaffe</strong> hat einen festen
+mechanischen Effekt (ihren Schaden aus der Tabelle); der Rest gibt dir Möglichkeiten in Szenen
+(ein Medikit, um zu heilen; ein Seil, um zu klettern; ein Datenslate, um etwas auszulesen).
+3–5 Dinge, die zu deinem Konzept passen, reichen: Medikit, Seil, Lumen-Lampe, Werkzeug,
+Datenslate, ein Glücksbringer …</p>
 
 <!-- ================================================================== -->
 <h2><span class="num">I</span>Das Konzept</h2>
@@ -215,14 +334,16 @@ Du hast <strong>6 Steigerungen</strong>, höchstens <strong>2 pro Fertigkeit</st
   <span style="color: var(--gold-soft);">+</span> 2 × TghB
   <span style="color: var(--gold-soft);">+</span> WilB</p>
   <p class="dim" style="text-align:center; margin: 0;">Boni = Zehnerstellen der Endwerte.
-  Zähigkeit zählt doppelt — Frontkämpfer wissen, warum. Das Formular rechnet automatisch.</p>
+  Zähigkeit zählt doppelt — Frontkämpfer wissen, warum. Das Formular rechnet automatisch.
+  <em>Was Wunden im Spiel bedeuten (Soak, kampfunfähig) → siehe Begriffe oben.</em></p>
 </div>
 
 <!-- ================================================================== -->
 <h2><span class="num">VI</span>Waffe &amp; Ausrüstung</h2>
-<p>Wähle <strong>eine Hauptwaffe</strong> (der Schaden kommt aus der Systemtabelle) und
-3–5 Gegenstände, die zu deinem Konzept passen (Seil, Medikit, Datenslate, Lampe, Werkzeug …
-— kein Shopping-Katalog, sondern was dein Charakter plausibel bei sich trägt):</p>
+<p>Wähle <strong>eine Hauptwaffe</strong> (der Schaden kommt aus der Systemtabelle, Notation
+<code>1W10+x</code> → siehe Begriffe oben) und 3–5 Gegenstände, die zu deinem Konzept passen
+(Seil, Medikit, Datenslate, Lampe, Werkzeug … — kein Shopping-Katalog, sondern was dein
+Charakter plausibel bei sich trägt):</p>
 <table>
   <tr><th>Waffe</th><th>Schaden</th><th></th></tr>
   <tr><td>Kettenschwert</td><td class="mod">1W10+5</td><td class="dim">laut, brutal, unhöflich</td></tr>
