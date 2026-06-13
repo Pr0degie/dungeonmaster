@@ -1343,7 +1343,6 @@ class VoiceReceiveCog(commands.Cog):
         embed = discord.Embed(
             title="📚 Weltwissen", description=description, color=discord.Color.dark_gold()
         )
-        embed.set_footer(text=question)
         await self._send_with_retry(ctx.channel, embed=embed)
 
     @commands.command(name="damage", aliases=["schaden"])
