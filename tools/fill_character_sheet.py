@@ -275,7 +275,7 @@ def fill_sheet(char: dict, weapons_table: dict, default_damage: str, out_path: P
                str(hit.get(loc, "")), size=9, align=CENTER, center=True)
 
     # --- page 2: combat notes (open) + equipment (3 columns) ---------------------------------
-    _multiline(p2, "combat_notes", (45, 600, 300, 790), char.get("combat_notes", ""))
+    _multiline(p2, "combat_notes", (45, 600, 422, 790), char.get("combat_notes", ""))
     equip = [str(i) for i in (char.get("equipment") or list(char.get("inventory") or [])[1:])]
     for col, ex in enumerate(_EQUIP_COLS_X):
         for r in range(_EQUIP_ROWS):
