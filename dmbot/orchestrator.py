@@ -252,6 +252,32 @@ def is_self_repetition(answer: str, previous_answer: str) -> bool:
     return SequenceMatcher(None, norm_new, norm_prev).ratio() >= 0.75
 
 
+# --- Opening briefing (!start) ------------------------------------------------------------------
+
+# The director instruction that drives the !start opening turn. It is a GM-side ("director")
+# message, NOT a player line: it tells the model to OPEN the session out loud so the table knows
+# who they are and what their mission is (the first-session complaint: the bot "hat am Anfang
+# nicht gesagt, was abgeht"). The concrete content — the Halikarn briefing, the three leads — is
+# NOT spelled out here: it lives in the start scene's card (## Aktuelle Szene + guidance_de),
+# which the system prompt already carries. So this only has to point the model at that scene and
+# hold it to the persona's voice. Phrased as an instruction to the GM, never read aloud.
+OPENING_DIRECTOR_MSG = (
+    "[Regie] Eröffne jetzt die Sitzung: Spiele die Auftrags-/Eröffnungsszene aus deiner "
+    "aktuellen Szene. Mach den Spielenden klar, wer sie sind und was ihr Auftrag ist, und "
+    "deute die ersten Spuren über ein Detail der Umgebung an — nicht als Aufzählung. Halte "
+    "dich an die Spielleitungs-Stimme (2–4 Sätze). Verlange keine Probe."
+)
+
+
+def build_opening_director_msg() -> str:
+    """The GM-side director instruction for the ``!start`` opening turn (pure, unit-testable).
+
+    Kept as a function so the cog never inlines the prompt text and a test can assert its shape
+    (it must read as a GM/director instruction, not as a player action, and must forbid a dice
+    test on the briefing)."""
+    return OPENING_DIRECTOR_MSG
+
+
 # --- Streaming assembler (ADR 017) --------------------------------------------------------------
 
 # Hold the first chunk until it's a full sentence or this many chars, so a leading meta-preamble /
@@ -565,6 +591,49 @@ class DMBrain:
             return ""  # echo-suppressed (D43): content-less to the cog, the pair stays out of history
         self._append_turn(history, user_msg, answer)
         return answer
+
+    def _prepare_opening(self, channel_id: int, director_msg: str) -> tuple[str, list[str], list[dict[str, str]]]:
+        """Assemble the one-off ``(user_msg, labels, history)`` for the ``!start`` opening turn.
+
+        Unlike :meth:`_prepare_turn` this consumes no buffered player lines and adds no
+        ``Spieler:`` line — the opening is a GM-side *director* instruction, not a player action.
+        Crucially it leaves ``_last_action[channel_id]`` untouched (so it stays None), which makes
+        :meth:`_generate` / :meth:`_stream_and_store` skip queuing any ``<<TEST>>``/``<<ORT>>``
+        marker the model might emit — i.e. **no dice on a briefing** (the task's dice-suppression
+        requirement) falls out of the existing results-only guard for free. Records ``_last_turn``
+        so the opening can be ``!redo``-ne like any turn, and reuses the same labels (known table
+        speakers + role labels) so the anti-puppeting stop sequences still apply."""
+        known = self._known_speakers.get(channel_id, [])
+        labels = list(dict.fromkeys(known + _ROLE_LABELS))
+        self._last_turn[channel_id] = (director_msg, labels)
+        history = self._history.setdefault(channel_id, [])
+        return director_msg, labels, history
+
+    async def respond_opening(self, channel_id: int, director_msg: str) -> str | None:
+        """Run the opening-briefing turn (``!start``, batch path): generate one GM turn from the
+        ``director_msg`` instruction, append it to history, return the answer. Dice are suppressed
+        (see :meth:`_prepare_opening`). ``None`` only on the rare echo-guard suppression."""
+        user_msg, labels, history = self._prepare_opening(channel_id, director_msg)
+        answer = await self._generate(channel_id, user_msg, labels, history)
+        if answer is None:
+            return ""  # echo-suppressed (parity with respond): content-less to the cog
+        self._append_turn(history, user_msg, answer)
+        return answer
+
+    async def respond_opening_streaming(
+        self,
+        channel_id: int,
+        director_msg: str,
+        *,
+        on_sentence: Callable[[str], Awaitable[None]],
+        should_abort: Callable[[], bool] | None = None,
+    ) -> str | None:
+        """Streaming variant of :meth:`respond_opening` (the live path, ADR 017): same one-off
+        director turn, spoken sentence-by-sentence via ``on_sentence``. Dice stay suppressed."""
+        user_msg, labels, history = self._prepare_opening(channel_id, director_msg)
+        return await self._stream_and_store(
+            channel_id, user_msg, labels, history, on_sentence, should_abort
+        )
 
     def _build_request(
         self,
@@ -938,14 +1007,19 @@ class DMBrain:
         else:
             self._adventure_block.pop(channel_id, None)
 
-    async def summarize(self, channel_id: int) -> str | None:
+    async def summarize(self, channel_id: int, *, prior_recap: str = "") -> str | None:
         """Produce a German "Was bisher geschah" recap from this channel's history (the `wrap up`
         trigger, D14). Code stores the returned string in the world state; this only generates it.
-        ``None`` if there's no history to summarise."""
+        ``None`` if there's no history to summarise.
+
+        ``prior_recap`` (the auto-compaction trigger, D56) folds an earlier recap into the transcript
+        so the new recap is **cumulative**: when the running history is cleared, the older recap still
+        covers what scrolled out of it, and the new recap supersedes-and-extends it. ``!wrap up``
+        passes nothing (plain summary of the visible history)."""
         history = self._history.get(channel_id) or []
         if not history:
             return None
-        user = build_recap_user(history)
+        user = build_recap_user(history, prior_recap)
         raw = await self._client.chat(
             RECAP_SYSTEM_DE,
             [{"role": "user", "content": user}],
@@ -955,6 +1029,28 @@ class DMBrain:
         # role label the model might prepend.
         text = raw.replace("*", "").strip()
         return _ROLE_LABEL.sub("", text).strip() or None
+
+    def current_recap(self, channel_id: int) -> str:
+        """The recap currently injected into this channel's prompt (set via :meth:`set_context`), or
+        "" if none. The auto-compaction (D56) reads it to make the next recap cumulative."""
+        return self._recap.get(channel_id, "")
+
+    def history_len(self, channel_id: int) -> int:
+        """Number of stored messages (user + assistant) in this channel's history — lets the cog see
+        whether a compaction actually shrank the running history."""
+        return len(self._history.get(channel_id) or [])
+
+    def clear_history(self, channel_id: int) -> None:
+        """Drop the channel's rolling conversation history *only* (the auto-compaction reset, D56).
+
+        Unlike :meth:`reset` (a fresh session), this keeps the recap, world-state/adventure blocks,
+        pending tests/results and the buffer untouched — only the turn-by-turn history is cleared,
+        because the just-generated cumulative recap now carries that thread forward. The next prompt
+        is then persona + adventure + (longer) recap + state + empty history, safely under budget, so
+        the persona/adventure are never the truncated head again. ``_last_turn`` is also cleared so a
+        stale ``!redo`` can't replay a turn that's no longer in history."""
+        self._history.pop(channel_id, None)
+        self._last_turn.pop(channel_id, None)
 
     async def answer_rules(self, question: str, context: str, *, system_name: str) -> str | None:
         """Answer a player's rules question (``!rules <frage>``) in German, grounded ONLY in the

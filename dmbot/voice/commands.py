@@ -29,7 +29,7 @@ from .preflight import check_dave_session, check_static
 from ..stt import Transcriber
 from ..llm.client import OllamaClient
 from ..llm.roll_router import roll_button_source
-from ..orchestrator import DMBrain
+from ..orchestrator import DMBrain, build_opening_director_msg
 from ..tts.piper import PiperTTS
 from ..tts.textsplit import has_speakable_content
 from ..bridge import BridgeClient
@@ -212,6 +212,7 @@ class VoiceReceiveCog(commands.Cog):
         dump_utterances: bool = False,
         ollama_host: str = "http://127.0.0.1:11434",
         ollama_model: str = "mistral-nemo",
+        ollama_num_ctx: int = 24576,
         dm_num_predict: int = 160,
         dm_max_lines: int = 8,
         system: str = "imperium_maledictum",
@@ -222,6 +223,7 @@ class VoiceReceiveCog(commands.Cog):
         roll_router: bool = False,
         streaming: bool = True,
         autosave: bool = True,
+        autorecap: bool = True,
         scene_mode: str = "verbunden",
         tts_engine: str = "piper",
         tts_voice: str = "",
@@ -269,6 +271,17 @@ class VoiceReceiveCog(commands.Cog):
         # data/sessions/<id>/history.jsonl so a crash doesn't lose the evening's thread; restored on
         # !join, rotated on !leave. World state already persists separately (ADR 015).
         self._autosave = autosave
+        # Rolling auto-recap / context handoff (D56): when a turn's prompt nears the num_ctx cap (the
+        # early signal before Ollama silently truncates the prompt HEAD — the persona + adventure), we
+        # compact the running history into a cumulative recap and clear the in-memory history, so the
+        # persona/adventure are never the truncated head mid-session (the first-session complaint:
+        # "wenn der Kontext eng wird, übergib an eine neue Sitzung"). Runs OFF the hot path. ON by
+        # default; DM_AUTORECAP=0 falls back to the bare context-budget warning.
+        self._autorecap = autorecap
+        # Per-channel "compaction in progress" guard so two quick turns don't both compact and the
+        # next player turn doesn't read half-cleared history. A plain set, mutated only on the event
+        # loop (where the turn-finalize and the deferred compaction both run).
+        self._compacting: set[int] = set()
         # Auto scene transitions (ADR 026): which targets an <<ORT id>> marker may move to.
         # "verbunden" = only the current scene's leads_to neighbours; "frei" = any known scene.
         # Switchable live via !ortmodus; an unknown value degrades to "verbunden".
@@ -323,7 +336,7 @@ class VoiceReceiveCog(commands.Cog):
         else:
             log.info("no RAG store under data/vectordb/ — rule questions run without the book")
         self._brain = DMBrain(
-            OllamaClient(ollama_host, ollama_model),
+            OllamaClient(ollama_host, ollama_model, num_ctx=ollama_num_ctx),
             profile=self._profile,
             num_predict=dm_num_predict,
             max_buffer_lines=dm_max_lines,
@@ -665,9 +678,13 @@ class VoiceReceiveCog(commands.Cog):
         # Keep the mic button reachable: move it back to the bottom after the message + speech.
         if self._push_to_talk and self._sink is not None:
             await self._post_mic_button(channel)
+        # Rolling auto-recap (D56): if this turn's prompt neared the num_ctx cap, compact the history
+        # now — off the hot path (the turn is fully delivered above), so it never adds turn latency.
+        await self._maybe_compact(channel, timing)
 
     async def _deliver_streaming(self, channel, guild_id: int | None, timing: _TurnTiming, *,
-                                 redo: bool = False, extra_text: str | None = None) -> str | None:
+                                 redo: bool = False, extra_text: str | None = None,
+                                 opening: str | None = None) -> str | None:
         """Streaming delivery (ADR 017): the producer drives the brain's streaming turn while a
         synth→playback pipeline speaks each sentence (synth N+1 while N plays); the Discord text
         post + 🎲 dice button happen at generation-end (mid-playback). Layer-2 mute spans the whole
@@ -683,7 +700,14 @@ class VoiceReceiveCog(commands.Cog):
 
         async def producer() -> None:
             try:
-                if redo:
+                if opening is not None:
+                    # !start opening briefing: a GM-side director turn (dice suppressed) — same
+                    # stream→speak pipeline, just a different brain entry point.
+                    holder["answer"] = await self._brain.respond_opening_streaming(
+                        channel_id, opening, on_sentence=on_sentence,
+                        should_abort=lambda: self._paused,
+                    )
+                elif redo:
                     holder["answer"] = await self._brain.redo_streaming(
                         channel_id, on_sentence=on_sentence, should_abort=lambda: self._paused,
                     )
@@ -783,6 +807,9 @@ class VoiceReceiveCog(commands.Cog):
             await self._autosave_turn(channel, holder["answer"], user_msg=saved_user_msg, redo=redo)
             if self._push_to_talk and self._sink is not None:
                 await self._post_mic_button(channel)
+            # Rolling auto-recap (D56): same off-hot-path compaction as the batch path — the answer is
+            # already spoken (gather(sw, pw) above awaited the last sentence), so no added latency.
+            await self._maybe_compact(channel, timing)
         return holder["answer"]
 
     @commands.command(name="dm")
@@ -859,6 +886,61 @@ class VoiceReceiveCog(commands.Cog):
             return
         if answer is None:
             await ctx.send("Nichts zum Wiederholen — erst eine Runde mit `!dm` spielen.")
+            return
+        await self._deliver_answer(ctx.channel, guild_id, answer, timing)
+
+    @commands.command(name="start", aliases=["briefing", "auftrag"])
+    async def start(self, ctx: commands.Context) -> None:
+        """`!start` — the DM speaks the opening briefing so the table knows who they are and what
+        their mission is. First-session complaint: `!join` only prints status lines and never
+        narrates the hook ("hat am Anfang nicht gesagt, was abgeht"). This runs a normal DM turn
+        through the existing generate → stream/speak path (so it's spoken like any other line),
+        driven by a GM-side *director* instruction (orchestrator.build_opening_director_msg) that
+        points the model at the start scene's card. Dice are suppressed for the briefing (the
+        opening turn never queues a <<TEST>>, see DMBrain._prepare_opening)."""
+        if self._paused:
+            await ctx.send("⏸ Pausiert — mit **Esc** oder dem ⏸-Knopf fortsetzen.")
+            return
+        cid = self._brain_channel(ctx.channel)
+        # Mirror the turn-producing guards: a session must be active (state seeded on !join).
+        if self._active_vc_id is None or cid not in self._state:
+            await ctx.send("Keine aktive Sitzung — erst `!j`.")
+            return
+        # Point the scene pointer at the start scene if it isn't set yet, so the prompt's
+        # "## Aktuelle Szene" is the opening scene the briefing should play (deterministic, golden
+        # rule #3 — code moves the pointer, not the model). A loaded session keeps its saved pointer.
+        if self._adventure is not None and not self._state[cid].scene_id:
+            moved = self._set_scene(self._state[cid], self._adventure.start_scene)
+            if moved is not None:
+                self._persist_and_refresh(ctx.channel)
+        director_msg = build_opening_director_msg()
+        guild_id = ctx.guild.id if ctx.guild else None
+        timing = self._begin_turn(cid)
+        if self._use_streaming():
+            timing.streamed = True
+            try:
+                async with ctx.typing():
+                    answer = await self._deliver_streaming(
+                        ctx.channel, guild_id, timing, opening=director_msg
+                    )
+            except Exception:
+                log.exception("opening briefing failed (stream)")
+                await ctx.send("(Der Spielleiter schweigt — Fehler beim Auftakt, siehe Log.)")
+                return
+            if answer is None:
+                await ctx.send("(Kein Auftakt — siehe Log.)")
+            return
+        try:
+            async with ctx.typing():
+                answer = await self._brain.respond_opening(cid, director_msg)
+                timing.llm_done = time.monotonic()
+                timing.take_llm_stats(self._brain.last_llm_stats)
+        except Exception:
+            log.exception("opening briefing failed")
+            await ctx.send("(Der Spielleiter schweigt — Fehler beim Auftakt, siehe Log.)")
+            return
+        if answer is None:
+            await ctx.send("(Kein Auftakt — siehe Log.)")
             return
         await self._deliver_answer(ctx.channel, guild_id, answer, timing)
 
@@ -1869,15 +1951,72 @@ class VoiceReceiveCog(commands.Cog):
         if not recap:
             await ctx.send("Noch nichts passiert, das sich zusammenfassen ließe.")
             return
-        state = self._state.get(cid)
-        if state is not None:
-            state.set_recap(recap)
-            self._persist_and_refresh(ctx.channel)
-            try:  # mirror to a human-readable recap.md beside state.json
-                (self._state_path(cid).parent / "recap.md").write_text(recap + "\n", encoding="utf-8")
-            except OSError:
-                log.exception("could not write recap.md")
+        self._persist_recap(ctx.channel, recap)
         await ctx.send(f"📜 **Was bisher geschah:**\n{recap}")
+
+    def _persist_recap(self, channel, recap: str) -> None:
+        """Store a freshly generated recap exactly like ``!wrap up``: write it into the world state
+        (state.json via _persist_and_refresh, which also re-injects it into the brain's prompt as
+        ``## Was bisher geschah``) and mirror it to a human-readable recap.md. Shared by ``!wrap up``
+        and the rolling auto-recap (D56) so both persist it identically and it survives a restart."""
+        cid = self._brain_channel(channel)
+        state = self._state.get(cid)
+        if state is None:
+            return
+        state.set_recap(recap)
+        self._persist_and_refresh(channel)
+        try:  # mirror to a human-readable recap.md beside state.json
+            (self._state_path(cid).parent / "recap.md").write_text(recap + "\n", encoding="utf-8")
+        except OSError:
+            log.exception("could not write recap.md")
+
+    async def _maybe_compact(self, channel, timing: _TurnTiming) -> None:
+        """Rolling auto-recap / context handoff (D56). Called AFTER a turn has been delivered/spoken
+        (off the hot path, modelled on _autosave_turn) — never adds latency to the current turn.
+
+        When the just-finished turn's prompt neared the num_ctx cap, fold the running history into a
+        **cumulative** recap (prior recap + recent history → one new recap that supersedes it),
+        persist it like ``!wrap up`` (so it survives a restart and is injected next turn), then clear
+        the in-memory history. The next prompt = persona + adventure + (longer) recap + state + empty
+        history — safely under budget, so the persona/adventure head is never truncated again.
+
+        A per-channel guard stops two quick turns both compacting and stops the next player turn from
+        reading half-cleared history. After compaction the history is small, so it won't re-trigger."""
+        if not self._autorecap or not timing.ctx_over_budget():
+            return
+        cid = self._brain_channel(channel)
+        if cid in self._compacting or self._state.get(cid) is None:
+            return
+        if self._brain.history_len(cid) == 0:  # nothing to fold in (e.g. fresh after a prior compaction)
+            return
+        self._compacting.add(cid)
+        try:
+            log.info(
+                "🧵 Kontext bei %s/%s — Auto-Recap: history wird kompaktiert (Persona/Abenteuer "
+                "bleiben so ungekürzt).", timing.prompt_eval, timing.num_ctx,
+            )
+            # Cumulative: fold the recap currently in the prompt into the new one so nothing already
+            # summarised is lost (the older recap covers what scrolled out of the running history).
+            prior = self._brain.current_recap(cid)
+            recap = await self._brain.summarize(cid, prior_recap=prior)
+            if not recap:
+                log.warning("🧵 Auto-Recap: leere Zusammenfassung — history NICHT geleert.")
+                return
+            self._persist_recap(channel, recap)
+            # Reset the rolling history only now that the recap is safely persisted (clear_history
+            # keeps recap/state/buffer — only the turn-by-turn thread goes).
+            self._brain.clear_history(cid)
+            log.info("🧵 Auto-Recap fertig — history kompaktiert, Recap aktualisiert.")
+            if self._text_channel is not None:  # a brief, lightweight Discord note (matches status posts)
+                await self._send_with_retry(
+                    self._text_channel,
+                    "🧵 Kontext wurde eng — ich habe das Bisherige zusammengefasst und mache nahtlos "
+                    "weiter (Persona & Abenteuer bleiben erhalten).",
+                )
+        except Exception:
+            log.exception("🧵 Auto-Recap failed — keeping the running history (no truncation safety lost)")
+        finally:
+            self._compacting.discard(cid)
 
     @commands.command(name="say")
     async def say(self, ctx: commands.Context, *, text: str) -> None:

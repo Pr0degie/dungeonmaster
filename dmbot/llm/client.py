@@ -45,10 +45,10 @@ def _parse_stream_line(line: str) -> tuple[str, dict | None]:
         }
     return delta, None
 
-# A storyteller wants some spark but must stay coherent and in-world. num_ctx is capped well
-# below nemo's 16k default: the KV cache for 16k context costs ~2 GB of VRAM we don't have to
-# spare on the 12 GB 4070 (history is trimmed anyway), and a smaller cache loads faster.
-_DEFAULT_OPTIONS = {"temperature": 0.8, "top_p": 0.9, "num_ctx": 8192}
+# A storyteller wants some spark but must stay coherent and in-world. num_ctx lives on the
+# instance now (not here): the bot runs on a 16 GB 4080 where a high context is wanted, so the
+# old 8k cap silently truncated the growing system prompt. It's tunable via OLLAMA_NUM_CTX.
+_DEFAULT_OPTIONS = {"temperature": 0.8, "top_p": 0.9}
 
 
 class OllamaClient:
@@ -59,11 +59,13 @@ class OllamaClient:
         host: str,
         model: str,
         *,
+        num_ctx: int = 24576,
         timeout: float = 120.0,
         keep_alive: str = "30m",
     ) -> None:
         self._host = host.rstrip("/")
         self._model = model
+        self._num_ctx = num_ctx
         # Keep the model resident between DM turns so it isn't cold-loaded each time (a cold
         # load of a ~9 GB model under VRAM pressure is the dominant latency — measured 15 s).
         self._keep_alive = keep_alive
@@ -100,7 +102,7 @@ class OllamaClient:
             "stream": False,
             "keep_alive": self._keep_alive,
             "messages": [{"role": "system", "content": system}, *messages],
-            "options": {**_DEFAULT_OPTIONS, **(options or {})},
+            "options": {**_DEFAULT_OPTIONS, "num_ctx": self._num_ctx, **(options or {})},
         }
         if format is not None:
             payload["format"] = format
@@ -137,7 +139,7 @@ class OllamaClient:
             "stream": True,
             "keep_alive": self._keep_alive,
             "messages": [{"role": "system", "content": system}, *messages],
-            "options": {**_DEFAULT_OPTIONS, **(options or {})},
+            "options": {**_DEFAULT_OPTIONS, "num_ctx": self._num_ctx, **(options or {})},
         }
         num_ctx = payload["options"].get("num_ctx")
         # Generous read timeout for the stream: the first delta can take minutes on a cold start

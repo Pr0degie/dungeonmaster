@@ -12,7 +12,7 @@ from pathlib import Path
 import sqlite_vec
 
 from dmbot.rag.ingest import chunk_markdown, ensure_schema
-from dmbot.rag.retrieve import RulebookRetriever
+from dmbot.rag.retrieve import RulebookRetriever, _is_junk_hit
 
 
 # --- chunking ----------------------------------------------------------------------------------
@@ -158,6 +158,47 @@ def test_lookup_filters_to_the_requested_sources(tmp_path) -> None:
     assert hits and all(s in ("lore_chaos", "setting") for s, _, _, _ in hits)
     assert any(h == "DIE VIER CHAOSGOETTER" for _, h, _, _ in hits)
     assert not any(s == "rulebook" for s, _, _, _ in hits)
+
+
+# --- junk filter (live tuning after ADR 025) ------------------------------------------------------
+
+def test_is_junk_hit_classifies_ocr_noise_but_spares_real_answers() -> None:
+    # junk SHAPES dropped regardless of distance: dash-run heading, statblock tag, picture-text body
+    assert _is_junk_hit("player_guide", "--------------- PSYCHIC POWERS---------------", "x")
+    assert _is_junk_hit("rulebook", "PLaGUeBearer (eLite)", "stat line")
+    assert _is_junk_hit("rulebook", "CULtist (trOOP)", "stat line")
+    assert _is_junk_hit("rulebook", "COMMissar (LeaDer)", "stat line")
+    assert _is_junk_hit("player_guide", "NAME", "**----- Start of picture text -----**<br>NAME WR")
+    # real rule answers (these exact headings are golden-set positives) are NOT junk
+    assert not _is_junk_hit("rulebook", "CRITICAl HIT", "If you roll a Critical on your attack Test…")
+    assert not _is_junk_hit("conditions", "Blutend (Bleeding)", "Der Charakter verliert…")
+    assert not _is_junk_hit("rulebook", "COVeR", "There are three types of cover…")
+    # a statblock word in the middle of a real heading must not trip the end-anchored tag
+    assert not _is_junk_hit("rulebook", "ELITE TROOPS AND THEIR ROLE", "rules about elite units")
+
+
+def test_junk_heading_is_filtered_even_within_threshold(tmp_path) -> None:
+    """A chunk close enough to pass the distance gate is still dropped if its heading is OCR junk,
+    so a pure-narration turn whose nearest neighbour is a statblock injects nothing."""
+    db = tmp_path / "rag.db"
+    conn = sqlite3.connect(db)
+    conn.enable_load_extension(True)
+    sqlite_vec.load(conn)
+    conn.enable_load_extension(False)
+    ensure_schema(conn, model="fake-embed", dim=4)
+    # only chunk in the store is a bestiary statblock, sitting right on the query vector (d≈0)
+    cur = conn.execute(
+        "INSERT INTO chunks (source, heading, text) VALUES (?, ?, ?)",
+        ("rulebook", "WARRIOR (eLite)", "WS 45 BS 30 — a flavour statblock, not a rule."),
+    )
+    conn.execute(
+        "INSERT INTO chunks_vec (rowid, embedding) VALUES (?, ?)",
+        (cur.lastrowid, json.dumps([1.0, 0.0, 0.0, 0.0])),
+    )
+    conn.commit()
+    conn.close()
+    r = _retriever(db, [1.0, 0.0, 0.0, 0.0])  # exact match → distance 0, well under the ceiling
+    assert asyncio.run(r.fetch_block("ich setze mich an den Tisch und warte")) == ""
 
 
 def test_lookup_respects_ceiling_and_degrades_silently(tmp_path) -> None:

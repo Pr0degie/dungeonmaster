@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import sqlite3
 from pathlib import Path
 
@@ -43,6 +44,33 @@ _SOURCES: dict[str, str] = {
     "setting": "## Weltwissen (Hive Rokarth — lokaler Hintergrund, nur als Färbung nutzen)",
     "gm_guide": "## Weltwissen (Inquisition — Ordos, Philosophien & Methoden)",
 }
+
+# --- junk filter (live tuning after ADR 025) ---------------------------------------------------
+# On pure-narration turns the bge-m3 KNN still surfaces a handful of chunks that sit right at the
+# 0.45 ceiling (d≈0.43–0.45) yet carry no rule content: scrambled multi-column OCR, picture-text
+# dumps, and bestiary statblocks. They cost prompt budget and add nothing. The calibration sweep
+# showed a pure threshold drop (→0.42) would also lose a real combat-rule answer (`CRITICAl HIT`
+# @0.439), so instead we drop only chunks whose SHAPE is unambiguous junk — independent of
+# distance. Each rule is verified against tools/rag_golden_set.json to catch zero legitimate
+# rule answers (no golden-positive heading is a dash-run, a statblock tag, or a picture-text body).
+
+# Heading that is OCR layout noise: a run of dashes used as a fake rule line in the source PDF,
+# e.g. '--------------- PSYCHIC POWERS---------------'.
+_JUNK_DASH_RUN = re.compile(r"-{4,}")
+# Heading that is a creature/NPC statblock entry — '… (eLite)' / '(trOOP)' / '(LeaDer)' (the PDF's
+# bestiary tag, OCR-cased). These are stat tables, never a rule answer or useful narration colour.
+_JUNK_STATBLOCK = re.compile(r"\((?:elite|troop|leader)\)\s*$", re.IGNORECASE)
+# Body that is a scrambled image dump rather than prose — the ingester's picture-text marker.
+_JUNK_PICTURE_TEXT = "----- start of picture text -----"
+
+
+def _is_junk_hit(source: str, heading: str, text: str) -> bool:
+    """True for a chunk that is layout/OCR noise, not a real rule or lore passage — dropped from
+    the every-turn narration block regardless of distance. Conservative by construction: every
+    pattern here was checked against the golden set and matches no legitimate answer."""
+    if _JUNK_DASH_RUN.search(heading) or _JUNK_STATBLOCK.search(heading):
+        return True
+    return _JUNK_PICTURE_TEXT in text.lstrip()[:64].lower()
 
 
 class RulebookRetriever:
@@ -154,7 +182,11 @@ class RulebookRetriever:
         except Exception:
             log.exception("book retrieval failed — turn continues without it")
             return ""
-        hits = [(s, h, t, d) for s, h, t, d in hits if d <= self._max_distance]
+        hits = [
+            (s, h, t, d)
+            for s, h, t, d in hits
+            if d <= self._max_distance and not _is_junk_hit(s, h, t)
+        ]
         if not hits:
             return ""
         log.info("📚 %s", "; ".join(f"{s}:{h!r} (d={d:.2f})" for s, h, _, d in hits))

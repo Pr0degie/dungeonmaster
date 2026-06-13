@@ -41,10 +41,15 @@ class _FakeHTTP:
         pass
 
 
-def _client_with(data: dict) -> OllamaClient:
+def _client_with(data: dict, *, num_ctx: int | None = None) -> OllamaClient:
     """An OllamaClient whose transport is faked to return ``data`` (the real httpx client, created
-    in __init__ but unused here, is closed first so no resource leaks)."""
-    client = OllamaClient("http://x", "mistral-nemo")
+    in __init__ but unused here, is closed first so no resource leaks). Pass ``num_ctx`` to
+    override the instance default."""
+    client = (
+        OllamaClient("http://x", "mistral-nemo", num_ctx=num_ctx)
+        if num_ctx is not None
+        else OllamaClient("http://x", "mistral-nemo")
+    )
     asyncio.run(client._client.aclose())
     client._client = _FakeHTTP(data)  # type: ignore[assignment]
     return client
@@ -59,7 +64,7 @@ def test_chat_captures_token_meta() -> None:
     assert client.last_stats == {
         "prompt_eval_count": 3100,
         "eval_count": 180,
-        "num_ctx": 8192,  # the default we send
+        "num_ctx": 24576,  # the instance default we send
     }
 
 
@@ -67,7 +72,7 @@ def test_chat_meta_missing_counts_is_none() -> None:
     # An older / edge Ollama response without the counts → None, not a KeyError.
     client = _client_with({"message": {"content": "x"}})
     asyncio.run(client.chat("sys", []))
-    assert client.last_stats == {"prompt_eval_count": None, "eval_count": None, "num_ctx": 8192}
+    assert client.last_stats == {"prompt_eval_count": None, "eval_count": None, "num_ctx": 24576}
 
 
 def test_chat_meta_reflects_num_ctx_option() -> None:
@@ -75,6 +80,21 @@ def test_chat_meta_reflects_num_ctx_option() -> None:
     client = _client_with({"message": {"content": "y"}, "prompt_eval_count": 10, "eval_count": 5})
     asyncio.run(client.chat("sys", [], options={"num_ctx": 4096}))
     assert client.last_stats["num_ctx"] == 4096
+
+
+def test_instance_num_ctx_in_request_payload() -> None:
+    # The instance num_ctx (OLLAMA_NUM_CTX → config) is what actually goes on the wire, so a
+    # raised context window reaches Ollama instead of being silently capped at the old 8192.
+    client = _client_with({"message": {"content": "z"}}, num_ctx=12345)
+    asyncio.run(client.chat("sys", [{"role": "user", "content": "hi"}]))
+    assert client._client.payload["options"]["num_ctx"] == 12345  # type: ignore[attr-defined]
+
+
+def test_explicit_option_overrides_instance_num_ctx() -> None:
+    # An explicit caller option still wins over the instance default (override order preserved).
+    client = _client_with({"message": {"content": "z"}}, num_ctx=12345)
+    asyncio.run(client.chat("sys", [], options={"num_ctx": 4096}))
+    assert client._client.payload["options"]["num_ctx"] == 4096  # type: ignore[attr-defined]
 
 
 def test_ctx_over_budget_threshold() -> None:

@@ -28,10 +28,15 @@ RECAP_SYSTEM_DE = (
 )
 
 
-def build_recap_user(history: list[dict[str, str]]) -> str:
+def build_recap_user(history: list[dict[str, str]], prior_recap: str = "") -> str:
     """Render the per-channel chat history into a transcript for the summariser. Player turns are
     labelled ``Spieler``, the DM's narration ``Spielleitung``; ``[Würfel]``/``💥`` result lines that
-    were fed back are kept (they mark what happened mechanically)."""
+    were fed back are kept (they mark what happened mechanically).
+
+    ``prior_recap`` makes the recap *cumulative* (the auto-compaction trigger, D56): when the running
+    history is about to be cleared, an earlier recap already covers what scrolled out of it. We feed
+    that prior recap in as the lead-in so the new recap *supersedes and extends* it — nothing already
+    summarised is lost. Empty when there's no prior recap (the plain `!wrap up` case)."""
     lines: list[str] = []
     for msg in history:
         role = msg.get("role")
@@ -41,6 +46,18 @@ def build_recap_user(history: list[dict[str, str]]) -> str:
         speaker = "Spielleitung" if role == "assistant" else "Spieler"
         lines.append(f"{speaker}: {content}")
     transcript = "\n".join(lines)
+    prior_recap = (prior_recap or "").strip()
+    if prior_recap:
+        # The earlier recap is the "so far" the new summary must keep, then the fresh transcript is
+        # what happened since. One combined recap comes back out, replacing the old one.
+        return (
+            "Bisherige Zusammenfassung (\"Was bisher geschah\"):\n"
+            f"{prior_recap}\n\n"
+            "Seitdem ist Folgendes geschehen:\n\n"
+            f"{transcript}\n\n"
+            "Schreibe EINE zusammenhängende, aktualisierte Zusammenfassung, die das Bisherige und "
+            "das Neue vereint — nichts aus der bisherigen Zusammenfassung darf verloren gehen."
+        )
     return (
         "Hier ist der Verlauf der bisherigen Sitzung. Fasse ihn als \"Was bisher geschah\" zusammen:\n\n"
         f"{transcript}"

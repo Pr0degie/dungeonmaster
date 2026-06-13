@@ -20,6 +20,7 @@ class Config:
     discord_token: str
     ollama_host: str
     ollama_model: str
+    ollama_num_ctx: int
     bridge_host: str
     bridge_port: int
     bridge_secret: str
@@ -45,6 +46,7 @@ class Config:
     roll_router: bool
     streaming: bool
     autosave: bool
+    autorecap: bool
     scene_mode: str
 
     @classmethod
@@ -69,6 +71,10 @@ class Config:
             discord_token=token,
             ollama_host=os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").strip(),
             ollama_model=os.environ.get("OLLAMA_MODEL", "mistral-nemo").strip(),
+            # LLM context window (Ollama num_ctx). High by default now that the bot runs on a
+            # 16 GB 4080 — 8k silently truncated the system prompt (persona + adventure) mid-session.
+            # Lower it if VRAM gets tight (XTTS + Whisper share the GPU).
+            ollama_num_ctx=int(os.environ.get("OLLAMA_NUM_CTX", "24576")),
             bridge_host=os.environ.get("DM_BRIDGE_HOST", "127.0.0.1").strip(),
             bridge_port=int(os.environ.get("DM_BRIDGE_PORT", "8765")),
             # Shared secret for the cross-machine bridge. Empty = localhost path mode (no secret).
@@ -157,6 +163,15 @@ class Config:
             # data/sessions/<id>/history.jsonl so a crash doesn't lose the evening's thread; restored
             # on !join, rotated on !leave. ON by default; DM_AUTOSAVE=0 disables it.
             autosave=os.environ.get("DM_AUTOSAVE", "1").strip().lower()
+            in ("1", "true", "yes", "on"),
+            # Rolling auto-recap / context handoff (D56): when a turn's prompt nears the num_ctx cap
+            # (the early signal before Ollama truncates the prompt HEAD — the persona + adventure),
+            # auto-summarise the running history into a cumulative recap, persist it like !wrap up,
+            # and clear the in-memory history so the next prompt is persona + adventure + recap +
+            # state + empty history — safely under budget, persona never truncated. Runs off the hot
+            # path (after the turn is spoken). ON by default; DM_AUTORECAP=0 disables it (falls back
+            # to the bare context-budget warning).
+            autorecap=os.environ.get("DM_AUTORECAP", "1").strip().lower()
             in ("1", "true", "yes", "on"),
             # Auto scene transitions (ADR 026): when the DM emits an <<ORT id>> marker, the cog posts
             # a confirm button and, on click, moves the scene pointer. "verbunden" (default) only

@@ -4,6 +4,13 @@ Living status document. A phase counts as done only when its **verification gate
 met and the proof is recorded here.
 
 ## Current focus
+**Erste Live-Runde gespielt (2026-06-13) → Playtest-Fix-Runde gelandet (D57–D59, ADR 027/028),
+live-unverified.** Hauptbefund: die Klage „geht null auf die Story ein" war eine **stille
+`num_ctx`-Trunkierung** (8192 hartkodiert → Persona+Abenteuer fielen mitten in der Session aus dem
+Prompt). Gefixt: `num_ctx` konfigurierbar+hoch (`OLLAMA_NUM_CTX=24576`, 4080) + rollierender
+Auto-Recap, neuer `!start`-Eröffnungs-Command, Persona-Steuerung (Story/Spotlight/NSC-Initiative),
+RAG entrauscht. Suite 262 grün. Details unter „Last session". _Nächstes Live-Gate prüft genau das._
+
 **Phase 10a — the adventure is in the DM (D44/D45 → ADR 019): code-complete, live-unverified.**
 The "perfect gamemaster" discussion (Tobi + Timos architecture critique) concluded that the
 loudest failure — *the DM improvises from nothing* — needed Phase 10 pulled forward as a
@@ -138,6 +145,37 @@ world-state block (CLAUDE.md prompt order). **Model: mistral-nemo.** Recommended
 gate / any follow-up: **Opus 4.8 / xhigh**.
 
 ## Last session
+**Erste Live-Runde → Playtest-Fix-Runde (2026-06-13, D57–D59, ADR 027/028). Code-complete,
+live-unverified.** Die erste echte Runde (Channel circlejerk, Party Gellicus/Fridolin/Rektalus)
+lief „teils besser als davor", aber die Hauptklage war: **der Bot geht null auf die Story ein,
+sagt am Anfang nicht, was abgeht, und führt nicht durch die Geschichte.** 13 Kritikpunkte aus dem
+annotierten Log gezogen; Wurzel-Diagnose + Fixes über parallele Agents (Tobis Vorgabe). Suite
+**246 → 262** grün.
+- **Smoking Gun (D57 → ADR 027):** `num_ctx` lief real auf **8192** (hartkodiert in `client.py`;
+  die 24000, die Tobi zu setzen glaubte, wurden nirgends gelesen). Ab ~Turn 16 lag der Prompt
+  >85% → Ollama trunkiert den **Kopf zuerst: Persona + Abenteuer-Zusammenfassung**. Das erzeugte
+  gleichzeitig Story-ignoriert, zu lange Antworten, Puppeting, Vorweg-Auflösung. Fix: `num_ctx` per
+  `OLLAMA_NUM_CTX` konfigurierbar (Default **24576**, läuft jetzt auf einer 4080) **+** rollierender
+  **Auto-Recap** (`DM_AUTORECAP`, default an): bei Budget-Überschreitung nach dem Zug kumulativ
+  zusammenfassen (`summarize(..., prior_recap=…)`), wie `!wrap up` persistieren und die
+  In-Memory-History leeren → Kopf wird nie mehr trunkiert (der von Pr0degie gewünschte „Handoff").
+  _Abweichung von der `prompt-6`-Spec: compact-and-clear am echten Budget-Signal statt
+  fold-before-trim — Naht „kein Verbatim-Verlauf direkt nach Kompaktion" als Verfeinerung notiert._
+- **Eröffnung + Persona (D58):** neuer **`!start`** (Aliase `!briefing`/`!auftrag`) erzählt das
+  `auftrag`-Briefing (Halikarn, Mission, Spuren als Atmosphäre) über die bestehende Stream-/Speak-
+  Pipeline; eigener `respond_opening*`-Pfad unterdrückt Würfel-Routing. Persona (`dm_core_de.md`):
+  Szenenziel im Blick + sanft auf offene Spuren lenken, **jeder Zug endet mit Welt in Bewegung**
+  (NSC handelt/spricht, nie flache Beschreibung die stoppt), **Spotlight** auf andere/stille
+  Figuren namentlich.
+- **RAG entrauscht (D59 → ADR 028):** `_is_junk_hit` filtert OCR/Statblock-Müll (Dash-Runs,
+  `(eLite)`-Tags, Picture-Text) aus dem Pro-Turn-Block; `MAX_DISTANCE` bleibt 0.45, recall@1/@3
+  unverändert. Offen: `WARRIOR`-Epigraph-Zeilen brauchen Re-Chunking beim Ingest.
+- _Offen / Modell-Ceiling: generische Wurf-Ergebnistexte, NSC-Name/Genus-Halluzinationen, Reste
+  von Wiederholung/Vorweg-Auflösung (nemo-12B-Grenze); die Marker-vs-Router-Spannung (#6,
+  Inline-`<<TEST>>` verworfen, Router feuert nach der fertigen Erzählung) als spätere Designfrage.
+  Live-Gate nächste Runde: `!start` spricht das Briefing, kein `[ctx] … truncating`-Warning mehr
+  (bzw. Auto-Recap greift sichtbar), DM nennt Spuren/Szenenziel, kein 📚-Garbage bei reinem RP._
+
 **Auto scene transitions — `<<ORT …>>` marker + confirm button (2026-06-13, ADR 026).** `!ort <id>`
 was a manual, human-only pointer move (ADR 020). Now the DM-LLM can *request* a move in-band, code
 validates + a human confirms — mirroring the dice/`<<TEST>>` pattern (golden rule #2), so golden
@@ -960,6 +998,9 @@ create the next-numbered ADR.
 | D54 | Anti-repetition persona rule | **Prompt-side W4 fix** — a persona rule in `prompts/dm_core_de.md`: established facts (Was bisher geschah, world state, ongoing scene) are **already known to the players**; reference them briefly, describe in detail only **new** things + the **consequences** of the latest action. Plus the recap label in `_build_request` sharpened to „(den Spielenden bereits bekannt — nicht erneut ausführlich erzählen)". Prompt-only; no code guard built (D45's fuzzy `is_self_repetition` stays the fallback) | The DM re-explained settled context (places/NPCs/events) in full every turn instead of advancing — the persona side of W4, which D45's after-the-fact echo guard can't pre-empt. ADR 016 itself flagged W4 as open, and this lives in ADR 016's persona-output-discipline domain → **Nachtrag in ADR 016**, no new ADR. Live-observe nemo's adherence |
 | D55 | XTTS-Babble bei Satzzeichen | **Zwei XTTS-Sampling-Hebel** (`dmbot/tts/xtts.py` `_SYNTH_KWARGS`, an beide `tts_to_file`-Pfade): **`split_sentences=False`** (`textsplit` chunkt bereits in <240-Zeichen-Satzgruppen; XTTS' eigener pysbd-Splitter zerlegte die in Satzzeichen-Fragmente → GPT-Decoder-Loops/Babble) + **`repetition_penalty=10.0`** (Model-Config liefert 5.0, XTTS' eigener `inference`-Default ist das stärkere Anti-Loop-10.0; tunbar via `XTTS_REPETITION_PENALTY`). 246 grün; live-unverifiziert | D53 härtete den *Text* zu XTTS (Whitelist + Sprechbarkeits-Guard) und stellte diese zwei Sampling-Hebel „nur bei Bedarf nach Live-Test" zurück — der Test brauchte sie („Psychosen bei Satzzeichen": autoregressives Loopen an Kommas/Satzenden, kein Normalisierungs-Leak). Kwarg-Fluss per API-Inspektion bestätigt (`tts_to_file`→`Synthesizer.tts`→`Xtts.synthesize`). Nächster Hebel bei Persistenz: `temperature` runter → **Nachtrag in ADR 016** |
 | D56 | Auto scene transitions | **Third LLM marker `<<ORT <scene-id>>>`** (mirrors `<<TEST>>`/`<<MANIFEST>>`): the DM *requests* a scene move in-band; code strips+validates it and a **human confirms** via a `SceneChangeView` button before the deterministic move runs (`_set_scene`, shared with `!ort`). Profile-free `extract_scenes` (scenes belong to the adventure, not the rules profile); `finalize_answer` → 4-tuple; `_pending_scenes` queued only under the `_last_action` post-roll guard. Switchable target mode `DM_SCENE_MODE` / `!ortmodus`: **`verbunden`** (default — only `leads_to` neighbours, via pure `Adventure.resolve_move`) vs **`frei`** (any scene); illegal/unknown → ignored+logged. Manual `!ort` stays as override. +12 tests (246 grün); live-unverified | `!ort` mid-scene was friction (ADR 020 deferred this exact step: "re-evaluate once live play shows `!ort` friction"). Upholds golden rule #3 — the LLM never *writes* `scene_id`, it emits a validated request like it requests dice (golden rule #2); the confirm button is the human-in-the-loop gate. Reverses only ADR 020's "moved by humans only" binding → **ADR 026** |
+| D57 | Context budget (1st live round) | **(a) `num_ctx` configurable + high.** New `OLLAMA_NUM_CTX` env (Config `ollama_num_ctx`, default **24576**), threaded config → cog → `OllamaClient(num_ctx=…)` → request `options`; removes the hardcoded 8192. **(b) Rolling auto-recap (`DM_AUTORECAP`, default on).** When `prompt_eval` crosses `ctx_over_budget` (0.85·num_ctx), *after* the turn is spoken (off the hot path): a **cumulative** recap (`summarize(cid, prior_recap=…)`) is generated, persisted like `!wrap up`, and the in-memory history **cleared** — so the next prompt's head (persona + adventure) is never truncated. Per-channel `_compacting` guard. +18 tests (262 green) | The 1st live round's loudest failure ("geht null auf die Story ein") was a **silent truncation**: `num_ctx` ran at 8192 (the 24000 Tobi thought he'd set was read nowhere); from ~turn 16 the prompt head (persona + adventure summary) fell out — simultaneously causing story-ignored, runaway length, puppeting, pre-roll resolution. Two layers (big window + proactive compaction) close it GPU-independently. Chose compact-and-clear on the real budget signal over the `prompt-6` fold-before-trim spec → **ADR 027** |
+| D58 | `!start` briefing + persona steer | **(a) `!start`** (aliases `!briefing`/`!auftrag`): a dedicated opening turn — the DM narrates the `auftrag` briefing (Halikarn message, mission, leads as atmosphere) via the existing stream/speak path; a thin `respond_opening*` path leaves `_last_action` None so dice routing is suppressed; sets `scene_id` to the start scene if unset. **(b) Persona** (`prompts/dm_core_de.md`): keep the current scene's goal in view + steer gently toward open leads (not a list, not railroad); every turn ends with the **world in motion** (an NSC acts/speaks or a concrete hook), never a flat description that stops; **spotlight** — bring other named/silent characters in by name | 1st-round complaints: "am Anfang nicht gesagt, was abgeht" (`!join` only printed status), the DM stopped on static descriptions with passive NPCs, and one player sat idle all session. Prompt/feature tuning in ADR 016's persona-discipline domain (like D54) — effective only because D57 stops the persona being truncated → D-entry, no new ADR. Live-unverified |
+| D59 | RAG junk-shape filter | **Distance-independent `_is_junk_hit`** in `fetch_block` (per-turn narration gate only; `!rules`/`!lore`/`lookup` untouched): drops dash-run headings (`-{4,}`), statblock-tag headings (`(eLite)`/`(trOOP)`/`(LeaDer)`), and picture-text bodies. `MAX_DISTANCE` stays **0.45**. 103/2482 chunks become narration-ineligible; recall@1/@3 **unchanged** (52%/81%) | 1st round: pure-RP turns injected OCR/TOC garbage at the 0.43–0.45 edge (`WARRIOR`, `MACHARIAN TOMES`, `--- PSYCHIC POWERS ---`), wasting the context budget D57 fights. Calibration (ADR 025) showed tightening the threshold costs real recall (`CRITICAL HIT` @0.439) — a shape filter is surgical instead. Known gap: `WARRIOR`-style epigraph rows need ingest-level re-chunking (out of scope) → **ADR 028** |
 
 ### Phase → ADR map (read these when you enter the phase)
 
@@ -972,8 +1013,8 @@ create the next-numbered ADR.
 | 6 — TTS + full loop | **ADR 008** (TTS engine: Piper + XTTS) + ADR 002 (bridge, VRAM) + `architecture.md` §3 (bridge contract) + **ADR 016** (TTS speech-only normalization) + **ADR 017** (streaming pipeline: sentence-chunked TTS, hold-back rules, history parity) |
 | 6–7 — Full loop, turn-taking, registration | ADR 003 (conversational control, registration, turn-taking) + **ADR 011** (STT latency: push-to-talk gate) + **ADR 013** (pause control) |
 | 8 — Dice engine, IM profile, marker flow | ADR 005 (engine + profile) + ADR 004 (test marker, character data) + ADR 001 (IM specifics) + **ADR 012** (difficulty ladder, character store, marker grammar) + **ADR 014** (roll-detection router; timing now D40 — fires concurrent with playback) + **ADR 018** (router wins the dedupe; echo guard + roll-feedback directive on post-roll turns) |
-| 9 — Memory (JSON + recaps) | ADR 004 (character/state JSON) + **ADR 015** (sheet/state split, auto-combat damage) |
-| 10 — RAG + profile bootstrap | ADR 005 (profile bootstrap) + **ADR 019** (3-stage hybrid: scene tracker + rulebook-only RAG, bge-m3, W4 guard) + **ADR 021** (curated German lore compendium: `lore_imperium`/`lore_chaos` sources) |
+| 9 — Memory (JSON + recaps) | ADR 004 (character/state JSON) + **ADR 015** (sheet/state split, auto-combat damage) + **ADR 027** (rolling auto-recap / context handoff — recap is no longer wrap-up-only) |
+| 10 — RAG + profile bootstrap | ADR 005 (profile bootstrap) + **ADR 019** (3-stage hybrid: scene tracker + rulebook-only RAG, bge-m3, W4 guard) + **ADR 021** (curated German lore compendium: `lore_imperium`/`lore_chaos` sources) + **ADR 025** (German rules glossary + 0.45 calibration) + **ADR 028** (RAG junk-shape filter) + **ADR 027** (configurable `num_ctx`, context-budget compaction) |
 
 ---
 
