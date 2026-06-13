@@ -5,6 +5,7 @@
   "system": "imperium_maledictum",
   "origin": "Feudalwelt",
   "concept": "Reicher Schönling",
+  "faction": "Inquisition",
   "characteristics": { "WS": 29, "BS": 24, "Str": 40, "Tgh": 35, "Ag": 35, "Int": 24, "Per": 30, "Wil": 28, "Fel": 35 },
   "skills": {
     "Nahkampf": 39,
@@ -31,5 +32,18 @@
   "weapons": [
     { "name": "Kampfmesser", "test": "39", "damage": "1W10+1", "range": "Nah", "mag": "—", "enc": "0", "traits": "Leise" },
     { "name": "Handgranate", "test": "24", "damage": "1W10", "range": "Wurf", "mag": "1", "enc": "1", "traits": "Explosiv (nicht in Profiltabelle → 1W10 Standard)" }
-  ]
+  ],
+
+  "age": "25",
+  "eyes": "Klares, störendes Blau",
+  "hair": "Schwarz, stets makellos",
+  "height": "Ca. 1,95 m",
+  "weight": "Athletisch-muskulös, schwer zu schätzen — und er sagt es nicht",
+  "handedness": "Rechtshändig",
+  "distinguishing": "Ein Lächeln, das Verhandlungen beendet — und die unnatürliche Eigenschaft, immer gut auszusehen (nach dem Kampf, im Schlamm, beim Frühstück).",
+  "goals": "Kurzfristig: herausfinden, ob es im Sektor jemanden gibt, der ihm äußerlich das Wasser reichen kann (bisher Fehlanzeige).\nLangfristig: die Zerfickus-Pleasure-Houses auf zwei weitere Sektoren ausweiten und sich unsterblich machen — im übertragenen Sinne.",
+  "connections": "Fridolin Feuchtgebietheld — alter Freund seit Jahren, wird mit liebevoller Gleichgültigkeit ertragen (bräuchte dringend bessere Kleidung und weniger Sinnkrisen).\nGellicus Schulz — neuer Verbündeter, respektiert für seinen Instinkt, stets die richtige Gesellschaft mitzubringen.",
+  "notes": "Abkömmling der Zerfickus-Bordelldynastie auf der Feudalwelt Valdris Prime; an die Inquisition abgetreten zur Begleichung väterlicher Schulden. Erstaunlich tapfer (unterschätzt jede Gefahr), überraschend loyal (Verrat = schlechter Stil), gelegentlich brillant im Lesen sozialer Situationen — aber komplizierte Pläne verliert er nach Schritt drei. Hält Selbstreflexion für Zeitverschwendung und Spiegel für unverzichtbare Ausrüstung.",
+  "combat_notes": "Nahkämpfer mit Kampfmesser; geht als Erster rein, plant wenig, verlässt sich auf Physis und Instinkt. Granate als letztes Argument, wenn die Lage unübersichtlich wird oder die Frisur in Gefahr gerät. Das Medikit trägt er für die anderen — eigene Verletzungen sind eine vorübergehende Unannehmlichkeit.",
+  "divination": "Wer gut aussieht, überlebt. Der Rest ist Theologie."
 }
