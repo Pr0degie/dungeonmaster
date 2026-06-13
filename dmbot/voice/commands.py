@@ -1286,13 +1286,25 @@ class VoiceReceiveCog(commands.Cog):
     # Display names for the curated lore topics (data/lore/<topic>.md, ADR 021); unknown
     # (future) files fall back to topic.title().
     _LORE_TITLES = {"imperium": "Weltwissen: Imperium", "chaos": "Weltwissen: Chaos"}
+    # !lore questions search the Weltwissen sources only — rule questions belong to the DM
+    # turn / !rules, and raw rulebook chunks are English layout soup, not player reading.
+    _LORE_SOURCES = ("lore_imperium", "lore_chaos", "setting")
+    _LORE_SOURCE_NAMES = {"lore_imperium": "Imperium", "lore_chaos": "Chaos", "setting": "Hive Rokarth"}
 
     @commands.command(name="lore", aliases=["hintergrund"])
-    async def lore(self, ctx: commands.Context, topic: str = "imperium") -> None:
-        """Weltwissen-Rundown zum Blättern (◀/▶): `!lore` = Imperium, `!lore chaos` = Chaos.
+    async def lore(self, ctx: commands.Context, *, arg: str = "") -> None:
+        """Weltwissen: `!lore` / `!lore chaos` blättert den Rundown (◀/▶); `!lore <frage>`
+        schlägt die passenden Kompendiums-Abschnitte nach (`!lore wer ist der Imperator?`).
         Lese-Material, kein DM-Turn — wird nicht gesprochen. Alias: !hintergrund"""
         lore_dir = _DATA_DIR / "lore"
-        topic = topic.lower().strip()
+        topic = arg.lower().strip()
+        if not topic or (lore_dir / f"{topic}.md").is_file():
+            await self._lore_rundown(ctx, lore_dir, topic or "imperium")
+            return
+        await self._lore_question(ctx, arg)
+
+    async def _lore_rundown(self, ctx: commands.Context, lore_dir, topic: str) -> None:
+        """The paged ◀/▶ view over data/lore/<topic>.md (the original !lore mode)."""
         path = lore_dir / f"{topic}.md"
         if not path.is_file():
             topics = available_topics(lore_dir)
@@ -1306,6 +1318,33 @@ class VoiceReceiveCog(commands.Cog):
             return
         view = RulesView(pages, self._LORE_TITLES.get(topic, topic.title()))
         await self._send_with_retry(ctx.channel, view=view, embed=view.embed())
+
+    async def _lore_question(self, ctx: commands.Context, question: str) -> None:
+        """`!lore <frage>` — show the best-matching Weltwissen sections (deterministic chunk
+        display, no LLM: the compendium text IS the answer; the DM narrates in-game)."""
+        if not self._retriever.available():
+            await ctx.send("Kein RAG-Store vorhanden — `!lore <frage>` braucht `data/vectordb/rag.db`.")
+            return
+        hits = await self._retriever.lookup(question, sources=self._LORE_SOURCES)
+        if not hits:
+            await ctx.send(
+                f"Dazu steht nichts im Weltwissen: *{question}*\n"
+                f"(Rundown: `!lore` / `!lore chaos` — Regelfragen: `!rules`)"
+            )
+            return
+        parts = []
+        for source, heading, text, dist in hits:
+            label = self._LORE_SOURCE_NAMES.get(source, source)
+            parts.append(f"**{heading}** · _{label}_\n{text}")
+            log.info("📚 !lore %r → %s:%r (d=%.2f)", question, source, heading, dist)
+        description = "\n\n".join(parts)
+        if len(description) > 4000:  # embed description cap; two lore chunks normally fit
+            description = description[:4000].rsplit(" ", 1)[0] + " …"
+        embed = discord.Embed(
+            title="📚 Weltwissen", description=description, color=discord.Color.dark_gold()
+        )
+        embed.set_footer(text=question)
+        await self._send_with_retry(ctx.channel, embed=embed)
 
     @commands.command(name="damage", aliases=["schaden"])
     async def damage(self, ctx: commands.Context, name: str = "", amount: int = 0) -> None:

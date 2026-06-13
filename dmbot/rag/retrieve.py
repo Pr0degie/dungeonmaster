@@ -90,10 +90,14 @@ class RulebookRetriever:
         resp.raise_for_status()
         return resp.json()["embeddings"][0]
 
-    def _search(self, vector: list[float]) -> list[tuple[str, str, str, float]]:
+    def _search(
+        self, vector: list[float], sources: tuple[str, ...] | None = None, k: int | None = None
+    ) -> list[tuple[str, str, str, float]]:
         """KNN over the store (sync sqlite — run via to_thread).
         → [(source, heading, text, distance)] for the searched sources, best first."""
-        placeholders = ",".join("?" for _ in _SOURCES)
+        sources = sources or tuple(_SOURCES)
+        k = k or self._k
+        placeholders = ",".join("?" for _ in sources)
         conn = sqlite3.connect(self._db_path)
         try:
             conn.enable_load_extension(True)
@@ -104,11 +108,36 @@ class RulebookRetriever:
                 "JOIN chunks c ON c.id = v.rowid "
                 f"WHERE v.embedding MATCH ? AND v.k = ? AND c.source IN ({placeholders}) "
                 "ORDER BY v.distance",
-                (json.dumps(vector), self._k * 3, *_SOURCES),  # over-fetch: the filter prunes
+                (json.dumps(vector), k * 3, *sources),  # over-fetch: the filter prunes
             ).fetchall()
         finally:
             conn.close()
-        return [(s, h, t, d) for s, h, t, d in rows][: self._k]
+        return [(s, h, t, d) for s, h, t, d in rows][:k]
+
+    async def lookup(
+        self,
+        query: str,
+        *,
+        sources: tuple[str, ...],
+        k: int = 2,
+        max_distance: float = 0.52,
+    ) -> list[tuple[str, str, str, float]]:
+        """Explicit lookup (``!lore <frage>``): the matching chunks as raw hits, best first —
+        ``[(source, heading, text, distance)]``. Unlike :meth:`fetch_block` this is a direct
+        player request, so the ceiling is looser than the per-turn prompt gate (a best-effort
+        answer beats silence — narrative phrasings land ~0.48) but still tight enough that an
+        off-corpus topic (Tyranids, ~0.54) gets an honest "nothing found" instead of the
+        nearest wrong chunk. The caller picks the sources. Degrades to ``[]`` on errors."""
+        query = (query or "").strip()
+        if not query:
+            return []
+        try:
+            vector = await self._embed_query(query)
+            hits = await asyncio.to_thread(self._search, vector, sources, k)
+        except Exception:
+            log.exception("lore lookup failed")
+            return []
+        return [(s, h, t, d) for s, h, t, d in hits if d <= max_distance]
 
     async def fetch_block(self, query: str) -> str:
         """The ``## Regelwerk`` / ``## Weltwissen`` prompt block(s) for ``query``, or ``""`` when

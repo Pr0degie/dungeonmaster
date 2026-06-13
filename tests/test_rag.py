@@ -148,3 +148,26 @@ def test_block_order_rules_then_lore_then_setting(tmp_path) -> None:
     block = asyncio.run(r.fetch_block("Imperium und Chaos und Rokarth?"))
     assert block.index("## Regelwerk") < block.index("Chaos — verbotenes Wissen")
     assert block.index("Chaos — verbotenes Wissen") < block.index("lokaler Hintergrund")
+
+
+def test_lookup_filters_to_the_requested_sources(tmp_path) -> None:
+    db = _fixture_db(tmp_path)
+    # near BOTH the rulebook chunk and the lore chunk — but only lore sources are searched
+    r = _retriever(db, [0.6, 0.0, 0.6, 0.0])
+    hits = asyncio.run(r.lookup("Chaosgötter?", sources=("lore_chaos", "setting")))
+    assert hits and all(s in ("lore_chaos", "setting") for s, _, _, _ in hits)
+    assert any(h == "DIE VIER CHAOSGOETTER" for _, h, _, _ in hits)
+    assert not any(s == "rulebook" for s, _, _, _ in hits)
+
+
+def test_lookup_respects_ceiling_and_degrades_silently(tmp_path) -> None:
+    db = _fixture_db(tmp_path)
+    r = _retriever(db, [0.7, 0.0, 0.7, 0.0])  # ~0.29 cosine distance from the lore chunk
+    assert asyncio.run(r.lookup("x", sources=("lore_chaos",), max_distance=0.1)) == []
+    assert asyncio.run(r.lookup("  ", sources=("lore_chaos",))) == []
+
+    async def boom(query: str) -> list[float]:
+        raise RuntimeError("ollama down")
+
+    r._embed_query = boom  # type: ignore[method-assign]
+    assert asyncio.run(r.lookup("Frage?", sources=("lore_chaos",))) == []  # never breaks the command
