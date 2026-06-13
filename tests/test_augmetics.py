@@ -9,11 +9,13 @@ All pure + fixed-seed where dice are involved.
 from __future__ import annotations
 
 import random
+import types
 
 from dmbot.rules import engine, profile as profile_mod
 from dmbot.rules.characters import (
     Character, CharacterStore, augmetic_armour, augmetic_bonus, resolve_target,
 )
+from dmbot.voice.dicecog import DiceCog
 
 _IM = profile_mod.load("imperium_maledictum")
 
@@ -96,3 +98,26 @@ def test_augmetic_armour_reduces_applied_damage() -> None:
     with_arm = engine.resolve_damage(roll, success_level=2, soak=4 + augmetic_armour(
         _IM, Character.from_dict({"name": "Vask", "augmetics": ["Augmetischer Arm"]})))
     assert with_arm.applied == base.applied - 1
+
+
+# -- soak lookup tolerates a whitespace-drifted sheet key (finding #9) ---------------------
+
+def _toughness_cog(store: CharacterStore) -> DiceCog:
+    """A DiceCog wired with just the profile + store that _toughness_bonus reads."""
+    cog = DiceCog.__new__(DiceCog)  # skip __init__ (needs a real bot)
+    cog._rt = types.SimpleNamespace(_profile=_IM, _characters=store)
+    return cog
+
+
+def test_toughness_bonus_clean_key() -> None:
+    store = CharacterStore([Character.from_dict({"name": "Seskin", "characteristics": {"Tgh": 45}})])
+    cog = _toughness_cog(store)
+    assert cog._toughness_bonus(store.get("Seskin")) == 4  # tens of 45
+
+
+def test_toughness_bonus_tolerates_trailing_space_in_sheet_key() -> None:
+    # A sheet whose Toughness key drifted to "Tgh " (trailing space) must still soak correctly:
+    # the old hand-rolled loop lower-cased but did not strip, so it returned 0 (finding #9).
+    store = CharacterStore([Character.from_dict({"name": "Vask", "characteristics": {"Tgh ": 45}})])
+    cog = _toughness_cog(store)
+    assert cog._toughness_bonus(store.get("Vask")) == 4

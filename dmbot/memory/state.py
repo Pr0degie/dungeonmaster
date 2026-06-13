@@ -292,14 +292,6 @@ class WorldState:
             c.warp_charge = max(0, int(value))
         return c
 
-    def reduce_warp_charge(self, name: str, amount: int) -> Combatant | None:
-        """Shed ``amount`` Warp Charge (Purgation), never below the total Warp Rating the combatant
-        is Sustaining is the caller's concern; here we only clamp at 0."""
-        c = self.find(name)
-        if c is not None:
-            c.warp_charge = max(0, c.warp_charge - max(0, int(amount)))
-        return c
-
     def reset_warp_charge(self, name: str) -> Combatant | None:
         """Reset Warp Charge to 0 and drop all Sustained powers — what Perils of the Warp does."""
         c = self.find(name)

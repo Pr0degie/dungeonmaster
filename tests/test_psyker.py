@@ -8,15 +8,18 @@ outcomes are asserted exactly (golden rule: dice = code).
 
 from __future__ import annotations
 
+import asyncio
 import random
+import types
 
 import pytest
 
 from dmbot.rules import engine, profile as profile_mod
 from dmbot.rules.engine import TestResult as _TestResult
 from dmbot.rules.characters import Character, CharacterStore, resolve_manifest_request
-from dmbot.rules.marker import extract_manifests
+from dmbot.rules.marker import ManifestRequest, extract_manifests
 from dmbot.memory.state import Combatant, WorldState, world_state_summary_de
+from dmbot.voice.dicecog import DiceCog
 
 _IM = profile_mod.load("imperium_maledictum")
 
@@ -177,6 +180,28 @@ def test_resolve_manifest_request_computes_target_threshold_and_rating() -> None
     assert rm.willpower_bonus == 4 and rm.threshold == 4
 
 
+def test_containment_target_derives_from_discipline_not_mastery() -> None:
+    # Finding #1: the Warp-containment Test rolls against Disziplin (Psi), not Psi-Meisterschaft.
+    store = CharacterStore([
+        Character.from_dict({
+            "name": "Vael",
+            "characteristics": {"Wil": 40},
+            "skills": {"Psi-Meisterschaft": 60, "Disziplin (Psi)": 30},
+            "psyker": True,
+            "known_powers": ["Smite"],
+        })
+    ])
+    rm = resolve_manifest_request(_IM, store, power="Smite", target_name="Vael")
+    assert rm is not None
+    # Manifest still rolls against Psi-Meisterschaft 60 (Smite is Schwierig -10 → 50)...
+    assert rm.base == 60 and rm.target == 50
+    # ...but the containment base comes from Disziplin (Psi) 30, not 60.
+    assert rm.contain_base == 30
+    # The containment target dicecog builds (Herausfordernd modifier is +0) therefore derives from 30.
+    contain_target = (rm.contain_base or 0) + (_IM.difficulty_modifier("Herausfordernd") or 0)
+    assert contain_target == 30
+
+
 def test_resolve_manifest_request_unknown_power_is_none() -> None:
     assert resolve_manifest_request(_IM, _mortn(), power="Fireball", target_name="Mortn") is None
 
@@ -223,3 +248,99 @@ def test_world_state_warp_helpers_and_summary() -> None:
     state.reset_warp_charge("Mortn")  # Perils resets charge to 0 and drops sustained powers
     m = state.find("Mortn")
     assert m.warp_charge == 0 and m.sustained_powers == []
+
+
+# -- not-in-state party psyker warns instead of silently dropping Warp Charge (finding #2) --
+
+class _FakeMessage:
+    def __init__(self) -> None:
+        self.content = None
+
+    async def edit(self, *, content=None, view=None) -> None:
+        self.content = content
+
+
+class _FakeInteraction:
+    def __init__(self) -> None:
+        self.message = _FakeMessage()
+
+
+def _fake_runtime(*, store: CharacterStore, state: WorldState | None):
+    """A minimal stand-in for SessionRuntime exposing only what _make_manifest_roll touches."""
+    rt = types.SimpleNamespace()
+    rt._profile = _IM
+    rt._rng = random.Random(7)
+    rt._characters = store
+    rt._state = {1: state} if state is not None else {}
+    rt._brain_channel = lambda channel: 1
+    rt._brain = types.SimpleNamespace(add_test_result=lambda cid, ln: None)
+    rt._persist_and_refresh = lambda channel: None
+
+    async def _send_with_retry(channel, content=None, *, view=None):
+        return None
+
+    async def _run_and_deliver(channel, guild_id):
+        return None
+
+    rt._send_with_retry = _send_with_retry
+    rt.run_and_deliver = _run_and_deliver
+    return rt
+
+
+def test_manifest_warns_when_party_psyker_not_in_world_state() -> None:
+    # Mortn is a known party psyker (in the store) but absent from this session's WorldState — the
+    # in-combat Warp-Charge path can't run, so the GM must be warned rather than lose the resource.
+    store = CharacterStore([
+        Character.from_dict({
+            "name": "Mortn",
+            "characteristics": {"Wil": 48},
+            "skills": {"Psi-Meisterschaft": 45, "Disziplin (Psi)": 30},
+            "psyker": True,
+            "known_powers": ["Smite"],
+        })
+    ])
+    state = WorldState(characters=[])  # encounter has no Mortn
+    rt = _fake_runtime(store=store, state=state)
+    cog = DiceCog.__new__(DiceCog)  # skip __init__ (needs a real bot); set only what we use
+    cog._rt = rt
+    cog._warp_untracked_warned = set()
+
+    resolved = resolve_manifest_request(_IM, store, power="Smite", target_name="Mortn")
+    assert resolved is not None and resolved.target is not None
+    req = ManifestRequest(power="Smite", target_name="Mortn")
+    channel = types.SimpleNamespace(guild=None)
+    roll = cog._make_manifest_roll(channel, req, resolved)
+    interaction = _FakeInteraction()
+    asyncio.run(roll(interaction))
+
+    assert "Warp-Aufladung wird nicht verfolgt" in interaction.message.content
+    assert "Mortn" in interaction.message.content
+
+
+def test_manifest_warning_is_one_time_per_psyker() -> None:
+    # The warning must not spam the channel: the second Manifest in the same channel stays silent.
+    store = CharacterStore([
+        Character.from_dict({
+            "name": "Mortn",
+            "characteristics": {"Wil": 48},
+            "skills": {"Psi-Meisterschaft": 45, "Disziplin (Psi)": 30},
+            "psyker": True,
+            "known_powers": ["Smite"],
+        })
+    ])
+    rt = _fake_runtime(store=store, state=WorldState(characters=[]))
+    cog = DiceCog.__new__(DiceCog)
+    cog._rt = rt
+    cog._warp_untracked_warned = set()
+
+    resolved = resolve_manifest_request(_IM, store, power="Smite", target_name="Mortn")
+    req = ManifestRequest(power="Smite", target_name="Mortn")
+    channel = types.SimpleNamespace(guild=None)
+    roll = cog._make_manifest_roll(channel, req, resolved)
+
+    first = _FakeInteraction()
+    asyncio.run(roll(first))
+    assert "Warp-Aufladung wird nicht verfolgt" in first.message.content
+    second = _FakeInteraction()
+    asyncio.run(roll(second))
+    assert "Warp-Aufladung wird nicht verfolgt" not in second.message.content

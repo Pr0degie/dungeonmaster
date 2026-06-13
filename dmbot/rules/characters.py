@@ -133,10 +133,10 @@ class CharacterStore:
             return None
         key = skill.strip().lower()
         for name, value in character.skills.items():
-            if name.lower() == key:
+            if name.strip().lower() == key:
                 return value
         for name, value in character.characteristics.items():
-            if name.lower() == key:
+            if name.strip().lower() == key:
                 return value
         return None
 
@@ -259,6 +259,7 @@ class ResolvedManifest:
     stats: dict | None            # the power's catalog stat block (warp_rating, difficulty, …)
     warp_rating: int              # the power's base Warp Rating
     base: int | None              # the Psi-Meisterschaft skill value, before difficulty
+    contain_base: int | None      # the Disziplin (Psi) value — drives the Warp-containment Test, not Manifest
     modifier: int                 # the power's Difficulty modifier
     difficulty: str | None        # canonical difficulty label, for display
     target: int | None            # base + modifier (None if base is None)
@@ -286,6 +287,9 @@ def resolve_manifest_request(
         return None
     character = store.get(target_name) if store is not None else None
     base = store.skill_value(character, profile.psyker_test_skill()) if store is not None else None
+    # The containment ("do Perils erupt") Test rolls against Disziplin (Psi), NOT Psi-Meisterschaft
+    # (IM p.163) — a separate skill, so it gets its own base (None-handled like ``base``).
+    contain_base = store.skill_value(character, profile.psyker_purge_skill()) if store is not None else None
     mod = profile.difficulty_modifier(stats.get("difficulty")) or 0
     label = profile.canonical_difficulty(stats.get("difficulty"))
     wil_value = store.skill_value(character, profile.threshold_characteristic()) if store else None
@@ -293,7 +297,7 @@ def resolve_manifest_request(
     return ResolvedManifest(
         power=stats["name"], character=character, stats=stats,
         warp_rating=int(stats.get("warp_rating", 0) or 0),
-        base=base, modifier=mod, difficulty=label,
+        base=base, contain_base=contain_base, modifier=mod, difficulty=label,
         target=(base + mod) if base is not None else None,
         willpower_bonus=wb, threshold=profile.warp_threshold(wil_value),
     )

@@ -13,9 +13,12 @@ Everything is pure and takes an explicit ``rng: random.Random`` (default a modul
 
 from __future__ import annotations
 
+import inspect
 import random
 import re
 from dataclasses import dataclass
+from functools import lru_cache
+from typing import Callable
 
 from .profile import SystemProfile
 
@@ -137,23 +140,40 @@ RESOLVERS = {
 }
 
 
+@lru_cache(maxsize=None)
+def _accepts_advantage(resolver: Callable) -> bool:
+    """Does ``resolver`` accept an ``advantage`` keyword (named param or ``**kwargs``)?
+
+    Decided by signature, never by catching the call — so a genuine ``TypeError`` raised
+    *inside* a resolver propagates instead of being masked by a silent re-roll (golden rule #2).
+    Cached: the resolver set is tiny and fixed at registration time."""
+    try:
+        params = inspect.signature(resolver).parameters
+    except (TypeError, ValueError):  # builtins / C funcs without an inspectable signature
+        return False
+    if "advantage" in params:
+        return True
+    return any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
+
+
 def resolve_test(
     profile: SystemProfile, target: int, rng: random.Random | None = None, *, advantage: int = 0
 ) -> TestResult:
     """Roll and resolve a test under ``profile`` against the already-resolved ``target``.
 
-    ``advantage`` (net Advantage − Disadvantage levels) is passed to the resolver if it accepts
-    it; resolvers that don't model it ignore the keyword."""
+    ``advantage`` (net Advantage − Disadvantage levels) is passed to the resolver only if its
+    signature accepts it; resolvers that don't model it are called without the keyword. Any error
+    raised inside the resolver propagates — there is no retry that could mask a bug or consume a
+    second d100."""
     resolver = RESOLVERS.get(profile.resolution)
     if resolver is None:
         raise NotImplementedError(
             f"resolution {profile.resolution!r} is not implemented yet "
             f"(known: {', '.join(sorted(RESOLVERS))})"
         )
-    try:
+    if _accepts_advantage(resolver):
         return resolver(profile, target, rng, advantage=advantage)
-    except TypeError:  # a resolver that doesn't model advantage — fall back to the plain call
-        return resolver(profile, target, rng)
+    return resolver(profile, target, rng)
 
 
 def _face_str(face: int) -> str:

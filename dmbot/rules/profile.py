@@ -118,6 +118,35 @@ class SystemProfile:
         """Canonical ladder labels, hardest first only by declaration order — for the prompt."""
         return list(self.difficulty_ladder)
 
+    # -- catalog helpers (shared by powers / augmetics / weapons) --------------------------
+    # One case-insensitive scan over a {name: value} catalog, so the public lookups below stay
+    # identical in shape and behaviour but don't repeat the strip/lower loop.
+
+    @staticmethod
+    def _catalog_match(catalog: dict, name: str) -> tuple[str, object] | None:
+        """Case-insensitive scan of a ``{name: value}`` catalog. Returns the ``(found_name, value)``
+        pair with the catalog's original casing, or ``None``."""
+        key = name.strip().lower()
+        for cname, value in (catalog or {}).items():
+            if cname.strip().lower() == key:
+                return cname, value
+        return None
+
+    @classmethod
+    def _catalog_lookup(cls, catalog: dict, name: str) -> dict | None:
+        """Lookup in a ``{name: stats}`` catalog, returning the matched entry as
+        ``{"name": <found>, **(stats or {})}`` (original casing preserved), or ``None``."""
+        match = cls._catalog_match(catalog, name)
+        if match is None:
+            return None
+        cname, stats = match
+        return {"name": cname, **(stats or {})}
+
+    @staticmethod
+    def _catalog_names(catalog: dict) -> list[str]:
+        """All catalogued names in declaration order."""
+        return list(catalog or {})
+
     # -- combat (Phase 9: auto damage) ----------------------------------------------------
     # All optional: a profile without a "combat" block simply has no auto-damage flow (the test
     # still rolls and reports, but no wounds are applied). Keeps the engine system-agnostic.
@@ -137,12 +166,8 @@ class SystemProfile:
         or ``None`` if the weapon is unknown (caller falls back to :meth:`default_damage`)."""
         if not weapon:
             return None
-        weapons = self.combat.get("weapons", {}) or {}
-        key = weapon.strip().lower()
-        for name, notation in weapons.items():
-            if name.strip().lower() == key:
-                return notation
-        return None
+        match = self._catalog_match(self.combat.get("weapons", {}) or {}, weapon)
+        return None if match is None else match[1]
 
     def default_damage(self) -> str:
         """Fallback damage notation for an unknown/unspecified weapon (e.g. '1d10')."""
@@ -178,15 +203,11 @@ class SystemProfile:
         """A psychic power's stat block from the catalog (case-insensitive), or ``None``."""
         if not name:
             return None
-        key = name.strip().lower()
-        for pname, stats in (self.psyker.get("powers", {}) or {}).items():
-            if pname.strip().lower() == key:
-                return {"name": pname, **(stats or {})}
-        return None
+        return self._catalog_lookup(self.psyker.get("powers", {}) or {}, name)
 
     def power_names(self) -> list[str]:
         """All catalogued power names (declaration order) — for the prompt/classifier."""
-        return list(self.psyker.get("powers", {}) or {})
+        return self._catalog_names(self.psyker.get("powers", {}) or {})
 
     def warp_threshold(self, willpower_value: int | None) -> int:
         """Warp Threshold from a character's governing characteristic (IM: Willpower Bonus =
@@ -221,15 +242,11 @@ class SystemProfile:
         """An augmetic's stat block from the catalog (case-insensitive), or ``None``."""
         if not name:
             return None
-        key = name.strip().lower()
-        for aname, stats in (self.augmetics.get("catalog", {}) or {}).items():
-            if aname.strip().lower() == key:
-                return {"name": aname, **(stats or {})}
-        return None
+        return self._catalog_lookup(self.augmetics.get("catalog", {}) or {}, name)
 
     def augmetic_names(self) -> list[str]:
         """All catalogued augmetic names (declaration order) — for the prompt / creation form."""
-        return list(self.augmetics.get("catalog", {}) or {})
+        return self._catalog_names(self.augmetics.get("catalog", {}) or {})
 
     def augmetic_limit(self, toughness_value: int | None) -> int:
         """Max number of augmetics (IM: Toughness Bonus = tens of Toughness; 'Flesh is Weak'

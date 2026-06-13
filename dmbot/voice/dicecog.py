@@ -31,6 +31,9 @@ class DiceCog(commands.Cog):
         self._rt = runtime
         runtime.handle_dice = self._handle_dice          # hook: DMCog delivery posts the dice button
         runtime.post_turn_order = self._post_turn_order  # hook: VoiceCog !join posts the turn panel
+        # (cid, name) pairs already warned about an untracked party psyker — keep it one-time so the
+        # channel isn't spammed every Manifest Test (finding #2).
+        self._warp_untracked_warned: set[tuple[int, str]] = set()
 
     async def _handle_dice(self, channel) -> None:
         """Post the turn's dice button. The router wins when it's on (D43, flips D40's dedupe):
@@ -60,11 +63,9 @@ class DiceCog(commands.Cog):
         char_key = self._rt._profile.soak_characteristic()
         if not char_key:
             return 0
-        value = None
-        for name, v in target.characteristics.items():
-            if name.lower() == char_key.lower():
-                value = v
-                break
+        # Reuse the store's lookup (case-insensitive + strip, skill→characteristic fallback) so a
+        # whitespace-drifted sheet key (e.g. "Tgh ") still resolves (finding #9).
+        value = self._rt._characters.skill_value(target, char_key) if self._rt._characters else None
         if value is None:
             return 0
         return value // 10 if self._rt._profile.soak_mode() == "tens" else value
@@ -202,6 +203,20 @@ class DiceCog(commands.Cog):
                         state.sustain_power(who, power)
                     lines += self._resolve_warp_consequences(state, who, resolved, result)
                     self._rt._persist_and_refresh(channel)
+                elif state is not None and self._rt._characters and self._rt._characters.get(who):
+                    # Known party psyker, but not seeded into this session's WorldState — Warp Charge
+                    # would silently never accumulate (current_charge stays 0 each call) and Perils
+                    # never fire. There is no safe single-character add on WorldState (seed_from_store
+                    # rebuilds the whole state, add_npc would mistype a PC as an NPC), so warn the GM
+                    # once instead of losing the resource silently (finding #2).
+                    key = (cid, (who or "").lower())
+                    if key not in self._warp_untracked_warned:
+                        self._warp_untracked_warned.add(key)
+                        log.warning("Warp charge not tracked: %s is not in the current encounter state", who)
+                        lines.append(
+                            f"⚠️ Warp-Aufladung wird nicht verfolgt — {who} ist nicht in der "
+                            "aktuellen Szene/Encounter."
+                        )
             line = "\n".join(lines)
             log.info("%s", lines[0])
             try:
@@ -226,7 +241,8 @@ class DiceCog(commands.Cog):
         over_by = max(0, result.warp_charge - result.threshold)
         lines: list[str] = []
         if not result.immediate_perils:  # over threshold → containment Test first
-            contain_target = (resolved.base or 0) + (self._rt._profile.difficulty_modifier("Herausfordernd") or 0)
+            # The containment Test rolls against Disziplin (Psi), not Psi-Meisterschaft (IM p.163).
+            contain_target = (resolved.contain_base or 0) + (self._rt._profile.difficulty_modifier("Herausfordernd") or 0)
             contain = engine.resolve_test(self._rt._profile, contain_target, self._rt._rng)
             lines.append(engine.describe_result_de(
                 contain, skill="Warp-Kontrolle", character=who, difficulty="Herausfordernd"))
