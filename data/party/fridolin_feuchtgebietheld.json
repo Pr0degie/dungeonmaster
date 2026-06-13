@@ -7,15 +7,15 @@
       "player": "Pr0degie",
       "origin": "Schreinwelt",
       "faction": "Inquisition",
-      "concept": "Interrogator & Psioniker — verdeckter Ermittler mit verborgener Laspistole",
+      "concept": "Interrogator & Psioniker — verkappter Edgelord, der jeden Satz so flüstert, als liefe gerade der Trailer zu seinem eigenen Film",
       "patron": "Aegidius Halikarn",
       "age": "34",
       "eyes": "blass-grau",
       "hair": "dunkel, kurzgeschoren",
       "height": "1,78 m",
       "weight": "71 kg",
-      "handedness": "links",
-      "distinguishing": "Unscheinbar bis zur Unsichtbarkeit; ein kaum sichtbares Aquila-Brandmal in der linken Handfläche",
+      "handedness": "rechts",
+      "distinguishing": "Steht plötzlich im Raum, ohne dass jemand die Tür gehen hörte — und genießt sichtlich den Schreck. Kaum sichtbares Aquila-Brandmal in der linken Handfläche. Trägt den Beinamen 'Feuchtgebietheld' mit grimmigem Stolz; die Heldentat dahinter ist echt, wird beim Erzählen aber jedes Mal eine Spur epischer.",
       "xp_total": "0",
       "xp_spent": "0",
       "fate_current": "3",
@@ -58,15 +58,15 @@
 
       "talents": [
         { "name": "Psioniker", "effect": "Kann psychische Kräfte manifestieren (Minor-Kräfte + Telepathie-Flavor). Manifest über Psi-Meisterschaft; Warp-Schwelle 4 (WillkürB)." },
-        { "name": "Leichtfüßig", "effect": "Bewegt sich lautlos; im Schatten kaum auszumachen — Rückhalt für hohe Heimlichkeit." },
-        { "name": "Glatte Zunge", "effect": "Findet im Verhör und Gespräch den richtigen Hebel — Rückhalt für Überreden." }
+        { "name": "Leichtfüßig", "effect": "Bewegt sich tatsächlich lautlos — Rückhalt für hohe Heimlichkeit. Kann nur nicht widerstehen, danach mit einem dramatischen Räuspern aufzutauchen." },
+        { "name": "Glatte Zunge", "effect": "Findet im Verhör den richtigen Hebel — Rückhalt für Überreden. Die bedrohlichen Einzeiler sitzen (er hat sie vorm Spiegel geübt)." }
       ],
 
-      "goals": "Kurzfristig: Den eigentlichen Drahtzieher hinter dem aktuellen Fall stellen, bevor er untertaucht.\nLangfristig: Beweisen, dass seine Gabe ein Werkzeug des Imperators ist und kein Makel — und nicht selbst dem Warp anheimfallen.",
-      "connections": "Inquisitor Aegidius Halikarn — sein Patron; deckt ihn, solange er liefert.\nEine namenlose Stimme im Vox — Informant aus den Unterstädten, bezahlt in Gefälligkeiten.",
-      "notes": "Trägt die Pistole stets verborgen und zieht sie erst im letzten Moment. Tritt höflich und harmlos auf, hört mehr zu als er spricht. Misstraut seiner eigenen Gabe — wirkt Kräfte sparsam, um unter der Warp-Schwelle (4) zu bleiben.",
-      "divination": "Im Schatten wartet der Diener; im Licht spricht der Herr.",
-      "combat_notes": "Erst aus der Deckung / aus dem Schatten heraus. 'Psychic Static' (Leicht) macht ihn psionisch unsichtbar — damit anschleichen oder entkommen. 'Psychic Scrutiny' (Leicht) vor dem Verhör/Gespräch, um die Schwäche des Ziels zu lesen. 'Dread Presence' bricht eine Übermacht. 'Smite' (ignoriert Rüstung) als Notnagel. Nahkampf nur, wenn lautlos nötig (Kampfmesser). WICHTIG: Jede gewirkte Kraft erhöht die Warp-Aufladung — über Schwelle 4 droht am Handlungsende die Perils-of-the-Warp-Probe."
+      "goals": "Kurzfristig: Den Drahtzieher stellen — und dabei mindestens einmal cool aus dem Schatten treten, während es auch jemand sieht.\nLangfristig: Beweisen, dass seine Gabe ein Werkzeug des Imperators ist und kein Makel; insgeheim auch, dass der Name 'Feuchtgebietheld' eigentlich voll badass ist.",
+      "connections": "Inquisitor Aegidius Halikarn — sein Patron, der Fridolins dramatische Vox-Monologe inzwischen meist stummschaltet.\nEine namenlose Stimme im Vox aus den Unterstädten, die ihn 'Chef' nennt — was Fridolin heimlich sehr genießt.",
+      "notes": "Flüstert grundsätzlich, auch beim Brötchenkauf. Zieht die Laspistole erst im letzten Moment — schnell und treffsicher, aber mit unnötig viel Drama. Wirklich gefährlich im Verhör; ruiniert den Effekt nur regelmäßig, indem er den perfekten Moment mit einem Spruch überzieht. Geht sparsam mit seiner Gabe um — diszipliniert, nicht ängstlich.",
+      "divination": "Der wahre Held watet dort, wo andere nicht hintreten.",
+      "combat_notes": "Erst aus der Deckung / aus dem Schatten heraus (und am liebsten mit Publikum). 'Psychic Static' (Leicht) macht ihn psionisch unsichtbar — zum Anschleichen oder Entkommen. 'Psychic Scrutiny' (Leicht) vor dem Verhör, um die Schwäche des Ziels zu lesen. 'Dread Presence' bricht eine Übermacht. 'Smite' (ignoriert Rüstung) als Notnagel. Nahkampf nur, wenn lautlos nötig (Kampfmesser). WICHTIG: Jede gewirkte Kraft erhöht die Warp-Aufladung — über Schwelle 4 droht am Handlungsende die Perils-of-the-Warp-Probe (und nichts ist uncooler als das)."
     }
   ],
   "aliases": { "Pr0degie": "Fridolin Feuchtgebietheld", "Tobi": "Fridolin Feuchtgebietheld" }
