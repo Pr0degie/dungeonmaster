@@ -40,17 +40,18 @@ from ..discord_ui.pause import PauseToggleView, pause_embed
 from ..discord_ui.rules import RulesView
 from ..discord_ui.lore_read import LoreReadView
 from ..discord_ui.target import TargetSelectView
+from ..discord_ui.scene import SceneChangeView
 from ..rules import engine, profile as profile_mod
 from ..rules.profile import ProfileError, SystemProfile
 from ..rules.characters import (
     Character, CharacterStore, augmetic_armour, resolve_manifest_request, resolve_target,
 )
-from ..rules.marker import ManifestRequest, TestRequest, extract_tests
+from ..rules.marker import ManifestRequest, SceneRequest, TestRequest, extract_tests
 from ..rules.summary import rules_pages_de
 from ..memory.state import WorldState, world_state_summary_de
 from ..memory import history as history_store
 from ..shutdown import progress, to_daemon_thread
-from ..rag.adventure import Adventure
+from ..rag.adventure import Adventure, Scene
 from ..rag.lore import available_topics, lore_pages
 from ..rag.retrieve import RulebookRetriever
 
@@ -221,6 +222,7 @@ class VoiceReceiveCog(commands.Cog):
         roll_router: bool = False,
         streaming: bool = True,
         autosave: bool = True,
+        scene_mode: str = "verbunden",
         tts_engine: str = "piper",
         tts_voice: str = "",
         tts_speaker: str = "",
@@ -267,6 +269,10 @@ class VoiceReceiveCog(commands.Cog):
         # data/sessions/<id>/history.jsonl so a crash doesn't lose the evening's thread; restored on
         # !join, rotated on !leave. World state already persists separately (ADR 015).
         self._autosave = autosave
+        # Auto scene transitions (ADR 026): which targets an <<ORT id>> marker may move to.
+        # "verbunden" = only the current scene's leads_to neighbours; "frei" = any known scene.
+        # Switchable live via !ortmodus; an unknown value degrades to "verbunden".
+        self._scene_mode = scene_mode if scene_mode in ("verbunden", "frei") else "verbunden"
         # Rules engine (Phase 8): load the active system profile (data/systems/<system>.json). A
         # missing/broken profile must not down the bot — log loudly and run rules-less (no dice).
         self._profile: SystemProfile | None = None
@@ -552,6 +558,52 @@ class VoiceReceiveCog(commands.Cog):
         for m in self._brain.take_pending_manifests(self._brain_channel(channel)):
             await self._post_manifest_button(channel, m)
 
+    async def _handle_scene(self, channel) -> None:
+        """Apply the DM turn's ``<<ORT id>>`` scene marker (auto scene transition, ADR 026): validate
+        the target against the adventure and — if it survives — post a confirm button. The move is
+        deterministic and human-confirmed (golden rule #3): the model never writes ``scene_id``, it
+        only *requests* the move. In ``verbunden`` mode only the current scene's ``leads_to``
+        neighbours are accepted; ``frei`` accepts any known scene. An illegal/unknown id is ignored
+        and logged, never moved. At most one move per turn (the first request wins). Runs
+        concurrently with playback like the dice button."""
+        cid = self._brain_channel(channel)
+        reqs = self._brain.take_pending_scenes(cid)
+        if not reqs or self._adventure is None:
+            return
+        state = self._state.get(cid)
+        if state is None:
+            return
+        req = reqs[0]  # ≤1 move per turn; ignore any extras the model emitted
+        target = self._adventure.resolve_move(state.scene_id, req.scene_id, self._scene_mode)
+        if target is None:  # no-op, unknown id, or (in verbunden mode) not a leads_to neighbour
+            log.info("🚫 Auto-Szenenwechsel '%s' abgelehnt (Modus '%s', aktuelle Szene '%s')",
+                     req.scene_id, self._scene_mode, state.scene_id)
+            return
+        log.info("📖 Auto-Szenenwechsel vorgeschlagen → %s (%s)", target.id, target.title_de)
+        await channel.send(
+            f"📖 Szenenwechsel vorgeschlagen: **{target.title_de}** (Teil {target.part}). Wechseln?",
+            view=SceneChangeView(target.title_de, target.part, self._make_scene_confirm(channel, target)),
+        )
+
+    def _make_scene_confirm(self, channel, scene: Scene):
+        """Build the confirm callback for a proposed move to ``scene``: on click, perform the same
+        deterministic pointer move ``!ort`` does (``_set_scene`` + persist + prompt refresh) and edit
+        the proposal message to reflect it."""
+        async def _confirm(interaction: discord.Interaction) -> None:
+            cid = self._brain_channel(channel)
+            state = self._state.get(cid)
+            if state is None:
+                return
+            moved = self._set_scene(state, scene.id)
+            if moved is None:  # the scene vanished between proposal and click — shouldn't happen
+                return
+            self._persist_and_refresh(channel)
+            log.info("scene → %s (%s) [auto, bestätigt]", moved.id, moved.title_de)
+            await interaction.edit_original_response(
+                content=f"📖 Szene gewechselt: **{moved.title_de}** (Teil {moved.part})."
+            )
+        return _confirm
+
     async def _autosave_turn(self, channel, answer: str, *, user_msg: str | None = None,
                              redo: bool = False) -> None:
         """Append the just-completed turn to ``data/sessions/<id>/history.jsonl`` (D41) off the
@@ -601,11 +653,13 @@ class VoiceReceiveCog(commands.Cog):
         else:
             log.info("(inhaltslose Antwort — nichts gepostet/gesprochen; nur ggf. Würfel)")
         dice_task = asyncio.create_task(self._handle_dice(channel))
+        scene_task = asyncio.create_task(self._handle_scene(channel))  # ADR 026: propose a scene move
         if speak_task is not None:
             await speak_task
         timing.end = time.monotonic()  # /speak returned → total stops here (mic re-anchor excluded)
         timing.log_line()
         await dice_task  # the dice button must land before the mic button re-anchors at the bottom
+        await scene_task  # likewise the scene-change proposal lands before the mic re-anchors
         await self._autosave_turn(channel, answer, user_msg=saved_user_msg,
                                   redo=timing.kind == "redo")
         # Keep the mic button reachable: move it back to the bottom after the message + speech.
@@ -691,6 +745,7 @@ class VoiceReceiveCog(commands.Cog):
         sw = asyncio.create_task(synth_worker())
         pw = asyncio.create_task(play_worker())
         dice_task: asyncio.Task | None = None
+        scene_task: asyncio.Task | None = None
         saved_user_msg: str | None = None
         try:
             try:
@@ -713,6 +768,7 @@ class VoiceReceiveCog(commands.Cog):
                 if has_speakable_content(answer):
                     await self._send_with_retry(channel, answer)
                 dice_task = asyncio.create_task(self._handle_dice(channel))
+                scene_task = asyncio.create_task(self._handle_scene(channel))  # ADR 026
             await asyncio.gather(sw, pw)  # wait for the last sentence to finish playing
         finally:
             if sink is not None:
@@ -722,6 +778,8 @@ class VoiceReceiveCog(commands.Cog):
             timing.log_line()
             if dice_task is not None:
                 await dice_task
+            if scene_task is not None:
+                await scene_task
             await self._autosave_turn(channel, holder["answer"], user_msg=saved_user_msg, redo=redo)
             if self._push_to_talk and self._sink is not None:
                 await self._post_mic_button(channel)
@@ -1738,16 +1796,28 @@ class VoiceReceiveCog(commands.Cog):
             current = f"**{scene.title_de}** (`{scene.id}`)" if scene else "—"
             await ctx.send(f"Aktuelle Szene: {current}. Wechsel: `!ort <id>` (`!szenen` zeigt alle).")
             return
-        scene = self._adventure.get_scene(scene_id)
+        scene = self._set_scene(state, scene_id)
         if scene is None:
             await ctx.send(f"Unbekannte Szene `{scene_id}` — `!szenen` zeigt alle Ids.")
             return
-        state.scene_id = scene.id
-        if scene.title_de:
-            state.set_location(scene.title_de)  # keep the prose state block in sync
         self._persist_and_refresh(ctx.channel)
         log.info("scene → %s (%s)", scene.id, scene.title_de)
         await ctx.send(f"📖 Szene gewechselt: **{scene.title_de}** (Teil {scene.part}).")
+
+    def _set_scene(self, state: WorldState, scene_id: str) -> Scene | None:
+        """Move the code-owned scene pointer (golden rule #3): set ``state.scene_id`` and sync the
+        prose location. The single deterministic move shared by ``!ort`` and the auto-transition
+        path (ADR 026). Returns the Scene moved to, or None if ``scene_id`` is unknown to the
+        adventure. The caller persists + refreshes the prompt."""
+        if self._adventure is None:
+            return None
+        scene = self._adventure.get_scene(scene_id)
+        if scene is None:
+            return None
+        state.scene_id = scene.id
+        if scene.title_de:
+            state.set_location(scene.title_de)  # keep the prose state block in sync
+        return scene
 
     @commands.command(name="szenen")
     async def szenen(self, ctx: commands.Context) -> None:
@@ -1764,6 +1834,25 @@ class VoiceReceiveCog(commands.Cog):
         lines = [f"**Teil {part}:** " + " · ".join(entries)
                  for part, entries in sorted(by_part.items())]
         await ctx.send(f"📖 **{self._adventure.title}**\n" + "\n".join(lines))
+
+    @commands.command(name="ortmodus", aliases=["szenenmodus"])
+    async def ortmodus(self, ctx: commands.Context, mode: str = "") -> None:
+        """`!ortmodus [verbunden|frei]` — how far an automatic scene change (ADR 026) may jump.
+        `verbunden` (default): only the current scene's `leads_to` neighbours. `frei`: any scene.
+        No argument shows the current mode."""
+        mode = mode.strip().lower()
+        if not mode:
+            await ctx.send(
+                f"Automatischer Szenenwechsel: **{self._scene_mode}** "
+                f"(`verbunden` = nur Nachbarorte, `frei` = jede Szene). Wechsel: `!ortmodus <modus>`."
+            )
+            return
+        if mode not in ("verbunden", "frei"):
+            await ctx.send(f"Unbekannter Modus `{mode}` — erlaubt: `verbunden`, `frei`.")
+            return
+        self._scene_mode = mode
+        log.info("scene mode → %s", mode)
+        await ctx.send(f"📖 Szenenmodus: **{mode}**.")
 
     @commands.command(name="wrap", aliases=["wrapup"])
     async def wrap(self, ctx: commands.Context, *, _arg: str = "") -> None:

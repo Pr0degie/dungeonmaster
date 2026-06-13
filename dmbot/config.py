@@ -45,6 +45,7 @@ class Config:
     roll_router: bool
     streaming: bool
     autosave: bool
+    scene_mode: str
 
     @classmethod
     def load(cls) -> "Config":
@@ -157,4 +158,11 @@ class Config:
             # on !join, rotated on !leave. ON by default; DM_AUTOSAVE=0 disables it.
             autosave=os.environ.get("DM_AUTOSAVE", "1").strip().lower()
             in ("1", "true", "yes", "on"),
+            # Auto scene transitions (ADR 026): when the DM emits an <<ORT id>> marker, the cog posts
+            # a confirm button and, on click, moves the scene pointer. "verbunden" (default) only
+            # accepts the current scene's leads_to neighbours; "frei" accepts any known scene id.
+            # Switchable live via !ortmodus. An unknown value falls back to "verbunden".
+            scene_mode=(os.environ.get("DM_SCENE_MODE", "verbunden").strip().lower()
+                        if os.environ.get("DM_SCENE_MODE", "verbunden").strip().lower()
+                        in ("verbunden", "frei") else "verbunden"),
         )

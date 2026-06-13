@@ -77,6 +77,7 @@ class DMBot(commands.Bot):
                 roll_router=self._config.roll_router,
                 streaming=self._config.streaming,
                 autosave=self._config.autosave,
+                scene_mode=self._config.scene_mode,
                 tts_engine=self._config.tts_engine,
                 tts_voice=self._config.tts_voice,
                 tts_speaker=self._config.tts_speaker,

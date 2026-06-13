@@ -138,6 +138,28 @@ world-state block (CLAUDE.md prompt order). **Model: mistral-nemo.** Recommended
 gate / any follow-up: **Opus 4.8 / xhigh**.
 
 ## Last session
+**Auto scene transitions — `<<ORT …>>` marker + confirm button (2026-06-13, ADR 026).** `!ort <id>`
+was a manual, human-only pointer move (ADR 020). Now the DM-LLM can *request* a move in-band, code
+validates + a human confirms — mirroring the dice/`<<TEST>>` pattern (golden rule #2), so golden
+rule #3 still holds (the model never *writes* `scene_id`, only requests).
+- **Marker:** third extractor `extract_scenes` in `dmbot/rules/marker.py` (profile-free — scenes
+  belong to the *adventure*, not the rules profile) + `SceneRequest`. Reuses the `<<…>>` delimiter so
+  the existing strip/withhold TTS guards apply for free.
+- **Orchestrator:** `finalize_answer` 3→4-tuple (+`scenes`), `StreamResult.scenes`, `_pending_scenes`
+  queue drained via `take_pending_scenes` — queued **only under the `_last_action` post-roll guard**
+  (a results-only consequence turn must not move the pointer; same guard tests/manifests use).
+- **Move + validation:** `ort()` core refactored into shared `_set_scene(state, id)`; new pure
+  `Adventure.resolve_move(current, target, mode)` (unit-tested, no Discord) — `verbunden` (default)
+  accepts only the current scene's `leads_to` neighbours, `frei` any known scene; illegal/unknown/
+  no-op → None.
+- **UI/flow:** `dmbot/discord_ui/scene.py` `SceneChangeView` (Wechseln/Abbrechen, modelled on
+  `DiceTestView`); cog `_handle_scene` posts the confirm button from both delivery paths (batch +
+  streaming), the move happens on click. Mode is a cog setting: `DM_SCENE_MODE` default + runtime
+  `!ortmodus [verbunden|frei]`. Manual `!ort` stays as override.
+- Persona bullet in `prompts/dm_core_de.md` ("nur wenn die Gruppe ihn wirklich betritt"). ADR 026.
+  Suite **246** (was 234; +12 scene-marker tests). **Live-unverified** — needs a session to confirm
+  the marker fires, isn't spoken, and the button moves the pointer.
+
 **Interactive `!lore tts` reader + anti-repetition persona rule (2026-06-13).** Three asks (eval'd
 in plan mode against efficiency/speed/correctness):
 - **`!lore tts` is now a manual block-by-block reader** (`dmbot/discord_ui/lore_read.py` →
@@ -736,6 +758,7 @@ selben circlejerk-Run mit ab:
 - **`!lore tts`**-Reader: Block-Text im Chat + ⏭/🔊/⏹; **Doppel-Beleg** in `debug.log` (eine `🔊 TTS … speaking` + ein `/speak` pro Block ⇒ Doppeln liegt an **Bot A**).
 - **Conditions/`!rules`**: „Was bewirkt Blutend/Betäubt?" → korrekte deutsche Antwort (neue `conditions`-Quelle); Inquisitions-Fragen treffen player_guide/gm_guide.
 - **Wiederholung**: verweist der DM auf Etabliertes knapp, statt es neu auszuerzählen?
+- **Auto-Szenenwechsel** (ADR 026): die Gruppe betritt einen verbundenen Ort → DM beendet den Zug mit `<<ORT …>>` (**nicht** gesprochen), ein **„Wechseln"-Knopf** erscheint, Klick verschiebt den Pointer wie `!ort`; eine erfundene/Nicht-Nachbar-ID im `verbunden`-Modus wird ignoriert+geloggt. `!ortmodus frei` testen, dann zurück. `scene_id` überlebt Neustart.
 
 **ONE live session in circlejerk covers everything (Tobi).** Before it: **review the compendium**
 (`data/adventures/chemical_burn/adventure.json` + `npcs.json` — spot-check scene cards for tone
@@ -935,6 +958,7 @@ create the next-numbered ADR.
 | D51 | Psyker / Warp subsystem | **Profile-driven, voll regeltreu (IM ch. VI).** New optional `psyker` block in `data/systems/imperium_maledictum.json` (power catalog with Warp Rating + Difficulty; Warp-Threshold = Willpower Bonus; d100 Perils-of-the-Warp + Psychic Phenomena tables). Engine gains pure `resolve_manifest` (Manifest Test via `resolve_test`; Warp Charge per p.163 incl. Critical/Fumble/Push), `resolve_perils`/`resolve_phenomena` (banded d100), `reverse_d100` + `advantage` kwarg (IM reverse-the-digits, p.189). New `<<MANIFEST power [für name] [push]>>` marker → `ManifestRequest` → cog button → engine rolls + bookkeeps Warp Charge (code-owned on `Combatant`, persisted) → fed back to narrate. Catalog = Core minor + core Biomancy + PG Inquisition powers; prose via RAG. +29 fixed-seed tests (220 green) | Tobi chose full fidelity over narrative-only and pointed at the Inquisition Player's Guide. Engine must stay system-agnostic (ADR 005) → tables/threshold are profile data, not code; per-power bespoke effects stay LLM-narrated from RAG (golden rule #7) rather than re-encoded. Timing: end-of-turn containment Test resolved at the manifesting action's end (no hard round boundary in the voice loop) → **ADR 022** |
 | D49 | `!lore` command | **Weltwissen, two modes** — `!lore [topic]` (alias `!hintergrund`) pages `data/lore/<topic>.md` (no arg → `imperium`, `!lore chaos` → Chaos) through the existing `RulesView` (◀/▶); **`!lore <frage>`** (same-day extension, Tobi) looks the question up in the vector store and posts the best-matching compendium sections as an embed — new `RulebookRetriever.lookup()` (caller-picked sources = `lore_imperium`/`lore_chaos`/`setting` only, k=2, **own ceiling 0.52**), deterministic chunk display, no LLM. New pure `dmbot/rag/lore.py` (`lore_pages`: heading = page, H1 + `>`-source-note skipped, >4000-char guard; `available_topics`). Read-only — no TTS, no DM turn. Plus `tools/lore_to_html.py` → `docs/lore.html` (grimdark standalone, review/handout view, re-run after lore edits) | Tobi wants players to read an ausführlicher human-lore rundown (reviewed via HTML first) AND ask direct lore questions; the readable file covers the rundown case. Single source of truth: command, RAG Weltwissen and handout all read the same committed files. Lookup ceiling tuned on live probes: looser than the 0.45 prompt gate (narrative phrasings ~0.48 deserve an answer on an explicit ask) but under 0.54 where the off-corpus Tyranid question grabbed the nearest wrong chunk — "steht nichts im Weltwissen" beats a misleading hit. Rulebook excluded (English layout soup; rule questions → `!rules`/DM turn). Applies existing patterns → D-entry, no ADR |
 | D54 | Anti-repetition persona rule | **Prompt-side W4 fix** — a persona rule in `prompts/dm_core_de.md`: established facts (Was bisher geschah, world state, ongoing scene) are **already known to the players**; reference them briefly, describe in detail only **new** things + the **consequences** of the latest action. Plus the recap label in `_build_request` sharpened to „(den Spielenden bereits bekannt — nicht erneut ausführlich erzählen)". Prompt-only; no code guard built (D45's fuzzy `is_self_repetition` stays the fallback) | The DM re-explained settled context (places/NPCs/events) in full every turn instead of advancing — the persona side of W4, which D45's after-the-fact echo guard can't pre-empt. ADR 016 itself flagged W4 as open, and this lives in ADR 016's persona-output-discipline domain → **Nachtrag in ADR 016**, no new ADR. Live-observe nemo's adherence |
+| D56 | Auto scene transitions | **Third LLM marker `<<ORT <scene-id>>>`** (mirrors `<<TEST>>`/`<<MANIFEST>>`): the DM *requests* a scene move in-band; code strips+validates it and a **human confirms** via a `SceneChangeView` button before the deterministic move runs (`_set_scene`, shared with `!ort`). Profile-free `extract_scenes` (scenes belong to the adventure, not the rules profile); `finalize_answer` → 4-tuple; `_pending_scenes` queued only under the `_last_action` post-roll guard. Switchable target mode `DM_SCENE_MODE` / `!ortmodus`: **`verbunden`** (default — only `leads_to` neighbours, via pure `Adventure.resolve_move`) vs **`frei`** (any scene); illegal/unknown → ignored+logged. Manual `!ort` stays as override. +12 tests (246 grün); live-unverified | `!ort` mid-scene was friction (ADR 020 deferred this exact step: "re-evaluate once live play shows `!ort` friction"). Upholds golden rule #3 — the LLM never *writes* `scene_id`, it emits a validated request like it requests dice (golden rule #2); the confirm button is the human-in-the-loop gate. Reverses only ADR 020's "moved by humans only" binding → **ADR 026** |
 
 ### Phase → ADR map (read these when you enter the phase)
 

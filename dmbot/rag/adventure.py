@@ -140,6 +140,23 @@ class Adventure:
         """``(part, id, title_de)`` per scene, in file order — for ``!szenen``."""
         return [(s.part, s.id, s.title_de) for s in self._scenes.values()]
 
+    def resolve_move(self, current_scene_id: str, target_id: str, mode: str) -> Scene | None:
+        """Validate an automatic scene-transition request (ADR 026) and return the target Scene, or
+        None if the move is rejected. Pure + deterministic (unit-tested without Discord). Rejects:
+        an unknown ``target_id``; a move to the current scene (no-op); and — in ``verbunden`` mode —
+        any target not listed in the current scene's ``leads_to``. ``frei`` accepts any known scene."""
+        target_id = (target_id or "").strip()
+        if not target_id or target_id == (current_scene_id or "").strip():
+            return None
+        target = self.get_scene(target_id)
+        if target is None:
+            return None
+        if mode == "verbunden":
+            current = self.get_scene(current_scene_id)
+            if current is None or target.id not in current.leads_to:
+                return None
+        return target
+
     def npc_count(self) -> int:
         return len(self._npcs)
 

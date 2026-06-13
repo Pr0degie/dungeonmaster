@@ -24,6 +24,7 @@ from .profile import SystemProfile
 
 _MARKER_RE = re.compile(r"<<\s*TEST\b(.*?)>>", re.IGNORECASE | re.DOTALL)
 _MANIFEST_RE = re.compile(r"<<\s*MANIFEST\b(.*?)>>", re.IGNORECASE | re.DOTALL)
+_ORT_RE = re.compile(r"<<\s*ORT\b(.*?)>>", re.IGNORECASE | re.DOTALL)
 _FUER_RE = re.compile(r"\b(?:für|fuer|for)\b", re.IGNORECASE)
 _MOD_RE = re.compile(r"([+\-−]\s*\d+)")  # ASCII +/- and the unicode minus the LLM may emit
 _PUSH_RE = re.compile(r"\b(?:push|gepusht|pushen)\b", re.IGNORECASE)  # Pushing a Manifest Test
@@ -148,4 +149,34 @@ def extract_manifests(text: str, profile: SystemProfile) -> tuple[str, list[Mani
     """Strip every ``<<MANIFEST …>>`` from ``text`` and return (clean narration, parsed requests)."""
     requests = [_parse_manifest(m.group(1), profile) for m in _MANIFEST_RE.finditer(text)]
     clean = _clean(_MANIFEST_RE.sub("", text))
+    return clean, requests
+
+
+@dataclass(frozen=True, slots=True)
+class SceneRequest:
+    """A parsed scene-transition request from a DM turn (ADR 026, auto scene transitions).
+
+    Grammar: ``<<ORT <scene-id>>>``, e.g. ``<<ORT mud_gate>>`` — the model *requests* a move to a
+    connected location; code validates the id against the adventure (and the current scene's
+    ``leads_to``) and performs the deterministic pointer move (golden rule #3). The model never
+    writes scene state directly, exactly as it never rolls its own dice (golden rule #2).
+
+    This extractor is **profile-free** on purpose: scenes belong to the *adventure*, not the rules
+    profile, so validation happens where the adventure lives (the cog), not here."""
+
+    scene_id: str
+    raw: str = ""          # the original marker text
+    parsed: bool = True    # False → empty/garbled marker; stripped but ignored
+
+
+def extract_scenes(text: str) -> tuple[str, list[SceneRequest]]:
+    """Strip every ``<<ORT …>>`` from ``text`` and return (clean narration, parsed requests).
+
+    Like the test/manifest extractors, markers are removed so TTS never reads them aloud; an empty
+    ``<<ORT >>`` is still stripped and yields a ``parsed=False`` request the cog ignores."""
+    requests: list[SceneRequest] = []
+    for m in _ORT_RE.finditer(text):
+        scene_id = re.sub(r"\s{2,}", " ", m.group(1)).strip(" :,-")
+        requests.append(SceneRequest(scene_id=scene_id, raw=f"<<ORT{m.group(1)}>>", parsed=bool(scene_id)))
+    clean = _clean(_ORT_RE.sub("", text))
     return clean, requests

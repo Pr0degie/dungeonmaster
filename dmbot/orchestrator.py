@@ -23,7 +23,14 @@ from .llm.client import OllamaClient
 from .llm.persona import load_system_prompt
 from .llm.roll_router import classifier_schema, classifier_system, to_test_request
 from .memory.recap import RECAP_SYSTEM_DE, build_recap_user
-from .rules.marker import ManifestRequest, TestRequest, extract_manifests, extract_tests
+from .rules.marker import (
+    ManifestRequest,
+    SceneRequest,
+    TestRequest,
+    extract_manifests,
+    extract_scenes,
+    extract_tests,
+)
 from .rules.profile import SystemProfile
 from .tts.textsplit import has_speakable_content, split_completed
 
@@ -163,12 +170,12 @@ def _trim_to_last_sentence(text: str) -> str:
 
 def finalize_answer(
     raw: str, labels: list[str], profile: SystemProfile | None
-) -> tuple[str, list[TestRequest], list[ManifestRequest]]:
+) -> tuple[str, list[TestRequest], list[ManifestRequest], list[SceneRequest]]:
     """The full non-streaming post-processing of a raw LLM answer → (clean spoken answer, parsed
-    dice tests, parsed psychic Manifest requests). The single source of truth shared by the batch
-    path (:meth:`DMBrain._generate`) and the streaming assembler's :meth:`StreamAssembler.finish`
-    — so the two can never drift and the stored history is identical for the same raw text (the
-    parity guarantee, ADR 017)."""
+    dice tests, parsed psychic Manifest requests, parsed scene-transition requests). The single
+    source of truth shared by the batch path (:meth:`DMBrain._generate`) and the streaming
+    assembler's :meth:`StreamAssembler.finish` — so the two can never drift and the stored history
+    is identical for the same raw text (the parity guarantee, ADR 017)."""
     answer = _sanitize(_cut_at_labels(raw, labels)) or _sanitize(raw)
     answer = _strip_leading_label(answer, labels)  # kill a leaked leading "Name:"/"DM:" label
     tests: list[TestRequest] = []
@@ -176,7 +183,8 @@ def finalize_answer(
     if profile is not None:
         answer, tests = extract_tests(answer, profile)  # strip <<TEST …>> markers, collect requests
         answer, manifests = extract_manifests(answer, profile)  # strip <<MANIFEST …>> markers (ADR 022)
-    return _trim_to_last_sentence(answer), tests, manifests
+    answer, scenes = extract_scenes(answer)  # strip <<ORT …>> scene markers (ADR 026); profile-free
+    return _trim_to_last_sentence(answer), tests, manifests, scenes
 
 
 # --- Echo guard (D43 / ADR 018) ------------------------------------------------------------------
@@ -269,6 +277,7 @@ class StreamResult:
     answer: str
     tests: list[TestRequest]
     manifests: list[ManifestRequest]
+    scenes: list[SceneRequest]
 
 
 class StreamAssembler:
@@ -327,6 +336,7 @@ class StreamAssembler:
         if self._profile is not None:
             text, _ = extract_tests(text, self._profile)  # strip complete <<TEST …>> markers
             text, _ = extract_manifests(text, self._profile)  # strip complete <<MANIFEST …>> markers
+        text, _ = extract_scenes(text)  # strip complete <<ORT …>> markers (never spoken, ADR 026)
         text = _sanitize_leading(text)
         text = _strip_leading_label(text, self._labels)
         if not self._released:
@@ -339,7 +349,7 @@ class StreamAssembler:
     def finish(self) -> StreamResult:
         """Stream ended (or aborted): compute the canonical answer + tests and return whatever of
         it hasn't been spoken yet (the held-back tail / final sentence)."""
-        answer, tests, manifests = finalize_answer(self._raw, self._labels, self._profile)
+        answer, tests, manifests, scenes = finalize_answer(self._raw, self._labels, self._profile)
         sentences, tail = split_completed(answer)
         all_sentences = [s for s in (*sentences, tail) if s]
         if all_sentences[: len(self._emitted)] == self._emitted:
@@ -355,7 +365,9 @@ class StreamAssembler:
                 len(self._emitted),
             )
             remaining = all_sentences
-        return StreamResult(remaining=remaining, answer=answer, tests=tests, manifests=manifests)
+        return StreamResult(
+            remaining=remaining, answer=answer, tests=tests, manifests=manifests, scenes=scenes
+        )
 
 
 class DMBrain:
@@ -397,6 +409,9 @@ class DMBrain:
         # Pending psychic Manifest requests parsed from the last DM turn (ADR 022) — drained by the
         # cog exactly like dice tests, each posting a "manifest" button that rolls the Manifest Test.
         self._pending_manifests: dict[int, list[ManifestRequest]] = {}
+        # Pending scene-transition requests parsed from the last DM turn (ADR 026) — drained by the
+        # cog, which validates the target against the adventure and posts a confirm button.
+        self._pending_scenes: dict[int, list[SceneRequest]] = {}
         self._test_results: dict[int, list[str]] = {}
         # A light "who plays whom" hint (display name → character) appended to the system prompt,
         # so the model stops confusing player and character names (open item F). Set per channel.
@@ -543,6 +558,7 @@ class DMBrain:
             del history[-2:]  # drop the turn we're redoing so it isn't duplicated
         self._pending_tests.pop(channel_id, None)  # the redo supersedes the old turn's test markers
         self._pending_manifests.pop(channel_id, None)
+        self._pending_scenes.pop(channel_id, None)
         await self._refresh_rag(channel_id, user_msg)
         answer = await self._generate(channel_id, user_msg, labels, history)
         if answer is None:
@@ -594,9 +610,9 @@ class DMBrain:
         user_msg: str,
         labels: list[str],
         history_prefix: list[dict[str, str]],
-    ) -> tuple[str, list[TestRequest], list[ManifestRequest]]:
+    ) -> tuple[str, list[TestRequest], list[ManifestRequest], list[SceneRequest]]:
         """One non-streaming LLM call for ``user_msg`` on top of ``history_prefix`` → (sanitised
-        answer, parsed dice tests, parsed Manifest requests). The raw building block of
+        answer, parsed dice tests, parsed Manifest requests, parsed scene requests). The raw building block of
         :meth:`_generate` (which wraps the echo-guard retry around it) and of the streaming path's
         echo retry."""
         system, messages, options = self._build_request(channel_id, user_msg, labels, history_prefix)
@@ -642,24 +658,26 @@ class DMBrain:
         the turn entirely (nothing spoken, nothing stored — degenerate turns in history
         self-reinforce, seen live 2026-06-12)."""
         prev = self._prev_answer(history_prefix)
-        answer, tests, manifests = await self._chat_once(channel_id, user_msg, labels, history_prefix)
+        answer, tests, manifests, scenes = await self._chat_once(channel_id, user_msg, labels, history_prefix)
         problem = self._answer_problem(answer, user_msg, prev)
         if problem is not None:
             label, nudge = problem
             log.warning("echo guard: answer %s (%r) — retrying once", label, answer)
             nudged = f"{user_msg}\n{nudge}"
-            answer, tests, manifests = await self._chat_once(channel_id, nudged, labels, history_prefix)
+            answer, tests, manifests, scenes = await self._chat_once(channel_id, nudged, labels, history_prefix)
             if self._answer_problem(answer, user_msg, prev) is not None:
                 log.warning("echo guard: the retry misfired again — suppressing the turn")
                 return None
-        # Suppress inline <<TEST>>/<<MANIFEST>> markers on a results-only (post-roll consequence)
-        # turn — a consequence narration must not request a NEW roll or the loop never ends (seen
-        # live); only queue them when this turn actually answered a player action.
+        # Suppress inline <<TEST>>/<<MANIFEST>>/<<ORT>> markers on a results-only (post-roll
+        # consequence) turn — a consequence narration must not request a NEW roll or scene move or
+        # the loop never ends (seen live); only queue them when this turn answered a player action.
         if self._last_action.get(channel_id) is not None:
             if tests:
                 self._pending_tests.setdefault(channel_id, []).extend(tests)
             if manifests:
                 self._pending_manifests.setdefault(channel_id, []).extend(manifests)
+            if scenes:
+                self._pending_scenes.setdefault(channel_id, []).extend(scenes)
         return answer
 
     async def respond_streaming(
@@ -706,6 +724,7 @@ class DMBrain:
             del history[-2:]  # drop the turn we're redoing so it isn't duplicated
         self._pending_tests.pop(channel_id, None)  # the redo supersedes the old turn's test markers
         self._pending_manifests.pop(channel_id, None)
+        self._pending_scenes.pop(channel_id, None)
         await self._refresh_rag(channel_id, user_msg)
         return await self._stream_and_store(
             channel_id, user_msg, labels, history, on_sentence, should_abort
@@ -750,6 +769,7 @@ class DMBrain:
         result = assembler.finish()
         answer, tests, remaining = result.answer, result.tests, list(result.remaining)
         manifests = result.manifests
+        scenes = result.scenes
         suppressed = False
         # Echo guard (D43/ADR 018 + W4). Only when nothing was spoken yet — an echo/repetition is
         # held back by the assembler's last-sentence rule for short answers; a half-spoken turn is
@@ -761,13 +781,13 @@ class DMBrain:
             log.warning("echo guard (stream): answer %s (%r) — retrying once", label, answer)
             nudged = f"{user_msg}\n{nudge}"
             try:
-                answer, tests, manifests = await self._chat_once(channel_id, nudged, labels, history)
+                answer, tests, manifests, scenes = await self._chat_once(channel_id, nudged, labels, history)
             except Exception:
                 log.exception("echo-guard retry failed — suppressing the turn")
-                answer, tests, manifests = "", [], []
+                answer, tests, manifests, scenes = "", [], [], []
             if self._answer_problem(answer, user_msg, prev) is not None:
                 log.warning("echo guard: the retry misfired again — suppressing the turn")
-                answer, tests, manifests = "", [], []
+                answer, tests, manifests, scenes = "", [], [], []
             suppressed = not answer
             remaining = [answer] if answer else []
         elif not errored and spoke_any and is_self_repetition(answer, prev):
@@ -780,14 +800,16 @@ class DMBrain:
                 break
             if has_speakable_content(sentence):
                 await on_sentence(sentence)
-        # Suppress inline <<TEST>>/<<MANIFEST>> markers on a results-only (post-roll consequence)
-        # turn — a consequence narration must not request a NEW roll or the loop never ends (seen
-        # live); only queue them when this turn actually answered a player action.
+        # Suppress inline <<TEST>>/<<MANIFEST>>/<<ORT>> markers on a results-only (post-roll
+        # consequence) turn — a consequence narration must not request a NEW roll or scene move or
+        # the loop never ends (seen live); only queue them when this turn answered a player action.
         if self._last_action.get(channel_id) is not None:
             if tests:
                 self._pending_tests.setdefault(channel_id, []).extend(tests)
             if manifests:
                 self._pending_manifests.setdefault(channel_id, []).extend(manifests)
+            if scenes:
+                self._pending_scenes.setdefault(channel_id, []).extend(scenes)
         stored = answer
         if errored and stored:
             stored = f"{stored} … [Antwort unterbrochen]"  # noted in history; never spoken
@@ -809,6 +831,11 @@ class DMBrain:
         """Return and clear the psychic Manifest requests the last DM turn made (ADR 022) — the
         cog posts a button for each that rolls the Manifest Test + bookkeeps Warp Charge."""
         return self._pending_manifests.pop(channel_id, [])
+
+    def take_pending_scenes(self, channel_id: int) -> list[SceneRequest]:
+        """Return and clear the scene-transition requests the last DM turn made (ADR 026) — the cog
+        validates the target against the adventure and posts a confirm button for the move."""
+        return self._pending_scenes.pop(channel_id, [])
 
     def last_action(self, channel_id: int) -> tuple[str, str] | None:
         """The latest player action (display-name, text) the last turn answered, or None — the
@@ -958,6 +985,7 @@ class DMBrain:
         self._last_turn.pop(channel_id, None)
         self._pending_tests.pop(channel_id, None)
         self._pending_manifests.pop(channel_id, None)
+        self._pending_scenes.pop(channel_id, None)
         self._test_results.pop(channel_id, None)
         self._last_action.pop(channel_id, None)
         self._alias_hint.pop(channel_id, None)
