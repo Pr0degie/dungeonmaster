@@ -63,6 +63,10 @@ tools/rag_calibrate_report.md
 
 # Agent / editor / OS cruft
 .claude/**
+# ...but share the project skills + the team hook config; settings.local.json stays local.
+!.claude/skills
+!.claude/skills/**
+!.claude/settings.json
 .vscode/
 .idea/
 *.swp
