@@ -424,24 +424,62 @@ fertig.</strong></p>
   </div>
 
   <h3>Augmetik &amp; Implantate <span class="dim" style="font-weight: normal;">(optional)</span></h3>
-  <p class="dim" style="margin: 2px 0 8px;">Kybernetische Erweiterungen. Faustregel-Grenze: höchstens
-  so viele wie dein <strong>Zähigkeits-Bonus</strong> (Zehnerstelle der Zähigkeit). Rüstung und
-  Merkmals-Boni rechnet das Spiel später automatisch in deine Würfe ein.</p>
-  <div class="char-grid" id="augmeticGrid"></div>
+  <p class="dim" style="margin: 2px 0 8px;">Kybernetische Erweiterungen — <strong>dauerhaft, kein
+  Wurf</strong>. Faustregel-Grenze: höchstens so viele wie dein <strong>Zähigkeits-Bonus</strong>
+  (Zehnerstelle der Zähigkeit). Rüstung und Merkmals-Boni rechnet das Spiel automatisch in deine
+  Würfe ein; situative Effekte (Auspex, Mechadendriten …) spielt der Spielleiter aus. Manche sind
+  nur für Tech-Priester des Adeptus Mechanicus.</p>
+  <div id="augmeticTable"></div>
+  <div class="form-grid" style="margin-top: 10px;">
+    <div class="field"><label>Implantat wählen</label><select id="augmeticSel"></select></div>
+    <div class="field" style="justify-content: flex-end;"><button type="button" class="btn" id="augAdd" style="margin-top: 4px;">+ Hinzufügen</button></div>
+  </div>
+  <div id="augmeticList" class="chosen-list"></div>
   <div class="budget" id="augmeticBudget">Implantate: 0</div>
 
-  <h3>Psioniker <span class="dim" style="font-weight: normal;">(optional)</span></h3>
+  <h3>Psioniker &amp; psychische Kräfte <span class="dim" style="font-weight: normal;">(optional)</span></h3>
+  <p style="margin: 2px 0 6px; font-size: 14.5px;">Psioniker ziehen Macht aus dem <strong>Warp</strong>.
+  Jede Kraft wird über eine <strong>Psi-Meisterschaft</strong>-Probe manifestiert und lädt
+  <strong>Warp-Energie</strong> auf. Übersteigt deine Aufladung deine <strong>Warp-Schwelle</strong>
+  (= Willenskraft-Bonus, also die Zehnerstelle von Wille), drohen die <em>Perils of the Warp</em> —
+  von Nasenbluten über Betäubung bis hin zu einem Dämon, der aus dir hervorbricht. Du brauchst die
+  Fertigkeit <strong>Psi-Meisterschaft</strong> (zum Manifestieren) und meist
+  <strong>Disziplin (Psi)</strong> (zum Abbauen der Aufladung). Jeder Psioniker beherrscht
+  automatisch <strong>Smite</strong>.</p>
+  <p class="dim" style="margin: 2px 0 8px;">Disziplinen: <strong>Biomancy</strong> (Fleisch &amp;
+  Heilung), <strong>Divination</strong> (Wissen &amp; Glück), <strong>Pyromancy</strong> (Feuer),
+  <strong>Telekinesis</strong> (Kraft &amp; Bewegung auf Distanz), <strong>Telepathy</strong>
+  (Geist &amp; Furcht) — plus <strong>Minor</strong> (Geringe Kräfte, allen Psionikern zugänglich).
+  Kräfte mit <strong>*</strong> sind <em>offen</em> (Overt): unübersehbar als Hexerei erkennbar.</p>
   <label style="font-size: 14.5px;"><input type="checkbox" id="isPsyker"> Diese Figur ist ein
-  Psioniker (Psi-Begabter — kann psychische Kräfte wirken)</label>
+  Psioniker (Psi-Begabter)</label>
   <div id="psykerBox" style="display: none; margin-top: 10px;">
-    <p class="dim" style="margin: 2px 0 8px;">Wähle Disziplinen und die bekannten Kräfte. Jeder
-    Psioniker beherrscht <strong>Smite</strong>. Du brauchst zudem die Fertigkeit
-    <strong>Psi-Meisterschaft</strong> (Manifestieren) — gib sie bei Bedarf bei der Übergabe an.</p>
-    <p style="margin: 6px 0 2px; font-size: 14px; color: var(--gold-soft);">Disziplinen</p>
+    <p style="margin: 6px 0 2px; font-size: 14px; color: var(--gold-soft);">Disziplinen (welche du gelernt hast)</p>
     <div class="char-grid" id="disciplineGrid"></div>
-    <p style="margin: 10px 0 2px; font-size: 14px; color: var(--gold-soft);">Bekannte Kräfte</p>
-    <div class="char-grid" id="powerGrid"></div>
+    <p style="margin: 12px 0 4px; font-size: 14px; color: var(--gold-soft);">Kräfte — wähle aus dieser Liste:</p>
+    <div id="powerTable"></div>
+    <div class="form-grid" style="margin-top: 8px;">
+      <div class="field"><label>Kraft wählen</label><select id="powerSel"></select></div>
+      <div class="field" style="justify-content: flex-end;"><button type="button" class="btn" id="powAdd" style="margin-top: 4px;">+ Hinzufügen</button></div>
+    </div>
+    <div id="powerList" class="chosen-list"></div>
   </div>
+
+  <h3>Hintergrund &amp; Notizen <span class="dim" style="font-weight: normal;">(optional)</span></h3>
+  <p class="dim" style="margin: 2px 0 8px;">Alles freiwillig — was du ausfüllst, landet im Datenblock
+  und wird auf deinen Charakterbogen gedruckt. Leere Felder bleiben auf dem Bogen frei zum Eintragen.</p>
+  <div class="field"><label>Auffällige Merkmale</label>
+    <input id="cdistinguishing" type="text" placeholder="Narbe über dem Auge, Augmetik-Hand, kalter Blick …"></div>
+  <div class="field" style="margin-top: 10px;"><label>Ziele</label>
+    <textarea id="cgoals" rows="2" placeholder="Was treibt deine Figur an?" style="width: 100%; resize: vertical;"></textarea></div>
+  <div class="field" style="margin-top: 10px;"><label>Verbindungen &amp; Kontakte</label>
+    <textarea id="cconnections" rows="2" placeholder="Wem schuldest du etwas, wer schuldet dir?" style="width: 100%; resize: vertical;"></textarea></div>
+  <div class="field" style="margin-top: 10px;"><label>Notizen / Hintergrund</label>
+    <textarea id="cnotes" rows="3" placeholder="Herkunft, Geschichte, alles Weitere …" style="width: 100%; resize: vertical;"></textarea></div>
+  <div class="field" style="margin-top: 10px;"><label>Kampf-Notizen</label>
+    <textarea id="ccombat_notes" rows="2" placeholder="Taktiken, Sonderregeln, Reichweiten …" style="width: 100%; resize: vertical;"></textarea></div>
+  <div class="field" style="margin-top: 10px;"><label>Divination (Eröffnungsorakel)</label>
+    <input id="cdivination" type="text" placeholder="Dein Omen-Spruch zu Spielbeginn"></div>
 
   <div class="panel gold" style="margin-top: 18px;">
     <div class="panel-title">Errechnet</div>
@@ -505,21 +543,70 @@ Kampagne sauber neu aufsetzt.</p>
   ];
   var WEAPONS = ["Kettenschwert", "Schwert", "Kettenmesser", "Kampfmesser", "Lasgewehr",
                  "Stubber", "Laspistole", "Autopistole", "Andere (1W10)"];
-  // Augmetik + Psyker catalogs — names MUST match the system profile's catalogs exactly so the
+  // Augmetik + Psyker catalogs — the SINGLE source for both the reference tables and the
+  // dropdowns below. The "n" (name) MUST match the system profile's catalog keys exactly so the
   // engine finds them (data/systems/imperium_maledictum.json: augmetics.catalog / psyker.powers).
-  var AUGMETICS = ["Augmetischer Arm", "Augmetisches Bein", "Augmetisches Herz",
-    "Augmetische Ketten/Räder", "Augmetisches Atemsystem", "Augmetische Sinnesorgane",
-    "Augur-Array", "Calculus-Logi-Upgrade", "Ballistik-Mechadendrit", "Manipulator-Mechadendrit",
-    "Medicae-Mechadendrit", "Optischer Mechadendrit", "Utility-Mechadendrit", "Mind-Impulse-Unit",
-    "Biomechanische Schnittstelle", "Vox-Implantat", "Kampfdrüse", "Memory-Partition-Cogitator",
-    "Hexagrammische Wards"];
+  // n = name, loc = body location, eff = short effect.
+  var AUGMETICS = [
+    { n: "Augmetischer Arm", loc: "Arm", eff: "+1 Rüstung; +1 EG auf Stärke-Proben; +1 Nahkampfschaden" },
+    { n: "Augmetisches Bein", loc: "Bein", eff: "+1 Rüstung; +1 EG auf Stärke-Proben mit dem Bein" },
+    { n: "Augmetisches Herz", loc: "Körper", eff: "Aktion: Probe entfernt Blutung" },
+    { n: "Augmetische Ketten/Räder", loc: "Beine", eff: "+1 Rüstung; Tempo Schnell in freiem Gelände" },
+    { n: "Augmetisches Atemsystem", loc: "Körper", eff: "+2 EG gegen Gifte & Giftgase" },
+    { n: "Augmetische Sinnesorgane", loc: "Kopf", eff: "+1 EG auf Proben mit diesem Sinn" },
+    { n: "Augur-Array", loc: "Kopf", eff: "+5 Wahrnehmung; Auspex-Sinne (Mechanicus)" },
+    { n: "Calculus-Logi-Upgrade", loc: "Kopf", eff: "+5 Intelligenz; +1 EG Logik (Mechanicus)" },
+    { n: "Ballistik-Mechadendrit", loc: "Mechadendrit", eff: "Tentakel mit Laspistole, nie nachladen (Mechanicus)" },
+    { n: "Manipulator-Mechadendrit", loc: "Mechadendrit", eff: "+2 EG Stärke, -1 EG Fingerfertigkeit (Mechanicus)" },
+    { n: "Medicae-Mechadendrit", loc: "Mechadendrit", eff: "Chirurgenbesteck ohne Verbrauch (Mechanicus)" },
+    { n: "Optischer Mechadendrit", loc: "Mechadendrit", eff: "+1 EG Wahrnehmung (Sicht); um Ecken sehen (Mechanicus)" },
+    { n: "Utility-Mechadendrit", loc: "Mechadendrit", eff: "+2 EG Technik; improvisierte Waffe (Mechanicus)" },
+    { n: "Mind-Impulse-Unit", loc: "Kopf", eff: "Befehle an Maschinen/Servitoren; +1 EG Technik (Mechanicus)" },
+    { n: "Biomechanische Schnittstelle", loc: "Kopf", eff: "+1 EG Technik beim Bedienen von Maschinen" },
+    { n: "Vox-Implantat", loc: "Kopf", eff: "Stimme bis 100 m weit hörbar" },
+    { n: "Kampfdrüse", loc: "Drüsen", eff: "Kampfstimulanzien: +Stärke/Tempo/EG für 1d10 Runden (PG)" },
+    { n: "Memory-Partition-Cogitator", loc: "Kopf", eff: "+5 Intelligenz; +1 EG Logik (PG)" },
+    { n: "Hexagrammische Wards", loc: "Kopf", eff: "Schutz gegen die erste psychische Kraft auf dich (PG)" }
+  ];
   var DISCIPLINES = ["Minor", "Biomancy", "Divination", "Pyromancy", "Telekinesis", "Telepathy"];
-  var POWERS = ["Smite", "Sear", "Call Vermin", "Combustion", "Dread Presence", "Dull Pain",
-    "Float", "Ignite", "Luck", "Ill Omen", "Jinx", "Nova", "Preternatural Senses",
-    "Psychic Scrutiny", "Scalding Glance", "Seal Wounds", "Psychic Static", "Soulsight", "Spasm",
-    "Spectral Hands", "Lull", "Affliction", "Bio-Lightning", "Ferrocrete Flesh", "Haemorrhage",
-    "Iron Limb", "Life Leech", "Auditory Manipulation", "Cipher Seed", "Force Bolt",
-    "Immolation Directive", "Mark", "Induce Panic", "Ossify", "Stimulating Jolt"];
+  // n = name, disc = discipline, diff = difficulty, wr = Warp Rating, o = Overt (*), eff = effect.
+  var POWERS = [
+    { n: "Smite", disc: "Minor", diff: "Schwierig", wr: 2, o: true, eff: "Roher Stoß: 2+WillkürB+EG Schaden, ignoriert Rüstung" },
+    { n: "Sear", disc: "Minor", diff: "Schwierig", wr: 3, eff: "Objekt glüht; Berührung = WillkürB Schaden" },
+    { n: "Call Vermin", disc: "Minor", diff: "Herausf.", wr: 2, eff: "Ungeziefer-Schwarm beschwören & lenken" },
+    { n: "Combustion", disc: "Minor", diff: "Routine", wr: 2, eff: "Brennbares Objekt entzünden" },
+    { n: "Dread Presence", disc: "Minor", diff: "Herausf.", wr: 2, o: true, eff: "Furcht-Aura in deiner Zone" },
+    { n: "Dull Pain", disc: "Minor", diff: "Routine", wr: 2, eff: "Kein Schmerz, +1 Rüstung für EG Ziele" },
+    { n: "Float", disc: "Minor", diff: "Routine", wr: 2, o: true, eff: "Schweben / Last eines Objekts senken" },
+    { n: "Ignite", disc: "Minor", diff: "Leicht", wr: 1, o: true, eff: "Flamme in der Hand" },
+    { n: "Luck", disc: "Minor", diff: "Leicht", wr: 1, eff: "Vorteil auf eine Probe" },
+    { n: "Ill Omen", disc: "Minor", diff: "Herausf.", wr: 2, eff: "Psychisches Phänomen in einer Zone" },
+    { n: "Jinx", disc: "Minor", diff: "Herausf.", wr: 2, eff: "Nächste Probe des Ziels mit Nachteil" },
+    { n: "Nova", disc: "Minor", diff: "Routine", wr: 2, o: true, eff: "4+WillkürB+EG Schaden im Umkreis" },
+    { n: "Preternatural Senses", disc: "Minor", diff: "Routine", wr: 2, eff: "Nacht-/Wärmesicht, Vorteil Wahrnehmung" },
+    { n: "Psychic Scrutiny", disc: "Minor", diff: "Leicht", wr: 1, eff: "Infos über ein Ziel (je EG eine)" },
+    { n: "Scalding Glance", disc: "Minor", diff: "Herausf.", wr: 2, eff: "Flüssigkeit zum Kochen bringen" },
+    { n: "Seal Wounds", disc: "Minor", diff: "Routine", wr: 2, o: true, eff: "Heilt WillkürB+ZähB+EG Wunden" },
+    { n: "Psychic Static", disc: "Minor", diff: "Leicht", wr: 1, eff: "Verschleiert dich vor Wahrnehmung" },
+    { n: "Soulsight", disc: "Minor", diff: "Herausf.", wr: 2, eff: "Lebende Wesen in Reichweite spüren" },
+    { n: "Spasm", disc: "Minor", diff: "Routine", wr: 2, eff: "Eine Gliedmaße des Ziels lähmen" },
+    { n: "Spectral Hands", disc: "Minor", diff: "Routine", wr: 2, eff: "Objekte telekinetisch bewegen" },
+    { n: "Lull", disc: "Minor", diff: "Schwierig", wr: 3, eff: "Ziel einschläfern" },
+    { n: "Affliction", disc: "Biomancy", diff: "Schwierig", wr: 3, eff: "Zustand aufzwingen (Blind/Taub/…)" },
+    { n: "Bio-Lightning", disc: "Biomancy", diff: "Schwer", wr: 3, o: true, eff: "Blitz: 4+WillkürB+EG Schaden, betäubt" },
+    { n: "Ferrocrete Flesh", disc: "Biomancy", diff: "Herausf.", wr: 3, o: true, eff: "Rüstung = ZähigkeitsB" },
+    { n: "Haemorrhage", disc: "Biomancy", diff: "Herausf.", wr: 2, eff: "Ziel blutet schwer" },
+    { n: "Iron Limb", disc: "Biomancy", diff: "Leicht", wr: 1, o: true, eff: "Vorteil auf Stärke & Nahkampf" },
+    { n: "Life Leech", disc: "Biomancy", diff: "Sehr schwer", wr: 4, o: true, eff: "Lebensentzug + Selbstheilung" },
+    { n: "Auditory Manipulation", disc: "Minor", diff: "Schwierig", wr: 3, eff: "Ziel hört, was du willst (PG)" },
+    { n: "Cipher Seed", disc: "Minor", diff: "Leicht", wr: 1, eff: "Versteckte Botschaft einpflanzen (PG)" },
+    { n: "Force Bolt", disc: "Minor", diff: "Schwierig", wr: 2, eff: "Telekin. Stoß: 6+WillkürB+EG Schaden (PG)" },
+    { n: "Immolation Directive", disc: "Minor", diff: "Herausf.", wr: 2, eff: "Objekt bei Auslöser verbrennen (PG)" },
+    { n: "Mark", disc: "Minor", diff: "Routine", wr: 2, o: true, eff: "Unauslöschliches Warp-Symbol (PG)" },
+    { n: "Induce Panic", disc: "Biomancy", diff: "Schwer", wr: 3, eff: "Ziel in Panik, greift Nahe an (PG)" },
+    { n: "Ossify", disc: "Biomancy", diff: "Schwer", wr: 3, eff: "Gelenke verknöchern, überladen (PG)" },
+    { n: "Stimulating Jolt", disc: "Biomancy", diff: "Schwierig", wr: 3, o: true, eff: "Ignoriert Erschöpft/Bewusstlos (PG)" }
+  ];
 
   // ---- build the inputs --------------------------------------------------
   var charGrid = document.getElementById("charGrid");
@@ -550,25 +637,83 @@ Kampagne sauber neu aufsetzt.</p>
     var opt = document.createElement("option"); opt.value = w; opt.textContent = w;
     weaponSel.appendChild(opt);
   });
+  function esc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  // disciplines stay simple checkboxes (only six)
   function buildChecks(containerId, items, prefix) {
     var box = document.getElementById(containerId);
     items.forEach(function (it, i) {
       var cell = document.createElement("label");
       cell.style.cssText = "display:flex; gap:6px; align-items:center; font-size:13.5px;";
       cell.innerHTML = '<input type="checkbox" id="' + prefix + i + '" value="' +
-        it.replace(/"/g, "&quot;") + '"> ' + it;
+        esc(it) + '"> ' + esc(it);
       box.appendChild(cell);
     });
   }
-  buildChecks("augmeticGrid", AUGMETICS, "aug_");
   buildChecks("disciplineGrid", DISCIPLINES, "disc_");
-  buildChecks("powerGrid", POWERS, "pow_");
   function checkedValues(containerId) {
     var out = [];
     document.querySelectorAll("#" + containerId + " input[type=checkbox]:checked")
       .forEach(function (cb) { out.push(cb.value); });
     return out;
   }
+
+  // reference tables — built from the catalogs above (one source feeds table + dropdown)
+  document.getElementById("augmeticTable").innerHTML =
+    "<table style='font-size:13.5px; margin:4px 0;'><tr><th>Implantat</th><th>Körperzone</th>" +
+    "<th>Effekt</th></tr>" + AUGMETICS.map(function (a) {
+      return "<tr><td>" + esc(a.n) + "</td><td class='dim'>" + esc(a.loc) +
+        "</td><td class='dim'>" + esc(a.eff) + "</td></tr>";
+    }).join("") + "</table>";
+  document.getElementById("powerTable").innerHTML =
+    "<table style='font-size:13px; margin:4px 0;'><tr><th>Kraft</th><th>Disziplin</th>" +
+    "<th>Schwierigkeit</th><th>Warp</th><th>Wirkung</th></tr>" + POWERS.map(function (p) {
+      return "<tr><td>" + esc(p.n) + (p.o ? "*" : "") + "</td><td class='dim'>" + esc(p.disc) +
+        "</td><td class='dim'>" + esc(p.diff) + "</td><td class='mod' style='text-align:center;'>" +
+        p.wr + "</td><td class='dim'>" + esc(p.eff) + "</td></tr>";
+    }).join("") + "</table>";
+
+  // dropdowns — option value is the exact catalog name (what the engine matches)
+  function fillSelect(sel, items) {
+    items.forEach(function (it) {
+      var opt = document.createElement("option");
+      opt.value = it.n; opt.textContent = it.n + (it.o ? " *" : "");
+      sel.appendChild(opt);
+    });
+  }
+  fillSelect(document.getElementById("augmeticSel"), AUGMETICS);
+  fillSelect(document.getElementById("powerSel"), POWERS);
+
+  // chosen lists (add-from-dropdown → removable chips)
+  var chosenAug = [], chosenPow = [];
+  function renderChips(containerId, list, onRemove) {
+    var box = document.getElementById(containerId);
+    box.innerHTML = "";
+    list.forEach(function (name, i) {
+      var chip = document.createElement("span");
+      chip.style.cssText = "display:inline-block; margin:2px 6px 2px 0; padding:2px 8px; " +
+        "border:1px solid var(--gold-soft); border-radius:4px; font-size:13px;";
+      chip.innerHTML = esc(name) + ' <a href="#" style="text-decoration:none;">✕</a>';
+      chip.querySelector("a").addEventListener("click", function (e) { e.preventDefault(); onRemove(i); });
+      box.appendChild(chip);
+    });
+  }
+  function refreshAug() {
+    renderChips("augmeticList", chosenAug, function (i) { chosenAug.splice(i, 1); refreshAug(); });
+    recompute();
+  }
+  function refreshPow() {
+    renderChips("powerList", chosenPow, function (i) { chosenPow.splice(i, 1); refreshPow(); });
+    recompute();
+  }
+  function addUnique(list, value) { if (value && list.indexOf(value) === -1) { list.push(value); } }
+  document.getElementById("augAdd").addEventListener("click", function () {
+    addUnique(chosenAug, document.getElementById("augmeticSel").value); refreshAug();
+  });
+  document.getElementById("powAdd").addEventListener("click", function () {
+    addUnique(chosenPow, document.getElementById("powerSel").value); refreshPow();
+  });
 
   // ---- state + recompute --------------------------------------------------
   function mode() { return document.querySelector('input[name="mode"]:checked').value; }
@@ -659,7 +804,7 @@ Kampagne sauber neu aufsetzt.</p>
     var inventory = [weapon].concat(inv.filter(function (x) { return x.toLowerCase() !== weapon.toLowerCase(); }));
 
     // augmetics (soft limit = Toughness Bonus; warn but don't block)
-    var augmetics = checkedValues("augmeticGrid");
+    var augmetics = chosenAug.slice();
     var tghBonus = Math.floor((fin.Tgh || 0) / 10);
     var augBudget = val("augmeticBudget");
     augBudget.textContent = "Implantate: " + augmetics.length + " / " + tghBonus + " (Zähigkeits-Bonus)";
@@ -686,10 +831,19 @@ Kampagne sauber neu aufsetzt.</p>
       block.psyker = true;
       var disc = checkedValues("disciplineGrid");
       if (disc.length) { block.disciplines = disc; }
-      var powers = checkedValues("powerGrid");
+      var powers = chosenPow.slice();
       if (powers.indexOf("Smite") === -1) { powers.unshift("Smite"); }  // every psyker knows Smite
       block.known_powers = powers;
     }
+
+    // optional background / notes — only added to the block when filled in
+    [["cdistinguishing", "distinguishing"], ["cgoals", "goals"], ["cconnections", "connections"],
+     ["cnotes", "notes"], ["ccombat_notes", "combat_notes"], ["cdivination", "divination"]
+    ].forEach(function (pair) {
+      var v = val(pair[0]).value.trim();
+      if (v) { block[pair[1]] = v; }
+    });
+
     val("jsonOut").textContent = JSON.stringify(block, null, 2);
 
     var probEl = val("allProblems");
