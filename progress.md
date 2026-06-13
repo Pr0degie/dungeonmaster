@@ -4,6 +4,20 @@ Living status document. A phase counts as done only when its **verification gate
 met and the proof is recorded here.
 
 ## Current focus
+**Code-Review-Korrektheitsrunde gelandet (2026-06-13, D61 → ADR 030): Suite 293 grün, live-unverified.**
+`/code-review` über die Tagescommits (`5d672b6~1..HEAD`) — der Cog-Split selbst sauber, **9 verifizierte
+Bugs in der Feature-Arbeit** gefixt (funktionserhaltend): Warp-Containment würfelt jetzt gegen **Disziplin
+(Psi)** statt Psi-Meisterschaft (IM p.163, der ungenutzte `psyker_purge_skill()` ist verdrahtet); ein
+Party-Psyker außerhalb des Encounters verliert die **Warp-Aufladung** nicht mehr still (einmalige Warnung);
+der **Würfel-Button** geht bei Sprach-Fehler nicht mehr verloren; **Auto-Recap** löscht keinen Turn mehr,
+der während des `summarize`-await dazukommt; **verklebte Marker** (`<<ORT1>>`) werden gestrippt statt
+vorgelesen; `resolve_test` schluckt keine echten Fehler mehr (golden rule #2); Streaming räumt verwaiste
+Tasks/WAVs auf; **Layer-2-Mute ist ein Tiefenzähler** (Pause/Resume während der Wiedergabe unmutet nicht
+mehr); Soak ist whitespace-robust. Plus Aufräumen (geteilte Helfer, toter Code weg, thread-lokale RAG-DB).
+**Die Altitude-Punkte (system-agnostische Generalisierung von Engine/Marker/RAG-Quellen) sind bewusst auf
+den Zweitsystem-/Phase-10b-Punkt aufgeschoben** (noch kein zweites System; ADR 005). _Nächstes Live-Gate
+prüft das mit den unteren Prioritäten mit._
+
 **Cog-Split-Refactor gelandet (2026-06-13, D60 → ADR 029): code-complete, Suite 263 grün.** Die
 2300-Zeilen-`VoiceReceiveCog` ist in ein injiziertes `SessionRuntime` (`dmbot/runtime.py`) +
 VoiceCog/DiceCog/DMCog zerlegt — rein strukturell, Verhalten exakt unverändert; `commands.py`
@@ -152,6 +166,31 @@ world-state block (CLAUDE.md prompt order). **Model: mistral-nemo.** Recommended
 gate / any follow-up: **Opus 4.8 / xhigh**.
 
 ## Last session
+**Code-Review-Korrektheitsrunde (2026-06-13, D61 → ADR 030). Suite 293 grün, live-unverified.**
+Tobi: `/code-review` über die Tagescommits, „Funktionalität soll bleiben", danach „fix alles fan out".
+Review als Multi-Agent-Fan-out (9 Finder-Winkel über `5d672b6~1..HEAD` + Pro-Fund-Verifizierer); Fixes
+über 7 Agenten auf disjunkten Dateien, zentral mit der vollen Suite verifiziert.
+- **9 Korrektheits-Fixes (alle verifiziert, funktionserhaltend):** (1) Warp-Containment → `Disziplin
+  (Psi)` via neuem `ResolvedManifest.contain_base` (`characters.py` + `dicecog.py`); (2) Party-Psyker
+  nicht in WorldState → einmalige DE-Warnung statt stillem Warp-Charge-Verlust (`dicecog.py`); (3)
+  `_deliver_answer` awaitet Dice/Scene-Tasks im `finally` (`dmcog.py`); (4) Auto-Recap `clear_history`
+  löscht nur den `summarize`-konsumierten Präfix via `_compact_consumed` (`orchestrator.py`); (5)
+  Marker-Regex `\b`→`[\s:]*`, verklebte Marker greifen (`marker.py`); (6) `resolve_test`
+  Signatur-Dispatch statt `except TypeError`-Retry (`engine.py`); (7) Streaming cancelt verwaiste
+  Tasks + drained WAVs (`dmcog.py`); (8) VadSink-Mute = Tiefenzähler (`recv.py`); (9) Soak via
+  `skill_value` strip+CI (`dicecog.py` + `characters.py`).
+- **Cleanup/Efficiency:** geteilter `SystemProfile._catalog_lookup` (`profile.py`); geteilter
+  `dmbot/tts/wavio.write_silent_wav`; toter `reduce_warp_charge` entfernt (`state.py`); no-op `[:80]`
+  auf Konstanten weg (`scene.py`); thread-lokale gecachte sqlite-Connection + Tuple-Rebuilds weg
+  (`retrieve.py`); `<<`-freier Fast-Path im `StreamAssembler` (`orchestrator.py`).
+- **Bewusst NICHT gemacht:** die Altitude-Punkte (system-agnostische Generalisierung von
+  `warp_charge_gain`/`reverse_d100`, der per-Marker-Pipeline, `_SOURCES`/`_is_junk_hit`) — aufgeschoben
+  auf den Zweitsystem-/Phase-10b-Punkt (ADR 005); kein zweites System zum Generalisieren da, groß +
+  verhaltensriskant. Ebenfalls nicht angefasst: Layer-2-Mute bleibt default-off (D25), XTTS-Sampling
+  (D55), Persona-Text; der `marker.py`-`profile`-Param blieb (ein Test außerhalb des Filesets ruft ihn).
+- **Verifikation:** volle Suite **293 grün** (+~30 fixed-seed/Unit-Tests in den gefixten Bereichen,
+  ein RAG-Fixture-mkdir-Fix). Zwei versehentliche Agenten-Artefakte (`C:…*.diff`) entfernt.
+
 **Cog-Split-Refactor (2026-06-13, D60 → ADR 029). Code-complete, Suite 263 grün, live-unverified
 (Smoke-Test reicht).** Reiner Struktur-Refactor (nach Tobis Cog-Split-Spec), Plan-
 Modus zuerst, Umsetzung über parallele Agenten auf disjunkten Dateien.
@@ -824,6 +863,13 @@ _(Prior session — voice-stack hardening, ADR 006 — and Phases 3–6 (the pla
 in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 
 ## Next concrete step
+**Code-Review-Korrektheitsrunde: ERLEDIGT (2026-06-13, D61 → ADR 030).** Suite 293 grün; nichts
+Code-seitig offen. Im Live-Run **gezielt mitprüfen**, was die Fixes berühren: (1) ein Psyker mit
+hoher Psi-Meisterschaft / niedriger Disziplin manifestiert über Schwelle → Perils erupten jetzt
+*häufiger* (Containment gegen Disziplin); (2) verklebte `<<ORT…>>`/`<<MANIFEST…>>` werden nicht mehr
+vorgelesen; (3) der Würfel-Button erscheint auch wenn die Sprachausgabe mal hakt. Die Altitude-Punkte
+sind bewusst aufgeschoben (s. Open questions).
+
 **Cog-Split-Refactor: ERLEDIGT (2026-06-13, D60 → ADR 029).** Code-complete, Suite 263 grün;
 abzunehmen mit einem **Smoke-Test** (`!join` → sprechen → `!dm` → Würfel-Button → `!leave`) — kein
 eigenes Live-Gate. Die Live-Prioritäten unten (Playtest-Fixes + Phase-9/10-Gates) sind unberührt.
@@ -1046,6 +1092,7 @@ create the next-numbered ADR.
 | D58 | `!start` briefing + persona steer | **(a) `!start`** (aliases `!briefing`/`!auftrag`): a dedicated opening turn — the DM narrates the `auftrag` briefing (Halikarn message, mission, leads as atmosphere) via the existing stream/speak path; a thin `respond_opening*` path leaves `_last_action` None so dice routing is suppressed; sets `scene_id` to the start scene if unset. **(b) Persona** (`prompts/dm_core_de.md`): keep the current scene's goal in view + steer gently toward open leads (not a list, not railroad); every turn ends with the **world in motion** (an NSC acts/speaks or a concrete hook), never a flat description that stops; **spotlight** — bring other named/silent characters in by name | 1st-round complaints: "am Anfang nicht gesagt, was abgeht" (`!join` only printed status), the DM stopped on static descriptions with passive NPCs, and one player sat idle all session. Prompt/feature tuning in ADR 016's persona-discipline domain (like D54) — effective only because D57 stops the persona being truncated → D-entry, no new ADR. Live-unverified |
 | D59 | RAG junk-shape filter | **Distance-independent `_is_junk_hit`** in `fetch_block` (per-turn narration gate only; `!rules`/`!lore`/`lookup` untouched): drops dash-run headings (`-{4,}`), statblock-tag headings (`(eLite)`/`(trOOP)`/`(LeaDer)`), and picture-text bodies. `MAX_DISTANCE` stays **0.45**. 103/2482 chunks become narration-ineligible; recall@1/@3 **unchanged** (52%/81%) | 1st round: pure-RP turns injected OCR/TOC garbage at the 0.43–0.45 edge (`WARRIOR`, `MACHARIAN TOMES`, `--- PSYCHIC POWERS ---`), wasting the context budget D57 fights. Calibration (ADR 025) showed tightening the threshold costs real recall (`CRITICAL HIT` @0.439) — a shape filter is surgical instead. Known gap: `WARRIOR`-style epigraph rows need ingest-level re-chunking (out of scope) → **ADR 028** |
 | D60 | Voice cog split → SessionRuntime | **Pure structural refactor (zero behaviour change).** The 2300-line `VoiceReceiveCog` split into a shared **`SessionRuntime`** (`dmbot/runtime.py`, built once from `Config`, injected into every cog — the 26 ctor kwargs collapse into it) + three thin cogs: **VoiceCog** (join/leave/vstatus/mic/pause, VAD-sink), **DiceCog** (roll/test/turn/rules/npc/damage/heal, dice+manifest buttons, auto-combat, turn-order render), **DMCog** (batch+streaming delivery, TTS speak, auto-recap, !dm/!redo/!start/!wrap/!say/!voice **and** scenes !ort/!szenen/!ortmodus + the `<<ORT>>` marker + !lore). **No `bot.get_cog`** — five hooks registered on the runtime (`run_and_deliver`/`auto_dm_turn`/`handle_dice`/`reanchor_mic`/`post_turn_order`). `commands.py` deleted; suite **263 green** (only test-import paths + one `test_autorecap` fixture rewired to a stub runtime — assertions unchanged) | The file had become a god-cog with a 26-kwarg ctor; every session paid for the whole thing and the concern boundaries had blurred. Moved-not-rewritten (per-agent AST/reverse-rename diffs + a streaming-pipeline spot-check confirm byte-identical bodies; only `self._X`→`self._rt._X` renames + the hook calls). Boot path unchanged (preflights once, same order; `TEARDOWN_STEPS` sum still 4 → shutdown display byte-identical). Binds later work: Phase 10b profile bootstrap hangs off the runtime, not a cog → **ADR 029** |
+| D61 | Code-review correctness round (post-cog-split) | **9 verified defects in the day's feature work + cleanup, behaviour preserved.** Correctness: (1) **Warp-containment Test → Disziplin (Psi)** not Psi-Meisterschaft (IM p.163) — new `ResolvedManifest.contain_base` wires the previously-unused `psyker_purge_skill()`; (2) **party psyker not in WorldState** no longer silently drops Warp Charge — one-time German warning (no safe single-char state add); (3) **batch delivery** awaits dice/scene tasks in `finally` so the 🎲 button isn't lost when speak raises; (4) **auto-recap** `clear_history` clears only the `summarize`-consumed prefix (`_compact_consumed`) so a turn appended during the LLM await survives; (5) **glued markers** `\b`→`[\s:]*` so `<<ORT1>>`/`<<ORTmud_gate>>`/`<<MANIFESTSmite>>` strip+fire instead of being read aloud; (6) **`resolve_test`** signature-dispatch (`inspect.signature`) replaces the `except TypeError` that swallowed real errors + double-rolled (golden rule #2); (7) **streaming** cancels orphaned prod/synth/play tasks + drains queued WAVs on a mid-stream bridge failure (permanent-mute claim **refuted** — `finally` always unmutes, mute logic untouched); (8) **layer-2 mute → depth counter** so DM-speak vs operator pause/resume nest (resume mid-playback can't unmute); (9) **soak** uses `skill_value` (strip+CI) so a `"Tgh "` key isn't 0 soak. Cleanup: shared `_catalog_lookup` (profile), shared `tts/wavio.write_silent_wav`, dead `reduce_warp_charge` removed, no-op `[:80]` slices dropped, **thread-local cached sqlite conn** + `<<`-free StreamAssembler fast path. Suite **293 green** | Tobi asked `/code-review` over the day's commits, "Funktionalität soll bleiben". Multi-agent review (9 finder angles + per-finding verifiers over `5d672b6~1..HEAD`) cleared the cog split as faithful and found these in the parallel feature work. The **altitude findings — system-agnostic generalisation of engine/marker/RAG-sources — are DEFERRED to the second-profile / Phase-10b point** (no second system to generalise against yet; large + behaviour-risky; ADR 005 stance is "generalise when the 2nd system arrives") → **ADR 030** |
 
 ### Phase → ADR map (read these when you enter the phase)
 
@@ -1385,6 +1432,24 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   Refactor-Scopes); Log-Messages + Green-Chat/Transcript-Format unverändert. Bei Gelegenheit putzen.
 - **Smoke-Test offen:** der Schnitt ist test-grün (263), aber live nur per Smoke-Test abzunehmen
   (`!join`→sprechen→`!dm`→Würfel→`!leave`) — siehe „Next concrete step".
+
+**Deferred altitude debt from the code-review round (2026-06-13, D61 / ADR 030):**
+These are the review's *altitude* findings — real, but the **system-agnostic generalisation** they
+ask for is postponed to the **second-profile / Phase-10b** point (ADR 005's profile bootstrap). There
+is no second system yet to generalise against, the changes are large + behaviour-risky, and the
+project's stance (D1) is "IM is the first profile; generalise when the second arrives". Revisit each
+when a second system is actually loaded:
+- **Engine hardcodes IM arithmetic.** `engine.warp_charge_gain` (Success=Warp-Rating, Critical−WB,
+  Fumble×2, Push+1d10) and `reverse_d100` + the `advantage` digit-reversal bake IM's p.163/p.189 rules
+  into the generic engine. Move the charge-gain + advantage model into the profile alongside the
+  resolution/degrees rules that are already data.
+- **Per-marker pipeline grows linearly.** Each new director marker means a bespoke regex + dataclass
+  in `marker.py`, a wider `finalize_answer` tuple, and a third/fourth parallel `_pending_*` dict in
+  the orchestrator + a `take_pending_*`. One keyed marker structure (`{kind: [...]}`) would collapse
+  the triplication; do it before the next marker, not after.
+- **RAG corpus catalog is IM-/OCR-specific in code.** `retrieve._SOURCES` (source names + German
+  group labels) and `_is_junk_hit` (IM-PDF OCR-noise regexes) live in the retriever. A second ruleset
+  needs them in data/profile + ingest-time denoise, not hardcoded.
 
 **From the lore work (2026-06-13):**
 - **`!lore`-Antworten zu Rokarth sind englisch** — die `setting`-Quelle ist der englische
