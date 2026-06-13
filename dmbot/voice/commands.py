@@ -47,6 +47,7 @@ from ..memory.state import WorldState, world_state_summary_de
 from ..memory import history as history_store
 from ..shutdown import progress, to_daemon_thread
 from ..rag.adventure import Adventure
+from ..rag.lore import available_topics, lore_pages
 from ..rag.retrieve import RulebookRetriever
 
 # Repo data dir (data/systems is the profile root; sessions/ sits beside it).
@@ -1280,6 +1281,30 @@ class VoiceReceiveCog(commands.Cog):
             return
         source = self._profile.raw.get("_source", "") if isinstance(self._profile.raw, dict) else ""
         view = RulesView(pages, self._profile.display_name or self._profile.name, source=source)
+        await self._send_with_retry(ctx.channel, view=view, embed=view.embed())
+
+    # Display names for the curated lore topics (data/lore/<topic>.md, ADR 021); unknown
+    # (future) files fall back to topic.title().
+    _LORE_TITLES = {"imperium": "Weltwissen: Imperium", "chaos": "Weltwissen: Chaos"}
+
+    @commands.command(name="lore", aliases=["hintergrund"])
+    async def lore(self, ctx: commands.Context, topic: str = "imperium") -> None:
+        """Weltwissen-Rundown zum Blättern (◀/▶): `!lore` = Imperium, `!lore chaos` = Chaos.
+        Lese-Material, kein DM-Turn — wird nicht gesprochen. Alias: !hintergrund"""
+        lore_dir = _DATA_DIR / "lore"
+        topic = topic.lower().strip()
+        path = lore_dir / f"{topic}.md"
+        if not path.is_file():
+            topics = available_topics(lore_dir)
+            hint = ", ".join(f"`{t}`" for t in topics) if topics else "—"
+            await ctx.send(f"Kein Lore-Thema `{topic}`. Verfügbar: {hint}")
+            return
+        text = await asyncio.to_thread(path.read_text, encoding="utf-8")
+        pages = lore_pages(text)
+        if not pages:
+            await ctx.send(f"`{path.name}` enthält keine lesbaren Abschnitte.")
+            return
+        view = RulesView(pages, self._LORE_TITLES.get(topic, topic.title()))
         await self._send_with_retry(ctx.channel, view=view, embed=view.embed())
 
     @commands.command(name="damage", aliases=["schaden"])

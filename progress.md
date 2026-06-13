@@ -15,7 +15,7 @@ loudest failure — *the DM improvises from nothing* — needed Phase 10 pulled 
 threshold-gated `## Regelwerk` block; store built offline, 1505 chunks, verified: "kritischer
 Erfolg"/"Schwierigkeit" hit the right sections, table talk stays silent). Plus the **W4
 self-repetition guard** (fuzzy match against the DM's own previous answer, retry-then-suppress).
-Suite **183/183**. `DM_ADVENTURE=chemical_burn` is set in `.env`. _Open in Phase 10: the profile
+Suite **187/187**. `DM_ADVENTURE=chemical_burn` is set in `.env`. _Open in Phase 10: the profile
 bootstrap (gate half 2, ADR 005); the lore corpus is now covered for the needed factions —
 **D48/ADR 021** curated German Imperium+Chaos compendium (`data/lore/`, sources `lore_imperium`/
 `lore_chaos`), offline-verified; only D28's broad wiki corpus stays a later option._ **Both live
@@ -107,6 +107,14 @@ Horror); Tyraniden/Necrons/T'au ebenfalls leer (Tobi: bewusst ok). Beschlossen +
   `nomic-embed-text` → `bge-m3` korrigiert + neue **B9-Sektion** (RAG-Store kopieren/neu bauen,
   `DM_ADVENTURE`, `📚`-Sanity-Check) + TL;DR-Schritt 8; README-Transfer-Sektion gefixt
   (bge-m3, CHECKLIST-Link).
+- **Nachrunde 2 — `!lore`-Command (D49):** `!lore [topic]`/`!hintergrund` blättert
+  `data/lore/<topic>.md` (ohne Arg → imperium, `!lore chaos` → Chaos) über die bestehende
+  `RulesView`; neuer pure Parser `dmbot/rag/lore.py` (`lore_pages`: Heading = Seite, H1 +
+  Quellen-Blockquote geskippt, 4000-Zeichen-Guard) + `tools/lore_to_html.py` → `docs/lore.html`
+  (grimdark Standalone — Tobis Review-Ansicht + Spieler-Handout; nach Lore-Edits neu
+  generieren). Kein TTS, kein DM-Turn. Tests +4, Suite **187/187**. _**Review offen:** Tobi
+  liest `docs/lore.html` — nach Freigabe committen; Textkorrekturen → md-Dateien → re-ingest
+  (`--source lore_imperium`/`lore_chaos`) + HTML neu._
 
 **(Davor) Charaktererstellung (2026-06-12, Runde 2 der Spieler-Doku).** Die Runde will neue
 Charaktere (ersetzen Garran/Eli/Yann; Chemical Burn startet dann frisch). Gebaut:
@@ -731,6 +739,7 @@ create the next-numbered ADR.
 | D46 | Starter Set as lore + patron source | **(a)** The Starter Set's **Setting Guide → `source=setting`** in the existing RAG store (pages 1–57 only — the „Villains on Voll" chapter with the Mireclaw reveal stays out until the campaign finale); retrieval searches rulebook+setting and groups hits as `## Regelwerk` / `## Weltwissen (… nur als Färbung nutzen)`, TOP_K=3 total. **(b)** The **Aegidius-Halikarn patron sheet** folded into the chemical_burn compendium (Motivation Information, Auftreten undurchschaubar, Boons incl. Sanctum-Obscurus-Ausstattung in der Thaler-Szene). „The Blazing Seraph" (SS adventure book) wird erst NACH dem Chemical-Burn-Live-Test zum zweiten Kompendium | The Setting Guide is a better first lore source than D28's wiki plan: campaign-specific (Chemical Burn plays in Rokarth), curated, already owned — wikis stay the later broad-lore step. Spoiler discipline (ADR 019) applies to lore too: similarity must not surface the villain chapter on „wer steckt dahinter?" (verified: the question returns nothing). Applies ADR 019, no new trade-off → D-entry, no new ADR |
 | D47 | Visible, fast shutdown | **(a)** TTS synth runs on an **abandonable daemon thread** (`dmbot/shutdown.py` `to_daemon_thread`, replacing `asyncio.to_thread` in `_speak` + the streaming `synth_worker`) so a synth in flight at Ctrl+C is dropped, never join-blocking exit. **(b)** A thread-safe **`[i/n] label` step display** (`ShutdownProgress`/`progress`): `DMBot.close()` declares the count up front (voice disconnects + each cog's `TEARDOWN_STEPS` + the Discord close) and wraps every stage; `cog_unload` reports its four closes; a final summary names any dropped synth. Outside a shutdown, `step()` is a plain log line | Tobi: the bot quit slowly and silently. Cause of the slowness: asyncio's default executor threads are **non-daemon**, so the interpreter joined a multi-second GPU XTTS synth at exit — pure dead wait, the WAV is moot once quitting. Daemon-abandon is the only real lever (XTTS isn't cancelable). The display answers "what/how many is being shut down". Targeted to TTS only (close paths keep normal threads) → **ADR 020** |
 | D48 | Curated German lore compendium | **Hand-authored `data/lore/imperium.md` + `chaos.md`** (German, grimdark in-world; **committed** — own wording of freely available 40k common knowledge, revised same day from the initial local-only stance) → two new RAG sources **`lore_imperium`/`lore_chaos`**, grouped as `## Weltwissen (Imperium …)` / `## Weltwissen (Chaos — verbotenes Wissen …)`, block order rules → broad lore → local Rokarth. Threshold stays 0.45 global. Tobi's calls: two files/two sources, both ausführlich, grimdark | Live probe (2026-06-13): human lore retrieves from the English rulebook (Imperium d=0.27) but **Chaos cosmology doesn't exist in the IM books** ("vier Chaosgötter" d=0.53 miss — by design, Chaos as hidden horror); RAG can't retrieve what was never written, and German-vs-English inflates distances. German authored text wins TOP_K for German lore questions (verified 0.28–0.44) while rules keep hitting the rulebook. Wiki dump (D28) stays the later breadth step; Tyranids/Necrons/T'au deliberately absent (Tobi) → **ADR 021** |
+| D49 | `!lore` command | **Paged Weltwissen rundown** — `!lore [topic]` (alias `!hintergrund`) pages `data/lore/<topic>.md` (no arg → `imperium`, `!lore chaos` → Chaos) through the existing `RulesView` (◀/▶); new pure `dmbot/rag/lore.py` (`lore_pages`: `##`/`###` heading = page, H1 + `>`-source-note skipped, >4000-char guard split; `available_topics` for the unknown-topic hint). Read-only — no TTS, no DM turn. Plus `tools/lore_to_html.py` → `docs/lore.html` (grimdark standalone, review/handout view, re-run after lore edits) | Tobi wants players to read an ausführlicher human-lore rundown, reviewed by him first (HTML). Single source of truth: the command pages the SAME committed files the RAG Weltwissen embeds, so review corrections improve both. Reuses RulesView unchanged (it was already generic). Applies existing patterns, no new trade-off → D-entry, no ADR |
 
 ### Phase → ADR map (read these when you enter the phase)
 
@@ -997,7 +1006,8 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   40k-Wissens, keine Buch-Ableitung) als `source=lore_imperium`/
   `lore_chaos` → `## Weltwissen`. Schließt die Tobi-Anforderung „Menschen- + Chaos-Lore";
   Chaos-Kosmologie steht in keinem IM-Buch (verifiziert: „vier Chaosgötter" d=0.53 miss → jetzt
-  d=0.43 hit). 24-Fragen-Offline-Probe grün; Tyraniden/Necrons/T'au bewusst draußen.
+  d=0.43 hit). 24-Fragen-Offline-Probe grün; Tyraniden/Necrons/T'au bewusst draußen. Spieler-
+  Zugang: **`!lore [topic]`** (D49, paged Embed) + `docs/lore.html` (Handout/Review).
 - [ ] **Gate half 1 (live):** a concrete rule question answered correctly from the PDF
 - [ ] Profile bootstrap: DM proposes a draft system profile from the rulebook → user confirms → saved
 - VERIFY EVIDENCE: _(pending the circlejerk run)_

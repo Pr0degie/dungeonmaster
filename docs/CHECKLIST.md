@@ -49,6 +49,7 @@ bleibt bis zum Kampagnenfinale draußen.)
 
 - Pro Voice-Channel braucht der DM eine Party: `data/sessions/<channel-id>/characters.json`.
   Erstellung: `docs/how-to-create-a-character.html` (Formular → JSON), Regeln-Primer für
-  Spieler: `docs/how-to-play.html`.
+  Spieler: `docs/how-to-play.html`, Setting-Hintergrund: `docs/lore.html` (oder in Discord
+  `!lore` / `!lore chaos`).
 - Beide Bots in denselben Voice-Channel (`!join`), dann läuft die Runde. Schnelltest, ob die
   Lore da ist: eine Chaos-Frage stellen — im Log muss eine `📚 lore_chaos:`-Zeile auftauchen.

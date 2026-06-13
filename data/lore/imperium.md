@@ -6,7 +6,7 @@
 ## Der Imperator der Menschheit
 
 Seit über zehntausend Jahren sitzt der Imperator reglos auf dem Goldenen Thron von Terra.
-Er ist der unbestrittene Herr der Menschheit — der Gottkaiser, in dessen Namen jedes
+Er ist der unbestrittene Herr der Menschheit — der Gott-Imperator, in dessen Namen jedes
 Dekret ergeht, jede Armee marschiert und jeder Ketzer brennt. Einst wandelte er als
 strahlender Kriegsherr unter seinem Volk, das flammende Schwert in der Hand, und einte
 die zersplitterte Menschheit im Großen Kreuzzug. Heute ist er eine verdorrte, sprachlose

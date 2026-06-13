@@ -145,6 +145,7 @@ Prefix is `!`. Type them in any text channel the bot can read.
 | `!test <skill> [difficulty] [für name]` | request a test → posts a 🎲 button; the engine rolls + resolves it (`!test Wahrnehmung Schwer für Tobi`) |
 | `!turn` / `!order` | show / rotate the turn order ("whose turn"), seeded from the voice channel |
 | `!rules` / `!regeln` | show the active system's essential rules as a paged embed (◀/▶ to flip pages) |
+| `!lore [topic]` / `!hintergrund` | paged Weltwissen rundown from `data/lore/` (no arg → `imperium`, `!lore chaos` → Chaos); read-only, never spoken |
 | `!say <text>` | speak arbitrary text aloud — a TTS + bridge smoke test |
 | `!voice [name]` | switch the XTTS speaker (no name → show current); only with `TTS_ENGINE=xtts` |
 | `!voices` | list the XTTS built-in speakers; only with `TTS_ENGINE=xtts` |
