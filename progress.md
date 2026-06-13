@@ -128,6 +128,27 @@ world-state block (CLAUDE.md prompt order). **Model: mistral-nemo.** Recommended
 gate / any follow-up: **Opus 4.8 / xhigh**.
 
 ## Last session
+**RAG calibration + a German conditions glossary source (2026-06-13).** Reviewed the open task
+prompts 2/5/6 against the goal (efficiency/speed/correctness): did **prompt 5** (RAG calibration —
+highest value/risk ratio), deferred 6 (gated on the unmet Phase-9 live gate), skipped 2 (pure
+maintainability, zero bot benefit). Built a golden set (`tools/rag_golden_set.json`, 21 positives /
+10 negatives, committed — own questions + expected source/heading, no rulebook passages) and
+`tools/rag_calibrate.py` (imports the real `retrieve.py` path; per-query hits, recall@1/@3, a
+0.35–0.60 threshold sweep per context; report → gitignored `tools/rag_calibrate_report.md`).
+- **Finding:** positives (rule questions) and negatives (narration) overlap badly in the embedding
+  space — no threshold separates cleanly, so `MAX_DISTANCE` **stays 0.45** (the data didn't support
+  a confident change). The real gaps were **content/chunking**, not the threshold: German condition
+  names ("Blutend") missed the English condition chunks, and weapon-stat **tables** don't retrieve.
+- **Fix (correctness):** a hand-authored German **conditions glossary** — `data/rules_de/conditions.md`
+  (12 Zustände, own words grounded in the rulebook), new RAG source **`conditions`** (13 chunks →
+  `## Regelwerk`), wired into `_SOURCES` and the `!rules` search. Each section leads with its German
+  name **in the body** (the ingest embeds the body, not the heading), which pulled the specific chunk
+  to the top (Blutend 0.40→**0.29**). Live: `!rules` now answers Blutend/Betäubt/Vergiftet/Brennend
+  **exactly right** (before: Blutend hallucinated). recall@1 38%→**52%**, recall@3 67%→**81%**, narration
+  hits 13→**15/21**, **zero** new negative leaks. Store **2482 chunks**, suite **230**. New committed
+  source category `data/rules_de/` (`.gitignore` allowlist; pattern of ADR 021). _Open: weapon/stat
+  tables still don't retrieve (table-row chunking) — a separate ingestion session._
+
 **Faster startup — background TTS load + parallel Ollama warm-up (2026-06-13 → ADR 024).** Tobi
 liked the fast shutdown (ADR 020) and asked for a faster start, then "robust und zuverlässig".
 Two synchronous boot costs blocked "bot ready": the XTTS/Coqui load (torch + GPU, several seconds)

@@ -36,6 +36,7 @@ TOP_K = 3  # total across both sources — lore may colour a scene, not flood th
 # as two sources so either half can be re-authored + re-ingested without touching the other.
 _SOURCES: dict[str, str] = {
     "rulebook": "## Regelwerk (Auszüge aus dem Regelbuch — Grundlage für Regelfragen)",
+    "conditions": "## Regelwerk (Zustände — deutsche Spielwerte)",
     "player_guide": "## Regelwerk (Inquisition Player's Guide — Psikräfte, Talente, Ausrüstung)",
     "lore_imperium": "## Weltwissen (Imperium — Hintergrund, nur als Färbung nutzen)",
     "lore_chaos": "## Weltwissen (Chaos — verbotenes Wissen, nur als Färbung nutzen)",

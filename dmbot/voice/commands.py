@@ -1495,7 +1495,8 @@ class VoiceReceiveCog(commands.Cog):
         # plus the Inquisition Player's Guide (powers/talents) and the GM-Guide's safe reference
         # half (Radical Methods, philosophies). Curated German Weltwissen stays on `!lore`.
         hits = await self._retriever.lookup(
-            question, sources=("rulebook", "player_guide", "gm_guide"), k=3, max_distance=0.55
+            question, sources=("rulebook", "conditions", "player_guide", "gm_guide"),
+            k=3, max_distance=0.55
         )
         if not hits:
             await ctx.send(

@@ -1,0 +1,42 @@
+{
+  "_note": "Golden set for RAG calibration (Prompt 5). Own German questions + expected source(s) and a heading keyword (lowercased substring match against the chunk's heading). NO rulebook passages — safe to commit; it's the regression check for future ingests. 'class':'table' marks lookups that depend on table-row chunking (the known-hard case). Used by tools/rag_calibrate.py.",
+  "positives": [
+    { "q": "Wie funktionieren die Schwierigkeitsgrade einer Probe?", "sources": ["rulebook"], "heading": "diffic" },
+    { "q": "Wie berechnet man die Erfolgsgrade (EG) einer Probe?", "sources": ["rulebook"], "heading": "success" },
+    { "q": "Wann gilt ein Angriff als kritischer Treffer oder als Patzer?", "sources": ["rulebook"], "heading": "crit" },
+    { "q": "Wie funktioniert eine erweiterte Probe (Extended Test)?", "sources": ["rulebook"], "heading": "extended" },
+    { "q": "Was passiert bei einem automatischen Erfolg oder Misserfolg (01-05 / 96-00)?", "sources": ["rulebook"], "heading": "automatic" },
+    { "q": "Wie wird Schaden ausgeteilt und durch Ruestung und Zaehigkeit reduziert?", "sources": ["rulebook"], "heading": "damage" },
+    { "q": "Wie funktionieren Vorteil und Nachteil bei einer Probe?", "sources": ["rulebook"], "heading": "advantage" },
+
+    { "q": "Was bewirkt der Zustand Blutend?", "sources": ["rulebook", "conditions"], "heading": "bleeding" },
+    { "q": "Was bewirkt der Zustand Betaeubt?", "sources": ["rulebook", "conditions"], "heading": "stunned" },
+    { "q": "Was bewirkt der Zustand Vergiftet?", "sources": ["rulebook", "conditions"], "heading": "poisoned" },
+    { "q": "Welche Zustaende gibt es im Spiel und wie wirken sie?", "sources": ["rulebook", "conditions"], "heading": "condition" },
+
+    { "q": "Wie funktioniert Deckung im Kampf?", "sources": ["rulebook"], "heading": "cover" },
+    { "q": "Welchen Schaden und welche Eigenschaften hat ein Lasgewehr?", "sources": ["rulebook"], "heading": "ranged", "class": "table" },
+    { "q": "Wie funktioniert Korruption und wann steigt sie?", "sources": ["rulebook"], "heading": "corrupt" },
+
+    { "q": "Wie manifestiert ein Psioniker eine psychische Kraft?", "sources": ["rulebook", "player_guide"], "heading": "psychic" },
+    { "q": "Was ist die Warp-Aufladung und wann drohen die Perils of the Warp?", "sources": ["rulebook"], "heading": "warp" },
+    { "q": "Was bewirkt die Psikraft Smite?", "sources": ["rulebook", "player_guide"], "heading": "smite" },
+
+    { "q": "Was ist ein Monodominant und woran glaubt diese Inquisitions-Philosophie?", "sources": ["player_guide", "gm_guide"], "heading": "monodomin" },
+    { "q": "Woran glaubt ein Horusianer in der Inquisition?", "sources": ["gm_guide"], "heading": "horusian" },
+    { "q": "Was ist verbotenes Wissen (Forbidden Knowledge) und welche Buerden bringt es?", "sources": ["rulebook", "gm_guide"], "heading": "forbidden" },
+    { "q": "Wie treibt man einen Daemon durch einen Exorzismus aus?", "sources": ["gm_guide", "player_guide"], "heading": "exorc" }
+  ],
+  "negatives": [
+    "Ich schaue mich in der Bar um.",
+    "Ich gehe zur Tuer und oeffne sie langsam.",
+    "Wer hat noch Chips mitgebracht?",
+    "Lass uns kurz fuenf Minuten Pause machen.",
+    "Ich begruesse den Wirt und bestelle ein Bier.",
+    "Mein Charakter zieht den Mantel enger und blickt sich um.",
+    "Koennen wir naechste Woche eine Stunde frueher anfangen?",
+    "Ich nicke dem Wachmann zu und gehe weiter.",
+    "Was laeuft eigentlich nachher noch im Fernsehen?",
+    "Ich setze mich an den Tisch und warte auf die anderen."
+  ]
+}

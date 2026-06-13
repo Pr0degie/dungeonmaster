@@ -10,7 +10,7 @@ steht im [README → „Running on another machine"](../README.md) und in [`SETU
 |---|---|---|
 | `data/pdfs/` | gekaufte PDFs **+ der `md/`-Unterordner** (Konvertierungen) | RAG-Quelltexte, Charakterbogen-Filler |
 | `data/adventures/chemical_burn/` | `adventure.json` + `npcs.json` — Szenenkarten + Statblocks | das Abenteuer im DM (ADR 019) |
-| `data/vectordb/rag.db` | fertige Vektor-DB (rulebook 1505 / player_guide 502 / gm_guide 226 / setting 201 / lore_imperium 18 / lore_chaos 17 Chunks, bge-m3) | Retrieval — kopieren spart den Neuaufbau |
+| `data/vectordb/rag.db` | fertige Vektor-DB (rulebook 1505 / player_guide 502 / gm_guide 226 / conditions 13 / setting 201 / lore_imperium 18 / lore_chaos 17 Chunks, bge-m3) | Retrieval — kopieren spart den Neuaufbau |
 
 Alles davon liegt absichtlich nicht im (öffentlichen) Repo — Ableitungen gekaufter Bücher.
 Privat weitergeben ist ok, nicht hochladen. (Das Lore-Kompendium `data/lore/` ist dagegen
@@ -43,7 +43,11 @@ uv run python -m dmbot.rag.ingest "data/pdfs/md/Imperium_Maledictum_Inqusition_P
 uv run python -m dmbot.rag.ingest "data/pdfs/md/Imperium Maledictum Inquisition GM-Guide.md" --source gm_guide
 uv run python -m dmbot.rag.ingest "data/lore/imperium.md" --source lore_imperium
 uv run python -m dmbot.rag.ingest "data/lore/chaos.md" --source lore_chaos
+uv run python -m dmbot.rag.ingest "data/rules_de/conditions.md" --source conditions
 ```
+
+`data/rules_de/conditions.md` (deutsche Zustands-Spielwerte) und `data/lore/*.md` sind
+hand­geschrieben und kommen **mit dem Clone** (kein PDF/`pdf_to_md` nötig) — nur einbetten.
 
 Bewusste Spoiler-Schnitte (wie „Villains on Voll"): der **Setting Guide** nur Seite 1–57; der
 **Inquisition GM-Guide** nur Seite 4–61, 74–83, 172–174 (= Ordos/Philosophien, Lex Imperialis,

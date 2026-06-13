@@ -40,6 +40,10 @@ data/**
 !data/party/
 !data/party/*.json
 !data/party/*.md
+!data/rules_de/
+!data/rules_de/*.md
+# the RAG calibration report quotes rulebook headings + distances — keep it local
+tools/rag_calibrate_report.md
 !data/**/.gitkeep
 # …but DO track hand-written/checked-in fixtures (ADR 005/012/021): the hand-written system
 # profiles, the example party, and the curated lore compendium (data/lore/ — own wording of
