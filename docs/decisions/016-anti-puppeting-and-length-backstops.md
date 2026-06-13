@@ -101,3 +101,25 @@ whitespace; none of which show in the transcript. Two changes (suite 233):
   Piper `synthesize` paths emit a short silence (never call the model) when nothing is speakable —
   so a lone-punctuation chunk can't make XTTS read a bare "." for ~15 s or hallucinate.
 - Deferred (only if needed after live test): XTTS `repetition_penalty` / `enable_text_splitting=False`.
+
+## Follow-up (2026-06-13, D54) — anti-repetition persona rule (W4, prompt side)
+
+W4 (within-session repetition) was the one player wish this ADR's original round left open
+(see the "Open player wishes" note above). Live the DM kept **re-explaining already-established
+facts in full** — re-describing a place/NPC/event from scratch every time it came up, instead of
+moving the story forward. D45's `is_self_repetition` echo guard catches *near-verbatim* restatements
+after the fact (code side, ADR 019); it does **not** stop the model from electing to re-narrate
+settled context at length in the first place. That is a persona-shaping problem, not a guard problem.
+
+- **Decision:** a persona rule in `prompts/dm_core_de.md` — what's in „Was bisher geschah", the
+  world state and the ongoing scene is **already known to the players**; reference it briefly and
+  describe in detail only what is **new** and the **consequences** of the latest action. Paired with
+  a sharpened recap label in `_build_request`: the recap block is framed as
+  „(den Spielenden bereits bekannt — nicht erneut ausführlich erzählen)" so the model treats it as
+  context, not as material to retell.
+- **Trade-off:** narrative momentum + less spoken redundancy (the W4 complaint) vs. the small risk
+  of under-recapping for a player who missed something. Chosen on the W4 side; the briefly-reference
+  instruction keeps a one-line callback available.
+- **Prompt-only by intent.** No code guard was built here — D45's fuzzy guard remains the safety net
+  for the verbatim-echo failure mode. To verify live: observe nemo's adherence; if it keeps
+  re-narrating despite the rule, a code-side length/overlap guard on settled context is the fallback.
