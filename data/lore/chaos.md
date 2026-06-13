@@ -38,7 +38,8 @@ Würfelwurf mit der Verdammnis.
 ## Die Ruinösen Mächte — die Chaosgötter
 
 Die größten und ältesten Strömungen des Warps haben Bewusstsein erlangt: die
-Chaosgötter, die Ruinösen Mächte, die Großen Vier. Sie sind keine Götter im Sinne der
+Chaosgötter — auch die Ruinösen Mächte, die Dunklen Götter oder die Großen Vier
+genannt. Sie sind keine Götter im Sinne der
 Ekklesiarchie — sie sind Emotionen der gesamten Galaxis, zu Raubtieren geronnen. Jeder
 Zornesschrei nährt Khorne. Jede verzweifelte Hoffnung auf Wandel nährt Tzeentch. Jede
 Todesangst und jede dumpfe Ergebung nährt Nurgle. Jede maßlose Begierde nährt Slaanesh.
