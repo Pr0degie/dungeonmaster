@@ -66,6 +66,10 @@ _SR_16K = 16_000
 # recap + the state block, so the fix is to trim those, not raise the cap (KV-cache VRAM).
 _CTX_WARN_FRACTION = 0.85
 
+# Ceiling for the first spoken line to wait on the background TTS load before degrading to
+# text-only (a normal XTTS/Coqui load is a few seconds; this guards a hung load).
+_TTS_LOAD_TIMEOUT_S = 90
+
 
 def _write_utterance_wav(name: str, index: int, pcm_s16le_mono_16k: bytes) -> str:
     """Write one utterance to a 16 kHz mono WAV in the OS temp dir (Phase-3 inspection).
@@ -330,6 +334,8 @@ class VoiceReceiveCog(commands.Cog):
         self._tts_ready = threading.Event()  # set once the load thread finishes (success or failure)
 
         def _load_tts() -> None:
+            log.info("loading TTS backend '%s' in the background …", tts_engine)
+            t0 = time.perf_counter()
             try:
                 if tts_engine == "xtts":
                     from ..tts.xtts import XttsTTS  # heavy import (torch) — only when selected
@@ -337,9 +343,11 @@ class VoiceReceiveCog(commands.Cog):
                     self._tts = XttsTTS(tts_speaker, device=tts_device)
                 else:
                     self._tts = PiperTTS(tts_voice) if tts_voice else PiperTTS()
+                log.info("TTS backend '%s' ready in %.1fs.", tts_engine, time.perf_counter() - t0)
             except Exception:
-                log.exception("TTS unavailable (%s) — DM answers won't be spoken", tts_engine)
-                self._tts_enabled = False
+                self._tts_enabled = False  # graceful: run text-only, but make the failure LOUD
+                log.exception("TTS backend '%s' FAILED to load — running text-only (answers post "
+                              "but aren't spoken).", tts_engine)
             finally:
                 self._tts_ready.set()
 
@@ -421,8 +429,13 @@ class VoiceReceiveCog(commands.Cog):
         """Synthesise ``text`` to a WAV path, first waiting on the boot-time TTS preload
         (``_tts_ready``) so the very first spoken line waits for the model if it's still loading.
         Runs in a worker thread (``to_daemon_thread``), so the wait never blocks the event loop.
-        ``None`` when no backend is available (load failed)."""
-        self._tts_ready.wait()
+        ``None`` when no backend is available (load failed/timed out)."""
+        # Wait for the background load, but with a ceiling: a hung load must degrade to text-only,
+        # not freeze every spoken line forever. A normal XTTS load is a few seconds.
+        if not self._tts_ready.wait(timeout=_TTS_LOAD_TIMEOUT_S):
+            self._tts_enabled = False  # stop trying — later turns skip synth via the guard
+            log.error("TTS not ready after %ss — disabling speech (text-only).", _TTS_LOAD_TIMEOUT_S)
+            return None
         tts = self._tts
         return tts.synthesize(text) if tts is not None else None
 
@@ -1921,6 +1934,15 @@ class VoiceReceiveCog(commands.Cog):
             )
         elif party:
             await ctx.send(f"👥 **Party:** {party}")
+
+        # TTS readiness (the backend loads in the background off the boot path): tell the table once
+        # if speech is unavailable or still warming up, rather than letting them wonder about silence.
+        if not self._tts_enabled:
+            await ctx.send("⚠ **Keine Sprachausgabe** — TTS konnte nicht geladen werden; der DM "
+                           "antwortet vorerst nur als Text (Details im Log).")
+        elif not self._tts_ready.is_set():
+            await ctx.send("⏳ Stimme lädt noch — der erste gesprochene Satz kann ein paar "
+                           "Sekunden warten.")
 
         # Announce the loaded adventure + current scene, so the table knows the plot is on rails.
         if self._adventure is not None:
