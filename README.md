@@ -54,8 +54,10 @@ bot on its `dungeon_master` branch, in the same voice channel). Full step-by-ste
 
 ## Running on another machine (e.g. a second GPU box)
 
-The project is two processes plus Ollama, all local. To bring it up on a fresh Windows + NVIDIA
-machine:
+The project is two processes plus Ollama, all local. Note that the game content (bought PDFs,
+the adventure compendium, the curated lore, the vector store) is deliberately **not in git** —
+[`docs/HANDOVER.md`](docs/HANDOVER.md) lists exactly what to copy over privately. To bring the
+stack up on a fresh Windows + NVIDIA machine:
 
 1. **Clone both repos.** This one (DMbot) and the music bot, `Pr0degie/musicbot` on branch
    `dungeon_master` (Bot A — the `/speak` mouth). DMbot can't speak without Bot A running.
@@ -67,8 +69,8 @@ machine:
    Discord bot applications (DMbot + Bot A) with voice intents and invite both to the server.
    DMbot's token → `DISCORD_TOKEN_DMBOT` in this repo's `.env`; Bot A's token → the music bot's
    own `.env`. Set `BOT_A_USER_ID` to Bot A's user-ID (feedback protection).
-4. **Ollama:** install, then `ollama pull mistral-nemo` and `ollama pull nomic-embed-text`.
-   Or point `OLLAMA_HOST` at a machine that already has them.
+4. **Ollama:** install, then `ollama pull mistral-nemo` and `ollama pull bge-m3` (the RAG
+   embedder, ADR 019). Or point `OLLAMA_HOST` at a machine that already has them.
 5. **Pick the GPU profile** in `.env` (see [`.env.example`](.env.example)):
    - **16 GB+ (e.g. RTX 5080) — everything on GPU:** `WHISPER_DEVICE=cuda` `WHISPER_COMPUTE=float16` `TTS_DEVICE=cuda`
    - **12 GB (e.g. RTX 4070):** `WHISPER_DEVICE=cpu` `WHISPER_COMPUTE=int8` `TTS_DEVICE=cuda` (whisper on CPU frees VRAM for XTTS)
