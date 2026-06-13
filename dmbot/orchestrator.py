@@ -564,7 +564,10 @@ class DMBrain:
         system = load_system_prompt()
         recap = self._recap.get(channel_id)
         if recap:
-            system = f"{system}\n\n## Was bisher geschah\n{recap}"
+            system = (
+                f"{system}\n\n## Was bisher geschah "
+                f"(den Spielenden bereits bekannt — nicht erneut ausführlich erzählen)\n{recap}"
+            )
         # Adventure summary + current scene card (ADR 019) between recap and hard state: the
         # narrative thread leads, then "where we are in the plot", then the hard facts.
         adventure = self._adventure_block.get(channel_id)

@@ -38,6 +38,7 @@ from ..discord_ui.dice import DiceTestView
 from ..discord_ui.turnorder import TurnOrderView
 from ..discord_ui.pause import PauseToggleView, pause_embed
 from ..discord_ui.rules import RulesView
+from ..discord_ui.lore_read import LoreReadView
 from ..discord_ui.target import TargetSelectView
 from ..rules import engine, profile as profile_mod
 from ..rules.profile import ProfileError, SystemProfile
@@ -1588,16 +1589,13 @@ class VoiceReceiveCog(commands.Cog):
             return
         title = self._LORE_TITLES.get(topic, topic.title())
         guild_id = ctx.guild.id if ctx.guild else None
-        await ctx.send(f"🔊 Lese **{title}** vor … ({len(pages)} Abschnitte)")
-        log.info("📚 !lore tts %r → speaking %d sections", topic, len(pages))
-        for heading, body in pages:
-            if not await self._speak(f"{heading}. {body}", guild_id):
-                await ctx.send(
-                    "Konnte nicht abspielen — läuft **Bot A** und ist es im selben Voice-Channel? "
-                    "Prüfe `!vstatus`; Details im Log (`logs/debug.log`)."
-                )
-                return
-        await ctx.send("✅ Vorgelesen.")
+        log.info("📚 !lore tts %r → interactive reader, %d sections", topic, len(pages))
+        # Interactive reader: shows each block's text in chat + reads it; ⏭ Weiter advances to the
+        # next block (a fast click-through skips intermediate audio), ⏹ Stopp ends it. Bot A's
+        # /speak blocks per WAV with no stop, so a running block can't be cut mid-playback.
+        view = LoreReadView(pages, title, speak_fn=self._speak, guild_id=guild_id)
+        await self._send_with_retry(ctx.channel, view=view, embed=view.embed())
+        view.begin_speaking()  # speak block 0 now
 
     async def _lore_question(self, ctx: commands.Context, question: str) -> None:
         """`!lore <frage>` — show the best-matching Weltwissen sections (deterministic chunk

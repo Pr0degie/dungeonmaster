@@ -47,11 +47,14 @@ def test_set_context_empty_clears_injection() -> None:
     client = _CapClient()
     brain = DMBrain(client)
     ch = 6
-    brain.set_context(ch, recap="Etwas", state_summary="Irgendwas")
+    brain.set_context(ch, recap="RECAP_SENTINEL_42", state_summary="STATE_SENTINEL_42")
     brain.set_context(ch, recap="", state_summary="")  # clear
     brain.add_player_line(ch, "Timo", "Hallo.")
     asyncio.run(brain.respond(ch))
-    assert "Was bisher geschah" not in client.system
+    # Check the injected CONTENT is gone — the "Was bisher geschah" label now also appears in the
+    # persona (the anti-repetition rule references it), so it's no longer a clean injection proxy.
+    assert "RECAP_SENTINEL_42" not in client.system
+    assert "STATE_SENTINEL_42" not in client.system
 
 
 def test_summarize_returns_recap_from_history() -> None:

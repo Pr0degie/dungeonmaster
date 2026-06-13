@@ -56,3 +56,13 @@ def test_real_compendium_files_parse() -> None:
 def test_available_topics_lists_the_md_stems(tmp_path) -> None:
     assert {"imperium", "chaos"} <= set(available_topics(_LORE_DIR))
     assert available_topics(tmp_path / "missing") == []
+
+
+def test_lore_reader_advance_index_clamps_at_last() -> None:
+    from dmbot.discord_ui.lore_read import advance_index
+
+    assert advance_index(0, 3) == 1
+    assert advance_index(1, 3) == 2
+    assert advance_index(2, 3) == 2  # clamps at the last block (no wrap — Weiter disables there)
+    assert advance_index(0, 1) == 0
+    assert advance_index(0, 0) == 0  # empty is handled, never negative
