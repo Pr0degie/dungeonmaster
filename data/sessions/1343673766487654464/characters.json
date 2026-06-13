@@ -1,0 +1,273 @@
+{
+  "_note": "Aktive circlejerk-Party (Stand 2026-06-13): Fridolin, Gellicus, Rektalus. Zusammengefuehrt aus data/party/<name>.json — dort ist die Quelle der Wahrheit; diese Datei ist die lokale Deployment-Kopie, die der Bot bei !join laedt. Kein state.json -> beim ersten !join wird frisch aus dieser Datei geseedet.",
+  "system": "imperium_maledictum",
+  "characters": [
+    {
+      "name": "Fridolin Feuchtgebietheld",
+      "player": "Pr0degie",
+      "origin": "Schreinwelt",
+      "faction": "Inquisition",
+      "concept": "Interrogator & Psioniker — verkappter Edgelord, der jeden Satz so flüstert, als liefe gerade der Trailer zu seinem eigenen Film",
+      "patron": "Aegidius Halikarn",
+      "age": "34",
+      "eyes": "blass-grau",
+      "hair": "dunkel, kurzgeschoren",
+      "height": "1,78 m",
+      "weight": "71 kg",
+      "handedness": "rechts",
+      "distinguishing": "Steht plötzlich im Raum, ohne dass jemand die Tür gehen hörte — und genießt sichtlich den Schreck. Kaum sichtbares Aquila-Brandmal in der linken Handfläche. Trägt den Beinamen 'Feuchtgebietheld' mit grimmigem Stolz; die Heldentat dahinter ist echt, wird beim Erzählen aber jedes Mal eine Spur epischer.",
+      "xp_total": "0",
+      "xp_spent": "0",
+      "fate_current": "3",
+      "fate_total": "3",
+      "corruption": "0",
+      "characteristics": {
+        "WS": 28,
+        "BS": 28,
+        "Str": 24,
+        "Tgh": 26,
+        "Ag": 38,
+        "Int": 26,
+        "Per": 32,
+        "Wil": 41,
+        "Fel": 37
+      },
+      "skills": {
+        "Heimlichkeit": 48,
+        "Überreden": 42,
+        "Wahrnehmung": 37,
+        "Nahkampf": 33,
+        "Fernkampf": 33,
+        "Psi-Meisterschaft": 51,
+        "Disziplin (Psi)": 46
+      },
+      "wounds": 10,
+      "max_wounds": 10,
+      "conditions": [],
+      "inventory": [
+        "Laspistole",
+        "Kampfmesser",
+        "Inquisitorisches Siegel",
+        "Tarnumhang",
+        "Daten-Slate"
+      ],
+      "psyker": true,
+      "disciplines": [
+        "Telepathie"
+      ],
+      "known_powers": [
+        "Smite",
+        "Psychic Static",
+        "Psychic Scrutiny",
+        "Dread Presence",
+        "Soulsight"
+      ],
+      "weapons": [
+        {
+          "name": "Laspistole",
+          "test": "33",
+          "damage": "1W10+3",
+          "range": "15 m",
+          "mag": "30",
+          "enc": "1",
+          "traits": "Verlässlich, Verborgen (am Körper kaschiert)"
+        },
+        {
+          "name": "Kampfmesser",
+          "test": "33",
+          "damage": "1W10+1",
+          "range": "Nah",
+          "mag": "—",
+          "enc": "0",
+          "traits": "Leise"
+        }
+      ],
+      "armour": [
+        {
+          "name": "Gewachster Tarnmantel (eingenähte Flak-Einlagen)",
+          "locations": "Körper",
+          "armour": "1",
+          "enc": "1",
+          "traits": "Unauffällig"
+        }
+      ],
+      "hit_location_armour": {
+        "Head": "0",
+        "Left Arm": "0",
+        "Right Arm": "0",
+        "Left Leg": "0",
+        "Right Leg": "0",
+        "Body": "1"
+      },
+      "equipment": [
+        "Inquisitorisches Siegel (verdeckt)",
+        "Tarnumhang",
+        "Daten-Slate",
+        "Dietrich-Set",
+        "Schattenbrille (Dämmerungssicht)",
+        "Vorratsration ×2"
+      ],
+      "encumbrance_current": "3",
+      "encumbrance_max": "6",
+      "init_melee": "33",
+      "init_ranged": "33",
+      "init_reflexes": "38",
+      "talents": [
+        {
+          "name": "Psioniker",
+          "effect": "Kann psychische Kräfte manifestieren (Minor-Kräfte + Telepathie-Flavor). Manifest über Psi-Meisterschaft; Warp-Schwelle 4 (WillkürB)."
+        },
+        {
+          "name": "Leichtfüßig",
+          "effect": "Bewegt sich tatsächlich lautlos — Rückhalt für hohe Heimlichkeit. Kann nur nicht widerstehen, danach mit einem dramatischen Räuspern aufzutauchen."
+        },
+        {
+          "name": "Glatte Zunge",
+          "effect": "Findet im Verhör den richtigen Hebel — Rückhalt für Überreden. Die bedrohlichen Einzeiler sitzen (er hat sie vorm Spiegel geübt)."
+        }
+      ],
+      "goals": "Kurzfristig: Den Drahtzieher stellen — und dabei mindestens einmal cool aus dem Schatten treten, während es auch jemand sieht.\nLangfristig: Beweisen, dass seine Gabe ein Werkzeug des Imperators ist und kein Makel; insgeheim auch, dass der Name 'Feuchtgebietheld' eigentlich voll badass ist.",
+      "connections": "Inquisitor Aegidius Halikarn — sein Patron, der Fridolins dramatische Vox-Monologe inzwischen meist stummschaltet.\nEine namenlose Stimme im Vox aus den Unterstädten, die ihn 'Chef' nennt — was Fridolin heimlich sehr genießt.",
+      "notes": "Flüstert grundsätzlich, auch beim Brötchenkauf. Zieht die Laspistole erst im letzten Moment — schnell und treffsicher, aber mit unnötig viel Drama. Wirklich gefährlich im Verhör; ruiniert den Effekt nur regelmäßig, indem er den perfekten Moment mit einem Spruch überzieht. Geht sparsam mit seiner Gabe um — diszipliniert, nicht ängstlich.",
+      "divination": "Der wahre Held watet dort, wo andere nicht hintreten.",
+      "combat_notes": "Erst aus der Deckung / aus dem Schatten heraus (und am liebsten mit Publikum). 'Psychic Static' (Leicht) macht ihn psionisch unsichtbar — zum Anschleichen oder Entkommen. 'Psychic Scrutiny' (Leicht) vor dem Verhör, um die Schwäche des Ziels zu lesen. 'Dread Presence' bricht eine Übermacht. 'Smite' (ignoriert Rüstung) als Notnagel. Nahkampf nur, wenn lautlos nötig (Kampfmesser). WICHTIG: Jede gewirkte Kraft erhöht die Warp-Aufladung — über Schwelle 4 droht am Handlungsende die Perils-of-the-Warp-Probe (und nichts ist uncooler als das)."
+    },
+    {
+      "name": "Gellicus Schulz",
+      "player": "Timo",
+      "origin": "Schreinwelt",
+      "concept": "Serial-Seducer mit dem Lebensziel, den Gott-Imperator zu verführen",
+      "characteristics": {
+        "WS": 26,
+        "BS": 24,
+        "Str": 24,
+        "Tgh": 32,
+        "Ag": 28,
+        "Int": 32,
+        "Per": 30,
+        "Wil": 41,
+        "Fel": 43
+      },
+      "skills": {
+        "Nahkampf": 26,
+        "Fernkampf": 24,
+        "Athletik": 24,
+        "Heimlichkeit": 28,
+        "Wahrnehmung": 40,
+        "Technologie": 32,
+        "Wissen": 37,
+        "Medizin": 37,
+        "Überreden": 53,
+        "Einschüchtern": 43
+      },
+      "wounds": 12,
+      "max_wounds": 12,
+      "conditions": [],
+      "inventory": [
+        "Kampfmesser",
+        "Halskette mit dem Bild vom Gott-Imperator",
+        "Lectitio Divinitatus",
+        "Viagra"
+      ],
+      "weapons": [
+        {
+          "name": "Kampfmesser",
+          "test": "26",
+          "damage": "1W10+1",
+          "range": "Nah",
+          "mag": "—",
+          "enc": "0",
+          "traits": "Leise"
+        }
+      ],
+      "height": "1,70 m",
+      "hair": "blond, lang",
+      "distinguishing": "Arrogant, aber er weiß genau, wie er die Leute um den Finger wickelt. Langes blondes Haar, kein Bartwuchs, stets gebügelte Kleidung; schlank.",
+      "goals": "Den Gott-Imperator treffen und verführen.",
+      "connections": "Viele flüchtige, meist sexuelle Bekanntschaften — jederzeit über einen Datalink erreichbar.",
+      "notes": "Aus seinem Dorf vertrieben, weil er anders war und seine Liebe zu Männern und später zum Gott-Imperator offen auslebte. Seither gibt er sich ganz seinen Indulgenzen hin und pflegt eine parasoziale Beziehung zum Gott-Imperator. Der Gruppe ist er nur beigetreten, um endlich seinen einzig Wahren — den Gott-Imperator — zu treffen und zu verführen; ihre Mitglieder sind für ihn nichts weiter als Mittel zum Zweck.",
+      "combat_notes": "Kämpft hinterhältig, tut aber alles, um direkte Konfrontation zu vermeiden.",
+      "divination": "Für meinen Gott-Imperator."
+    },
+    {
+      "name": "Rektalus Zerfickus",
+      "player": "SezBoss69",
+      "origin": "Feudalwelt",
+      "concept": "Reicher Schönling",
+      "faction": "Inquisition",
+      "characteristics": {
+        "WS": 29,
+        "BS": 24,
+        "Str": 40,
+        "Tgh": 35,
+        "Ag": 35,
+        "Int": 24,
+        "Per": 30,
+        "Wil": 28,
+        "Fel": 35
+      },
+      "skills": {
+        "Nahkampf": 39,
+        "Fernkampf": 24,
+        "Athletik": 50,
+        "Heimlichkeit": 40,
+        "Wahrnehmung": 35,
+        "Technologie": 24,
+        "Wissen": 24,
+        "Medizin": 24,
+        "Überreden": 35,
+        "Einschüchtern": 35
+      },
+      "wounds": 12,
+      "max_wounds": 12,
+      "conditions": [],
+      "inventory": [
+        "Kampfmesser",
+        "Medikit",
+        "Handgranate",
+        "Ein Nacktfoto von Timo Fendt",
+        "Brot mit Eintopf",
+        "Wasser"
+      ],
+      "weapons": [
+        {
+          "name": "Kampfmesser",
+          "test": "39",
+          "damage": "1W10+1",
+          "range": "Nah",
+          "mag": "—",
+          "enc": "0",
+          "traits": "Leise"
+        },
+        {
+          "name": "Handgranate",
+          "test": "24",
+          "damage": "1W10",
+          "range": "Wurf",
+          "mag": "1",
+          "enc": "1",
+          "traits": "Explosiv (nicht in Profiltabelle → 1W10 Standard)"
+        }
+      ],
+      "age": "25",
+      "eyes": "Klares, störendes Blau",
+      "hair": "Schwarz, stets makellos",
+      "height": "Ca. 1,95 m",
+      "weight": "Athletisch-muskulös, schwer zu schätzen — und er sagt es nicht",
+      "handedness": "Rechtshändig",
+      "distinguishing": "Ein Lächeln, das Verhandlungen beendet — und die unnatürliche Eigenschaft, immer gut auszusehen (nach dem Kampf, im Schlamm, beim Frühstück).",
+      "goals": "Kurzfristig: herausfinden, ob es im Sektor jemanden gibt, der ihm äußerlich das Wasser reichen kann (bisher Fehlanzeige).\nLangfristig: die Zerfickus-Pleasure-Houses auf zwei weitere Sektoren ausweiten und sich unsterblich machen — im übertragenen Sinne.",
+      "connections": "Fridolin Feuchtgebietheld — alter Freund seit Jahren, wird mit liebevoller Gleichgültigkeit ertragen (bräuchte dringend bessere Kleidung und weniger Sinnkrisen).\nGellicus Schulz — neuer Verbündeter, respektiert für seinen Instinkt, stets die richtige Gesellschaft mitzubringen.",
+      "notes": "Abkömmling der Zerfickus-Bordelldynastie auf der Feudalwelt Valdris Prime; an die Inquisition abgetreten zur Begleichung väterlicher Schulden. Erstaunlich tapfer (unterschätzt jede Gefahr), überraschend loyal (Verrat = schlechter Stil), gelegentlich brillant im Lesen sozialer Situationen — aber komplizierte Pläne verliert er nach Schritt drei. Hält Selbstreflexion für Zeitverschwendung und Spiegel für unverzichtbare Ausrüstung.",
+      "combat_notes": "Nahkämpfer mit Kampfmesser; geht als Erster rein, plant wenig, verlässt sich auf Physis und Instinkt. Granate als letztes Argument, wenn die Lage unübersichtlich wird oder die Frisur in Gefahr gerät. Das Medikit trägt er für die anderen — eigene Verletzungen sind eine vorübergehende Unannehmlichkeit.",
+      "divination": "Wer gut aussieht, überlebt. Der Rest ist Theologie."
+    }
+  ],
+  "aliases": {
+    "Pr0degie": "Fridolin Feuchtgebietheld",
+    "Tobi": "Fridolin Feuchtgebietheld",
+    "Timo": "Gellicus Schulz",
+    "SezBoss69": "Rektalus Zerfickus",
+    "Sezgin": "Rektalus Zerfickus"
+  }
+}

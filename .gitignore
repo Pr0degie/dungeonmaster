@@ -48,6 +48,10 @@ data/**
 !data/systems/*.json
 !data/sessions/_example/
 !data/sessions/_example/*.json
+# the live circlejerk party ships so the bot runs on a teammate's clone (loaded at !join);
+# only characters.json — runtime state (state.json/history/recap) + bought-sheet PDFs stay ignored.
+!data/sessions/1343673766487654464/
+!data/sessions/1343673766487654464/characters.json
 
 # Agent / editor / OS cruft
 .claude/**
