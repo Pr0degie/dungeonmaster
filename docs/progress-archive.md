@@ -9,6 +9,25 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+**Kontext-Kosten-Refactor: `progress.md`/`CLAUDE.md` in schlanke Live-Dateien + on-demand `docs/` aufgeteilt
+(2026-06-14, D63 → ADR 032). Suite 302 grün, committet + gepusht (`fa6c96d`).** Tobi (Plan-Modus): „der kontext ist
+mittlerweile sehr groß und kleinste sachen fressen viele tokens — kann man sachen aus der claude.md auslagern …
+und sowas auch mit der progress.md machen?". Geklärt + umgesetzt:
+- **`progress.md` 1637→678:** `## Last session`-Historie (D32–D61), Done-Phasen 0–8 (volle Checklisten +
+  `VERIFY EVIDENCE`) und ✅-erledigte/abgeschlossene Open Questions **verbatim** nach **`docs/progress-archive.md`**.
+  Live bleibt: Current focus, Next step, **kompletter Decision-Log + Phase→ADR-Map**, offene Phasen 9/10 (voll),
+  und **alle tatsächlich offenen Fragen** (Tobis Vorgabe). Done-Phasen als Einzeiler + Archiv-Pointer.
+- **`CLAUDE.md` 226→153:** per-Modul-Konventionen (DMbot/Rules/Memory/RAG), Testing, Runtime, Troubleshooting,
+  Style → **`docs/conventions.md`** (on-demand, in die „read on demand"-Tabelle + README verdrahtet). Inline bleibt:
+  Session-Ritual, Golden Rules, Repo-Layout, schlanke Bot-A-Kurzfassung, neuer **Key gotchas**-Block.
+- **Rotations-Regel** (CLAUDE.md `## Session ritual` + session-ritual-Skill): beim Eintragen eines neuen
+  `## Last session`-Eintrags wandert der vorherige ins Archiv → die Live-Dateien bleiben dauerhaft schlank.
+  _Dieser Wrap-up übt sie aus: der D62-`!intro`-Eintrag ist nach `docs/progress-archive.md` rotiert._
+- **Konsistenz:** 9 Code-Kommentar-Zeiger (`preflight`/`__main__`/`vad`/`state`/`persona`/`orchestrator`/`resample`)
+  von `CLAUDE.md` auf `docs/conventions.md` umgebogen, da ihre zitierten Anker dorthin umgezogen sind.
+- **Verifiziert:** 3 parallele read-only Audits (Inhalts-Konservierung verbatim / Querverweise / Live-Korrektheit) →
+  alle PASS; Suite **302 grün** (reine Doku-/Kommentar-Änderung). Effekt: ~17K Tokens/Session + ~1.5K/Turn.
+
 **`!intro` — Eröffnungs-Monolog für Chemical Burn, der die Charaktere einbezieht (2026-06-14, D62 → ADR 031).
 Suite 300 grün, live-unverified.** Tobi (Plan-Modus): „für chemical burn braucht es eine intro sequenz, in der
 der bot erklärt was abgeht, wo man sich befindet, wie man hergekommen ist — und er soll die charaktere mit

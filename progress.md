@@ -4,6 +4,11 @@ Living status document. A phase counts as done only when its **verification gate
 met and the proof is recorded here.
 
 ## Current focus
+**`!intro`-Crash (Discord 2000-Zeichen-Limit) gefixt (2026-06-14, D64): Suite 306 grün, committet+gepusht (`1d48b18`).**
+Kollegen-Run warf bei `!intro test` HTTP 400 / 50035 („Must be 2000 or fewer in length"). `SessionRuntime._send_with_retry`
+zerlegt langen `content` jetzt zentral in ≤2000-Zeichen-Nachrichten (verbatim, neuer `split_for_discord`); deckt Batch/
+Streaming/`!intro test` ab. Das `!intro`-Live-Gate unten ist damit vom Crash entkoppelt — bleibt aber inhaltlich offen.
+
 **Kontext-Kosten gesenkt: Live-Docs verschlankt, Historie/Detail nach `docs/` ausgelagert (2026-06-14, D63 → ADR 032).**
 `progress.md` 1637→678, `CLAUDE.md` 226→153: `## Last session`-Historie/Done-Phasen/erledigte Open Questions →
 **`docs/progress-archive.md`**; Modul-Konventionen/Testing/Runtime/Troubleshooting/Style → **`docs/conventions.md`**
@@ -184,26 +189,21 @@ world-state block (CLAUDE.md prompt order). **Model: mistral-nemo.** Recommended
 gate / any follow-up: **Opus 4.8 / xhigh**.
 
 ## Last session
-**Kontext-Kosten-Refactor: `progress.md`/`CLAUDE.md` in schlanke Live-Dateien + on-demand `docs/` aufgeteilt
-(2026-06-14, D63 → ADR 032). Suite 302 grün, committet + gepusht (`fa6c96d`).** Tobi (Plan-Modus): „der kontext ist
-mittlerweile sehr groß und kleinste sachen fressen viele tokens — kann man sachen aus der claude.md auslagern …
-und sowas auch mit der progress.md machen?". Geklärt + umgesetzt:
-- **`progress.md` 1637→678:** `## Last session`-Historie (D32–D61), Done-Phasen 0–8 (volle Checklisten +
-  `VERIFY EVIDENCE`) und ✅-erledigte/abgeschlossene Open Questions **verbatim** nach **`docs/progress-archive.md`**.
-  Live bleibt: Current focus, Next step, **kompletter Decision-Log + Phase→ADR-Map**, offene Phasen 9/10 (voll),
-  und **alle tatsächlich offenen Fragen** (Tobis Vorgabe). Done-Phasen als Einzeiler + Archiv-Pointer.
-- **`CLAUDE.md` 226→153:** per-Modul-Konventionen (DMbot/Rules/Memory/RAG), Testing, Runtime, Troubleshooting,
-  Style → **`docs/conventions.md`** (on-demand, in die „read on demand"-Tabelle + README verdrahtet). Inline bleibt:
-  Session-Ritual, Golden Rules, Repo-Layout, schlanke Bot-A-Kurzfassung, neuer **Key gotchas**-Block.
-- **Rotations-Regel** (CLAUDE.md `## Session ritual` + session-ritual-Skill): beim Eintragen eines neuen
-  `## Last session`-Eintrags wandert der vorherige ins Archiv → die Live-Dateien bleiben dauerhaft schlank.
-  _Dieser Wrap-up übt sie aus: der D62-`!intro`-Eintrag ist nach `docs/progress-archive.md` rotiert._
-- **Konsistenz:** 9 Code-Kommentar-Zeiger (`preflight`/`__main__`/`vad`/`state`/`persona`/`orchestrator`/`resample`)
-  von `CLAUDE.md` auf `docs/conventions.md` umgebogen, da ihre zitierten Anker dorthin umgezogen sind.
-- **Verifiziert:** 3 parallele read-only Audits (Inhalts-Konservierung verbatim / Querverweise / Live-Korrektheit) →
-  alle PASS; Suite **302 grün** (reine Doku-/Kommentar-Änderung). Effekt: ~17K Tokens/Session + ~1.5K/Turn.
+**`!intro`-Crash beim Kollegen gefixt: Discord-2000-Zeichen-Limit (2026-06-14, D64). Suite 306 grün, committet +
+gepusht (`1d48b18`).** Live-Befund aus Kollegen-Run: `!intro test` warf `HTTPException: 400 … 50035: Must be 2000
+or fewer in length`. Ursache: die volle Antwort wurde in **einem** `channel.send` gepostet, aber der `!intro`-
+Monolog läuft auf großem Längen-Budget (`DM_INTRO_NUM_PREDICT` 800) und sprengt Discords 2000-Zeichen-`content`-Cap.
+- **Fix am einzigen Sende-Choke-Point** `SessionRuntime._send_with_retry` (`dmbot/runtime.py`): langer `content` wird
+  in ≤2000-Zeichen-Nachrichten zerlegt; `view`/`embed` reiten auf der **letzten** (Würfel-Button/Turn-Order bleibt
+  unter dem vollen Text). Der 5xx-Retry ist in einen `_send_once`-Helfer gewandert. Deckt **alle drei** Lieferpfade
+  (Batch/Streaming/`!intro test`) auf einmal ab.
+- **Neuer reiner Splitter** `split_for_discord` in `dmbot/tts/textsplit.py`: **verbatim** (verwirft nichts, anders als
+  der TTS-`chunk_text`), bricht am spätesten Absatz-/Zeilen-/Satz-/Wortrand ≥ halbem Limit, Hard-Cut nur bei einem
+  ungebrochenen Über-Limit-Lauf.
+- **+4 Tests** (`tests/test_tts_chunk.py`): kurz=1 Stück, langer Monolog splittet verbatim unter Limit, Satzgrenze
+  bevorzugt, ununterbrochener Lauf wird hart geschnitten. Suite **306 grün**.
 
-_Ältere `## Last session`-Einträge: siehe **[docs/progress-archive.md](docs/progress-archive.md)**._
+_Ältere `## Last session`-Einträge (D63 Kontext-Split u. a.): siehe **[docs/progress-archive.md](docs/progress-archive.md)**._
 
 ## Next concrete step
 **Kontext-Split erledigt (2026-06-14, D63 → ADR 032):** Live-Docs verschlankt, Historie/Detail in `docs/`; nichts
@@ -216,6 +216,8 @@ zusammenhängenden Monolog, der **Ort** (Hive Rokarth / Welt Voll), **Auftrag** 
 **keine** Würfel-Aufforderung; **keine** wörtlich vorgelesenen privaten Ziele/Arc. Gegen-Check: `!start` ist
 weiterhin das kurze 2–4-Sätze-Briefing. Bei nemo-Abschweifen/Auslassen einer Figur: `DM_INTRO_NUM_PREDICT`
 senken oder (Fallback) auf die verworfene Multi-Beat-Sequenz umstellen (ADR 031 Alternatives).
+_Der **2000-Zeichen-Crash** des ersten Kollegen-Runs ist gefixt (D64) — `!intro` postet jetzt mehrteilig; das
+Live-Gate ist nur noch eine **Inhalts-/Qualitäts**-Prüfung, kein Crash-Test mehr._
 
 **Code-Review-Korrektheitsrunde: ERLEDIGT (2026-06-13, D61 → ADR 030).** Suite 293 grün; nichts
 Code-seitig offen. Im Live-Run **gezielt mitprüfen**, was die Fixes berühren: (1) ein Psyker mit
@@ -448,6 +450,7 @@ create the next-numbered ADR.
 | D60 | Voice cog split → SessionRuntime | **Pure structural refactor (zero behaviour change).** The 2300-line `VoiceReceiveCog` split into a shared **`SessionRuntime`** (`dmbot/runtime.py`, built once from `Config`, injected into every cog — the 26 ctor kwargs collapse into it) + three thin cogs: **VoiceCog** (join/leave/vstatus/mic/pause, VAD-sink), **DiceCog** (roll/test/turn/rules/npc/damage/heal, dice+manifest buttons, auto-combat, turn-order render), **DMCog** (batch+streaming delivery, TTS speak, auto-recap, !dm/!redo/!start/!wrap/!say/!voice **and** scenes !ort/!szenen/!ortmodus + the `<<ORT>>` marker + !lore). **No `bot.get_cog`** — five hooks registered on the runtime (`run_and_deliver`/`auto_dm_turn`/`handle_dice`/`reanchor_mic`/`post_turn_order`). `commands.py` deleted; suite **263 green** (only test-import paths + one `test_autorecap` fixture rewired to a stub runtime — assertions unchanged) | The file had become a god-cog with a 26-kwarg ctor; every session paid for the whole thing and the concern boundaries had blurred. Moved-not-rewritten (per-agent AST/reverse-rename diffs + a streaming-pipeline spot-check confirm byte-identical bodies; only `self._X`→`self._rt._X` renames + the hook calls). Boot path unchanged (preflights once, same order; `TEARDOWN_STEPS` sum still 4 → shutdown display byte-identical). Binds later work: Phase 10b profile bootstrap hangs off the runtime, not a cog → **ADR 029** |
 | D61 | Code-review correctness round (post-cog-split) | **9 verified defects in the day's feature work + cleanup, behaviour preserved.** Correctness: (1) **Warp-containment Test → Disziplin (Psi)** not Psi-Meisterschaft (IM p.163) — new `ResolvedManifest.contain_base` wires the previously-unused `psyker_purge_skill()`; (2) **party psyker not in WorldState** no longer silently drops Warp Charge — one-time German warning (no safe single-char state add); (3) **batch delivery** awaits dice/scene tasks in `finally` so the 🎲 button isn't lost when speak raises; (4) **auto-recap** `clear_history` clears only the `summarize`-consumed prefix (`_compact_consumed`) so a turn appended during the LLM await survives; (5) **glued markers** `\b`→`[\s:]*` so `<<ORT1>>`/`<<ORTmud_gate>>`/`<<MANIFESTSmite>>` strip+fire instead of being read aloud; (6) **`resolve_test`** signature-dispatch (`inspect.signature`) replaces the `except TypeError` that swallowed real errors + double-rolled (golden rule #2); (7) **streaming** cancels orphaned prod/synth/play tasks + drains queued WAVs on a mid-stream bridge failure (permanent-mute claim **refuted** — `finally` always unmutes, mute logic untouched); (8) **layer-2 mute → depth counter** so DM-speak vs operator pause/resume nest (resume mid-playback can't unmute); (9) **soak** uses `skill_value` (strip+CI) so a `"Tgh "` key isn't 0 soak. Cleanup: shared `_catalog_lookup` (profile), shared `tts/wavio.write_silent_wav`, dead `reduce_warp_charge` removed, no-op `[:80]` slices dropped, **thread-local cached sqlite conn** + `<<`-free StreamAssembler fast path. Suite **293 green** | Tobi asked `/code-review` over the day's commits, "Funktionalität soll bleiben". Multi-agent review (9 finder angles + per-finding verifiers over `5d672b6~1..HEAD`) cleared the cog split as faithful and found these in the parallel feature work. The **altitude findings — system-agnostic generalisation of engine/marker/RAG-sources — are DEFERRED to the second-profile / Phase-10b point** (no second system to generalise against yet; large + behaviour-risky; ADR 005 stance is "generalise when the 2nd system arrives") → **ADR 030** |
 | D62 | `!intro` opening monologue | **New `!intro` command (aliases `!einleitung`/`!eroeffnung`): one long opening monologue that involves every PC, by reusing + parameterising the `!start` opening path.** New `CharacterStore.intro_roster_de()` builds a full-depth German party roster from `Character.raw` (concept/origin/faction/distinguishing/goals/connections/arc, tolerant of lean sheets); new pure `build_intro_director_msg(roster)` wraps it in a `[Regie]` instruction (one monologue: place → arrival → mission from the scene card/summary, then a personal beat per named figure — weave in, only hint at private goals, no dice) with the roster embedded in the **director (user) message** so the ADR-019 prompt order is untouched. An optional `num_predict` override is threaded through `_build_request`/`_chat_once`/`_generate`/`_stream_and_store`/`respond_opening`/`respond_opening_streaming` (default `None` → unchanged); `!intro` runs on `DM_INTRO_NUM_PREDICT` (default 800). `!intro` mirrors `!start`'s safe scaffolding (deterministic scene-pointer move only if unset, dice suppressed, stream/speak). `!start` left as the short briefing. +7 tests (**300 green**); live-unverified | Tobi (plan mode): the 1st-round "sagt am Anfang nicht, was abgeht … bezieht die Figuren nicht ein" gap needed a real opener. Chose a **monologue** over a scripted multi-beat sequence, a **separate `!intro`** over extending `!start`, and **full** figure depth — all his calls. Reuse-not-duplicate per ADR 030; roster-in-director-message avoids per-turn prompt bloat (ADR 019). Risk (nemo-12B rambling at length) watched live; fallback = multi-beat or lower `DM_INTRO_NUM_PREDICT` → **ADR 031** |
+| D64 | `!intro` Discord 2000-char crash | **Split long message `content` at the single send choke point.** `SessionRuntime._send_with_retry` now splits `content` > 2000 chars into several messages (any `view`/`embed` on the last) instead of one `channel.send`; the 5xx retry moved into a `_send_once` helper. New pure `split_for_discord` in `dmbot/tts/textsplit.py` — **verbatim** (drops nothing, unlike the TTS `chunk_text`), breaking at the latest paragraph/line/sentence/word boundary ≥ half-limit, hard-cutting only an unbroken over-limit run. Covers all three delivery paths (batch/streaming/`!intro test`). +4 tests (**306 green**) | Colleague's live run: `!intro test` raised `HTTPException 400 / 50035 ("Must be 2000 or fewer in length")` — the `!intro` monologue runs on a large length budget (`DM_INTRO_NUM_PREDICT` 800) and exceeds Discord's content cap. Pure correctness fix at the one send path every delivery route already shares; no trade-off → D-entry, no new ADR |
 | D63 | Lean live docs vs. on-demand archive | **Split `progress.md` history + `CLAUDE.md` per-module detail into two on-demand `docs/` files** (`progress-archive.md`, `conventions.md`); the live files keep only current state; a **rotation rule** (CLAUDE.md `## Session ritual` + session-ritual skill) keeps them lean. progress.md 1637→678, CLAUDE.md 226→153; **nothing deleted** (verbatim move, 3 parallel read-only audits + 302-green suite); every still-open question stays live; 9 code-comment doc-anchors repointed to `docs/conventions.md` | The always-loaded continuity docs had outgrown their context budget — `## Last session` alone was ~756 lines a fresh agent never reads, so even trivial edits paid for the whole bulk (Tobi). Chose aggressive split + preserve-everything-in-`docs/` + keep-open-questions-live (all Tobi's calls) over trim-in-place / delete-history → **ADR 032** |
 
 ### Phase → ADR map (read these when you enter the phase)
