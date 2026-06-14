@@ -9,6 +9,22 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+**Shutdown: „Voice-Channel verlassen" hing wieder bis zu ~30 s — beschränkt (2026-06-14, D67 → ADR 020 Addendum).
+Suite 311 grün.** Tobi: das Herunterfahren dauert wieder lange, das Voice-Leave am längsten, obwohl der Bot den
+Channel sofort verlässt. Ursache im **installierten** Code verifiziert (nicht in unserem):
+- `VoiceClient.disconnect(force=True)` (`voice_client.py:354-356`) ruft intern `_connection.disconnect(wait=True)`
+  (hartkodiert); `VoiceConnectionState.disconnect` (`voice_state.py:508-551`) schließt ws+Socket **zuerst** (sichtbarer
+  Leave) und **wartet danach** im `finally` per `asyncio.wait_for(self._disconnected.wait(), timeout=self.timeout)` auf
+  die Gateway-Bestätigung — `self.timeout=30.0`. Beim Beenden kommt die oft nicht durch → bis zu 30 s Hänger.
+- Der Recv-Reader ist **nicht** schuld: sein `stop()` läuft auf einem nicht-gejointen Daemon-Thread (kann nicht blocken).
+- **Fix:** neuer Helfer `disconnect_voice(vc, timeout=VOICE_DISCONNECT_TIMEOUT=2.0)` in `dmbot/shutdown.py` (wraps
+  `vc.disconnect(force=True)` in `asyncio.wait_for`); `DMBot.close()` ruft ihn + loggt `voice confirm wait abandoned`
+  bei Timeout. Sicher, weil der echte Leave vor dem Wait passiert und discord.py den `CancelledError` fängt + sein
+  `cleanup()` trotzdem läuft. `!leave` bewusst unangetastet (dort hat der Wait einen echten Zweck). +2 Tests
+  (`tests/test_shutdown.py`), Suite **311 grün**, Import-Smoke im venv ok.
+- _Live offen: zweimal Strg+C während eines Streams → die Leave-Stufe beendet in ≤ ~2 s (statt der bis-zu-30 s-Hänger);
+  bei abgebrochenem Bestätigungs-Wait erscheint die `voice confirm wait abandoned`-Warnung._
+
 **Ursache von „lädt ewigkeiten" gefunden + `!intro` als Schnellstart-Variante (2026-06-14, D66 → ADR 031 Addendum).
 Suite 309 grün.** Tobi: `!intro test` klingt „mega geil", aber lädt ewig. Live-Log entlarvte die Ursache —
 `XTTS v2 loaded on cpu` + `first_audio=378s` / `tts=314775ms` / `wav=224.2s` (32 Sätze, 3,7 min Audio):
