@@ -41,9 +41,10 @@ model got worse".
 5. **Commit per round** with a scoped imperative message
    (e.g. `dmbot(memory): cumulative auto-recap so wrap-up can't drop the session start`).
 6. **Record the round** (end-of-session ritual): update `progress.md` `## Last session` and
-   `## Current focus`; write the next-numbered ADR if a real trade-off was weighed
-   (see the `session-ritual` skill). Mark the result **live-unverified** — the next real
-   session is the gate. Name the concrete thing the next round should confirm.
+   `## Current focus`, and **rotate** the previous `## Last session` entry to
+   `docs/progress-archive.md` so the live file stays lean (per `session-ritual`); write the
+   next-numbered ADR if a real trade-off was weighed. Mark the result **live-unverified** — the
+   next real session is the gate. Name the concrete thing the next round should confirm.
 
 ## Notes
 
