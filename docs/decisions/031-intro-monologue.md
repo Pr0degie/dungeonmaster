@@ -85,9 +85,10 @@ goals/connections/arc) over role-only.
   goals — recorded as the open gate in `progress.md`.
 - **Experimental B-variant (2026-06-14, same session):** `!intro test` keeps the *same* generated
   monologue but changes the **delivery** — batch-generate the whole text, then read it out **sentence
-  by sentence**, each sentence **stripped of punctuation** (`strip_speech_punctuation`) and spoken via
-  a separate blocking `_speak` with a short **0.2 s** gap (`_INTRO_SENTENCE_PAUSE_S`) between
-  sentences, instead of the seamless streamed read. Rationale for the punctuation strip: XTTS
+  by sentence**, each sentence **stripped of all punctuation** (`strip_speech_punctuation` — a
+  whitelist keeping only letters/digits/space, incl. the word hyphen, per Tobi "alle satzzeichen
+  raus") and spoken via a separate blocking `_speak` with a short **0.2 s** gap
+  (`_INTRO_SENTENCE_PAUSE_S`) between sentences, instead of the seamless streamed read. Rationale: XTTS
   sometimes loops/babbles **on** punctuation (D55) — punctuation-free sentences sidestep that, and the
   0.2 s gap restores the sentence breaks the dropped punctuation would have carried. The posted chat
   text keeps its punctuation (readable, D38). It is **not** the rejected multi-beat sequence (still

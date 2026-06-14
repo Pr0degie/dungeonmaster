@@ -126,15 +126,17 @@ def test_opening_path_defaults_when_no_override() -> None:
 
 # --- punctuation strip for the `!intro test` delivery ----------------------------------------
 
-def test_strip_speech_punctuation_drops_sentence_marks_keeps_words() -> None:
+def test_strip_speech_punctuation_drops_all_punctuation_keeps_words() -> None:
     out = strip_speech_punctuation("Inquisitor Halikarn spricht: „Findet die Quelle!“ — sofort.")
-    # all sentence/clause punctuation and the dash are gone (XTTS babbles on them, D55) …
-    for mark in ".,!?;:…—":
+    # ALL punctuation/symbols are gone (whitelist: letters/digits/space only) — XTTS babbles on
+    # them (D55); the words and German umlauts survive
+    assert all(ch.isalnum() or ch == " " for ch in out)
+    for mark in '.,!?;:…—"„"':
         assert mark not in out
-    # … but the words survive and the word hyphen stays inside compounds
     assert "Inquisitor Halikarn spricht" in out
     assert "Findet die Quelle" in out
-    assert strip_speech_punctuation("Hive-Stadt Rokarth.") == "Hive-Stadt Rokarth"
+    # even the word hyphen goes now (Tobi: "alle satzzeichen raus")
+    assert strip_speech_punctuation("Hive-Stadt Rokarth.") == "Hive Stadt Rokarth"
 
 
 def test_strip_speech_punctuation_tidies_whitespace() -> None:

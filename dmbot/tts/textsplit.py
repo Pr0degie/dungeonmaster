@@ -74,19 +74,17 @@ def normalize_for_tts(text: str) -> str:
     return cleaned
 
 
-# Sentence/clause punctuation + dash variants → a space. The ASCII word hyphen "-" is deliberately
-# NOT here (it belongs inside words: "Hive-Stadt"). Used by `!intro test` only.
-_SPEECH_PUNCT = str.maketrans({ch: " " for ch in ".,!?;:…—–―‒‑−"})
-
-
 def strip_speech_punctuation(text: str) -> str:
-    """Drop sentence/clause punctuation (``. , ! ? ; :`` + ``…`` + dash variants) from speech text.
+    """Drop **all** punctuation/symbols from speech text — keep only letters, digits and whitespace.
 
-    `!intro test` only (ADR 031): XTTS sometimes loops/babbles **on** punctuation (D55) — feeding it
-    punctuation-free sentences sidesteps that, and the sentence breaks are restored by the short pause
-    between separately-spoken sentences. The word hyphen ``-`` stays (it's part of words). Whitespace
-    is tidied; may return ``""`` (the caller guards with :func:`has_speakable_content`)."""
-    return re.sub(r"\s{2,}", " ", text.translate(_SPEECH_PUNCT)).strip()
+    `!intro test` only (ADR 031): XTTS sometimes loops/babbles **on** punctuation (D55), so this path
+    feeds it punctuation-free sentences and restores the sentence breaks via the short pause between
+    separately-spoken sentences. A whitelist (letters/digits/space), so *nothing* — sentence marks,
+    the word hyphen, quotes, dashes, emojis — reaches the synth as a symbol (Tobi: "nimm alle
+    satzzeichen raus"). Whitespace is tidied; may return ``""`` (the caller guards with
+    :func:`has_speakable_content`)."""
+    kept = "".join(ch if (ch.isalnum() or ch.isspace()) else " " for ch in text)
+    return re.sub(r"\s{2,}", " ", kept).strip()
 
 
 def has_speakable_content(text: str) -> bool:
