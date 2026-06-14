@@ -296,8 +296,11 @@ class DMCog(commands.Cog):
         mode (fast start, small gaps); `nahtlos` takes the batch path instead."""
         channel_id = self._rt._brain_channel(channel)
         transform = self._rt.speech_transform()         # global intonation axis, fixed for this turn
+        prebuffer = self._rt.prebuffer_count()           # 1 = plain stream; >1 = puffer head-start
         sentence_q: asyncio.Queue = asyncio.Queue()
-        wav_q: asyncio.Queue = asyncio.Queue(maxsize=1)  # bounds synth to ~1 ahead of playback
+        # Bounds how far synth runs ahead of playback. In puffer mode this == the head-start depth,
+        # so the cushion is kept ~prebuffer sentences deep during playback.
+        wav_q: asyncio.Queue = asyncio.Queue(maxsize=max(1, prebuffer))
         sink = self._rt._sink if self._rt._pause_vad_while_speaking else None
         holder: dict = {"answer": None}
 
@@ -359,21 +362,47 @@ class DMCog(commands.Cog):
                     timing.wav_s = (timing.wav_s or 0.0) + dur
                 await wav_q.put(wav)
 
+        async def _play_one(wav: str) -> None:
+            if self._rt._paused:
+                _safe_remove(wav)
+                return
+            if timing.first_audio is None:
+                timing.first_audio = time.monotonic()
+            tb = time.monotonic()
+            try:
+                await self._rt._bridge.speak(wav, guild_id=guild_id)
+            finally:
+                timing.bridge_ms = (timing.bridge_ms or 0) + round((time.monotonic() - tb) * 1000)
+                _safe_remove(wav)
+
         async def play_worker() -> None:
-            while True:
-                wav = await wav_q.get()
-                if wav is None:
+            # Head-start (ADR 033 'puffer', D69): accumulate up to `prebuffer` synthesised WAVs
+            # before the first plays, so the buffer cushions CPU synth falling behind realtime and
+            # the inter-sentence gaps appear later (or not at all, for short turns). prebuffer == 1
+            # is the plain 'stream' behaviour (play as soon as the first sentence is ready). Any WAVs
+            # still buffered when the turn aborts (pause/cancel) are removed in `finally` — no leak.
+            buffered: list[str] = []
+            try:
+                done = False
+                while len(buffered) < prebuffer:
+                    wav = await wav_q.get()
+                    if wav is None:
+                        done = True
+                        break
+                    buffered.append(wav)
+                if prebuffer > 1 and buffered:
+                    log.info("🔊 Puffer gefüllt (%d Satz/Sätze) — Wiedergabe startet", len(buffered))
+                while buffered:
+                    await _play_one(buffered.pop(0))
+                if done:
                     return
-                if self._rt._paused:
-                    _safe_remove(wav)
-                    continue
-                if timing.first_audio is None:
-                    timing.first_audio = time.monotonic()
-                tb = time.monotonic()
-                try:
-                    await self._rt._bridge.speak(wav, guild_id=guild_id)
-                finally:
-                    timing.bridge_ms = (timing.bridge_ms or 0) + round((time.monotonic() - tb) * 1000)
+                while True:
+                    wav = await wav_q.get()
+                    if wav is None:
+                        return
+                    await _play_one(wav)
+            finally:
+                for wav in buffered:
                     _safe_remove(wav)
 
         if sink is not None:
@@ -581,30 +610,41 @@ class DMCog(commands.Cog):
 
     @commands.command(name="sprechmodus", aliases=["sprache", "voicemode"])
     async def sprechmodus(self, ctx: commands.Context, *, args: str = "") -> None:
-        """`!sprechmodus` — global spoken-delivery mode for EVERY DM turn (ADR 033). Two axes, each
-        set by a word (give either or both, any order); bare `!sprechmodus` just shows the current:
-          • delivery — `stream` (speak sentence-by-sentence: fast start, small gaps) |
-            `nahtlos` (synth all → one continuous track → one bridge call: gapless, but waits for the
-            WHOLE turn to synthesise — only snappy on a GPU, see ADR 002);
+        """`!sprechmodus` — global spoken-delivery mode for EVERY DM turn (ADR 033). Axes, each set
+        by a word (give any combination, any order); bare `!sprechmodus` just shows the current:
+          • delivery — `stream` (sentence-by-sentence: fast start, small gaps) | `puffer`
+            (stream, but synthesise a few sentences ahead before the first plays: smoother, modest
+            start delay) | `nahtlos` (synth all → one continuous track: gapless, but waits for the
+            WHOLE turn — only snappy on a GPU, see ADR 002);
           • intonation — `flach` (strip ALL punctuation: no XTTS babble, flatter) |
-            `intoniert` (keep `.,!?;:-` for sentence/question prosody, but XTTS may babble, D55).
+            `intoniert` (keep `.,!?;:-` for sentence/question prosody, but XTTS may babble, D55);
+          • a number sets the `puffer` head-start depth (sentences pre-synthesised), e.g.
+            `!sprechmodus puffer 4`.
         Takes effect on the next turn. `!intro test` stays a fixed nahtlos+flach comparison anchor."""
         changed, unknown = False, []
         for w in args.lower().split():
-            if w in ("stream", "nahtlos"):
+            if w in ("stream", "puffer", "nahtlos"):
                 self._rt._speech_mode = w
                 changed = True
             elif w in ("flach", "intoniert"):
                 self._rt._speech_punct = w
                 changed = True
+            elif w.isdigit():
+                self._rt._speech_prebuffer = max(1, min(20, int(w)))
+                changed = True
             else:
                 unknown.append(w)
         if unknown:
             await ctx.send(
-                f"❓ Unbekannt: {', '.join(unknown)} — nutze `stream`/`nahtlos` und/oder `flach`/`intoniert`."
+                f"❓ Unbekannt: {', '.join(unknown)} — nutze `stream`/`puffer`/`nahtlos`, "
+                "`flach`/`intoniert` und/oder eine Zahl (Puffertiefe)."
             )
-        note = (" ⏳ wartet auf die volle Synthese vor dem ersten Ton (auf CPU langsam)"
-                if self._rt._speech_mode == "nahtlos" else "")
+        if self._rt._speech_mode == "nahtlos":
+            note = " ⏳ wartet auf die volle Synthese vor dem ersten Ton (auf CPU langsam)"
+        elif self._rt._speech_mode == "puffer":
+            note = f" (Vorlauf: {self._rt._speech_prebuffer} Sätze)"
+        else:
+            note = ""
         prefix = "🔊 Sprechmodus jetzt" if changed else "🔊 Sprechmodus"
         await ctx.send(f"{prefix}: **{self._rt._speech_mode}** + **{self._rt._speech_punct}**{note}")
 

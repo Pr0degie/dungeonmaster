@@ -238,10 +238,12 @@ class SessionRuntime:
         # for each player character. Read by DMCog's !intro command; the normal turn cap is unchanged.
         self._intro_num_predict = config.dm_intro_num_predict
         # Global spoken-delivery mode (ADR 033), applied to every turn, switchable live via
-        # !sprechmodus. _speech_mode: "stream" vs "nahtlos" (continuous one-track playback).
-        # _speech_punct: "flach" (strip all punctuation) vs "intoniert" (keep it for prosody).
+        # !sprechmodus. _speech_mode: "stream" | "puffer" (stream with a head-start buffer) |
+        # "nahtlos" (continuous one-track playback). _speech_punct: "flach" (strip all punctuation)
+        # vs "intoniert" (keep it for prosody). _speech_prebuffer: head-start depth for "puffer".
         self._speech_mode = config.speech_mode
         self._speech_punct = config.speech_punct
+        self._speech_prebuffer = config.speech_prebuffer
         # Per-turn conversation autosave (D41): append every completed turn to
         # data/sessions/<id>/history.jsonl so a crash doesn't lose the evening's thread; restored on
         # !join, rotated on !leave. World state already persists separately (ADR 015).
@@ -459,6 +461,12 @@ class SessionRuntime:
         """True when the delivery axis is ``nahtlos`` — synth the whole turn, join into one continuous
         track, play in a single bridge call (gapless, but waits for the full synthesis)."""
         return self._speech_mode == "nahtlos"
+
+    def prebuffer_count(self) -> int:
+        """How many sentences the streaming path synthesises before the first plays: the configured
+        head-start in ``puffer`` mode (cushions CPU synth falling behind → gaps later), else 1
+        (plain ``stream`` — play as soon as the first sentence is ready)."""
+        return self._speech_prebuffer if self._speech_mode == "puffer" else 1
 
     # ----- Channel / character / state plumbing --------------------------------------------------
 

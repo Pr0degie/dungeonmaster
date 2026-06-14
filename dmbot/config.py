@@ -51,6 +51,7 @@ class Config:
     scene_mode: str
     speech_mode: str
     speech_punct: str
+    speech_prebuffer: int
 
     @classmethod
     def load(cls) -> "Config":
@@ -190,17 +191,22 @@ class Config:
                         in ("verbunden", "frei") else "verbunden"),
             # Spoken-delivery mode (ADR 033), applied to EVERY turn, also switchable live via
             # !sprechmodus. Two orthogonal axes:
-            #  - DM_SPEECH_MODE: "stream" (sentence-by-sentence, fast start, small gaps) vs
-            #    "nahtlos" (synth all → one continuous track → one bridge call; gapless but waits
-            #    for the whole turn to synthesise — only snappy on a GPU, see ADR 002).
+            #  - DM_SPEECH_MODE: "stream" (sentence-by-sentence, fast start, small gaps) |
+            #    "puffer" (stream, but pre-synthesise DM_SPEECH_PREBUFFER sentences before the first
+            #    plays so the buffer cushions CPU synth falling behind → fewer/later gaps, modest
+            #    start delay) | "nahtlos" (synth all → one continuous track → one bridge call;
+            #    gapless but waits for the whole turn to synthesise — only snappy on a GPU, ADR 002).
             #  - DM_SPEECH_PUNCT: "flach" (strip ALL punctuation — no XTTS babble, flatter) vs
             #    "intoniert" (keep .,!?;:- via the wrapper's normalize_for_tts — sentence/question
             #    intonation, but XTTS may babble on punctuation, D55).
             # Default stream+flach: consistent, gibberish-free, practical on CPU. Unknown → default.
             speech_mode=(os.environ.get("DM_SPEECH_MODE", "stream").strip().lower()
                          if os.environ.get("DM_SPEECH_MODE", "stream").strip().lower()
-                         in ("stream", "nahtlos") else "stream"),
+                         in ("stream", "puffer", "nahtlos") else "stream"),
             speech_punct=(os.environ.get("DM_SPEECH_PUNCT", "flach").strip().lower()
                           if os.environ.get("DM_SPEECH_PUNCT", "flach").strip().lower()
                           in ("flach", "intoniert") else "flach"),
+            # Head-start depth for "puffer" mode: how many sentences to synthesise before the first
+            # plays. Higher = smoother (gaps later) but a longer start delay. Floor 1 (== "stream").
+            speech_prebuffer=max(1, int(os.environ.get("DM_SPEECH_PREBUFFER", "3") or "3")),
         )

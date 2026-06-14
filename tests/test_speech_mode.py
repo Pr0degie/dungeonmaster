@@ -57,3 +57,29 @@ def test_speech_transform_maps_punct_axis():
 def test_deliver_seamless_maps_mode_axis():
     assert SessionRuntime.deliver_seamless(SimpleNamespace(_speech_mode="nahtlos")) is True
     assert SessionRuntime.deliver_seamless(SimpleNamespace(_speech_mode="stream")) is False
+    assert SessionRuntime.deliver_seamless(SimpleNamespace(_speech_mode="puffer")) is False  # not seamless
+
+
+# --- puffer (head-start buffer) mode + prebuffer depth (D69) ---------------------------------
+
+def test_speech_config_accepts_puffer_mode(monkeypatch):
+    _isolate(monkeypatch)
+    monkeypatch.setenv("DM_SPEECH_MODE", "puffer")
+    assert Config.load().speech_mode == "puffer"
+
+
+def test_speech_config_prebuffer_default_floor_and_parse(monkeypatch):
+    _isolate(monkeypatch)
+    monkeypatch.delenv("DM_SPEECH_PREBUFFER", raising=False)
+    assert Config.load().speech_prebuffer == 3          # default
+    monkeypatch.setenv("DM_SPEECH_PREBUFFER", "5")
+    assert Config.load().speech_prebuffer == 5
+    monkeypatch.setenv("DM_SPEECH_PREBUFFER", "0")       # floored to 1 (== plain stream)
+    assert Config.load().speech_prebuffer == 1
+
+
+def test_prebuffer_count_only_applies_in_puffer_mode():
+    # puffer → the configured depth; stream/nahtlos → 1 (play as soon as the first is ready)
+    assert SessionRuntime.prebuffer_count(SimpleNamespace(_speech_mode="puffer", _speech_prebuffer=4)) == 4
+    assert SessionRuntime.prebuffer_count(SimpleNamespace(_speech_mode="stream", _speech_prebuffer=4)) == 1
+    assert SessionRuntime.prebuffer_count(SimpleNamespace(_speech_mode="nahtlos", _speech_prebuffer=4)) == 1
