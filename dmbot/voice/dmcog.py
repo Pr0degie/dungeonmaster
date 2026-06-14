@@ -10,6 +10,7 @@ import logging
 import os
 import tempfile
 import time
+from collections.abc import Callable
 from datetime import datetime
 
 import discord
@@ -59,16 +60,23 @@ class DMCog(commands.Cog):
         return tts.synthesize(text) if tts is not None else None
 
     async def _speak(self, text: str, guild_id: int | None,
-                     timing: _TurnTiming | None = None) -> bool:
+                     timing: _TurnTiming | None = None, *,
+                     speech_transform: Callable[[str], str] | None = None) -> bool:
         """Synthesise ``text`` and play it via Bot A's /speak bridge. Returns True if it played.
 
         Synthesis is blocking, so it runs in a thread. The WAV is deleted after playback so the
         temp dir doesn't fill up. Bot A's audio is filtered by user-ID (feedback layer 1), so
         DMbot does not transcribe its own DM voice even without pausing the VAD. ``timing`` (when
         a DM turn passes one) collects the tts / wav / bridge_wait stages for the [latency] line.
+        ``speech_transform`` (optional): applied to ``text`` before synthesis only (e.g. the intro's
+        punctuation strip) — the chat text the caller posted is unaffected.
         """
         if not self._rt._tts_enabled:
             return False
+        if speech_transform is not None:
+            text = speech_transform(text)
+            if not has_speakable_content(text):
+                return False
         try:
             t0 = time.perf_counter()
             # Daemon thread, not asyncio.to_thread: a GPU synth in flight at Ctrl+C must not
@@ -201,11 +209,14 @@ class DMCog(commands.Cog):
             log.exception("could not autosave the turn history for channel %s", cid)
 
     async def _deliver_answer(self, channel, guild_id: int | None, answer: str,
-                              timing: _TurnTiming) -> None:
+                              timing: _TurnTiming, *,
+                              speech_transform: Callable[[str], str] | None = None) -> None:
         """Batch delivery: log, post (5xx-resilient), then speak and post the dice button
         **concurrently** so the 🎲 appears while the DM speaks (Task 2 / D40), and re-anchor the
         mic button. Closes out the per-turn ``timing`` (tts/bridge via ``_speak``) and emits the
-        single ``[latency]`` line once ``/speak`` returned."""
+        single ``[latency]`` line once ``/speak`` returned. ``speech_transform`` is the non-streaming
+        (DM_STREAMING=0) counterpart to the streaming path's: applied to the spoken text only, so the
+        `!intro` fallback stays punctuation-free like its streamed form."""
         timing.answer_chars = len(answer)
         # Snapshot the turn's user_msg NOW (generation just ended): a dice click during the
         # playback below starts the next turn and overwrites the brain's _last_turn (D43 race fix).
@@ -219,7 +230,9 @@ class DMCog(commands.Cog):
         speak_task = None
         if speakable:
             await self._rt._send_with_retry(channel, answer)
-            speak_task = asyncio.create_task(self._speak(answer, guild_id, timing))
+            speak_task = asyncio.create_task(
+                self._speak(answer, guild_id, timing, speech_transform=speech_transform)
+            )
         else:
             log.info("(inhaltslose Antwort — nichts gepostet/gesprochen; nur ggf. Würfel)")
         dice_task = asyncio.create_task(self._rt.handle_dice(channel))
@@ -264,11 +277,17 @@ class DMCog(commands.Cog):
     async def _deliver_streaming(self, channel, guild_id: int | None, timing: _TurnTiming, *,
                                  redo: bool = False, extra_text: str | None = None,
                                  opening: str | None = None,
-                                 opening_num_predict: int | None = None) -> str | None:
+                                 opening_num_predict: int | None = None,
+                                 speech_transform: Callable[[str], str] | None = None) -> str | None:
         """Streaming delivery (ADR 017): the producer drives the brain's streaming turn while a
         synth→playback pipeline speaks each sentence (synth N+1 while N plays); the Discord text
         post + 🎲 dice button happen at generation-end (mid-playback). Layer-2 mute spans the whole
-        answer (not per sentence); pause stops emission cleanly. Returns the stored answer or None."""
+        answer (not per sentence); pause stops emission cleanly. Returns the stored answer or None.
+
+        ``speech_transform`` (optional): applied to each sentence's text **before synthesis only**
+        (the posted chat text is untouched, D38). `!intro` passes ``strip_speech_punctuation`` so the
+        streamed monologue is spoken punctuation-free (no XTTS babble, D55) yet starts after the first
+        sentence — the fast, small-gap counterpart to the seamless `!intro test` one-track delivery."""
         channel_id = self._rt._brain_channel(channel)
         sentence_q: asyncio.Queue = asyncio.Queue()
         wav_q: asyncio.Queue = asyncio.Queue(maxsize=1)  # bounds synth to ~1 ahead of playback
@@ -311,12 +330,17 @@ class DMCog(commands.Cog):
                     return
                 if self._rt._paused or not self._rt._tts_enabled:
                     continue
+                text = s
+                if speech_transform is not None:
+                    text = speech_transform(s)         # speech-only transform (e.g. strip punctuation)
+                    if not has_speakable_content(text):
+                        continue                       # a sentence that strips to nothing → no synth
                 try:
                     t0 = time.perf_counter()
                     # Daemon thread (see dmbot/shutdown.py): a streamed-sentence synth in flight
                     # at Ctrl+C is abandoned, never join-blocking the shutdown. _synthesize waits
                     # for the boot-time TTS preload inside the thread (never the event loop).
-                    wav = await to_daemon_thread(self._synthesize, s)
+                    wav = await to_daemon_thread(self._synthesize, text)
                     if wav is None:
                         continue
                 except Exception:
@@ -554,14 +578,17 @@ class DMCog(commands.Cog):
         party is, how they got here, what's going on + their mission, and a personal beat for each
         player character (drawn from each sheet's flavour). Unlike the short `!start` briefing it
         embeds a character roster into the director instruction and runs on a larger length budget
-        (DM_INTRO_NUM_PREDICT). Same opening pipeline: the scene pointer is moved deterministically
-        (golden rule #3), dice are suppressed, and it is streamed/spoken like any turn. `!start`
-        stays the quick briefing.
+        (DM_INTRO_NUM_PREDICT). The scene pointer is moved deterministically (golden rule #3), dice
+        are suppressed. `!start` stays the quick briefing.
 
-        `!intro test` — experimental B-variant of the *delivery only* (same generated monologue):
-        generate the whole text in one batch, then read it out **sentence by sentence** — each
-        sentence stripped of punctuation (XTTS sometimes babbles on punctuation) with a short pause
-        between sentences — instead of the seamless streamed read. For comparing the feel."""
+        Two delivery modes (same generated monologue), to pick by feel — the trade-off is forced by
+        XTTS being slower than realtime, so you can't have an instant start AND gapless playback:
+        - **`!intro`** (default) — **streamed**, punctuation-free (`strip_speech_punctuation`, no XTTS
+          babble): starts speaking after the first sentence, but synthesis can't keep up with playback
+          so there are small inter-sentence gaps. **Fast start, minor gaps.**
+        - **`!intro test`** — synthesise every sentence, **join them into ONE continuous track** and
+          play it once (`_deliver_intro_chunked`): sounds like one read-aloud text with no gaps, but
+          the first sound waits for the whole monologue to synthesise. **Gapless, slow start.**"""
         if self._rt._paused:
             await ctx.send("⏸ Pausiert — mit **Esc** oder dem ⏸-Knopf fortsetzen.")
             return
@@ -591,7 +618,8 @@ class DMCog(commands.Cog):
             try:
                 async with ctx.typing():
                     answer = await self._deliver_streaming(
-                        ctx.channel, guild_id, timing, opening=director_msg, opening_num_predict=np
+                        ctx.channel, guild_id, timing, opening=director_msg, opening_num_predict=np,
+                        speech_transform=strip_speech_punctuation,  # spoken punctuation-free (D55)
                     )
             except Exception:
                 log.exception("intro monologue failed (stream)")
@@ -612,7 +640,8 @@ class DMCog(commands.Cog):
         if answer is None:
             await ctx.send("(Kein Auftakt — siehe Log.)")
             return
-        await self._deliver_answer(ctx.channel, guild_id, answer, timing)
+        await self._deliver_answer(ctx.channel, guild_id, answer, timing,
+                                   speech_transform=strip_speech_punctuation)
 
     async def _deliver_intro_chunked(self, ctx: commands.Context, cid: int, guild_id: int | None,
                                      director_msg: str, np: int, timing: _TurnTiming) -> None:
