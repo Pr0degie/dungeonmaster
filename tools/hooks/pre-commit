@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# git pre-commit hook — gate YOUR OWN commits with the same zero-token checks the Claude Code
+# Stop hook runs (ruff pyflakes-F + the test suite), but BLOCKING: a red check aborts the commit.
+# Bypass a deliberate WIP / partial commit with `git commit --no-verify`.
+#
+# Installed via `git config core.hooksPath tools/hooks` (so this tracked script IS the hook — no
+# copy into .git/hooks that would drift). On a fresh clone run that one command once (setup.ps1
+# can do it). The Claude Stop hook (.claude/settings.json) is separate and unaffected.
+#
+# Scope guard: runs only when STAGED changes touch dmbot/ tests/ data/systems/ — a docs-only commit
+# passes straight through (fast). ruff is F-only on purpose (line-length/style E* stays off; long
+# doc lines are deliberate, re-export shims carry `# noqa: F401`). Tests run against the WORKING
+# TREE, not a stashed staged snapshot — keep the tree clean at commit time, or use --no-verify.
+set -uo pipefail
+
+staged="$(git diff --cached --name-only -- dmbot tests data/systems 2>/dev/null || true)"
+[ -z "$staged" ] && exit 0
+
+echo "[pre-commit] code/tests/profiles staged -> ruff (F) + pytest (bypass: git commit --no-verify) ..."
+fail=0
+
+if ! uv run --with ruff ruff check --select F dmbot tests; then
+  echo "[pre-commit] ruff (F) FAILED -- fix: uv run --with ruff ruff check --select F --fix dmbot tests" >&2
+  fail=1
+fi
+
+if ! uv run --with pytest python -m pytest -q --tb=short; then
+  echo "[pre-commit] pytest FAILED" >&2
+  fail=1
+fi
+
+if [ "$fail" -ne 0 ]; then
+  echo "[pre-commit] commit aborted (bypass once with: git commit --no-verify)." >&2
+  exit 1
+fi
+echo "[pre-commit] green."
+exit 0
