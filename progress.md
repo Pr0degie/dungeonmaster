@@ -166,6 +166,19 @@ world-state block (CLAUDE.md prompt order). **Model: mistral-nemo.** Recommended
 gate / any follow-up: **Opus 4.8 / xhigh**.
 
 ## Last session
+**Doku: drei Setup-Dokumente in eine Root-`SETUP.md` zusammengeführt (2026-06-14). Kein Bot-/Phasen-Change,
+Suite unverändert 293 grün.** Tobi fragte, ob die SETUP.md noch passt und alles aus der Checkliste drin ist.
+Befund: dem B9-Rebuild-Block in `docs/SETUP.md` fehlte die `conditions`-RAG-Quelle, die `docs/CHECKLIST.md`
+*und* `retrieve.py` (`_SOURCES`) führen — ein Rebuild strikt nach SETUP.md hätte eine `rag.db` ohne die
+deutschen Zustands-Spielwerte gebaut. Tobi wollte alles in **einer** Root-Datei. `docs/SETUP.md` (externe
+Prereqs) + `docs/CHECKLIST.md` (Fremd-Maschine) → **Root-`SETUP.md`** gemerged, durchgehend Englisch; die
+B1–B9-Labels behalten, damit „SETUP.md B5"-Verweise weiter stimmen. `conditions`-Quelle nachgetragen (alle 7
+`_SOURCES` jetzt abgedeckt), B8 auf „Live-Party liegt im Repo" aktualisiert, Tests-Befehl auf
+`uv run --with pytest python -m pytest` korrigiert. Alle Live-Verweise (README / architecture / roadmap /
+progress / CLAUDE.md / session-ritual-Skill + `vad.py`/`piper.py`-Fehlerstrings) auf die Root-Datei gezogen;
+die zwei `docs/`-Dateien gelöscht; historische Erwähnungen (progress-Log, ADR 012) bewusst stehen gelassen.
+Commit `a6a011c`. _Kein D-Eintrag/ADR — Doku-Housekeeping, kein Bot-Design._
+
 **Dev-Tooling: projekt-eigene Claude-Code-Skills + Test-Hook (2026-06-14). Kein Bot-/Phasen-Change, Suite
 unverändert 293 grün.** Tobi fragte nach Skills für den schnelleren Ausbau. Angelegt unter `.claude/skills/`
 (committed via `.gitignore`-Allowlist; `settings.local.json` bleibt lokal): **playtest-triage** (Live-Log →
