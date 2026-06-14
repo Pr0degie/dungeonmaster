@@ -38,7 +38,7 @@ _WINDOW_MS = 1000.0 * _WINDOW / _SR  # 32 ms
 # silero v5 prepends a context of the previous chunk's last samples to each window, so the
 # tensor it actually consumes is _CONTEXT + _WINDOW = 576 samples. Feeding a bare 512 silently
 # returns ~0 probability (the ONNX input shape is dynamic, so it doesn't error) — the lesson
-# from CLAUDE.md's "check the foreign lib's real contract".
+# from docs/conventions.md's "check the foreign lib's real contract".
 _CONTEXT = 64  # 64 for 16 kHz (would be 32 for 8 kHz)
 
 # Segmentation tuning. The thresholds mirror silero's own VADIterator defaults; the silence

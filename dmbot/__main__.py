@@ -46,7 +46,7 @@ def _ensure_opus() -> None:
     else:
         log.error(
             "Opus is NOT loaded — voice receive cannot decode PCM. On Windows the Opus "
-            "DLL must be available (SETUP B6); see CLAUDE.md 'No sound despite correct code'."
+            "DLL must be available (SETUP B6); see docs/conventions.md 'No sound despite correct code'."
         )
 
 

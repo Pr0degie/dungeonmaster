@@ -21,8 +21,10 @@ the one canonical procedure; it formalizes the prose in `CLAUDE.md`.
 
 Read on demand, **not** every session: `architecture.md` (only when the task touches design),
 `roadmap.md` (phase transitions / "goal of Phase X?"), `SETUP.md` (Phase 0 / install
-steps), older ADRs (when working in their area). Eager-loading everything burns the context
-window before useful work starts.
+steps), older ADRs (when working in their area), `docs/conventions.md` (per-module how-tos +
+testing/runtime/troubleshooting/style detail), `docs/progress-archive.md` (history only — old
+session logs, completed-phase evidence, resolved questions). Eager-loading everything burns the
+context window before useful work starts.
 
 ## End-of-session wrap-up (trigger: "wrap up" / "update progress", or unprompted at session end)
 
@@ -32,6 +34,12 @@ Update `progress.md`:
 - `## Next concrete step` — the specific next action, not a vague goal
 - `## Open questions` — anything that surfaced but isn't actionable yet
 - the affected phase's `VERIFY EVIDENCE` field — when a gate was met
+
+**Keep it lean (rotation):** the live `progress.md` holds only the current state. When you prepend
+a new `## Last session` entry, move the *previous* one to `docs/progress-archive.md`
+(`## Last session (Verlauf)`) — keep only the newest 1–2 live. Rotate ✅-resolved `## Open questions`
+and just-completed phases (full `VERIFY EVIDENCE` → one-line summary live) there too. The
+`## Decision log` and `### Phase → ADR map` stay fully live (stable `D##` refs).
 
 Silence here is the failure mode that breaks continuity. Do it even if not asked.
 

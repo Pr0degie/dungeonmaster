@@ -4,7 +4,7 @@ Per ADR 005 the persona is **layered**: a generic GM core (`prompts/dm_core_de.m
 per-campaign tone/setting overlay (`prompts/campaign_tone_de.md`). The core is system- and
 setting-agnostic; swapping campaigns swaps only the overlay (and later the system profile).
 
-Full prompt order (CLAUDE.md) is: GM core → campaign tone → recap → JSON state → RAG hits →
+Full prompt order (docs/conventions.md) is: GM core → campaign tone → recap → JSON state → RAG hits →
 recent history. Phase 5 wires the first two (the system prompt) and the history; recap/state/
 RAG join in later phases. Game content stays German; this code/docs stay English.
 """

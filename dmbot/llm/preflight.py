@@ -2,7 +2,7 @@
 
 Mirrors ``voice/preflight.py`` and ``__main__._ensure_opus``: a loud, clear message at
 startup beats a cryptic ``httpx.ConnectError`` mid-game (which is exactly what happens when
-Ollama — its own Windows process — simply isn't running; see CLAUDE.md "LLM not answering?").
+Ollama — its own Windows process — simply isn't running; see docs/conventions.md "LLM not answering?").
 
 This only *checks* and warns. It deliberately does **not** start Ollama: the host may be
 remote (the 5080 over Tailscale, ADR 002), and starting a local daemon is the launcher's job
@@ -43,7 +43,7 @@ def check_ollama(host: str, model: str, *, timeout: float = 5.0) -> bool:
         log.error(
             "Ollama not reachable at %s (%s) — DM turns will fail. Start Ollama (the Windows "
             "app / `ollama serve`) and enable its autostart; if the host is remote, check the "
-            "machine + Tailscale. See CLAUDE.md 'LLM not answering?'.",
+            "machine + Tailscale. See docs/conventions.md 'LLM not answering?'.",
             host, exc.__class__.__name__,
         )
         return False

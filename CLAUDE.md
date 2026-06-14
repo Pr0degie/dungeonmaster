@@ -33,6 +33,8 @@ files until that handshake is done.
 | `roadmap.md` | When transitioning into a new phase, or when the user asks "what's the goal of Phase X?" |
 | `SETUP.md` | In Phase 0 or when a setup/install step comes up (Ollama, Discord tokens, cuDNN DLLs, PDFs, fresh-machine copy). Point Tobi at the open items there — the agent cannot do them itself. |
 | Older ADRs in `docs/decisions/` | When working in the area they cover. Don't guess which — the decision log + phase→ADR map in `progress.md` tell you which ADR governs the current decision/phase (e.g. ADR 003 before touching turn-taking, ADR 005 before the dice engine). |
+| `docs/conventions.md` | When working in a module (rules/memory/rag/tts/voice) or on testing/runtime/troubleshooting/commit-style details. Holds the per-module how-tos moved out of this file. |
+| `docs/progress-archive.md` | Only when you need history — old `## Last session` logs, completed-phase `VERIFY EVIDENCE`, or resolved `## Open questions`. Never needed for normal work. |
 
 Eagerly loading everything fills the context window before useful work starts. Be selective.
 
@@ -44,6 +46,11 @@ being asked:**
    - `## Next concrete step` — the specific next action, not a vague goal
    - `## Open questions` — anything that came up but isn't actionable yet
    - Fill the `VERIFY EVIDENCE` field of the affected phase when a gate was met
+   - **Keep it lean (rotation):** when you prepend a new `## Last session` entry, move the
+     *previous* one to `docs/progress-archive.md` (`## Last session (Verlauf)`) — keep only the
+     newest 1–2 live. Rotate ✅-resolved `## Open questions` and just-completed phases (full
+     `VERIFY EVIDENCE`) there too, leaving a one-line summary live. `## Decision log` and the
+     `### Phase → ADR map` stay fully live.
 2. On a non-trivial decision (real trade-off, alternatives weighed), create the
    next-numbered ADR in `docs/decisions/` (format in the README there).
 
@@ -125,102 +132,22 @@ prompts/        dm_core_de.md (generic GM persona) + campaign_tone_de.md (campai
 docs/           decisions/ (ADRs), how-to-*.html + character-creation-prompt.md (player guides). SETUP.md lives in the repo root.
 ```
 
-## Bot A — the bridge (separate repo, already done)
+## Bot A — the bridge (separate repo)
 
-Bot A is the existing music bot in its **own repo** (`Pr0degie/musicbot`, branch
-`dungeon_master`, commit `249cc38`). It is **not** edited from this repo. What matters
-here is its contract, which DMbot calls:
+Bot A is the existing music bot in its **own repo** (`Pr0degie/musicbot`) — **never edited from
+here** (two-bot isolation, golden rule #5). DMbot calls its `POST /speak` (plays a WAV and
+**blocks until playback ends** = the resume signal) and `GET /health`. Full contract + bridge
+details: `architecture.md` §3 and **`docs/conventions.md`**.
 
-- `GET /health` → liveness. `POST /speak` with JSON `{"path","guild_id?"}` plays the WAV
-  and **blocks until playback ends** — the return is the resume signal (no callback, no
-  shared state). Localhost only, default `127.0.0.1:8765`. Full contract in `architecture.md` §3.
-- **Two-bot isolation:** never propose changes to the music bot from here. If the bridge
-  ever genuinely needs a change, that's a separate task in the music bot repo — keep it
-  minimal there (the music/queue logic stays untouched).
+## Key gotchas
 
-## DMbot — DM conventions (`dmbot/`)
+Broad footguns. Module conventions (DMbot/rules/memory/rag), testing/runtime details,
+troubleshooting and style live in **`docs/conventions.md`** — read it when you work in that area.
 
-- **`discord-ext-voice-recv` is the only research part.** Less well-trodden than plain
-  discord.py. Check against the *installed* version (the sink callback signature may
-  differ), keep it isolated in `voice/`.
-- **Audio reality:** per-user PCM arrives as 48 kHz **stereo**. VAD/STT need 16 kHz
-  **mono** → resample before anything else. Wrong sample rate = garbage transcript,
-  **not** an error — it won't surface on its own.
-- **LLM wiring:** Ollama runs as its own process — in development **locally** (Tobi's
-  4070, Nemo 12B), later optionally on the 5080 via Tailscale. **Never hardcode the
-  host** — use env/config (`OLLAMA_HOST`), so the switch is a one-liner. Before blaming
-  the client: `ollama list` — is the model even pulled?
-- **Prompt building (`llm/`):** order = generic GM core → campaign tone overlay → recap →
-  **adventure summary + current scene card** (code-owned pointer `state.scene_id`, ADR 019) →
-  JSON state → Regelwerk hits (threshold-gated rulebook RAG) → recent history. Pass state and
-  RAG as structured data, don't boil them into prose.
-- **TTS:** Piper outputs a specific WAV format — confirm Bot A can play it.
-- **Discord UI (`discord_ui/`):** buttons via `View`/`Button`. Dice buttons call the rules
-  engine, never inline their own dice logic.
-
-## Rules engine (`dmbot/rules/`)
-
-- Pure Python, **fully decoupled** from the LLM. A **generic** engine: it rolls dice (RNG)
-  and resolves them per the **active system profile** (`data/systems/<system>.json`) — it
-  does not hardcode any one game. Profiles declare dice type, resolution (roll-under/over/
-  pool/…), target source, degrees rule, and the character schema.
-- IM is the first profile: `1d100`, roll-under, success level = tens-difference, damage
-  d10/d5. Other systems are just other profiles.
-- **Profile bootstrap:** on a new ruleset the DM proposes a draft profile from the rulebook
-  (RAG) and the user confirms it; then the engine applies it. See `architecture.md` §9 + ADR 005.
-- Pure functions, fixed seed in tests. The engine is unit-tested against each profile (IM
-  first). This is the only part that is deterministically testable — use that.
-
-## Memory (`dmbot/memory/`)
-
-- JSON world state per voice channel in `data/sessions/`. Schema in `architecture.md` §7.
-- Advancement is **deterministic in code** (e.g. HP after damage), never from LLM free text.
-- Recaps: the LLM summarizes, code stores & re-injects at the front next time.
-
-## RAG (`dmbot/rag/`)
-
-- Ingestion: PDF → chunks → `bge-m3` → vector store. **40k rulebooks are
-  multi-column/table-heavy** — extracted text comes out scrambled. Inspect a real chunk
-  before trusting retrieval.
-- Answer rule questions from rulebook chunks; attach the source to the context.
-
-## Testing
-
-- **`rules/`:** pytest, deterministic — mandatory (see above).
-- **Voice/VAD/STT/TTS/full loop:** verified manually per phase gate, proof in the
-  `VERIFY EVIDENCE` field of the phase in `progress.md`. (Real-time audio can't be
-  meaningfully unit-tested.)
-- **Memory:** persistence test — a state change survives a restart.
-- **RAG:** sanity check — a concrete IM rule question answered correctly from a PDF.
-
-## Runtime / operations
-
-- Python 3.12, managed with **uv**. No direct `pip`; `uv add`.
-- **Runtime: Windows.** Both bots + pipeline run on Windows. Never hardcode POSIX paths —
-  WAV temp via `tempfile.gettempdir()`, **never `/tmp`**.
-- **Two processes, two tokens** — both bots must join the voice channel. Tokens in
-  env/`.env`, **never commit them**.
-- Ollama runs as its own process, not bundled with DMbot — in development locally on the
-  4070, later optionally on the 5080 (Tailscale). Switchable via `OLLAMA_HOST`.
-- Keep the latency chain lean (LAN/Tailscale). Streaming TTS is a later optimization, not
-  an MVP must.
-
-## When you're stuck on reality
-
-The pipeline doesn't lie about itself — but real-time audio and foreign libs do:
-- **`discord-ext-voice-recv`:** check the sink callback signature against the installed version.
-- **No sound?** First check: are *both* bots actually connected to the voice channel?
-- **Garbage transcript?** Suspect the sample rate (16 kHz mono?) before the model.
-- **LLM not answering?** `ollama list` + reachability of the host (ping/curl) before the client.
-- **RAG hallucinating?** Look at a real extracted PDF chunk — probably layout garbage.
-- **No sound despite correct code (Windows)?** Is the Opus DLL loaded for discord.py voice?
-- **faster-whisper won't start (Windows)?** Are the cuDNN/cuBLAS DLLs on the `PATH`?
-- **`FileNotFoundError` for the WAV?** `/tmp` hardcoded instead of `tempfile.gettempdir()` — Windows has no `/tmp`.
-
-## Style
-
-- Commit messages: imperative, scoped (`dmbot(stt): resample to 16k mono`,
-  `rules(im): success-level calculation`).
-- Small functions; prefer pure functions in `rules/` and `memory/` so they stay testable.
-- Comments explain *why*, not *what*.
-- For small manual edits, use an editor (nano/vim) rather than clever sed/awk one-liners.
+- **Windows runtime:** never hardcode POSIX paths — WAV temp via `tempfile.gettempdir()`, **never `/tmp`**.
+- **Never hardcode `OLLAMA_HOST`** (env/config) — the 4070→5080 switch stays a one-liner.
+- **Audio reality:** per-user PCM arrives 48 kHz **stereo** → resample to **16 kHz mono** before
+  anything else, or you get a garbage transcript (not an error).
+- **Commit messages:** imperative, scoped — `dmbot(stt): resample to 16k mono`, `rules(im): success-level calculation`.
+- **Tests:** `uv run --with pytest python -m pytest` (pytest isn't in the venv). Python 3.12, uv (no direct `pip`; `uv add`).
+- **Two processes, two tokens** — both bots must join the voice channel; tokens in `.env`, **never commit them**.

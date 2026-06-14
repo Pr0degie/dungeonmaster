@@ -352,7 +352,7 @@ def _combatant_line_de(c: Combatant) -> str:
 
 
 def world_state_summary_de(state: WorldState) -> str:
-    """A compact, *structured* German block for the prompt (CLAUDE.md: 'state as structured data,
+    """A compact, *structured* German block for the prompt (docs/conventions.md: 'state as structured data,
     don't boil it into prose'). Only non-empty sections appear. Empty state → ''."""
     lines: list[str] = []
     if state.location:

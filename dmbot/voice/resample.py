@@ -3,7 +3,7 @@
 ``discord-ext-voice-recv`` hands us per-user PCM at 48 kHz **stereo** s16le (20 ms = 960
 frames per channel). silero-vad and faster-whisper both want 16 kHz **mono** float32.
 Getting this wrong is *silent*: a wrong sample rate is not an error, it just yields garbage
-downstream (CLAUDE.md — "wrong sample rate = garbage transcript, not an error").
+downstream (docs/conventions.md — "wrong sample rate = garbage transcript, not an error").
 
 One :class:`StereoResampler` per user (the sink owns them). soxr's *streaming* resampler
 keeps filter state across chunks, so 20 ms frames fed back-to-back don't pick up the boundary

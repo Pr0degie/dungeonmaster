@@ -504,7 +504,7 @@ class DMBrain:
         # behind the persona's no-puppeting rule (the live fix; nemo ignores the soft rule).
         self._known_speakers: dict[int, list[str]] = {}
         # Memory (Phase 9): the stored session recap + a compact world-state block, injected into the
-        # system prompt after the persona (CLAUDE.md order: core → tone → recap → JSON state →
+        # system prompt after the persona (docs/conventions.md order: core → tone → recap → JSON state →
         # history). Set per channel by the cog from the world state, refreshed when state changes.
         self._recap: dict[int, str] = {}
         self._state_summary: dict[int, str] = {}
@@ -702,7 +702,7 @@ class DMBrain:
     ) -> tuple[str, list[dict[str, str]], dict]:
         """Assemble ``(system, messages, options)`` for one DM turn — the shared head both the
         batch (:meth:`_generate`) and streaming (:meth:`_stream_and_store`) paths use, so they
-        can't drift. Memory order per CLAUDE.md: persona (core+tone) → recap → JSON state →
+        can't drift. Memory order per docs/conventions.md: persona (core+tone) → recap → JSON state →
         who-plays-whom → history. Labels become Ollama stop sequences (the anti-puppeting guard)."""
         system = load_system_prompt()
         recap = self._recap.get(channel_id)
