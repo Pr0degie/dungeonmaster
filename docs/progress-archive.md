@@ -9,6 +9,20 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+**Dritter Lieferart-Modus `puffer` (Head-Start-Puffer) — Tobis Idee umgesetzt (2026-06-14, D69 → ADR 033 Addendum).
+Suite 319 grün.** Tobi: „warum lädst du nicht die ersten 3 Sätze und spielst den ersten ab und lädst die anderen
+parallel?". Genau das, als **dritte Lieferart** zwischen `stream` und `nahtlos`:
+- **`puffer`:** der `_deliver_streaming`-`play_worker` sammelt `DM_SPEECH_PREBUFFER` (Default 3) WAVs **vor** der
+  ersten Wiedergabe, spielt sie dann und füllt parallel nach; `wav_q`-maxsize = Puffertiefe (Cushion bleibt erhalten).
+  `prebuffer == 1` = altes `stream`. Gepufferte, noch nicht gespielte WAVs werden im `finally` aufgeräumt (kein Leak).
+- **Steuerung:** neuer Lieferart-Wert `puffer` + eine **Zahl** in `!sprechmodus` setzt die Tiefe live (`!sprechmodus
+  puffer 4`); Config `DM_SPEECH_PREBUFFER` (Floor 1). `runtime.prebuffer_count()` = Tiefe nur in `puffer`, sonst 1.
+- **Realität auf CPU:** der Puffer federt den Synthese-Rückstand ab → Lücken später. Kurze Turns (2–5 Sätze) werden
+  ~lückenlos bei kleiner Startverzögerung; das lange Intro startet viel früher als `nahtlos`, bekommt aber später
+  trotzdem Lücken (Synthese kommt nicht hinterher) + eine kleine Bridge-Lücke je Satz bleibt. Voll lückenlos überall =
+  weiterhin GPU (ADR 002). **+3 Tests** (319 grün), Import-Smoke ok.
+- _Live offen (nach dem Gate): `!sprechmodus puffer` (+ Tiefe variieren) gegen `stream`/`nahtlos` hören._
+
 **Globaler Sprech-Modus: Lieferart × Intonation als zwei Achsen, für ALLE Turns, laufzeit-umschaltbar
 (2026-06-14, D68 → ADR 033). Suite 316 grün.** Tobi will sich auf **eine** Wiedergabe-Art für alle gesprochenen
 Texte festlegen (besserer Klang, keine Anfälle) und erst A/B-testen; er bevorzugt bislang nahtlos, will aber auch
