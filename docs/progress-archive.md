@@ -9,6 +9,20 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+**`!intro`-Crash beim Kollegen gefixt: Discord-2000-Zeichen-Limit (2026-06-14, D64). Suite 306 grün, committet +
+gepusht (`1d48b18`).** Live-Befund aus Kollegen-Run: `!intro test` warf `HTTPException: 400 … 50035: Must be 2000
+or fewer in length`. Ursache: die volle Antwort wurde in **einem** `channel.send` gepostet, aber der `!intro`-
+Monolog läuft auf großem Längen-Budget (`DM_INTRO_NUM_PREDICT` 800) und sprengt Discords 2000-Zeichen-`content`-Cap.
+- **Fix am einzigen Sende-Choke-Point** `SessionRuntime._send_with_retry` (`dmbot/runtime.py`): langer `content` wird
+  in ≤2000-Zeichen-Nachrichten zerlegt; `view`/`embed` reiten auf der **letzten** (Würfel-Button/Turn-Order bleibt
+  unter dem vollen Text). Der 5xx-Retry ist in einen `_send_once`-Helfer gewandert. Deckt **alle drei** Lieferpfade
+  (Batch/Streaming/`!intro test`) auf einmal ab.
+- **Neuer reiner Splitter** `split_for_discord` in `dmbot/tts/textsplit.py`: **verbatim** (verwirft nichts, anders als
+  der TTS-`chunk_text`), bricht am spätesten Absatz-/Zeilen-/Satz-/Wortrand ≥ halbem Limit, Hard-Cut nur bei einem
+  ungebrochenen Über-Limit-Lauf.
+- **+4 Tests** (`tests/test_tts_chunk.py`): kurz=1 Stück, langer Monolog splittet verbatim unter Limit, Satzgrenze
+  bevorzugt, ununterbrochener Lauf wird hart geschnitten. Suite **306 grün**.
+
 **Kontext-Kosten-Refactor: `progress.md`/`CLAUDE.md` in schlanke Live-Dateien + on-demand `docs/` aufgeteilt
 (2026-06-14, D63 → ADR 032). Suite 302 grün, committet + gepusht (`fa6c96d`).** Tobi (Plan-Modus): „der kontext ist
 mittlerweile sehr groß und kleinste sachen fressen viele tokens — kann man sachen aus der claude.md auslagern …

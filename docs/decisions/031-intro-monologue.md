@@ -99,3 +99,33 @@ goals/connections/arc) over role-only.
   future opening/length work should reuse it rather than add per-call length state. The intro roster
   reads `Character.raw` flavour keys — keep `intro_roster_de`'s key list in step if the character
   schema's flavour fields change.
+
+## Addendum (2026-06-14) — `!intro test` plays as ONE continuous track (D64/D65)
+
+Two follow-ups after a colleague ran `!intro test` live:
+
+- **D64 — Discord 2000-char crash.** The full monologue was posted in a single `channel.send`; on the
+  larger `DM_INTRO_NUM_PREDICT` budget it exceeded Discord's 2000-char `content` cap → `HTTP 400 /
+  50035`. Fixed centrally in `SessionRuntime._send_with_retry` (splits long content into ≤2000-char
+  messages, `view`/`embed` on the last; new verbatim `split_for_discord` in `tts/textsplit.py`). Covers
+  every delivery path (batch/streaming/`test`).
+
+- **D65 — gapless chunked delivery.** The B-variant's sentence-by-sentence read (each its own blocking
+  `_speak`/bridge call) had the **per-sentence synthesis sitting as dead air between chunks**, and an
+  audible 0.2 s gap between every bridge call. Tobi's clarified goal: keep chunked, punctuation-free
+  synthesis (to dodge the XTTS punctuation babble, D55) **but make it sound like one continuous
+  read-aloud text**. `_deliver_intro_chunked` now synthesises each stripped sentence to its own WAV,
+  **joins them into ONE track** via the new torch-free `wavio.concat_wavs` (pulled out of
+  `xtts._concat_wavs`, which delegates to it) with a `_INTRO_SENTENCE_PAUSE_S` (0.2 s) silence
+  **inside** the track for pacing, and plays the single track in **one** layer-2-muted bridge call
+  (helper `_intro_speak_seamless`). `_INTRO_SENTENCE_PAUSE_S` is repurposed from an inter-call
+  `asyncio.sleep` to the in-track gap.
+
+  **Trade-off (hard constraint):** XTTS synthesises at ~0.5× realtime (synth ≈ 2× audio length),
+  so *instant start* and *gapless playback* are mutually exclusive — a streaming read starts within
+  seconds but must gap (synthesis can't keep up with playback), while a gapless single track must be
+  fully synthesised before the first sound. We chose **gapless** (matches "sounds like a full text")
+  and accept the up-front synthesis wait. The documented levers if that wait is too long: shorten via
+  `DM_INTRO_NUM_PREDICT`, or use the fast-but-gappy streaming `!intro` (unchanged). The `test` arg
+  stays the comparison variant; this addendum supersedes the B-variant's "sentence-by-sentence with a
+  gap" delivery described above.
