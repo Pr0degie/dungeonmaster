@@ -9,6 +9,23 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+**Globaler Sprech-Modus: Lieferart × Intonation als zwei Achsen, für ALLE Turns, laufzeit-umschaltbar
+(2026-06-14, D68 → ADR 033). Suite 316 grün.** Tobi will sich auf **eine** Wiedergabe-Art für alle gesprochenen
+Texte festlegen (besserer Klang, keine Anfälle) und erst A/B-testen; er bevorzugt bislang nahtlos, will aber auch
+eine intonierte Variante hören. Umgesetzt als zwei orthogonale, global gültige Achsen (kein Sonderpfad mehr je Befehl):
+- **`DM_SPEECH_MODE`** `stream` (gestreamt, schneller Start, Mini-Lücken) | `nahtlos` (eine durchgehende Spur, ein
+  Bridge-Call, lückenlos — wartet aber auf die Vollsynthese). **`DM_SPEECH_PUNCT`** `flach` (`strip_speech_punctuation`,
+  kein Gibberish, flacher) | `intoniert` (`None` → Wrapper behält `.,!?;:-` für Betonung, Gibberish-Risiko). Default
+  `stream`+`flach`. _Hinweis: normale Turns sind damit per Default satzzeichenfrei (flacher) als bisher._
+- **Verdrahtung:** `Config.speech_mode/_punct` → `runtime._speech_mode/_punct` + Helfer `speech_transform()`/
+  `deliver_seamless()`; die 6 Turn-Dispatch-Stellen (`!dm`/`!redo`/`!start`/`!intro`/`_auto_dm_turn`/`_run_and_deliver`)
+  lesen den Modus statt ihn fest zu verdrahten; `_deliver_streaming`/`_deliver_answer` ziehen Transform/Seamless aus
+  der Runtime (keine Per-Call-Args). `_intro_speak_seamless` → allgemeiner `_speak_seamless(text, …, transform=…)`,
+  von `_deliver_answer` (nahtlos) und `!intro test` (fix nahtlos+flach) genutzt.
+- **`!sprechmodus [stream|nahtlos] [flach|intoniert]`** (Aliase `!sprache`/`!voicemode`) schaltet live um, zeigt den
+  Stand, warnt bei `nahtlos` vor der CPU-Wartezeit. **+6 Tests** (`tests/test_speech_mode.py`: Config-Defaults/Parsing/
+  Fallback + Helfer-Mapping). Suite **316 grün**, Import-Smoke im venv ok. _(D69 ergänzte dann den dritten Modus `puffer`.)_
+
 **Shutdown: „Voice-Channel verlassen" hing wieder bis zu ~30 s — beschränkt (2026-06-14, D67 → ADR 020 Addendum).
 Suite 311 grün.** Tobi: das Herunterfahren dauert wieder lange, das Voice-Leave am längsten, obwohl der Bot den
 Channel sofort verlässt. Ursache im **installierten** Code verifiziert (nicht in unserem):

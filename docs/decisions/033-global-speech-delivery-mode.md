@@ -63,3 +63,22 @@ transform/seamless flag from the runtime rather than taking per-call args. **Def
 - **Binds later work:** once the LLM is offloaded (ADR 002), `nahtlos` everywhere becomes the likely
   default — that's a one-line flip; the seamless mid-track pause limitation (Esc takes effect after
   the current track) carries over from the `!intro test` delivery.
+
+## Addendum (2026-06-14) — `puffer` head-start mode (D69)
+
+Tobi's idea ("warum lädst du nicht die ersten 3 Sätze und spielst den ersten ab und lädst die
+anderen parallel?"): a **head-start buffer** on the streaming pipeline — synthesise the first N
+sentences before the first plays, then keep synthesising in parallel. Added as a **third delivery
+value** `puffer` (between `stream` and `nahtlos`): the `_deliver_streaming` `play_worker` accumulates
+`DM_SPEECH_PREBUFFER` (default 3) WAVs before the first playback (`wav_q` maxsize bumped to the depth
+so the cushion is held during playback); `prebuffer == 1` is exactly the old `stream` behaviour. A
+number in `!sprechmodus` sets the depth live (`!sprechmodus puffer 4`). Buffered-but-unplayed WAVs
+are removed in `play_worker`'s `finally` (no leak on pause/abort).
+
+**Why it's a middle point, not a free lunch (CPU):** the buffer *cushions* CPU synth running slower
+than realtime, so gaps appear later. For **short turns** (2–5 sentences) a depth-3 buffer usually
+covers the whole turn → near-gapless with a modest start delay. For the **long intro** (~32 sentences)
+it only delays the gaps — synth still falls behind — but it starts far sooner than `nahtlos`. A small
+inter-sentence bridge gap remains (each sentence is its own `/speak`); truly gapless still needs
+`nahtlos` (or a GPU). So `puffer` is the tunable compromise; the full fix for gapless-everywhere
+remains the GPU offload (ADR 002).
