@@ -9,6 +9,22 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+**`!intro test`: gechunkte Synthese, aber Wiedergabe als EINE durchgehende Spur (2026-06-14, D65 → ADR 031 Addendum).
+Suite 309 grün.** Kollegen-Feedback nach dem 2000-Zeichen-Fix: Aussprache korrekt/ohne Anfälle, aber zäh — Tobi
+benannte den Flaschenhals: die **Synthese jedes Satzes** ist die Totstille zwischen den Chunks. Ziel (geklärt per
+Rückfrage): nur Chunks vorlesen (kein Gibberish an Satzzeichen), aber es soll wie **ein voller zusammenhängender
+Text** klingen. Harte Randbedingung: XTTS langsamer als Echtzeit → sofortiger Start UND lückenlos geht nicht gleichzeitig;
+„klingt wie voller Text" ⇒ Lückenlosigkeit gewählt, Vorsynthese-Wartezeit bewusst in Kauf genommen.
+- **`_deliver_intro_chunked` umgebaut** (`dmbot/voice/dmcog.py`): statt seriellem `_speak` pro Satz wird jeder Satz
+  einzeln punktfrei synthetisiert (neuer Helfer `_intro_speak_seamless`), die WAVs via `concat_wavs` mit
+  `_INTRO_SENTENCE_PAUSE_S` (0,2s) zu **einer** Spur gefügt und in **einem** Bridge-Call gespielt → durchgehend,
+  natürlich getaktet, kein Gibberish. try/finally räumt alle Temp-WAVs auf; Pause während Synthese bricht sauber ab.
+- **`wavio.concat_wavs`** neu (torch-frei aus `xtts._concat_wavs` herausgezogen, das jetzt dorthin delegiert) — so kann
+  die Cog die Join-Logik nutzen, ohne die schwere XTTS-Lib zu laden.
+- **+3 Tests** (`tests/test_silent_wav.py`): Reihenfolge+Gap, Null-Gap = reine Konkatenation, Einzelteil ohne
+  Trailing-Gap. Suite **309 grün**. _(D66 zeigte dann: der lange Start lag v. a. an XTTS-auf-CPU; plain `!intro` wurde
+  zur Schnellstart-Variante, `!intro test` blieb die lückenlose.)_
+
 **`!intro`-Crash beim Kollegen gefixt: Discord-2000-Zeichen-Limit (2026-06-14, D64). Suite 306 grün, committet +
 gepusht (`1d48b18`).** Live-Befund aus Kollegen-Run: `!intro test` warf `HTTPException: 400 … 50035: Must be 2000
 or fewer in length`. Ursache: die volle Antwort wurde in **einem** `channel.send` gepostet, aber der `!intro`-

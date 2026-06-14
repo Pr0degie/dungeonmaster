@@ -129,3 +129,17 @@ Two follow-ups after a colleague ran `!intro test` live:
   `DM_INTRO_NUM_PREDICT`, or use the fast-but-gappy streaming `!intro` (unchanged). The `test` arg
   stays the comparison variant; this addendum supersedes the B-variant's "sentence-by-sentence with a
   gap" delivery described above.
+
+- **D66 — root cause of the long start + the two modes settled.** The live log showed `XTTS v2 loaded
+  on cpu` with `first_audio=378s` / `wav=224.2s` (a 32-sentence, 3.7-min monologue). The slowness is
+  **XTTS on CPU** — a *deliberate* config (`.env TTS_DEVICE=cpu`): the 12 GB 4070 already holds nemo +
+  whisper, and cuda XTTS tips the VRAM over into a CUDA device-side assert that poisons the process and
+  kills STT (the load-time fallback doesn't cover that runtime crash). torch *is* a CUDA build — it's a
+  VRAM-coexistence problem, fixed structurally only by offloading the LLM (5080/Tailscale → cuda, ADR
+  002). CPU synth is slower than realtime, so **gapless and instant-start are mutually exclusive**.
+  Tobi chose the **fast start**: plain **`!intro`** now streams **punctuation-free** (a new optional
+  `speech_transform` threaded through `_deliver_streaming`/`_deliver_answer`/`_speak`, applied to the
+  spoken text only — chat text untouched) so it speaks after the first sentence, with small
+  inter-sentence gaps (synth can't keep up). **`!intro test`** stays the gapless one-track variant.
+  The two are kept as the modes to choose between; the default-path behaviour of all other turns is
+  byte-identical (the transform applies only when set).
