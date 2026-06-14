@@ -116,10 +116,10 @@ This is the **DMbot repo**. Bot A is a separate repo (the music bot) — not her
 ```
 dmbot/          the DM bot
   runtime.py    SessionRuntime — shared session state/services, injected into every cog (ADR 029)
-  voice/        recv, resample, VAD + the Discord cogs (voicecog / dicecog / dmcog)
+  voice/        recv, resample, VAD + the Discord cogs (voicecog / dicecog / dmcog) + delivery.py (the answer→audio turn-delivery pipeline, ADR 035)
   stt/          faster-whisper wrapper
   tts/          piper + xtts (Coqui XTTS v2) wrappers
-  llm/          Ollama client, prompt building
+  llm/          Ollama client, prompt building + orchestrator's extracted pure helpers (sanitize / echo_guard / director_msgs / stream_assembler, ADR 034)
   rag/          ingestion + retrieval + profile bootstrap
   memory/       JSON state + recaps
   rules/        engine.py (generic) + profile loader (+ tests)  ← deterministic core
