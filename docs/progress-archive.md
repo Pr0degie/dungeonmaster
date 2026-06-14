@@ -9,6 +9,16 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+**`_TurnTiming` aus `runtime.py` nach `dmbot/turn_timing.py` ausgelagert (2026-06-14, D73 → ADR 034). `runtime.py`
+610→516, Suite 319 grün, ruff sauber, 0 Test-Änderungen.** Fortsetzung der D70/D71-Linie (Kandidat #1 der gescouteten
+Liste): den per-Turn-Latenz-Record `_TurnTiming` + die Konstante `_CTX_WARN_FRACTION` byte-exakt in ein eigenes Modul
+gezogen (zustandsloser Logging-Helfer, kein `SessionRuntime`-Bezug). **Re-Export-Shim** `from .turn_timing import
+_CTX_WARN_FRACTION, _TurnTiming  # noqa: F401` in `runtime` hält alle vorhandenen Importe stabil (`dmcog`-Import-Zeile,
+`tests/test_autorecap.py`, `tests/test_context_budget.py`); das jetzt ungenutzte `dataclass`-Import in `runtime` entfernt.
+Verifiziert: Import-Kette (`runtime._TurnTiming is turn_timing._TurnTiming`), `dmbot.voice.dmcog` importiert sauber, ruff
+`All checks passed`, Suite **319 grün**. _Einziger Nicht-Byte-Effekt: Logger-Name der `[latency]`/`[ctx]`-Zeilen ist jetzt
+`dmbot.turn_timing` (Text/Prefix gleich; Konsole-INFO blendet den Namen aus, kein Test prüft ihn)._
+
 **`orchestrator.py`-Verschlankung abgeschlossen (E1–E4): alle abgekapselten Blöcke nach `dmbot/llm/*` ausgelagert
 (2026-06-14, D70+D71 → ADR 034). `orchestrator.py` 1175→783, Suite 319 grün, verhaltensidentisch.** Tobis Ziel:
 nur **in sich geschlossene** Methoden auslagern, damit sie nicht mitgeladen werden, wenn ein Agent woanders arbeitet —

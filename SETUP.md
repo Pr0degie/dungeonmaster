@@ -24,16 +24,22 @@ Then **Install → Configure → Run** below. Tailscale & the character JSON sch
 
 ## Install
 
-**Automated (recommended).** One-shot installer from the repo root — installs `uv`, runs
-`uv sync`, creates `.env`, pulls/warms the local Ollama models, then prints what only *you*
-can finish (token, Bot A, PDFs). Safe to re-run.
+**Automated (recommended).** One-shot installer from the repo root. It installs `uv` **and a
+uv-managed Python 3.12 and puts both on the persistent PATH**, runs `uv sync`, creates `.env`,
+**installs Ollama automatically** (winget, else the official installer) + pulls the LLM and the
+`bge-m3` RAG embedder, and **pre-downloads the STT + XTTS weights by default** — then prints
+what only *you* can finish (token, Bot A, PDFs, RAG build). Idempotent: re-run any time, it
+re-downloads nothing that's already there.
+
+**Easiest: double-click `setup.bat`** — it launches the script with `-ExecutionPolicy Bypass`,
+so you don't have to touch any Windows script-execution settings (the #1 fresh-machine snag).
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\setup.ps1
-# .\setup.ps1 -StartBot     # also launch the bot when setup succeeds
-# .\setup.ps1 -SkipOllama   # skip the LLM steps (e.g. remote Ollama host)
-# .\setup.ps1 -Prefetch     # pre-download the STT + XTTS models (several GB) so the
-#                           # first DM turn doesn't wait; otherwise they fetch on first use
+.\setup.bat                  # one-click; recommended
+# .\setup.bat -StartBot      # also launch the bot when setup succeeds
+# .\setup.bat -SkipOllama    # skip the LLM steps (e.g. remote Ollama host)
+# .\setup.bat -SkipPrefetch  # skip pre-downloading STT + XTTS (else: on by default)
+# Prefer PowerShell directly? powershell -ExecutionPolicy Bypass -File .\setup.ps1
 ```
 
 **Manual** (what the script automates):

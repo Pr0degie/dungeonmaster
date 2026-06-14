@@ -1,34 +1,51 @@
 # ============================================================================
 #  setup.ps1 - one-shot installer for DMbot (the DM brain).
 #
-#  Automates the machine-side steps from SETUP.md: uv, dependencies (uv sync),
-#  the .env file, and the local Ollama models. What it CANNOT do for you (a
-#  human still must) is printed in the summary at the end: the Discord token,
-#  starting Bot A, and dropping the rulebook/adventure PDFs in.
+#  Does the whole machine side end-to-end, idempotently (re-run any time; it
+#  re-downloads nothing that's already present): installs uv + a uv-managed
+#  Python 3.12 and puts both on the PERSISTENT user PATH; 'uv sync' (deps + .venv);
+#  the .env file; installs Ollama fully automatically (winget, else the official
+#  installer) + pulls the LLM + the bge-m3 RAG embedder; and pre-downloads the
+#  STT + XTTS model weights. What it CANNOT do (printed as TODOs at the end):
+#  the Discord token, the rulebook/adventure PDFs, the RAG store build, Bot A.
 #
-#  Runtime is Windows (D16). Safe to re-run - every step is idempotent.
+#  Runtime is Windows (D16).
 #
-#  Usage:
-#    powershell -ExecutionPolicy Bypass -File .\setup.ps1
+#  EASIEST: double-click  setup.bat  (it bypasses the script-execution policy).
+#
+#  Usage (PowerShell):
+#    .\setup.bat                  # one-click; recommended (no policy snag)
 #    .\setup.ps1 -StartBot        # run the bot when setup succeeds
 #    .\setup.ps1 -SkipOllama      # skip the LLM steps (e.g. remote Ollama)
 #    .\setup.ps1 -SkipSync        # skip 'uv sync' (deps already installed)
-#    .\setup.ps1 -Prefetch        # also pre-download the STT + XTTS models (several GB)
+#    .\setup.ps1 -SkipPrefetch    # skip pre-downloading STT + XTTS (else: on by default)
 # ============================================================================
 
 [CmdletBinding()]
 param(
-    [switch]$StartBot,    # launch DMbot after a successful setup
-    [switch]$SkipOllama,  # skip pulling/warming the local LLM models
-    [switch]$SkipSync,    # skip 'uv sync' (dependency install)
-    [switch]$Prefetch,    # pre-download the STT (faster-whisper) + XTTS model weights
-    [switch]$NoInstallUv  # do NOT auto-install uv if it's missing (just fail)
+    [switch]$StartBot,      # launch DMbot after a successful setup
+    [switch]$SkipOllama,    # skip pulling/warming the local LLM models
+    [switch]$SkipSync,      # skip 'uv sync' (dependency install)
+    [switch]$SkipPrefetch,  # skip pre-downloading STT (faster-whisper) + XTTS weights (else: on by default)
+    [switch]$Prefetch,      # deprecated no-op (prefetch is the default now) - kept so old calls don't break
+    [switch]$NoInstallUv    # do NOT auto-install uv if it's missing (just fail)
 )
 
 # --- console: UTF-8 so German text + log glyphs render ----------------------
 $ErrorActionPreference = "Continue"
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $env:PYTHONUTF8 = "1"
+
+# --- make this script able to run AND download on a stock machine -----------
+# Two things snag fresh Windows installs: (1) TLS - PowerShell 5.1 may default to
+# TLS 1.0/1.1, so HTTPS downloads (uv installer, Ollama) fail; force TLS 1.2.
+# (2) Script-execution policy - if you launched via setup.bat we're already in a
+# Bypass'd process, but persist RemoteSigned for CurrentUser so a later direct
+# '.\setup.ps1' doesn't get blocked, and clear the "downloaded from internet"
+# mark-of-the-web on the repo's scripts (the thing that pops the block prompt).
+try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
+try { Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force -ErrorAction Stop } catch {}
+try { Get-ChildItem -Path $PSScriptRoot -Include *.ps1, *.bat -Recurse -ErrorAction Stop | Unblock-File -ErrorAction Stop } catch {}
 
 # --- pretty output helpers --------------------------------------------------
 function Write-Section($t) { Write-Host ""; Write-Host "== $t ==" -ForegroundColor Cyan }
@@ -59,6 +76,31 @@ function Get-EnvValue($key, $default) {
     return $val
 }
 
+# --- helper: add a directory to the PERSISTENT user PATH (idempotent) --------
+# The old script only touched the process PATH, so new terminals saw nothing.
+# This writes the user PATH in the registry (SetEnvironmentVariable broadcasts
+# WM_SETTINGCHANGE, so new shells pick it up) AND updates the current process so
+# the rest of this run + a -StartBot launch see it immediately. Appends only -
+# never reorders existing entries, never duplicates.
+function Add-ToUserPath($dir) {
+    if ([string]::IsNullOrWhiteSpace($dir)) { return }
+    $dir = $dir.Trim().TrimEnd('\')
+    if (-not (Test-Path $dir)) { Write-Info "PATH: skip (not found) $dir"; return }
+    $cur = [Environment]::GetEnvironmentVariable("Path", "User")
+    if ($null -eq $cur) { $cur = "" }
+    $parts = $cur -split ';' | Where-Object { $_ -ne "" } | ForEach-Object { $_.TrimEnd('\') }
+    if ($parts -contains $dir) {
+        Write-Info "PATH already has: $dir"
+    } else {
+        $new = if ($cur.TrimEnd(';') -eq "") { $dir } else { $cur.TrimEnd(';') + ";" + $dir }
+        [Environment]::SetEnvironmentVariable("Path", $new, "User")
+        Write-Ok "PATH (persistent) += $dir"
+    }
+    # make it visible to THIS process too (covers the rest of the run)
+    $procParts = $env:PATH -split ';' | ForEach-Object { $_.TrimEnd('\') }
+    if ($procParts -notcontains $dir) { $env:PATH = "$env:PATH;$dir" }
+}
+
 # ============================================================================
 #  1. uv (the package/Python manager)
 # ============================================================================
@@ -86,10 +128,29 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
 }
 Write-Ok "uv: $((uv --version) 2>&1)"
 
-# Make sure a 3.12 interpreter is available (pyproject pins >=3.12,<3.13).
-# uv fetches a managed one if the system has none - idempotent.
-Write-Info "Ensuring Python 3.12 is available (uv-managed if needed) ..."
-uv python install 3.12 | Out-Null
+# Persist uv's bin dir (where uv.exe lives AND where 'uv python --default' drops the
+# python shim) so new terminals find uv + python without re-running this script.
+$uvBinDir = (uv python dir --bin 2>$null)
+if ([string]::IsNullOrWhiteSpace($uvBinDir)) { $uvBinDir = Split-Path (Get-Command uv).Source }
+Add-ToUserPath $uvBinDir
+
+# ============================================================================
+#  1b. Python 3.12 (uv-managed) + a global 'python' on PATH
+# ============================================================================
+Write-Section "Python 3.12 (uv-managed, on PATH)"
+# pyproject pins >=3.12,<3.13. '--default' installs the unversioned python/python3
+# shim into uv's bin dir so a bare 'python' works in every shell. Idempotent: uv
+# only downloads the managed build if it's missing. An existing matching 3.12
+# already earlier on PATH keeps winning (we append, never reorder).
+Write-Info "Installing/ensuring Python 3.12 (uv-managed) and a global 'python' shim ..."
+uv python install 3.12 --default
+if ($LASTEXITCODE -ne 0) { Write-Warn "uv python install reported exit $LASTEXITCODE (continuing)." }
+Add-ToUserPath $uvBinDir
+$managedPy = (uv python find 3.12 2>$null)
+if ($managedPy) { Write-Ok "Python 3.12 in use: $managedPy" }
+$globalPy = (Get-Command python -ErrorAction SilentlyContinue)
+if ($globalPy) { Write-Info "Global 'python' currently resolves to: $($globalPy.Source)" }
+else { Write-Info "Global 'python' will resolve once a new shell picks up the updated PATH." }
 
 # ============================================================================
 #  2. dependencies (uv sync) - creates .venv and installs everything
@@ -157,16 +218,41 @@ if ($SkipOllama) {
 
     if (-not $isLocal) {
         Write-Info "OLLAMA_HOST is remote ($ollamaHost) - that machine owns the models. Skipping local pulls."
-        Add-Todo "Make sure the remote Ollama at $ollamaHost is reachable and has '$ollamaModel' + nomic-embed-text."
+        Add-Todo "Make sure the remote Ollama at $ollamaHost is reachable and has '$ollamaModel' + bge-m3."
     } elseif (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
-        # try winget if available, otherwise hand it back to the user
+        # Full auto-install. (1) winget - non-interactive, accept agreements. winget is the
+        # #1 snag on fresh machines (missing / wants source+package agreements / prompts), so
+        # it's wrapped in try/catch and EVERY failure just falls through to the installer.
         if (Get-Command winget -ErrorAction SilentlyContinue) {
-            Write-Warn "ollama not found - installing via winget ..."
-            winget install --id Ollama.Ollama -e --silent --accept-package-agreements --accept-source-agreements
+            Write-Warn "ollama not found - trying winget ..."
+            try {
+                winget install --id Ollama.Ollama -e --silent `
+                    --accept-package-agreements --accept-source-agreements --disable-interactivity
+            } catch { Write-Warn "winget failed ($($_.Exception.Message)) - using the official installer instead." }
+        } else {
+            Write-Info "winget not available - using the official installer."
         }
+        Add-ToUserPath "$env:LOCALAPPDATA\Programs\Ollama"  # winget's default install location
+
+        # (2) official installer fallback (Inno Setup -> /VERYSILENT) if winget didn't land it
         if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
-            Write-Warn "Ollama is not installed. Get it from https://ollama.com/download (Windows)."
-            Add-Todo "Install Ollama, then re-run setup.ps1 (or 'ollama pull $ollamaModel; ollama pull nomic-embed-text')."
+            try {
+                $oll = Join-Path $env:TEMP "OllamaSetup.exe"
+                Write-Info "Downloading OllamaSetup.exe (official) ..."
+                Invoke-WebRequest -Uri "https://ollama.com/download/OllamaSetup.exe" -OutFile $oll -UseBasicParsing
+                Write-Info "Installing Ollama silently ..."
+                Start-Process -FilePath $oll -ArgumentList "/VERYSILENT", "/NORESTART" -Wait
+                Add-ToUserPath "$env:LOCALAPPDATA\Programs\Ollama"
+            } catch {
+                Write-Warn "Automatic Ollama install failed: $($_.Exception.Message)"
+            }
+        }
+
+        if (Get-Command ollama -ErrorAction SilentlyContinue) {
+            Write-Ok "Ollama installed."
+        } else {
+            Write-Warn "Ollama still not on PATH - a new shell or reboot may be needed."
+            Add-Todo "Finish Ollama: open a NEW terminal and re-run setup.bat (or install from https://ollama.com/download)."
         }
     }
 
@@ -175,7 +261,7 @@ if ($SkipOllama) {
         ollama list | Out-Null
         Write-Info "Pulling models (skips any already present) ..."
         ollama pull $ollamaModel
-        ollama pull nomic-embed-text   # embeddings for RAG (Phase 10)
+        ollama pull bge-m3             # RAG embedder (multilingual; replaced nomic-embed-text, ADR 019)
 
         # Phase-0 gate: a real generation proves the LLM path end-to-end
         Write-Info "Warming up '$ollamaModel' and testing a German generation (cold start ~15s) ..."
@@ -194,18 +280,19 @@ if ($SkipOllama) {
 # ============================================================================
 #  6. Model prefetch (optional) - removes the first-run download wait
 # ============================================================================
-Write-Section "Model prefetch"
-if ($Prefetch) {
-    if ($SkipSync) { Write-Warn "-SkipSync was set - prefetch needs the deps; run without -SkipSync if this fails." }
-    Write-Info "Pre-downloading STT + XTTS weights on CPU (first run pulls several GB) ..."
+Write-Section "Model prefetch (STT + XTTS)"
+if ($SkipPrefetch) {
+    Write-Info "-SkipPrefetch set - STT/XTTS weights will download on first use instead."
+} elseif ($SkipSync -and -not (Test-Path ".venv")) {
+    Write-Warn "-SkipSync set and no .venv yet - skipping prefetch (it needs the deps). Re-run without -SkipSync."
+} else {
+    Write-Info "Pre-downloading STT + XTTS weights on CPU (on by default; first run pulls several GB) ..."
     uv run python -m tools.prefetch_models
     if ($LASTEXITCODE -ne 0) {
         Write-Warn "Prefetch reported a problem - not fatal, the bot downloads on first use instead."
     } else {
         Write-Ok "Models cached - the first DM turn won't wait on a download."
     }
-} else {
-    Write-Info "Skipped (pass -Prefetch to pre-download STT + XTTS now; else they fetch on first use)."
 }
 
 # ============================================================================
@@ -219,6 +306,16 @@ if ($script:todo.Count -eq 0) {
     $i = 1
     foreach ($t in $script:todo) { Write-Host "   $i. $t" -ForegroundColor Yellow; $i++ }
 }
+# RAG store: PDFs are yours (legal) and the ingest is a calibrated, non-idempotent pipeline,
+# so we don't auto-run it - but if PDFs are present and the store is missing, surface the
+# exact build commands so nothing is left implicit.
+$havePdfs = (Test-Path "data\pdfs") -and (Get-ChildItem "data\pdfs" -Filter *.pdf -ErrorAction SilentlyContinue | Select-Object -First 1)
+if ($havePdfs -and -not (Test-Path "data\vectordb\rag.db")) {
+    Write-Warn "PDFs found in data\pdfs\ but no RAG store (data\vectordb\rag.db). Build it (see SETUP.md B9):"
+    Write-Host "     uv run python tools/pdf_to_md.py   # PDF -> markdown (args per SETUP.md B9)" -ForegroundColor Gray
+    Write-Host "     uv run python -m dmbot.rag.ingest  # markdown -> bge-m3 embeddings -> sqlite-vec" -ForegroundColor Gray
+}
+
 # these are always external (separate repo / your own files) - list them every time
 Write-Host ""
 Write-Info "Also required for the full voice loop (not automatable here):"
