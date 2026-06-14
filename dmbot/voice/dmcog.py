@@ -257,14 +257,8 @@ class DMCog(commands.Cog):
             # The dice button must land before the mic button re-anchors at the bottom; likewise the
             # scene-change proposal. await_dice_scene awaits both and logs (never drops) their errors.
             await self._await_dice_scene(dice_task, scene_task)
-        await self._autosave_turn(channel, answer, user_msg=saved_user_msg,
-                                  redo=timing.kind == "redo")
-        # Keep the mic button reachable: move it back to the bottom after the message + speech.
-        if self._rt._push_to_talk and self._rt._sink is not None:
-            await self._rt.reanchor_mic(channel)
-        # Rolling auto-recap (D56): if this turn's prompt neared the num_ctx cap, compact the history
-        # now — off the hot path (the turn is fully delivered above), so it never adds turn latency.
-        await self._maybe_compact(channel, timing)
+        await self._post_deliver(channel, answer, timing,
+                                 saved_user_msg=saved_user_msg, redo=timing.kind == "redo")
 
     @staticmethod
     async def _await_dice_scene(dice_task: asyncio.Task | None,
@@ -280,6 +274,23 @@ class DMCog(commands.Cog):
                 await task
             except Exception:
                 log.exception("%s task failed", what)
+
+    async def _post_deliver(self, channel, answer: str, timing: _TurnTiming, *,
+                            saved_user_msg: str | None, redo: bool) -> None:
+        """The shared end-of-turn tail of both delivery paths, run *after* the answer is spoken and
+        the dice/scene tasks have been awaited: autosave the turn, re-anchor the mic button below the
+        new messages, and run the off-hot-path rolling auto-recap (D56). Identical for the batch and
+        streaming paths — one source of truth. Runs entirely after `/speak` returned, so it never
+        adds turn latency. NOTE: the preceding `timing.end`/`log_line()`/`_await_dice_scene` step is
+        deliberately kept per-path (batch awaits dice/scene in a `finally` so the 🎲 still posts if
+        speak raised; streaming runs it after the pipeline cleanup) — that placement must not merge."""
+        await self._autosave_turn(channel, answer, user_msg=saved_user_msg, redo=redo)
+        # Keep the mic button reachable: move it back to the bottom after the message + speech.
+        if self._rt._push_to_talk and self._rt._sink is not None:
+            await self._rt.reanchor_mic(channel)
+        # Rolling auto-recap (D56): if this turn's prompt neared the num_ctx cap, compact the history
+        # now — off the hot path (the turn is fully delivered above), so it never adds turn latency.
+        await self._maybe_compact(channel, timing)
 
     async def _deliver_streaming(self, channel, guild_id: int | None, timing: _TurnTiming, *,
                                  redo: bool = False, extra_text: str | None = None,
@@ -468,12 +479,8 @@ class DMCog(commands.Cog):
             timing.end = time.monotonic()  # last /speak returned
             timing.log_line()
             await self._await_dice_scene(dice_task, scene_task)
-            await self._autosave_turn(channel, holder["answer"], user_msg=saved_user_msg, redo=redo)
-            if self._rt._push_to_talk and self._rt._sink is not None:
-                await self._rt.reanchor_mic(channel)
-            # Rolling auto-recap (D56): same off-hot-path compaction as the batch path — the answer is
-            # already spoken (gather(sw, pw) above awaited the last sentence), so no added latency.
-            await self._maybe_compact(channel, timing)
+            await self._post_deliver(channel, holder["answer"], timing,
+                                     saved_user_msg=saved_user_msg, redo=redo)
         return holder["answer"]
 
     @commands.command(name="dm")
