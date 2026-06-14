@@ -73,7 +73,7 @@ here is its contract, which DMbot calls:
 - **Memory:** persistence test — a state change survives a restart.
 - **RAG:** sanity check — a concrete IM rule question answered correctly from a PDF.
 
-## Code-Review- & Lint-Gates (was automatisch läuft vs. wann du `/code-review` ziehst)
+## Code-Review-, Simplify- & Lint-Gates (was automatisch läuft vs. was du gezielt ziehst)
 
 Zwei Ebenen, bewusst getrennt — die billige läuft von selbst, die teure nach Urteil.
 
@@ -101,6 +101,21 @@ mit viel akkumulierter Arbeit → der schwere Fan-out (`/code-review ultra` bzw.
 Fan-out-Workflow über den Commit-Range): der **gibt verhaltenserhaltende Refactors verifiziert
 frei**, statt einzelne Bugs zu suchen — genau dort liegt sein Wert. _Beleg D76: 14 Findings, 3
 bestätigt, alle in neuem Logik-/Test-Code, kein einziger in den byte-exakten Move-Commits._
+
+**Manuell, schreibend — `/simplify`** ist ein Sonderfall: es findet nicht nur, es **schreibt
+deinen Code um** (es *applied* die Cleanups). Darum **nie automatisch** und nur bewusst + mit
+Blick auf den Diff — das Sicherheitsnetz (Stop-Hook + pre-commit: ruff + Suite) fängt danach ab,
+ob der Umbau etwas gebrochen hat. Andere Auslöser als bei `/code-review`:
+- [ ] Gerade **fast-duplikaten** Code geschrieben (Copy-Paste über Branches/Dateien) oder die
+  **dritte** Instanz eines Musters (rule of three → extrahieren).
+- [ ] Eine Funktion wurde **lang / stark verzweigt / tief verschachtelt**.
+- [ ] Nach einem Feature, **vor dem Commit**, ein bewusster Aufräum-Pass.
+
+**Nicht** auf: byte-exakte **Moves**/Renames, **race-/nebenläufigkeitssensiblen** Code (dort von
+Hand vereinfachen statt `/simplify` drüberlassen — D72-Lektion: der D40/D43-sensible Delivery-Tail
+wurde absichtlich per Hand vereinheitlicht), winzige Diffs/Docs. _Deterministisch ist „vereinfachbar"
+nicht messbar (anders als ein ungenutzter Import) — der Hook flaggt das nicht, das Urteil kommt
+hier (ich schlage `/simplify` vor, wenn ein Batch die Trigger trifft)._
 
 ## Runtime / operations
 
