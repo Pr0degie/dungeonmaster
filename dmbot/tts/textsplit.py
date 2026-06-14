@@ -1,8 +1,12 @@
-"""Split a DM answer into TTS-safe chunks.
+"""Split a DM answer for delivery — TTS-safe speech chunks *and* Discord-safe message pieces.
 
 XTTS truncates the audio of any single chunk longer than ~253 chars for German (it warns "text
 length exceeds the character limit"), which cut DM answers off mid-sentence. We split the text
 into sub-limit chunks here, then the XTTS wrapper synthesises each and concatenates the WAVs.
+
+Discord rejects any message whose ``content`` exceeds 2000 chars (HTTP 400, error code 50035), so
+a long DM turn (notably the `!intro` monologue) is split into ``<= 2000``-char messages too —
+verbatim, unlike the lossy TTS chunker. Both splitters live here so the boundary logic has one home.
 
 Pure (no torch / no audio deps) so it stays unit-testable on its own.
 """
@@ -126,3 +130,57 @@ def chunk_text(text: str, limit: int = TTS_CHAR_LIMIT) -> list[str]:
     # Drop chunks that carry nothing speakable (e.g. a lone "." split off a sentence) — XTTS reads a
     # bare punctuation chunk for ~15 s or hallucinates. Empty list = nothing to synthesise.
     return [c for c in chunks if has_speakable_content(c)]
+
+
+# Discord rejects any message whose `content` exceeds 2000 chars (HTTP 400, error code 50035). A
+# long DM answer — especially the `!intro` monologue, which runs on a larger length budget — must be
+# posted as several messages.
+DISCORD_CHAR_LIMIT = 2000
+
+# Sentence terminators we break *after* (the terminator stays with the head); the trailing space or
+# newline is dropped because the next piece is left-stripped.
+_DISCORD_SENTENCE_END = (". ", "! ", "? ", "… ", ".\n", "!\n", "?\n")
+
+
+def split_for_discord(text: str, limit: int = DISCORD_CHAR_LIMIT) -> list[str]:
+    """Split ``text`` into pieces no longer than ``limit`` chars for Discord's message cap,
+    **preserving the text verbatim** — unlike :func:`chunk_text` this keeps punctuation, casing and
+    inner whitespace and drops nothing; it only inserts message boundaries. Each break is taken at
+    the latest paragraph, then line, then sentence, then word boundary that still fills at least half
+    the limit; a single unbroken run longer than the limit is hard-cut. Empty input → ``[]``; text
+    that already fits → ``[text]``."""
+    if not text:
+        return []
+    if len(text) <= limit:
+        return [text]
+    chunks: list[str] = []
+    rest = text
+    while len(rest) > limit:
+        cut = _discord_cut(rest[:limit], limit)
+        head, rest = rest[:cut].rstrip(), rest[cut:].lstrip()
+        if head:
+            chunks.append(head)
+    if rest:
+        chunks.append(rest)
+    return chunks
+
+
+def _discord_cut(window: str, limit: int) -> int:
+    """Index at which to break ``window`` (the next ``limit`` chars of the text). Prefer the latest
+    paragraph/line/sentence/word boundary that still fills at least half the limit; fall back to any
+    earlier space, then a hard cut at ``limit`` for an unbroken run. Always returns ``>= 1`` so the
+    caller makes progress."""
+    soft_min = limit // 2
+    for sep in ("\n\n", "\n"):               # paragraph/line break: drop it (next piece is lstripped)
+        i = window.rfind(sep)
+        if i >= soft_min:
+            return i
+    end = max(window.rfind(s) for s in _DISCORD_SENTENCE_END)   # keep the terminator with the head
+    if end >= soft_min:
+        return end + 1
+    i = window.rfind(" ")
+    if i >= soft_min:
+        return i
+    if i > 0:                                # no late boundary — at least don't split a word
+        return i
+    return limit                             # one unbroken run > limit: hard-cut

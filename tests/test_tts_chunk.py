@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from dmbot.tts.textsplit import (
+    DISCORD_CHAR_LIMIT,
     TTS_CHAR_LIMIT,
     chunk_text,
     has_speakable_content,
     normalize_for_tts,
+    split_for_discord,
 )
 
 
@@ -95,3 +97,43 @@ def test_chunk_drops_unspeakable_chunks() -> None:
     # every chunk of a real (emoji-laced) answer is speakable
     chunks = chunk_text(normalize_for_tts("Du öffnest die Tür. 🎲 Was tut ihr?"))
     assert chunks and all(has_speakable_content(c) for c in chunks)
+
+
+# --- split_for_discord: keep messages under Discord's 2000-char content cap (HTTP 400/50035) ----
+
+def test_discord_short_text_is_one_piece() -> None:
+    assert split_for_discord("Du siehst eine Tür.") == ["Du siehst eine Tür."]
+    assert split_for_discord("") == []          # nothing to send
+
+
+def test_discord_long_monologue_splits_under_limit_verbatim() -> None:
+    # the live failure: an !intro monologue longer than 2000 chars (here ~3.6k) → must become >1
+    # message, each <= 2000, and NOTHING may be lost or altered (chat text is verbatim, D38).
+    sentence = "Der Inquisitor mustert euch im Halbdunkel des Hangars und wägt jedes Wort ab. "
+    text = (sentence * 50).strip()
+    assert len(text) > DISCORD_CHAR_LIMIT
+    pieces = split_for_discord(text)
+    assert len(pieces) >= 2
+    assert all(len(p) <= DISCORD_CHAR_LIMIT for p in pieces)
+    # reassembling with single spaces recovers exactly the words (only boundary whitespace is lost)
+    assert " ".join(pieces).split() == text.split()
+
+
+def test_discord_prefers_sentence_boundaries() -> None:
+    # a sentence ends within the limit window — the break must land right after it, not mid-word
+    head = "Wort " * 190                              # 950 chars, ends with a space
+    text = head + "Letztes Wort. Danach kommt der zweite Teil des Auftakts ganz in Ruhe."
+    assert len(text) > 1000
+    pieces = split_for_discord(text, limit=1000)
+    assert len(pieces) == 2
+    assert pieces[0].endswith("Letztes Wort.")        # broke right after the sentence terminator
+    assert pieces[1].startswith("Danach kommt")
+
+
+def test_discord_hard_cuts_an_unbroken_run() -> None:
+    # pathological: a single token with no spaces longer than the limit must still be cut (no hang)
+    text = "x" * 5000
+    pieces = split_for_discord(text)
+    assert all(len(p) <= DISCORD_CHAR_LIMIT for p in pieces)
+    assert "".join(pieces) == text                    # verbatim, just sliced
+    assert len(pieces) == 3                            # 2000 + 2000 + 1000

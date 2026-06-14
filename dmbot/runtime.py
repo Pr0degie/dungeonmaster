@@ -34,6 +34,7 @@ from .stt import Transcriber
 from .llm.client import OllamaClient
 from .orchestrator import DMBrain
 from .tts.piper import PiperTTS
+from .tts.textsplit import split_for_discord
 from .bridge import BridgeClient
 from .rules import profile as profile_mod
 from .rules.profile import ProfileError, SystemProfile
@@ -408,12 +409,26 @@ class SessionRuntime:
     async def _send_with_retry(self, channel, content: str | None = None, *,
                                view: discord.ui.View | None = None,
                                embed: discord.Embed | None = None):
-        """Send a message, retrying once on a transient Discord 5xx (e.g. the 503 seen mid-session)."""
-        kwargs: dict = {}
-        if view is not None:
-            kwargs["view"] = view
-        if embed is not None:
-            kwargs["embed"] = embed
+        """Send a message, retrying once on a transient Discord 5xx (e.g. the 503 seen mid-session).
+        Discord caps message ``content`` at 2000 chars (HTTP 400, code 50035), so a longer answer
+        (the `!intro` monologue, a long DM turn) is split into several messages; any ``view``/``embed``
+        rides on the **last** one so the dice button / turn-order view sits after the full text.
+        Returns the last message sent."""
+        pieces = split_for_discord(content) if content else [None]
+        last = None
+        for i, piece in enumerate(pieces):
+            on_last = i == len(pieces) - 1
+            kwargs: dict = {}
+            if on_last and view is not None:
+                kwargs["view"] = view
+            if on_last and embed is not None:
+                kwargs["embed"] = embed
+            last = await self._send_once(channel, piece, kwargs)
+        return last
+
+    async def _send_once(self, channel, content: str | None, kwargs: dict):
+        """One ``channel.send``, retried once on a transient 5xx. A <500 error is re-raised (the
+        caller's command handler logs it); a 5xx is retried after 1 s, then dropped (returns None)."""
         try:
             return await channel.send(content, **kwargs)
         except discord.HTTPException as exc:
