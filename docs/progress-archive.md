@@ -9,6 +9,25 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+**`setup.ps1` macht jetzt alles end-to-end + dauerhaft im PATH; winget/ExecutionPolicy-Snags des Kollegen gelöst
+(2026-06-14, D75 → ADR 036). parse-OK, Suite 319 grün (nur Skripte/Doku).** Tobi: Setup soll wirklich alles erledigen
+(Download/Install/**PATH**/startklar, idempotent); beim Kollegen hakten **winget** + die **Skriptausführungs-Richtlinie**.
+- **Persistenter PATH** (vorher nur prozesslokal, `:80-81`): neuer Helfer `Add-ToUserPath` schreibt den User-PATH per
+  `[Environment]::SetEnvironmentVariable(…, "User")` (append-only, dedup, normalisiert) und aktualisiert auch `$env:PATH`;
+  hängt uv-Bin (`uv python dir --bin` = `~/.local/bin`, enthält uv.exe **+** das python-Shim) und das Ollama-Dir ein.
+- **Globales `python`:** `uv python install 3.12 **--default**` (vorher ohne `--default` → kein globales python). Vorhandenes
+  3.12 wird nicht verdrängt (nur angehängt). Verifiziert: `--default` existiert in uv 0.11.19; Dedup-Logik read-only getestet.
+- **Ollama voll automatisch:** robustes winget (`--disable-interactivity` + Accept-Flags, try/catch) → **offizieller
+  Installer-Fallback** (`OllamaSetup.exe /VERYSILENT /NORESTART`) → PATH → Dienst → Modelle. **Bug-Fix:** `ollama pull bge-m3`
+  (echter RAG-Embedder) statt veraltetem `nomic-embed-text` (`:178`).
+- **Prefetch (STT+XTTS) standardmäßig an** (`-SkipPrefetch` opt-out; `-Prefetch` als No-op-Alias behalten).
+- **Fresh-Machine-Härtung im Kopf:** TLS 1.2 erzwungen; `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`; `Unblock-File`
+  auf Repo-Skripte; **neues `setup.bat`** (Doppelklick → `powershell -ExecutionPolicy Bypass -File setup.ps1`) umgeht die Policy.
+- End-Summary gibt die RAG-Build-Befehle aus, wenn PDFs da sind aber `rag.db` fehlt. SETUP.md-Quickstart angeglichen.
+- **Bewusst nicht ausgeführt:** der volle Installer auf Tobis Maschine (persistente PATH-/Policy-/`--default`-Änderungen) —
+  Parser-Check (1652 Tokens, OK) + `Add-ToUserPath`-Dedup + `uv python find` read-only verifiziert. _Live offen: `setup.bat`
+  beim Kollegen auf frischer Maschine per Doppelklick._
+
 **Delivery-Pipeline aus `dmcog.py` nach `dmbot/voice/delivery.py` ausgelagert (2026-06-14, D74 → ADR 035). `dmcog.py`
 1188→662, `delivery.py` 575, Suite 319 grün, 0 Test-Änderungen, ruff sauber.** Tobis Wahl „b" — der eigentliche Hebel
 (größte Datei nach dem Cog-Split), per **Komposition** statt Vererbung. Vorgehen:
