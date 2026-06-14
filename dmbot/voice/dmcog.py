@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import tempfile
 import time
 from datetime import datetime
 
@@ -16,6 +17,7 @@ from discord.ext import commands
 
 from ..orchestrator import build_intro_director_msg, build_opening_director_msg
 from ..tts.textsplit import has_speakable_content, split_completed, strip_speech_punctuation
+from ..tts.wavio import concat_wavs
 from ..shutdown import to_daemon_thread
 from ..discord_ui.scene import SceneChangeView
 from ..discord_ui.rules import RulesView
@@ -29,8 +31,9 @@ from ..runtime import (
 
 log = logging.getLogger(__name__)
 
-# `!intro test` (ADR 031, experimental): a short gap between separately-spoken sentences, so the
-# sentence breaks stay audible even though the speech is stripped of punctuation. Tune by ear.
+# `!intro test` (ADR 031): the silence inserted between sentences when their separately-synthesised
+# WAVs are joined into ONE continuous track (so the monologue sounds like one read-aloud text, with
+# natural sentence pacing, even though the speech is stripped of punctuation). Tune by ear.
 _INTRO_SENTENCE_PAUSE_S = 0.2
 
 
@@ -613,13 +616,16 @@ class DMCog(commands.Cog):
 
     async def _deliver_intro_chunked(self, ctx: commands.Context, cid: int, guild_id: int | None,
                                      director_msg: str, np: int, timing: _TurnTiming) -> None:
-        """`!intro test` delivery (ADR 031, experimental): generate the whole monologue in one batch
-        (same `respond_opening` path, dice suppressed), post it once, then read it out **sentence by
-        sentence** — each sentence stripped of punctuation (`strip_speech_punctuation`, since XTTS
-        sometimes babbles on punctuation, D55) and spoken via a separate blocking `_speak`, with a
-        short `_INTRO_SENTENCE_PAUSE_S` gap between sentences so the breaks stay audible. The posted
-        chat text keeps its punctuation (readable, D38). A pause mid-read aborts cleanly. No dice
-        button / scene proposal (an opening turn never queues either)."""
+        """`!intro test` delivery (ADR 031): generate the whole monologue in one batch (same
+        `respond_opening` path, dice suppressed), post it once, then synthesise each sentence
+        **separately and punctuation-free** (`strip_speech_punctuation`, since XTTS babbles on
+        punctuation, D55) and **join the per-sentence WAVs into ONE continuous track** played in a
+        single bridge call — so the chunked speech sounds like one read-aloud text with natural
+        sentence pacing (a short `_INTRO_SENTENCE_PAUSE_S` silence between sentences) and **no**
+        inter-sentence gaps. Trade-off: the first audio waits for the whole monologue to synthesise
+        (XTTS ~0.5x realtime) — the price of gapless playback. The posted chat text keeps its
+        punctuation (readable, D38). A pause during synthesis aborts cleanly. No dice button / scene
+        proposal (an opening turn never queues either)."""
         try:
             async with ctx.typing():
                 answer = await self._rt._brain.respond_opening(cid, director_msg, num_predict=np)
@@ -636,22 +642,69 @@ class DMCog(commands.Cog):
         await self._rt._send_with_retry(ctx.channel, answer)
         completed, tail = split_completed(answer)            # split on punctuation FIRST, then strip it
         sentences = completed + ([tail] if tail else [])
-        log.info("🧩 !intro test: Monolog in %d Sätzen — wird satzweise (ohne Satzzeichen) vorgelesen",
-                 len(sentences))
-        for i, sentence in enumerate(sentences, 1):
-            if self._rt._paused:
-                log.info("🧩 !intro test: pausiert — restliche Sätze übersprungen")
-                break
-            speech = strip_speech_punctuation(sentence)
-            if not has_speakable_content(speech):
-                continue
-            log.info("🧩 Satz %d/%d: %s", i, len(sentences), speech)
-            await self._speak(speech, guild_id)
-            if i < len(sentences):
-                await asyncio.sleep(_INTRO_SENTENCE_PAUSE_S)
+        log.info("🧩 !intro test: Monolog in %d Sätzen — wird satzweise synthetisiert und zu einer "
+                 "durchgehenden Spur zusammengefügt", len(sentences))
+        if self._rt._tts_enabled:
+            await self._intro_speak_seamless(sentences, guild_id, timing)
+            timing.end = time.monotonic()
+            timing.log_line()
         if self._rt._push_to_talk and self._rt._sink is not None:
             await self._rt.reanchor_mic(ctx.channel)
         await self._autosave_turn(ctx.channel, answer)
+
+    async def _intro_speak_seamless(self, sentences: list[str], guild_id: int | None,
+                                    timing: _TurnTiming) -> None:
+        """Synthesise each punctuation-stripped sentence to its own WAV, then `concat_wavs` them
+        (with `_INTRO_SENTENCE_PAUSE_S` silence between) into ONE WAV and play it in a single
+        layer-2-muted bridge call — gapless, naturally paced, no XTTS punctuation babble. A pause
+        aborts before/while synthesising; every temp WAV (the per-sentence parts and the merged
+        track) is removed in `finally`, so an aborted/failed auftakt leaks nothing."""
+        parts: list[str] = []
+        try:
+            for i, sentence in enumerate(sentences, 1):
+                if self._rt._paused:
+                    log.info("🧩 !intro test: pausiert — Synthese abgebrochen")
+                    return
+                speech = strip_speech_punctuation(sentence)
+                if not has_speakable_content(speech):
+                    continue
+                log.info("🧩 Satz %d/%d: %s", i, len(sentences), speech)
+                try:
+                    t0 = time.perf_counter()
+                    wav = await to_daemon_thread(self._synthesize, speech)
+                except Exception:
+                    log.exception("TTS synthesis failed (intro sentence) — skipping it")
+                    continue
+                if wav is None:
+                    continue
+                timing.tts_ms = (timing.tts_ms or 0) + round((time.perf_counter() - t0) * 1000)
+                parts.append(wav)
+            if not parts or self._rt._paused:
+                return
+            fd, merged = tempfile.mkstemp(prefix="dm_intro_", suffix=".wav")
+            os.close(fd)
+            try:
+                concat_wavs(parts, merged, gap_s=_INTRO_SENTENCE_PAUSE_S)
+                timing.wav_s = _wav_duration_s(merged)
+                # One continuous playback. Layer-2 mute spans it (ADR 003); /speak blocks until the
+                # whole track finished, mirroring the streaming play_worker's bookkeeping.
+                sink = self._rt._sink if self._rt._pause_vad_while_speaking else None
+                if sink is not None:
+                    sink.mute()
+                if timing.first_audio is None:
+                    timing.first_audio = time.monotonic()
+                tb = time.monotonic()
+                try:
+                    await self._rt._bridge.speak(merged, guild_id=guild_id)
+                finally:
+                    timing.bridge_ms = (timing.bridge_ms or 0) + round((time.monotonic() - tb) * 1000)
+                    if sink is not None:
+                        sink.unmute()
+            finally:
+                _safe_remove(merged)
+        finally:
+            for wav in parts:
+                _safe_remove(wav)
 
     async def _auto_dm_turn(self, channel, guild_id: int | None) -> None:
         """Auto-trigger a DM turn when the mic button is released (push-to-talk). Waits for the

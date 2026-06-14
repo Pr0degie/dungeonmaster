@@ -16,14 +16,13 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
-import wave
 
 os.environ.setdefault("COQUI_TOS_AGREED", "1")  # accept the model licence non-interactively
 
 from TTS.api import TTS  # noqa: E402 — heavy (torch); only imported when XTTS is selected
 
 from .textsplit import chunk_text, normalize_for_tts  # noqa: E402
-from .wavio import write_silent_wav  # noqa: E402
+from .wavio import concat_wavs, write_silent_wav  # noqa: E402
 
 log = logging.getLogger(__name__)
 
@@ -47,17 +46,12 @@ _SYNTH_KWARGS = {"split_sentences": False, "repetition_penalty": _REPETITION_PEN
 
 
 def _concat_wavs(parts: list[str], out_path: str, gap_s: float = _CHUNK_GAP_S) -> None:
-    """Concatenate same-format WAV files into ``out_path`` with a short silence between each."""
-    with wave.open(parts[0], "rb") as first:
-        params = first.getparams()
-    gap = b"\x00" * (int(params.framerate * gap_s) * params.sampwidth * params.nchannels)
-    with wave.open(out_path, "wb") as out:
-        out.setparams(params)
-        for i, part in enumerate(parts):
-            with wave.open(part, "rb") as w:
-                out.writeframes(w.readframes(w.getnframes()))
-            if i < len(parts) - 1:
-                out.writeframes(gap)
+    """Concatenate same-format WAV files into ``out_path`` with a short silence between each.
+
+    Thin wrapper over the shared, torch-free :func:`dmbot.tts.wavio.concat_wavs` (so non-TTS
+    callers can reuse the join logic without importing this XTTS module); only the default gap
+    differs (XTTS's ``_CHUNK_GAP_S`` for re-joined sub-240-char chunks)."""
+    concat_wavs(parts, out_path, gap_s=gap_s)
 
 
 def _resolve_device(requested: str) -> str:
