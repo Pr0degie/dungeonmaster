@@ -202,6 +202,12 @@ auf disjunkten Dateien:
 - **Tests:** neues `tests/test_intro.py` (+7): Roster (Volltiefe, lean-Sheet-Toleranz, leerer Store), Director-Shape
   (mit/ohne Roster), `num_predict`-Override greift / Default bleibt 220. Volle Suite **300 grün** (293 → 300).
   Cog importiert sauber, `DMCog.intro` vorhanden. _Offen: Live-Gate (s. Next concrete step)._
+- **Nachrunde, testweise Delivery-B-Variante (Tobi): `!intro test`.** Gleicher generierter Monolog, aber andere
+  **Sprachausgabe**: erst komplett im Batch erzeugen, dann via `chunk_text` in kleinere Chunks teilen und
+  **nacheinander mit kurzer Pause** vorlesen (`_deliver_intro_chunked` + `_INTRO_CHUNK_PAUSE_S=0.6`), statt des
+  nahtlosen Streamings — zum Vergleich des Feels. **Nicht** die verworfene Multi-Beat-Sequenz (weiter eine
+  Generierung). Hinter dem `test`-Arg, Default-`!intro` unverändert; Suite **300 grün** (Delivery-Pfad, nicht
+  unit-testbar — Live-Vergleich). Wenn es sich nicht bewährt: `test`-Arg + Helfer wieder raus.
 
 **Doku: drei Setup-Dokumente in eine Root-`SETUP.md` zusammengeführt (2026-06-14). Kein Bot-/Phasen-Change,
 Suite unverändert 293 grün.** Tobi fragte, ob die SETUP.md noch passt und alles aus der Checkliste drin ist.

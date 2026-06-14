@@ -83,6 +83,13 @@ goals/connections/arc) over role-only.
 - **Live-unverified:** `!join` → `!intro` in Discord must confirm the DM speaks one monologue that
   names place/mission/arrival and involves each PC, with no dice prompt and no verbatim private
   goals — recorded as the open gate in `progress.md`.
+- **Experimental B-variant (2026-06-14, same session):** `!intro test` keeps the *same* generated
+  monologue but changes the **delivery** — batch-generate the whole text, then `chunk_text` it and
+  speak the chunks **sequentially with a short pause** (`_INTRO_CHUNK_PAUSE_S`) instead of the
+  seamless streamed read. It is **not** the rejected multi-beat sequence (still one generation, one
+  director turn); it's a delivery-feel A/B (`_deliver_intro_chunked`). Kept behind the `test` arg so
+  the default `!intro` is unchanged; if it doesn't earn its keep after the live test, delete the arg
+  + helper.
 - **Binds:** the `num_predict`-override parameter is now the way to vary a single turn's length cap;
   future opening/length work should reuse it rather than add per-call length state. The intro roster
   reads `Character.raw` flavour keys — keep `intro_roster_de`'s key list in step if the character

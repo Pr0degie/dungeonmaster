@@ -15,7 +15,7 @@ import discord
 from discord.ext import commands
 
 from ..orchestrator import build_intro_director_msg, build_opening_director_msg
-from ..tts.textsplit import has_speakable_content
+from ..tts.textsplit import chunk_text, has_speakable_content
 from ..shutdown import to_daemon_thread
 from ..discord_ui.scene import SceneChangeView
 from ..discord_ui.rules import RulesView
@@ -28,6 +28,10 @@ from ..runtime import (
 )
 
 log = logging.getLogger(__name__)
+
+# `!intro test` (ADR 031, experimental B-variant): pause between sequentially-spoken chunks, so the
+# chunk boundaries are audible (vs the seamless streamed monologue). Tune by ear during the test.
+_INTRO_CHUNK_PAUSE_S = 0.6
 
 
 class DMCog(commands.Cog):
@@ -542,14 +546,19 @@ class DMCog(commands.Cog):
         await self._deliver_answer(ctx.channel, guild_id, answer, timing)
 
     @commands.command(name="intro", aliases=["einleitung", "eroeffnung"])
-    async def intro(self, ctx: commands.Context) -> None:
+    async def intro(self, ctx: commands.Context, *, mode: str = "") -> None:
         """`!intro` — the DM speaks a full opening *monologue* for the campaign (ADR 031): where the
         party is, how they got here, what's going on + their mission, and a personal beat for each
         player character (drawn from each sheet's flavour). Unlike the short `!start` briefing it
         embeds a character roster into the director instruction and runs on a larger length budget
         (DM_INTRO_NUM_PREDICT). Same opening pipeline: the scene pointer is moved deterministically
         (golden rule #3), dice are suppressed, and it is streamed/spoken like any turn. `!start`
-        stays the quick briefing."""
+        stays the quick briefing.
+
+        `!intro test` — experimental B-variant of the *delivery only* (same generated monologue):
+        generate the whole text in one batch, then split it into smaller chunks and read them out
+        **one after another with a short pause** between chunks, instead of the seamless streamed
+        read. For comparing the feel of segmented vs streamed delivery."""
         if self._rt._paused:
             await ctx.send("⏸ Pausiert — mit **Esc** oder dem ⏸-Knopf fortsetzen.")
             return
@@ -570,6 +579,10 @@ class DMCog(commands.Cog):
         np = self._rt._intro_num_predict
         guild_id = ctx.guild.id if ctx.guild else None
         timing = self._begin_turn(cid)
+        # B-variant: batch-generate, then read smaller chunks out one after another (see helper).
+        if mode.strip().lower() == "test":
+            await self._deliver_intro_chunked(ctx, cid, guild_id, director_msg, np, timing)
+            return
         if self._use_streaming():
             timing.streamed = True
             try:
@@ -597,6 +610,42 @@ class DMCog(commands.Cog):
             await ctx.send("(Kein Auftakt — siehe Log.)")
             return
         await self._deliver_answer(ctx.channel, guild_id, answer, timing)
+
+    async def _deliver_intro_chunked(self, ctx: commands.Context, cid: int, guild_id: int | None,
+                                     director_msg: str, np: int, timing: _TurnTiming) -> None:
+        """`!intro test` delivery (ADR 031, experimental): generate the whole monologue in one batch
+        (same `respond_opening` path, dice suppressed), post it once, then split it into smaller
+        chunks (`chunk_text`) and read them out **sequentially with a short pause** between chunks —
+        the segmented B-variant of the seamless streamed monologue, for comparing the feel. Each
+        chunk is a separate blocking `_speak` (synth+play), so the pauses are real gaps; a pause mid
+        read aborts cleanly. No dice button / scene proposal (an opening turn never queues either)."""
+        try:
+            async with ctx.typing():
+                answer = await self._rt._brain.respond_opening(cid, director_msg, num_predict=np)
+                timing.llm_done = time.monotonic()
+                timing.take_llm_stats(self._rt._brain.last_llm_stats)
+        except Exception:
+            log.exception("intro monologue failed (chunked test)")
+            await ctx.send("(Der Spielleiter schweigt — Fehler beim Auftakt, siehe Log.)")
+            return
+        if not answer or not has_speakable_content(answer):
+            await ctx.send("(Kein Auftakt — siehe Log.)")
+            return
+        log.info("🎭 %s", answer)
+        await self._rt._send_with_retry(ctx.channel, answer)
+        chunks = chunk_text(answer)
+        log.info("🧩 !intro test: Monolog in %d Chunks — wird nacheinander vorgelesen", len(chunks))
+        for i, chunk in enumerate(chunks, 1):
+            if self._rt._paused:
+                log.info("🧩 !intro test: pausiert — restliche Chunks übersprungen")
+                break
+            log.info("🧩 Chunk %d/%d: %s", i, len(chunks), chunk)
+            await self._speak(chunk, guild_id)
+            if i < len(chunks):
+                await asyncio.sleep(_INTRO_CHUNK_PAUSE_S)
+        if self._rt._push_to_talk and self._rt._sink is not None:
+            await self._rt.reanchor_mic(ctx.channel)
+        await self._autosave_turn(ctx.channel, answer)
 
     async def _auto_dm_turn(self, channel, guild_id: int | None) -> None:
         """Auto-trigger a DM turn when the mic button is released (push-to-talk). Waits for the
