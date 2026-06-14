@@ -15,7 +15,7 @@ import discord
 from discord.ext import commands
 
 from ..orchestrator import build_intro_director_msg, build_opening_director_msg
-from ..tts.textsplit import chunk_text, has_speakable_content
+from ..tts.textsplit import has_speakable_content, split_completed, strip_speech_punctuation
 from ..shutdown import to_daemon_thread
 from ..discord_ui.scene import SceneChangeView
 from ..discord_ui.rules import RulesView
@@ -29,9 +29,9 @@ from ..runtime import (
 
 log = logging.getLogger(__name__)
 
-# `!intro test` (ADR 031, experimental B-variant): pause between sequentially-spoken chunks, so the
-# chunk boundaries are audible (vs the seamless streamed monologue). Tune by ear during the test.
-_INTRO_CHUNK_PAUSE_S = 0.6
+# `!intro test` (ADR 031, experimental): a short gap between separately-spoken sentences, so the
+# sentence breaks stay audible even though the speech is stripped of punctuation. Tune by ear.
+_INTRO_SENTENCE_PAUSE_S = 0.2
 
 
 class DMCog(commands.Cog):
@@ -556,9 +556,9 @@ class DMCog(commands.Cog):
         stays the quick briefing.
 
         `!intro test` — experimental B-variant of the *delivery only* (same generated monologue):
-        generate the whole text in one batch, then split it into smaller chunks and read them out
-        **one after another with a short pause** between chunks, instead of the seamless streamed
-        read. For comparing the feel of segmented vs streamed delivery."""
+        generate the whole text in one batch, then read it out **sentence by sentence** — each
+        sentence stripped of punctuation (XTTS sometimes babbles on punctuation) with a short pause
+        between sentences — instead of the seamless streamed read. For comparing the feel."""
         if self._rt._paused:
             await ctx.send("⏸ Pausiert — mit **Esc** oder dem ⏸-Knopf fortsetzen.")
             return
@@ -614,11 +614,12 @@ class DMCog(commands.Cog):
     async def _deliver_intro_chunked(self, ctx: commands.Context, cid: int, guild_id: int | None,
                                      director_msg: str, np: int, timing: _TurnTiming) -> None:
         """`!intro test` delivery (ADR 031, experimental): generate the whole monologue in one batch
-        (same `respond_opening` path, dice suppressed), post it once, then split it into smaller
-        chunks (`chunk_text`) and read them out **sequentially with a short pause** between chunks —
-        the segmented B-variant of the seamless streamed monologue, for comparing the feel. Each
-        chunk is a separate blocking `_speak` (synth+play), so the pauses are real gaps; a pause mid
-        read aborts cleanly. No dice button / scene proposal (an opening turn never queues either)."""
+        (same `respond_opening` path, dice suppressed), post it once, then read it out **sentence by
+        sentence** — each sentence stripped of punctuation (`strip_speech_punctuation`, since XTTS
+        sometimes babbles on punctuation, D55) and spoken via a separate blocking `_speak`, with a
+        short `_INTRO_SENTENCE_PAUSE_S` gap between sentences so the breaks stay audible. The posted
+        chat text keeps its punctuation (readable, D38). A pause mid-read aborts cleanly. No dice
+        button / scene proposal (an opening turn never queues either)."""
         try:
             async with ctx.typing():
                 answer = await self._rt._brain.respond_opening(cid, director_msg, num_predict=np)
@@ -633,16 +634,21 @@ class DMCog(commands.Cog):
             return
         log.info("🎭 %s", answer)
         await self._rt._send_with_retry(ctx.channel, answer)
-        chunks = chunk_text(answer)
-        log.info("🧩 !intro test: Monolog in %d Chunks — wird nacheinander vorgelesen", len(chunks))
-        for i, chunk in enumerate(chunks, 1):
+        completed, tail = split_completed(answer)            # split on punctuation FIRST, then strip it
+        sentences = completed + ([tail] if tail else [])
+        log.info("🧩 !intro test: Monolog in %d Sätzen — wird satzweise (ohne Satzzeichen) vorgelesen",
+                 len(sentences))
+        for i, sentence in enumerate(sentences, 1):
             if self._rt._paused:
-                log.info("🧩 !intro test: pausiert — restliche Chunks übersprungen")
+                log.info("🧩 !intro test: pausiert — restliche Sätze übersprungen")
                 break
-            log.info("🧩 Chunk %d/%d: %s", i, len(chunks), chunk)
-            await self._speak(chunk, guild_id)
-            if i < len(chunks):
-                await asyncio.sleep(_INTRO_CHUNK_PAUSE_S)
+            speech = strip_speech_punctuation(sentence)
+            if not has_speakable_content(speech):
+                continue
+            log.info("🧩 Satz %d/%d: %s", i, len(sentences), speech)
+            await self._speak(speech, guild_id)
+            if i < len(sentences):
+                await asyncio.sleep(_INTRO_SENTENCE_PAUSE_S)
         if self._rt._push_to_talk and self._rt._sink is not None:
             await self._rt.reanchor_mic(ctx.channel)
         await self._autosave_turn(ctx.channel, answer)

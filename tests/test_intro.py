@@ -19,6 +19,7 @@ import asyncio
 from dmbot.orchestrator import DMBrain, build_intro_director_msg, build_opening_director_msg
 from dmbot.rules import profile as profile_mod
 from dmbot.rules.characters import CharacterStore
+from dmbot.tts.textsplit import strip_speech_punctuation
 
 _IM = profile_mod.load("imperium_maledictum")
 
@@ -121,3 +122,21 @@ def test_opening_path_defaults_when_no_override() -> None:
     brain = DMBrain(client, profile=_IM, num_predict=220)
     asyncio.run(brain.respond_opening(2, build_opening_director_msg()))
     assert client.options["num_predict"] == 220   # unchanged default for the short briefing
+
+
+# --- punctuation strip for the `!intro test` delivery ----------------------------------------
+
+def test_strip_speech_punctuation_drops_sentence_marks_keeps_words() -> None:
+    out = strip_speech_punctuation("Inquisitor Halikarn spricht: „Findet die Quelle!“ — sofort.")
+    # all sentence/clause punctuation and the dash are gone (XTTS babbles on them, D55) …
+    for mark in ".,!?;:…—":
+        assert mark not in out
+    # … but the words survive and the word hyphen stays inside compounds
+    assert "Inquisitor Halikarn spricht" in out
+    assert "Findet die Quelle" in out
+    assert strip_speech_punctuation("Hive-Stadt Rokarth.") == "Hive-Stadt Rokarth"
+
+
+def test_strip_speech_punctuation_tidies_whitespace() -> None:
+    assert strip_speech_punctuation("Ja , wirklich ?  Gut .") == "Ja wirklich Gut"
+    assert strip_speech_punctuation("...") == ""   # nothing speakable left

@@ -84,12 +84,16 @@ goals/connections/arc) over role-only.
   names place/mission/arrival and involves each PC, with no dice prompt and no verbatim private
   goals — recorded as the open gate in `progress.md`.
 - **Experimental B-variant (2026-06-14, same session):** `!intro test` keeps the *same* generated
-  monologue but changes the **delivery** — batch-generate the whole text, then `chunk_text` it and
-  speak the chunks **sequentially with a short pause** (`_INTRO_CHUNK_PAUSE_S`) instead of the
-  seamless streamed read. It is **not** the rejected multi-beat sequence (still one generation, one
-  director turn); it's a delivery-feel A/B (`_deliver_intro_chunked`). Kept behind the `test` arg so
-  the default `!intro` is unchanged; if it doesn't earn its keep after the live test, delete the arg
-  + helper.
+  monologue but changes the **delivery** — batch-generate the whole text, then read it out **sentence
+  by sentence**, each sentence **stripped of punctuation** (`strip_speech_punctuation`) and spoken via
+  a separate blocking `_speak` with a short **0.2 s** gap (`_INTRO_SENTENCE_PAUSE_S`) between
+  sentences, instead of the seamless streamed read. Rationale for the punctuation strip: XTTS
+  sometimes loops/babbles **on** punctuation (D55) — punctuation-free sentences sidestep that, and the
+  0.2 s gap restores the sentence breaks the dropped punctuation would have carried. The posted chat
+  text keeps its punctuation (readable, D38). It is **not** the rejected multi-beat sequence (still
+  one generation, one director turn); it's a delivery-feel A/B (`_deliver_intro_chunked`). Kept behind
+  the `test` arg so the default `!intro` is unchanged; if it doesn't earn its keep after the live
+  test, delete the arg + helper.
 - **Binds:** the `num_predict`-override parameter is now the way to vary a single turn's length cap;
   future opening/length work should reuse it rather than add per-call length state. The intro roster
   reads `Character.raw` flavour keys — keep `intro_roster_de`'s key list in step if the character

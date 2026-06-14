@@ -203,10 +203,12 @@ auf disjunkten Dateien:
   (mit/ohne Roster), `num_predict`-Override greift / Default bleibt 220. Volle Suite **300 grün** (293 → 300).
   Cog importiert sauber, `DMCog.intro` vorhanden. _Offen: Live-Gate (s. Next concrete step)._
 - **Nachrunde, testweise Delivery-B-Variante (Tobi): `!intro test`.** Gleicher generierter Monolog, aber andere
-  **Sprachausgabe**: erst komplett im Batch erzeugen, dann via `chunk_text` in kleinere Chunks teilen und
-  **nacheinander mit kurzer Pause** vorlesen (`_deliver_intro_chunked` + `_INTRO_CHUNK_PAUSE_S=0.6`), statt des
-  nahtlosen Streamings — zum Vergleich des Feels. **Nicht** die verworfene Multi-Beat-Sequenz (weiter eine
-  Generierung). Hinter dem `test`-Arg, Default-`!intro` unverändert; Suite **300 grün** (Delivery-Pfad, nicht
+  **Sprachausgabe**: erst komplett im Batch erzeugen, dann **satzweise** vorlesen — jeder Satz **ohne Satzzeichen**
+  (`strip_speech_punctuation`, weil XTTS sich an Satzzeichen verhaspelt, D55) über ein eigenes blockierendes
+  `_speak`, mit **0,2 s Pause** zwischen den Sätzen (`_deliver_intro_chunked` + `_INTRO_SENTENCE_PAUSE_S=0.2`),
+  statt des nahtlosen Streamings — zum Vergleich des Feels. Der gepostete Chat-Text behält die Satzzeichen
+  (lesbar, D38). **Nicht** die verworfene Multi-Beat-Sequenz (weiter eine Generierung). Hinter dem `test`-Arg,
+  Default-`!intro` unverändert; +2 Unit-Tests für `strip_speech_punctuation` (Delivery-Pfad selbst nicht
   unit-testbar — Live-Vergleich). Wenn es sich nicht bewährt: `test`-Arg + Helfer wieder raus.
 
 **Doku: drei Setup-Dokumente in eine Root-`SETUP.md` zusammengeführt (2026-06-14). Kein Bot-/Phasen-Change,

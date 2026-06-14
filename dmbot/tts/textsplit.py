@@ -74,6 +74,21 @@ def normalize_for_tts(text: str) -> str:
     return cleaned
 
 
+# Sentence/clause punctuation + dash variants → a space. The ASCII word hyphen "-" is deliberately
+# NOT here (it belongs inside words: "Hive-Stadt"). Used by `!intro test` only.
+_SPEECH_PUNCT = str.maketrans({ch: " " for ch in ".,!?;:…—–―‒‑−"})
+
+
+def strip_speech_punctuation(text: str) -> str:
+    """Drop sentence/clause punctuation (``. , ! ? ; :`` + ``…`` + dash variants) from speech text.
+
+    `!intro test` only (ADR 031): XTTS sometimes loops/babbles **on** punctuation (D55) — feeding it
+    punctuation-free sentences sidesteps that, and the sentence breaks are restored by the short pause
+    between separately-spoken sentences. The word hyphen ``-`` stays (it's part of words). Whitespace
+    is tidied; may return ``""`` (the caller guards with :func:`has_speakable_content`)."""
+    return re.sub(r"\s{2,}", " ", text.translate(_SPEECH_PUNCT)).strip()
+
+
 def has_speakable_content(text: str) -> bool:
     """True if ``text`` has anything worth synthesising — at least one letter or digit. A turn that
     reduces to only punctuation / quotes / backticks (e.g. a marker-only answer the model wrapped in
