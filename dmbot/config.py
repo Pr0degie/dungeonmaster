@@ -49,6 +49,8 @@ class Config:
     autosave: bool
     autorecap: bool
     scene_mode: str
+    speech_mode: str
+    speech_punct: str
 
     @classmethod
     def load(cls) -> "Config":
@@ -186,4 +188,19 @@ class Config:
             scene_mode=(os.environ.get("DM_SCENE_MODE", "verbunden").strip().lower()
                         if os.environ.get("DM_SCENE_MODE", "verbunden").strip().lower()
                         in ("verbunden", "frei") else "verbunden"),
+            # Spoken-delivery mode (ADR 033), applied to EVERY turn, also switchable live via
+            # !sprechmodus. Two orthogonal axes:
+            #  - DM_SPEECH_MODE: "stream" (sentence-by-sentence, fast start, small gaps) vs
+            #    "nahtlos" (synth all → one continuous track → one bridge call; gapless but waits
+            #    for the whole turn to synthesise — only snappy on a GPU, see ADR 002).
+            #  - DM_SPEECH_PUNCT: "flach" (strip ALL punctuation — no XTTS babble, flatter) vs
+            #    "intoniert" (keep .,!?;:- via the wrapper's normalize_for_tts — sentence/question
+            #    intonation, but XTTS may babble on punctuation, D55).
+            # Default stream+flach: consistent, gibberish-free, practical on CPU. Unknown → default.
+            speech_mode=(os.environ.get("DM_SPEECH_MODE", "stream").strip().lower()
+                         if os.environ.get("DM_SPEECH_MODE", "stream").strip().lower()
+                         in ("stream", "nahtlos") else "stream"),
+            speech_punct=(os.environ.get("DM_SPEECH_PUNCT", "flach").strip().lower()
+                          if os.environ.get("DM_SPEECH_PUNCT", "flach").strip().lower()
+                          in ("flach", "intoniert") else "flach"),
         )

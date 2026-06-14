@@ -34,7 +34,7 @@ from .stt import Transcriber
 from .llm.client import OllamaClient
 from .orchestrator import DMBrain
 from .tts.piper import PiperTTS
-from .tts.textsplit import split_for_discord
+from .tts.textsplit import split_for_discord, strip_speech_punctuation
 from .bridge import BridgeClient
 from .rules import profile as profile_mod
 from .rules.profile import ProfileError, SystemProfile
@@ -237,6 +237,11 @@ class SessionRuntime:
         # per-turn cap so the auftakt can cover place + mission + how they arrived AND a personal beat
         # for each player character. Read by DMCog's !intro command; the normal turn cap is unchanged.
         self._intro_num_predict = config.dm_intro_num_predict
+        # Global spoken-delivery mode (ADR 033), applied to every turn, switchable live via
+        # !sprechmodus. _speech_mode: "stream" vs "nahtlos" (continuous one-track playback).
+        # _speech_punct: "flach" (strip all punctuation) vs "intoniert" (keep it for prosody).
+        self._speech_mode = config.speech_mode
+        self._speech_punct = config.speech_punct
         # Per-turn conversation autosave (D41): append every completed turn to
         # data/sessions/<id>/history.jsonl so a crash doesn't lose the evening's thread; restored on
         # !join, rotated on !leave. World state already persists separately (ADR 015).
@@ -441,6 +446,19 @@ class SessionRuntime:
             except discord.HTTPException:
                 log.warning("Discord send retry also failed — dropping the message", exc_info=True)
                 return None
+
+    # ----- Spoken-delivery mode (ADR 033) --------------------------------------------------------
+
+    def speech_transform(self):
+        """The per-sentence text transform for the current intonation axis, applied before synthesis
+        (chat text is never touched). ``flach`` → strip ALL punctuation (no XTTS babble, flatter);
+        ``intoniert`` → ``None`` so the wrapper's ``normalize_for_tts`` keeps ``.,!?;:-`` for prosody."""
+        return strip_speech_punctuation if self._speech_punct == "flach" else None
+
+    def deliver_seamless(self) -> bool:
+        """True when the delivery axis is ``nahtlos`` — synth the whole turn, join into one continuous
+        track, play in a single bridge call (gapless, but waits for the full synthesis)."""
+        return self._speech_mode == "nahtlos"
 
     # ----- Channel / character / state plumbing --------------------------------------------------
 

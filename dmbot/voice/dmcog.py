@@ -209,14 +209,15 @@ class DMCog(commands.Cog):
             log.exception("could not autosave the turn history for channel %s", cid)
 
     async def _deliver_answer(self, channel, guild_id: int | None, answer: str,
-                              timing: _TurnTiming, *,
-                              speech_transform: Callable[[str], str] | None = None) -> None:
+                              timing: _TurnTiming) -> None:
         """Batch delivery: log, post (5xx-resilient), then speak and post the dice button
         **concurrently** so the 🎲 appears while the DM speaks (Task 2 / D40), and re-anchor the
-        mic button. Closes out the per-turn ``timing`` (tts/bridge via ``_speak``) and emits the
-        single ``[latency]`` line once ``/speak`` returned. ``speech_transform`` is the non-streaming
-        (DM_STREAMING=0) counterpart to the streaming path's: applied to the spoken text only, so the
-        `!intro` fallback stays punctuation-free like its streamed form."""
+        mic button. Closes out the per-turn ``timing`` (tts/bridge via the speak step) and emits the
+        single ``[latency]`` line once ``/speak`` returned. Spoken delivery follows the global
+        `!sprechmodus` (ADR 033): the intonation transform comes from ``self._rt.speech_transform()``
+        (applied to the spoken text only, chat text untouched, D38), and ``nahtlos`` speaks the whole
+        answer as ONE continuous track (`_speak_seamless`) while ``stream``/default speaks it as one
+        `_speak`. (This batch path runs for `nahtlos` OR when streaming is off.)"""
         timing.answer_chars = len(answer)
         # Snapshot the turn's user_msg NOW (generation just ended): a dice click during the
         # playback below starts the next turn and overwrites the brain's _last_turn (D43 race fix).
@@ -226,13 +227,19 @@ class DMCog(commands.Cog):
         log.info("⏱ LLM %d ms%s", timing.respond_ms(), " (redo)" if timing.kind == "redo" else "")
         # A content-less answer (a marker-only turn the model wrapped in a code fence, etc.) must not
         # be posted or spoken — XTTS would read a lone quote for ~15 s. The dice button still posts.
+        transform = self._rt.speech_transform()
         speakable = has_speakable_content(answer)
         speak_task = None
         if speakable:
             await self._rt._send_with_retry(channel, answer)
-            speak_task = asyncio.create_task(
-                self._speak(answer, guild_id, timing, speech_transform=speech_transform)
-            )
+            if self._rt.deliver_seamless():
+                speak_task = asyncio.create_task(
+                    self._speak_seamless(answer, guild_id, timing, transform=transform)
+                )
+            else:
+                speak_task = asyncio.create_task(
+                    self._speak(answer, guild_id, timing, speech_transform=transform)
+                )
         else:
             log.info("(inhaltslose Antwort — nichts gepostet/gesprochen; nur ggf. Würfel)")
         dice_task = asyncio.create_task(self._rt.handle_dice(channel))
@@ -277,18 +284,18 @@ class DMCog(commands.Cog):
     async def _deliver_streaming(self, channel, guild_id: int | None, timing: _TurnTiming, *,
                                  redo: bool = False, extra_text: str | None = None,
                                  opening: str | None = None,
-                                 opening_num_predict: int | None = None,
-                                 speech_transform: Callable[[str], str] | None = None) -> str | None:
+                                 opening_num_predict: int | None = None) -> str | None:
         """Streaming delivery (ADR 017): the producer drives the brain's streaming turn while a
         synth→playback pipeline speaks each sentence (synth N+1 while N plays); the Discord text
         post + 🎲 dice button happen at generation-end (mid-playback). Layer-2 mute spans the whole
         answer (not per sentence); pause stops emission cleanly. Returns the stored answer or None.
 
-        ``speech_transform`` (optional): applied to each sentence's text **before synthesis only**
-        (the posted chat text is untouched, D38). `!intro` passes ``strip_speech_punctuation`` so the
-        streamed monologue is spoken punctuation-free (no XTTS babble, D55) yet starts after the first
-        sentence — the fast, small-gap counterpart to the seamless `!intro test` one-track delivery."""
+        Each sentence is run through the global intonation transform (`self._rt.speech_transform()`,
+        ADR 033) **before synthesis only** — `flach` strips all punctuation (no XTTS babble, D55),
+        `intoniert` keeps it; the posted chat text is untouched (D38). This is the `stream` delivery
+        mode (fast start, small gaps); `nahtlos` takes the batch path instead."""
         channel_id = self._rt._brain_channel(channel)
+        transform = self._rt.speech_transform()         # global intonation axis, fixed for this turn
         sentence_q: asyncio.Queue = asyncio.Queue()
         wav_q: asyncio.Queue = asyncio.Queue(maxsize=1)  # bounds synth to ~1 ahead of playback
         sink = self._rt._sink if self._rt._pause_vad_while_speaking else None
@@ -331,8 +338,8 @@ class DMCog(commands.Cog):
                 if self._rt._paused or not self._rt._tts_enabled:
                     continue
                 text = s
-                if speech_transform is not None:
-                    text = speech_transform(s)         # speech-only transform (e.g. strip punctuation)
+                if transform is not None:
+                    text = transform(s)                # speech-only transform (e.g. strip punctuation)
                     if not has_speakable_content(text):
                         continue                       # a sentence that strips to nothing → no synth
                 try:
@@ -454,7 +461,7 @@ class DMCog(commands.Cog):
             return
         guild_id = ctx.guild.id if ctx.guild else None
         timing = self._begin_turn(channel_id)
-        if self._use_streaming():
+        if not self._rt.deliver_seamless() and self._use_streaming():
             timing.streamed = True
             try:
                 async with ctx.typing():
@@ -491,7 +498,7 @@ class DMCog(commands.Cog):
         channel_id = self._rt._active_vc_id if self._rt._active_vc_id is not None else ctx.channel.id
         guild_id = ctx.guild.id if ctx.guild else None
         timing = self._begin_turn(channel_id, kind="redo")
-        if self._use_streaming():
+        if not self._rt.deliver_seamless() and self._use_streaming():
             timing.streamed = True
             try:
                 async with ctx.typing():
@@ -544,7 +551,7 @@ class DMCog(commands.Cog):
         director_msg = build_opening_director_msg()
         guild_id = ctx.guild.id if ctx.guild else None
         timing = self._begin_turn(cid)
-        if self._use_streaming():
+        if not self._rt.deliver_seamless() and self._use_streaming():
             timing.streamed = True
             try:
                 async with ctx.typing():
@@ -571,6 +578,35 @@ class DMCog(commands.Cog):
             await ctx.send("(Kein Auftakt — siehe Log.)")
             return
         await self._deliver_answer(ctx.channel, guild_id, answer, timing)
+
+    @commands.command(name="sprechmodus", aliases=["sprache", "voicemode"])
+    async def sprechmodus(self, ctx: commands.Context, *, args: str = "") -> None:
+        """`!sprechmodus` — global spoken-delivery mode for EVERY DM turn (ADR 033). Two axes, each
+        set by a word (give either or both, any order); bare `!sprechmodus` just shows the current:
+          • delivery — `stream` (speak sentence-by-sentence: fast start, small gaps) |
+            `nahtlos` (synth all → one continuous track → one bridge call: gapless, but waits for the
+            WHOLE turn to synthesise — only snappy on a GPU, see ADR 002);
+          • intonation — `flach` (strip ALL punctuation: no XTTS babble, flatter) |
+            `intoniert` (keep `.,!?;:-` for sentence/question prosody, but XTTS may babble, D55).
+        Takes effect on the next turn. `!intro test` stays a fixed nahtlos+flach comparison anchor."""
+        changed, unknown = False, []
+        for w in args.lower().split():
+            if w in ("stream", "nahtlos"):
+                self._rt._speech_mode = w
+                changed = True
+            elif w in ("flach", "intoniert"):
+                self._rt._speech_punct = w
+                changed = True
+            else:
+                unknown.append(w)
+        if unknown:
+            await ctx.send(
+                f"❓ Unbekannt: {', '.join(unknown)} — nutze `stream`/`nahtlos` und/oder `flach`/`intoniert`."
+            )
+        note = (" ⏳ wartet auf die volle Synthese vor dem ersten Ton (auf CPU langsam)"
+                if self._rt._speech_mode == "nahtlos" else "")
+        prefix = "🔊 Sprechmodus jetzt" if changed else "🔊 Sprechmodus"
+        await ctx.send(f"{prefix}: **{self._rt._speech_mode}** + **{self._rt._speech_punct}**{note}")
 
     @commands.command(name="intro", aliases=["einleitung", "eroeffnung"])
     async def intro(self, ctx: commands.Context, *, mode: str = "") -> None:
@@ -613,13 +649,12 @@ class DMCog(commands.Cog):
         if mode.strip().lower() == "test":
             await self._deliver_intro_chunked(ctx, cid, guild_id, director_msg, np, timing)
             return
-        if self._use_streaming():
+        if not self._rt.deliver_seamless() and self._use_streaming():
             timing.streamed = True
             try:
                 async with ctx.typing():
                     answer = await self._deliver_streaming(
                         ctx.channel, guild_id, timing, opening=director_msg, opening_num_predict=np,
-                        speech_transform=strip_speech_punctuation,  # spoken punctuation-free (D55)
                     )
             except Exception:
                 log.exception("intro monologue failed (stream)")
@@ -640,8 +675,7 @@ class DMCog(commands.Cog):
         if answer is None:
             await ctx.send("(Kein Auftakt — siehe Log.)")
             return
-        await self._deliver_answer(ctx.channel, guild_id, answer, timing,
-                                   speech_transform=strip_speech_punctuation)
+        await self._deliver_answer(ctx.channel, guild_id, answer, timing)
 
     async def _deliver_intro_chunked(self, ctx: commands.Context, cid: int, guild_id: int | None,
                                      director_msg: str, np: int, timing: _TurnTiming) -> None:
@@ -669,32 +703,35 @@ class DMCog(commands.Cog):
             return
         log.info("🎭 %s", answer)
         await self._rt._send_with_retry(ctx.channel, answer)
-        completed, tail = split_completed(answer)            # split on punctuation FIRST, then strip it
-        sentences = completed + ([tail] if tail else [])
-        log.info("🧩 !intro test: Monolog in %d Sätzen — wird satzweise synthetisiert und zu einer "
-                 "durchgehenden Spur zusammengefügt", len(sentences))
         if self._rt._tts_enabled:
-            await self._intro_speak_seamless(sentences, guild_id, timing)
+            # `!intro test` = explicit one-off "seamless + punctuation-free", independent of the
+            # global !sprechmodus, as the known-good comparison anchor.
+            await self._speak_seamless(answer, guild_id, timing, transform=strip_speech_punctuation)
             timing.end = time.monotonic()
             timing.log_line()
         if self._rt._push_to_talk and self._rt._sink is not None:
             await self._rt.reanchor_mic(ctx.channel)
         await self._autosave_turn(ctx.channel, answer)
 
-    async def _intro_speak_seamless(self, sentences: list[str], guild_id: int | None,
-                                    timing: _TurnTiming) -> None:
-        """Synthesise each punctuation-stripped sentence to its own WAV, then `concat_wavs` them
-        (with `_INTRO_SENTENCE_PAUSE_S` silence between) into ONE WAV and play it in a single
-        layer-2-muted bridge call — gapless, naturally paced, no XTTS punctuation babble. A pause
-        aborts before/while synthesising; every temp WAV (the per-sentence parts and the merged
-        track) is removed in `finally`, so an aborted/failed auftakt leaks nothing."""
+    async def _speak_seamless(self, text: str, guild_id: int | None, timing: _TurnTiming, *,
+                              transform: Callable[[str], str] | None = None) -> bool:
+        """Speak ``text`` as ONE continuous track (the `nahtlos` delivery, ADR 033): split into
+        sentences, synthesise each separately (optionally ``transform``-ed, e.g. punctuation-stripped
+        so XTTS doesn't babble, D55), `concat_wavs` them with a short `_INTRO_SENTENCE_PAUSE_S` silence
+        between, and play the single track in one layer-2-muted bridge call — gapless, naturally
+        paced. Trade-off: nothing is heard until the WHOLE text is synthesised (XTTS is slower than
+        realtime; only snappy on a GPU). A pause aborts before/while synthesising; every temp WAV (the
+        per-sentence parts and the merged track) is removed in `finally`, so an aborted/failed turn
+        leaks nothing. Returns True if a track played."""
+        completed, tail = split_completed(text)              # split on punctuation FIRST (then transform)
+        sentences = completed + ([tail] if tail else [])
         parts: list[str] = []
         try:
             for i, sentence in enumerate(sentences, 1):
                 if self._rt._paused:
-                    log.info("🧩 !intro test: pausiert — Synthese abgebrochen")
-                    return
-                speech = strip_speech_punctuation(sentence)
+                    log.info("🧩 nahtlos: pausiert — Synthese abgebrochen")
+                    return False
+                speech = transform(sentence) if transform is not None else sentence
                 if not has_speakable_content(speech):
                     continue
                 log.info("🧩 Satz %d/%d: %s", i, len(sentences), speech)
@@ -702,15 +739,15 @@ class DMCog(commands.Cog):
                     t0 = time.perf_counter()
                     wav = await to_daemon_thread(self._synthesize, speech)
                 except Exception:
-                    log.exception("TTS synthesis failed (intro sentence) — skipping it")
+                    log.exception("TTS synthesis failed (seamless sentence) — skipping it")
                     continue
                 if wav is None:
                     continue
                 timing.tts_ms = (timing.tts_ms or 0) + round((time.perf_counter() - t0) * 1000)
                 parts.append(wav)
             if not parts or self._rt._paused:
-                return
-            fd, merged = tempfile.mkstemp(prefix="dm_intro_", suffix=".wav")
+                return False
+            fd, merged = tempfile.mkstemp(prefix="dm_seamless_", suffix=".wav")
             os.close(fd)
             try:
                 concat_wavs(parts, merged, gap_s=_INTRO_SENTENCE_PAUSE_S)
@@ -724,11 +761,12 @@ class DMCog(commands.Cog):
                     timing.first_audio = time.monotonic()
                 tb = time.monotonic()
                 try:
-                    await self._rt._bridge.speak(merged, guild_id=guild_id)
+                    played = await self._rt._bridge.speak(merged, guild_id=guild_id)
                 finally:
                     timing.bridge_ms = (timing.bridge_ms or 0) + round((time.monotonic() - tb) * 1000)
                     if sink is not None:
                         sink.unmute()
+                return bool(played)
             finally:
                 _safe_remove(merged)
         finally:
@@ -753,7 +791,7 @@ class DMCog(commands.Cog):
         timing.stt_ms = self._rt._last_stt_ms.pop(channel_id, timing.stt_ms)
         if self._rt._brain.pending_count(channel_id) == 0:
             return
-        if self._use_streaming():
+        if not self._rt.deliver_seamless() and self._use_streaming():
             timing.streamed = True
             try:
                 await self._deliver_streaming(channel, guild_id, timing)
@@ -778,7 +816,7 @@ class DMCog(commands.Cog):
         if self._rt._paused:  # frozen — the roll result is already posted; narration waits for resume
             return
         timing = self._begin_turn(self._rt._brain_channel(channel), kind="roll")
-        if self._use_streaming():
+        if not self._rt.deliver_seamless() and self._use_streaming():
             timing.streamed = True
             try:
                 await self._deliver_streaming(channel, guild_id, timing)
