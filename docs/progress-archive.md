@@ -9,6 +9,20 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+**`orchestrator.py` verschlankt: reine Helfer nach `dmbot/llm/*` ausgelagert (2026-06-14, D70 → ADR 034). Suite 319 grün.**
+Ziel: Kontext-Effizienz für künftige Agenten — große, zusammenhängende Funktionen sinnvoll auslagern, **Funktionalität
+unverändert** (Tobis Vorgabe). Vorlauf: Fan-out-Analyse (zwei Plan-Agenten über `dmcog.py` + `orchestrator.py`); E1–E3
+von `orchestrator` zuerst umgesetzt:
+- **`dmbot/llm/sanitize.py`** — die Sprech-Säuberer (`_ROLE_LABEL` + Meta-/Preamble-/Trailing-Regexes, `_cut_at_labels`,
+  `_strip_leading_label`, `_sanitize*`, `_trim_to_last_sentence`). Am häufigsten editiert (Playtest-Loop).
+- **`dmbot/llm/echo_guard.py`** — `is_echo`/`is_self_repetition` + `_*_NUDGE`/`_ROLL_DIRECTIVE` (D43/ADR 018, W4).
+- **`dmbot/llm/director_msgs.py`** — `build_opening_director_msg`/`build_intro_director_msg` (ADR 031).
+- **Verhaltensidentisch:** byte-exakt per Slice-Skript verschoben (keine Regex-Abschreibfehler); **Re-Export-Shims** in
+  `orchestrator.py` (`# noqa: F401`) halten den Import-Surface stabil → **0 Test-Änderungen**, Suite **319 grün**
+  (die Shims fingen prompt `_ROLE_LABEL` ab, das `summarize`/`answer_rules` nutzen). `orchestrator.py` **1175→933**.
+  `finalize_answer`, `StreamAssembler` und der `DMBrain`-Körper bleiben (geteilter Per-Channel-State → nicht trennen).
+- _Direkt danach **E4** (D71) nachgezogen: `StreamAssembler`+`finalize_answer` → `llm/stream_assembler.py`, 933→783._
+
 **Dritter Lieferart-Modus `puffer` (Head-Start-Puffer) — Tobis Idee umgesetzt (2026-06-14, D69 → ADR 033 Addendum).
 Suite 319 grün.** Tobi: „warum lädst du nicht die ersten 3 Sätze und spielst den ersten ab und lädst die anderen
 parallel?". Genau das, als **dritte Lieferart** zwischen `stream` und `nahtlos`:
