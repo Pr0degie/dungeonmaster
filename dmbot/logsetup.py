@@ -109,6 +109,9 @@ class _ConsoleFormatter(logging.Formatter):
             col = _RED if record.levelno >= logging.ERROR else _YELLOW
             return f"{_DIM}{ts}{_RESET} {col}{record.levelname:<7} {_short_name(record.name)}{_RESET} | {col}{msg}{_RESET}"
 
+        if msg.startswith("logged in as"):  # the startup "ready" line (__main__) — a bit brighter
+            return f"{_DIM}{_GREEN}{ts}{_RESET}{_GAP}{_BGREEN}{msg}{_RESET}"
+
         # INFO: the curated console only shows dmbot.* lines (see _ConsoleNoiseFilter), so the logger
         # name is redundant noise — drop it. The message (usually emoji-prefixed) stands on its own,
         # and pasted logs stay token-light.
