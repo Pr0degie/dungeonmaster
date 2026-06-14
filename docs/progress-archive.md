@@ -9,6 +9,21 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+**Ursache von „lädt ewigkeiten" gefunden + `!intro` als Schnellstart-Variante (2026-06-14, D66 → ADR 031 Addendum).
+Suite 309 grün.** Tobi: `!intro test` klingt „mega geil", aber lädt ewig. Live-Log entlarvte die Ursache —
+`XTTS v2 loaded on cpu` + `first_audio=378s` / `tts=314775ms` / `wav=224.2s` (32 Sätze, 3,7 min Audio):
+- **XTTS läuft auf CPU** (`.env TTS_DEVICE=cpu`) — **bewusst**, nicht kaputt: die 4070 hält schon nemo + Whisper;
+  XTTS auf cuda kippt das VRAM → CUDA-Device-Assert, vergiftet den Prozess, **STT stirbt mit** (live 2026-06-13,
+  dokumentiert in `.env` + ADR 002). torch *kann* CUDA (`cu130`, GPU da) — reines VRAM-Koexistenz-Problem.
+- **CPU-Synthese < Echtzeit** → lückenlos (`!intro test`) wartet auf die volle Synthese (Minuten). Auf Rückfrage
+  wählte Tobi **Schnellstart mit Mini-Lücken**.
+- **Umgesetzt:** optionaler `speech_transform` durch `_deliver_streaming`/`_deliver_answer`/`_speak` (nur auf den
+  **gesprochenen** Text, Chat-Text unangetastet, D38). Plain **`!intro`** streamt jetzt punktfrei → spricht nach dem
+  1. Satz los; **`!intro test`** bleibt die lückenlose Eine-Spur-Variante. Default-Pfad aller anderen Turns
+  byte-identisch (Transform nur wenn gesetzt). Suite **309 grün**, `dmcog`-Import im venv geprüft.
+- _Live offen: `!intro` (schnell, kleine Lücken) vs `!intro test` (lückenlos, langsamer Start) vergleichen.
+  Größerer Hebel: LLM auf 5080 auslagern (`OLLAMA_HOST`/Tailscale → `TTS_DEVICE=cuda`, ADR 002) ODER Monolog kürzen._
+
 **`!intro test`: gechunkte Synthese, aber Wiedergabe als EINE durchgehende Spur (2026-06-14, D65 → ADR 031 Addendum).
 Suite 309 grün.** Kollegen-Feedback nach dem 2000-Zeichen-Fix: Aussprache korrekt/ohne Anfälle, aber zäh — Tobi
 benannte den Flaschenhals: die **Synthese jedes Satzes** ist die Totstille zwischen den Chunks. Ziel (geklärt per

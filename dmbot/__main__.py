@@ -23,7 +23,7 @@ from .config import Config
 from .llm.preflight import check_ollama
 from .logsetup import setup_logging
 from .runtime import SessionRuntime
-from .shutdown import progress
+from .shutdown import disconnect_voice, progress
 from .voice.voicecog import VoiceCog
 from .voice.dicecog import DiceCog
 from .voice.dmcog import DMCog
@@ -93,7 +93,10 @@ class DMBot(commands.Bot):
         for vc in voice:
             with progress.step(f"Voice-Channel verlassen ({getattr(vc, 'channel', '?')})"):
                 try:
-                    await vc.disconnect(force=True)
+                    # disconnect_voice bounds discord.py's post-leave confirmation wait (up to
+                    # VoiceClient.timeout=30s) — moot at exit, and the cause of the slow leave.
+                    if not await disconnect_voice(vc):
+                        log.warning("voice confirm wait abandoned at shutdown (already left)")
                 except Exception:
                     log.exception("voice disconnect failed (continuing shutdown)")
         for name in list(self.cogs):

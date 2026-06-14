@@ -71,3 +71,26 @@ is a class constant kept in sync with its `cog_unload` body.
   The `TEARDOWN_STEPS` constant can drift from `cog_unload`; a wrong count is cosmetic, not fatal.
 - **To verify live:** Ctrl+C twice during a streamed DM turn → shutdown is prompt (no multi-second
   hang) and prints `[1/n] … ✓` per stage plus a summary naming the dropped synth.
+
+## Addendum (2026-06-14, D67) — bound the voice disconnect confirmation wait
+
+A later run showed the **"Voice-Channel verlassen"** step itself as the slow stage (up to ~30s),
+even though the bot left the channel instantly. Root cause was **not** our code: discord.py's
+`VoiceClient.disconnect(force=True)` does the real leave first (closes the voice ws + UDP socket),
+then in `VoiceConnectionState.disconnect` (`voice_state.py`) **awaits a gateway `voice_state_update`
+confirmation for up to `VoiceClient.timeout` = 30s** (`wait=True` is hardcoded). At exit that
+confirmation often doesn't arrive promptly (the main gateway is closed in the very next step), so
+the step hung. The wait only guards a disconnect→immediate-reconnect race — moot when quitting.
+(Likely resurfaced with the discord.py voice-state rewrite, which introduced this confirmation wait;
+the recv reader is **not** involved — its `stop()` runs on a non-joined daemon thread.)
+
+**Fix:** new `dmbot/shutdown.py` helper **`disconnect_voice(vc, timeout=VOICE_DISCONNECT_TIMEOUT=2.0)`**
+wraps `vc.disconnect(force=True)` in `asyncio.wait_for`; `DMBot.close()` calls it per voice client
+and logs a `voice confirm wait abandoned` warning on timeout. Safe because the network leave happens
+*before* the wait, and discord.py catches the resulting `CancelledError` and still runs its own
+`cleanup()`. Suite 309 → **311** (+2 `disconnect_voice` tests in `tests/test_shutdown.py`).
+
+**Note vs. the "bounded join" rejected above:** there, daemon-abandon was the zero-wait lever for
+*our* synth threads. Here the blocking `await` lives **inside** discord.py's own coroutine — we have
+no daemon lever — so a bounded `wait_for` is the correct (and only clean public-API) tool, and it
+truncates nothing real (the leave already happened).

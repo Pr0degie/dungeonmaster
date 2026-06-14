@@ -15,6 +15,8 @@ Two pieces:
 - :func:`to_daemon_thread` — like ``asyncio.to_thread`` but on a daemon thread the interpreter
   abandons at exit. Use it for work that is safe to drop mid-flight when the process dies
   (TTS synthesis: the WAV is moot once we're quitting).
+- :func:`disconnect_voice` — leave a voice channel without waiting out discord.py's post-leave
+  confirmation (up to ``VoiceClient.timeout`` = 30s), which is moot at exit.
 """
 
 from __future__ import annotations
@@ -169,3 +171,26 @@ async def to_daemon_thread(fn: Callable[..., Any], /, *args: Any) -> Any:
         _inflight += 1
     threading.Thread(target=_run, daemon=True, name="dm-daemon-worker").start()
     return await fut
+
+
+VOICE_DISCONNECT_TIMEOUT = 2.0  # s — bound discord.py's post-leave confirmation wait at exit
+
+
+async def disconnect_voice(vc: Any, timeout: float = VOICE_DISCONNECT_TIMEOUT) -> bool:
+    """Leave a voice channel without letting discord.py's post-leave *confirmation* stall exit.
+
+    ``VoiceClient.disconnect(force=True)`` does the real leave first (closes the voice websocket
+    and UDP socket — the bot leaves the channel immediately), then awaits a gateway
+    ``voice_state_update`` confirmation for up to ``VoiceClient.timeout`` (30s, see discord
+    ``voice_state.py``). That wait only guards a disconnect→immediate-reconnect race, which is
+    moot when we're quitting — so we bound it. The inner coroutine catches the resulting
+    ``CancelledError`` and still runs its own ``cleanup()``, so the leave stays clean.
+
+    Returns ``True`` if it confirmed in time, ``False`` if the confirmation wait was abandoned
+    (the leave itself already happened). Real disconnect errors propagate to the caller.
+    """
+    try:
+        await asyncio.wait_for(vc.disconnect(force=True), timeout=timeout)
+        return True
+    except asyncio.TimeoutError:
+        return False

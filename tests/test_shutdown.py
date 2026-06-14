@@ -9,7 +9,12 @@ import time
 import pytest
 
 from dmbot.__main__ import _install_sigint_guard
-from dmbot.shutdown import ShutdownProgress, to_daemon_thread, inflight_daemon_threads
+from dmbot.shutdown import (
+    ShutdownProgress,
+    disconnect_voice,
+    inflight_daemon_threads,
+    to_daemon_thread,
+)
 
 
 def test_two_stage_ctrl_c(capsys):
@@ -66,6 +71,34 @@ def test_to_daemon_thread_returns_result_and_propagates_error():
 
 def _raise():
     raise ValueError("boom")
+
+
+def test_disconnect_voice_bounds_a_slow_confirmation():
+    """discord.py's disconnect leaves immediately but then awaits a gateway confirmation for up
+    to 30s — moot at exit. disconnect_voice must abandon that wait (return False) and return fast."""
+
+    class SlowVC:
+        async def disconnect(self, *, force=False):
+            await asyncio.sleep(30)  # mimic the post-leave confirmation wait
+
+    async def go():
+        t0 = time.monotonic()
+        ok = await disconnect_voice(SlowVC(), timeout=0.1)
+        assert ok is False
+        assert time.monotonic() - t0 < 1.0
+    asyncio.run(go())
+
+
+def test_disconnect_voice_fast_path_returns_true():
+    """A voice client that confirms promptly returns True (no abandonment)."""
+
+    class FastVC:
+        async def disconnect(self, *, force=False):
+            return None
+
+    async def go():
+        assert await disconnect_voice(FastVC(), timeout=2.0) is True
+    asyncio.run(go())
 
 
 def test_to_daemon_thread_uses_a_daemon_thread_and_tracks_inflight():
