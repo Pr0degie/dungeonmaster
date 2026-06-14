@@ -4,6 +4,18 @@ Living status document. A phase counts as done only when its **verification gate
 met and the proof is recorded here.
 
 ## Current focus
+**`dmcog.py` halbiert: Delivery-Pipeline nach `dmbot/voice/delivery.py` ausgelagert (2026-06-14, D74 → ADR 035): Suite 319 grün, 0 Test-Änderungen.**
+Der eigentliche Hebel (Tobis Wahl „b"): die größte Datei nach dem Cog-Split. Die Antwort→Audio-Maschinerie (TTS-Speak,
+Batch- + Streaming-Lieferung, `<<ORT>>`-Marker-Drain, `[latency]`-Zeile, die beiden Turn-Hooks) ist in eine neue Klasse
+**`DeliveryPipeline`** gezogen — **Komposition statt Vererbung**: `DMCog` hält `self._delivery = DeliveryPipeline(runtime,
+post_deliver=self._post_deliver)` und ruft hinein. **Verschoben byte-identisch** (29 835 Zeichen char-exakt gegen `HEAD`
+geprüft, kein Abtippen — Slice-Skript). **Auf dem Cog geblieben:** der End-of-Turn-Tail (`_post_deliver`/`_autosave_turn`/
+`_maybe_compact`/`_persist_recap` — Recap/Session-Belang **mit Tests**), als **eine** `post_deliver`-Callback injiziert →
+sauberer Schnitt **und 0 Test-Änderungen**. `dmcog.py` 1188→**662**, `delivery.py` 575. Ruff sauber. _Nicht-Byte-Effekt:
+die verschobenen `log.*`-Zeilen tragen jetzt `voice.delivery` in der `%(name)s`-Spalte (Nachrichten/Formatierung gleich)._
+_Aufgeschoben (eigene Runde unter ADR 035): die **Szenen**-Commands (`!ort`/`!szenen`/`!ortmodus`) + **`!lore`** → Mixin/
+Sub-Cog (das sind Commands → `CogMeta`-Frage, nicht diese Kompositions-Verschiebung)._
+
 **`runtime.py` weiter verschlankt: `_TurnTiming` nach `dmbot/turn_timing.py` ausgelagert (2026-06-14, D73 → ADR 034): Suite 319 grün.**
 Nächster gescouteter Kontext-Lean-Kandidat (#1) aus der D70/D71-Liste, gleiche Mechanik (Tobis Linie: nur **in sich
 geschlossene, zustandslose** Einheiten auslagern, Funktionalität unverändert). Der per-Turn-Latenz-Record `_TurnTiming` +
@@ -265,6 +277,21 @@ world-state block (CLAUDE.md prompt order). **Model: mistral-nemo.** Recommended
 gate / any follow-up: **Opus 4.8 / xhigh**.
 
 ## Last session
+**Delivery-Pipeline aus `dmcog.py` nach `dmbot/voice/delivery.py` ausgelagert (2026-06-14, D74 → ADR 035). `dmcog.py`
+1188→662, `delivery.py` 575, Suite 319 grün, 0 Test-Änderungen, ruff sauber.** Tobis Wahl „b" — der eigentliche Hebel
+(größte Datei nach dem Cog-Split), per **Komposition** statt Vererbung. Vorgehen:
+- **Boundary erst kartiert** (interner Call-Graph in `dmcog` + Test-Surface), dann geschnitten: `DeliveryPipeline`
+  (`DMCog` hält `self._delivery = DeliveryPipeline(runtime, post_deliver=self._post_deliver)`) bekommt die
+  Antwort→Audio-Methoden `_synthesize`/`_speak`/`_speak_seamless`/`_begin_turn`/`_use_streaming`/`_handle_scene`/
+  `_make_scene_confirm`/`_deliver_answer`/`_await_dice_scene`/`_deliver_streaming` + die Hooks `_auto_dm_turn`/`_run_and_deliver`.
+- **Auf dem Cog geblieben:** der Recap-Tail (`_post_deliver`/`_autosave_turn`/`_maybe_compact`/`_persist_recap`) — genau das,
+  was `test_autorecap` anfasst → als **eine** `post_deliver`-Callback injiziert (ADR-029-Hook-Muster, objekt-lokal) →
+  sauberer Schnitt **und 0 Test-Änderungen**. Commands + `_deliver_intro_chunked` + Lore-Helfer rufen jetzt `self._delivery._<m>`.
+- **Byte-exakt** per Slice-Skript verschoben (**29 835 Zeichen char-exakt gegen `HEAD` verifiziert**; AST-geprüft: 13 Methoden
+  in einer Klasse, keine Leaks im Cog). Glue von Hand (Import, `__init__` + Hook-Rewire, ~16 Call-Site-Prefixe), ruff `--fix`
+  für die 8 nun ungenutzten Imports. **ADR 035** geschrieben (Komposition vs Mixin, Callback-Schnitt, deferred Szenen-/Lore-Sub-Cog).
+- _Nicht-Byte-Effekt: verschobene `log.*`-Zeilen tragen `voice.delivery` in der `%(name)s`-Spalte (Nachrichten/Formatierung gleich)._
+
 **`_TurnTiming` aus `runtime.py` nach `dmbot/turn_timing.py` ausgelagert (2026-06-14, D73 → ADR 034). `runtime.py`
 610→516, Suite 319 grün, ruff sauber, 0 Test-Änderungen.** Fortsetzung der D70/D71-Linie (Kandidat #1 der gescouteten
 Liste): den per-Turn-Latenz-Record `_TurnTiming` + die Konstante `_CTX_WARN_FRACTION` byte-exakt in ein eigenes Modul
@@ -275,39 +302,20 @@ Verifiziert: Import-Kette (`runtime._TurnTiming is turn_timing._TurnTiming`), `d
 `All checks passed`, Suite **319 grün**. _Einziger Nicht-Byte-Effekt: Logger-Name der `[latency]`/`[ctx]`-Zeilen ist jetzt
 `dmbot.turn_timing` (Text/Prefix gleich; Konsole-INFO blendet den Namen aus, kein Test prüft ihn)._
 
-**`orchestrator.py`-Verschlankung abgeschlossen (E1–E4): alle abgekapselten Blöcke nach `dmbot/llm/*` ausgelagert
-(2026-06-14, D70+D71 → ADR 034). `orchestrator.py` 1175→783, Suite 319 grün, verhaltensidentisch.** Tobis Ziel:
-nur **in sich geschlossene** Methoden auslagern, damit sie nicht mitgeladen werden, wenn ein Agent woanders arbeitet —
-**Funktionalität unverändert**. Umgesetzt (byte-exakt per Slice-Skript, Re-Export-Shims `# noqa: F401` in `orchestrator`,
-**0 Test-Änderungen**):
-- **D70 (E1–E3):** `dmbot/llm/sanitize.py` (Sprech-Säuberer: `_ROLE_LABEL` + Meta/Preamble/Trailing-Regexes,
-  `_cut_at_labels`, `_strip_leading_label`, `_sanitize*`, `_trim_to_last_sentence` — am häufigsten editiert),
-  `dmbot/llm/echo_guard.py` (`is_echo`/`is_self_repetition` + `_*_NUDGE`/`_ROLL_DIRECTIVE`, ADR 018/W4),
-  `dmbot/llm/director_msgs.py` (`build_opening/intro_director_msg`, ADR 031). 1175→933.
-- **D71 (E4):** `dmbot/llm/stream_assembler.py` (`StreamAssembler` + die geteilte `finalize_answer`-Naht, ADR-017-Parität;
-  pure, kein `DMBrain`-State). Ungenutzte Marker-/`dataclass`-/`split_completed`-Importe in `orchestrator` getrimmt. 933→783.
-- **Bleibt in `orchestrator`:** der `DMBrain`-Körper (geteilter Per-Channel-State, `_build_request`-Promptreihenfolge,
-  Aux-LLM-Calls `classify_test`/`summarize`/`answer_rules`) — Trennung würde nur an `self` koppeln.
-- _Aufgeschoben (kein „abgekapselte Methode" → eigenes Mixin-Idiom + ADR nötig): die **`dmcog.py`-Splits**
-  (Lore-Cog nach `_speak`/`_synthesize`→Runtime; Scene-Mixin)._
-- **D72-Nachzug (`dmcog.py`):** den doppelten End-of-Turn-Tail (autosave → mic-reanchor → Auto-Recap) von Batch- und
-  Streaming-Pfad in `_post_deliver` vereinheitlicht — von Hand (nicht `/simplify` frei laufen lassen), nur die wirklich
-  identische Sequenz; die pro-Pfad-`finally`-Platzierung von Dice/Scene (D40/D43) bleibt. Verhaltens-/geschwindigkeitsidentisch,
-  Suite 319 grün. Reine Wartbarkeit, kein Größen-Hebel (Datei bleibt groß → echtes Schrumpfen = späterer Cog-Split).
-
-_Ältere `## Last session`-Einträge (D69 `puffer`-Modus, D68 globaler Sprech-Modus, D67 Shutdown-Leave-Limit,
-D66 CPU-Ursache/`!intro` u. a.): siehe **[docs/progress-archive.md](docs/progress-archive.md)**._
+_Ältere `## Last session`-Einträge (D70–D72 `orchestrator`-E1–E4-Verschlankung, D69 `puffer`-Modus, D68 globaler
+Sprech-Modus, D67 Shutdown-Leave-Limit u. a.): siehe **[docs/progress-archive.md](docs/progress-archive.md)**._
 
 ## Next concrete step
-**Optionale Kontext-Lean-Auslagerungen — Fortsetzung von D70/D71/D73, Tobis Linie „nur abgekapselte (in sich
-geschlossene) Methoden auslagern, Funktionalität unverändert".** Verbleibende, fertig gescoutete, konfliktfreie Kandidaten
-(Muster wie D73: byte-exakt verschieben, **Re-Export-Shims**, Suite muss **319 grün** bleiben, 0 Test-Änderungen):
-1. ~~`runtime.py` `_TurnTiming`~~ — **ERLEDIGT (D73 → ADR 034):** `dmbot/turn_timing.py`, Re-Export, `runtime.py` 610→516, Suite 319 grün.
+**Kontext-Lean-Auslagerungen — Fortsetzung von D70–D74.** Der große Hebel (Delivery-Pipeline) ist mit **D74 → ADR 035**
+erledigt (`dmcog.py` 1188→662); verbleibende Kandidaten:
+1. ~~`runtime.py` `_TurnTiming`~~ — **ERLEDIGT (D73 → ADR 034):** `dmbot/turn_timing.py`, Re-Export, `runtime.py` 610→516.
 2. WAV-Free-Funcs `_write_utterance_wav`/`_wav_duration_s`/`_safe_remove` (~40 Z., pure) → `dmbot/voice/wavfiles.py`, Re-Export.
-   _Nächster Top-Kandidat._ Achtung: `dmcog`-Import-Zeile zieht `_wav_duration_s`/`_safe_remove` aus `..runtime` (Re-Export muss sie weiter exportieren).
-3. `engine.py` `describe_*_de` (~80 Z.) von der Auflösung trennen — **niedrige Prio** (eng kohärent).
-4. **`dmcog.py`/`dicecog.py`:** kein simples Auslagern (Cog = eine Klasse) → brauchen **Mixin-Idiom / `_speak`→Runtime /
-   eigenes `LoreCog`** + **eigene ADR** (035). Separat, nicht „abgekapselte Methode".
+   _Nächster Top-Kandidat (billiges byte-exaktes Muster wie D73)._ Achtung: jetzt importiert **`delivery.py`** `_wav_duration_s`/
+   `_safe_remove` aus `..runtime` (Re-Export muss sie weiter exportieren); `dmcog` braucht sie nach D74 nicht mehr.
+3. **`dmcog.py`/`dicecog.py` weiter (unter ADR 035):** die **Szenen**-Commands (`!ort`/`!szenen`/`!ortmodus`) + **`!lore`**
+   aus `DMCog` → Mixin/Sub-Cog. Das sind **Commands** (discord.py `CogMeta`-Sammel-Frage) → **nicht** die Kompositions-
+   verschiebung von D74; das Idiom erst verifizieren. `dicecog.py` (584 Z.) analog danach.
+4. `engine.py` `describe_*_de` (~80 Z.) von der Auflösung trennen — **niedrige Prio** (eng kohärent).
 
 **Eigentliche Projekt-Priorität bleibt aber das Live-Gate (siehe unten):** `!j` in circlejerk → `!intro` / `!sprechmodus`
 (stream/puffer/nahtlos × flach/intoniert vergleichen) + die Phase-9/10-Checks. Das Refactoring ist Nebenstrang.
@@ -558,6 +566,7 @@ create the next-numbered ADR.
 | D60 | Voice cog split → SessionRuntime | **Pure structural refactor (zero behaviour change).** The 2300-line `VoiceReceiveCog` split into a shared **`SessionRuntime`** (`dmbot/runtime.py`, built once from `Config`, injected into every cog — the 26 ctor kwargs collapse into it) + three thin cogs: **VoiceCog** (join/leave/vstatus/mic/pause, VAD-sink), **DiceCog** (roll/test/turn/rules/npc/damage/heal, dice+manifest buttons, auto-combat, turn-order render), **DMCog** (batch+streaming delivery, TTS speak, auto-recap, !dm/!redo/!start/!wrap/!say/!voice **and** scenes !ort/!szenen/!ortmodus + the `<<ORT>>` marker + !lore). **No `bot.get_cog`** — five hooks registered on the runtime (`run_and_deliver`/`auto_dm_turn`/`handle_dice`/`reanchor_mic`/`post_turn_order`). `commands.py` deleted; suite **263 green** (only test-import paths + one `test_autorecap` fixture rewired to a stub runtime — assertions unchanged) | The file had become a god-cog with a 26-kwarg ctor; every session paid for the whole thing and the concern boundaries had blurred. Moved-not-rewritten (per-agent AST/reverse-rename diffs + a streaming-pipeline spot-check confirm byte-identical bodies; only `self._X`→`self._rt._X` renames + the hook calls). Boot path unchanged (preflights once, same order; `TEARDOWN_STEPS` sum still 4 → shutdown display byte-identical). Binds later work: Phase 10b profile bootstrap hangs off the runtime, not a cog → **ADR 029** |
 | D61 | Code-review correctness round (post-cog-split) | **9 verified defects in the day's feature work + cleanup, behaviour preserved.** Correctness: (1) **Warp-containment Test → Disziplin (Psi)** not Psi-Meisterschaft (IM p.163) — new `ResolvedManifest.contain_base` wires the previously-unused `psyker_purge_skill()`; (2) **party psyker not in WorldState** no longer silently drops Warp Charge — one-time German warning (no safe single-char state add); (3) **batch delivery** awaits dice/scene tasks in `finally` so the 🎲 button isn't lost when speak raises; (4) **auto-recap** `clear_history` clears only the `summarize`-consumed prefix (`_compact_consumed`) so a turn appended during the LLM await survives; (5) **glued markers** `\b`→`[\s:]*` so `<<ORT1>>`/`<<ORTmud_gate>>`/`<<MANIFESTSmite>>` strip+fire instead of being read aloud; (6) **`resolve_test`** signature-dispatch (`inspect.signature`) replaces the `except TypeError` that swallowed real errors + double-rolled (golden rule #2); (7) **streaming** cancels orphaned prod/synth/play tasks + drains queued WAVs on a mid-stream bridge failure (permanent-mute claim **refuted** — `finally` always unmutes, mute logic untouched); (8) **layer-2 mute → depth counter** so DM-speak vs operator pause/resume nest (resume mid-playback can't unmute); (9) **soak** uses `skill_value` (strip+CI) so a `"Tgh "` key isn't 0 soak. Cleanup: shared `_catalog_lookup` (profile), shared `tts/wavio.write_silent_wav`, dead `reduce_warp_charge` removed, no-op `[:80]` slices dropped, **thread-local cached sqlite conn** + `<<`-free StreamAssembler fast path. Suite **293 green** | Tobi asked `/code-review` over the day's commits, "Funktionalität soll bleiben". Multi-agent review (9 finder angles + per-finding verifiers over `5d672b6~1..HEAD`) cleared the cog split as faithful and found these in the parallel feature work. The **altitude findings — system-agnostic generalisation of engine/marker/RAG-sources — are DEFERRED to the second-profile / Phase-10b point** (no second system to generalise against yet; large + behaviour-risky; ADR 005 stance is "generalise when the 2nd system arrives") → **ADR 030** |
 | D62 | `!intro` opening monologue | **New `!intro` command (aliases `!einleitung`/`!eroeffnung`): one long opening monologue that involves every PC, by reusing + parameterising the `!start` opening path.** New `CharacterStore.intro_roster_de()` builds a full-depth German party roster from `Character.raw` (concept/origin/faction/distinguishing/goals/connections/arc, tolerant of lean sheets); new pure `build_intro_director_msg(roster)` wraps it in a `[Regie]` instruction (one monologue: place → arrival → mission from the scene card/summary, then a personal beat per named figure — weave in, only hint at private goals, no dice) with the roster embedded in the **director (user) message** so the ADR-019 prompt order is untouched. An optional `num_predict` override is threaded through `_build_request`/`_chat_once`/`_generate`/`_stream_and_store`/`respond_opening`/`respond_opening_streaming` (default `None` → unchanged); `!intro` runs on `DM_INTRO_NUM_PREDICT` (default 800). `!intro` mirrors `!start`'s safe scaffolding (deterministic scene-pointer move only if unset, dice suppressed, stream/speak). `!start` left as the short briefing. +7 tests (**300 green**); live-unverified | Tobi (plan mode): the 1st-round "sagt am Anfang nicht, was abgeht … bezieht die Figuren nicht ein" gap needed a real opener. Chose a **monologue** over a scripted multi-beat sequence, a **separate `!intro`** over extending `!start`, and **full** figure depth — all his calls. Reuse-not-duplicate per ADR 030; roster-in-director-message avoids per-turn prompt bloat (ADR 019). Risk (nemo-12B rambling at length) watched live; fallback = multi-beat or lower `DM_INTRO_NUM_PREDICT` → **ADR 031** |
+| D74 | Extract the delivery pipeline → `dmbot/voice/delivery.py` (composition) | **Pull the answer→audio turn-delivery machinery out of the 1188-line `DMCog` into a new `DeliveryPipeline` class (composition, not inheritance).** Moved (12 methods, **byte-identical** bodies, char-exact vs `HEAD`): `_synthesize`, `_speak`, `_speak_seamless`, `_begin_turn`, `_use_streaming`, `_handle_scene`, `_make_scene_confirm`, `_deliver_answer`, `_await_dice_scene`, `_deliver_streaming`, + the turn-running hooks `_auto_dm_turn`/`_run_and_deliver` (cog registers them on the runtime). The pipeline holds the shared `SessionRuntime` and reaches everything through it exactly as before. **Stays on `DMCog`:** the post-turn tail (`_post_deliver`/`_autosave_turn`/`_maybe_compact`/`_persist_recap` — a recap/session concern with its own tests), injected into the pipeline as a single `post_deliver` callback; all commands + `_deliver_intro_chunked` + lore helpers (now call `self._delivery._<m>`). `dmcog.py` 1188→**662**; `delivery.py` 575. Suite **319 green, 0 test edits**, ruff clean. _Non-byte effect: moved `log.*` lines' `%(name)s` column now `voice.delivery` (messages/formatting unchanged, filters key on content + `dmbot` prefix)._ | The largest file after ADR 029, and the cheap byte-exact lever (ADR 034) was spent — the remaining volume is cog methods that bind `self`. Tobi: extract the big delivery block so it isn't always loaded, **functionality + performance unchanged**. Chose **composition** over a mixin (explicit, isolated, sidesteps discord.py's `CogMeta` command-collection question) and **kept the recap tail on the cog** via one callback (cleaner concern split + zero test edits). Scene/lore sub-cog splits stay deferred (those are commands → mixin/sub-cog idiom) → **ADR 035** |
 | D73 | Extract `_TurnTiming` → `dmbot/turn_timing.py` (ADR 034 continuation) | **Move the per-turn latency record `_TurnTiming` and its `_CTX_WARN_FRACTION` threshold out of `runtime.py` into a new `dmbot/turn_timing.py`.** Self-contained, state-free logging helper (threads `time.monotonic` timestamps, emits the one `[latency]` line + the `[ctx]` budget warning — no `SessionRuntime` state). `runtime.py` re-imports both (`# noqa: F401`) so `from ..runtime import _TurnTiming` (cog/dice/`test_autorecap`/`test_context_budget`) keeps working; the now-unused `from dataclasses import dataclass` dropped from `runtime`. `runtime.py` 610→**516**. Byte-exact body copy, **0 test edits**, ruff clean, suite **319 green**. _Sole non-byte effect: the `[latency]`/`[ctx]` lines now log under logger name `dmbot.turn_timing` instead of `dmbot.runtime` (message text/`[latency]` prefix unchanged; console INFO drops the name anyway, no test asserts it)._ | Next queued context-lean candidate (#1) from D70/D71's list — same motivation and mechanics (Tobi: extract only self-contained, state-free units; functionality unchanged). Re-export shim + byte-exact move, identical to D70/D71 → continues **ADR 034** (no new ADR) |
 | D72 | Unify the twin delivery tail (`_post_deliver`) | **Extract the byte-identical end-of-turn tail shared by `_deliver_answer` (batch) and `_deliver_streaming` into one `_post_deliver` helper** (autosave → mic re-anchor → off-hot-path rolling auto-recap, D56). Both paths call it after their own `timing.end`/`log_line()`/`_await_dice_scene` step. Behaviour- and speed-identical (same calls/order/args; runs after `/speak`, off the hot path). The deliberately per-path bit is **not** merged: batch awaits dice/scene in a `finally` (button still posts if speak raised), streaming after the pipeline cleanup — that D40/D43 placement stays. Suite **319 green** | The two paths duplicated the tail (spotted in the `/simplify`-scope discussion). Did the extraction **by hand** (3 lines) rather than letting `/simplify` auto-edit the D40/D43-race-sensitive delivery code, per the agreed plan: only the twin paths, no functional/speed regression. Maintainability only — not a size win (the file stays large; that needs the deferred cog split) → D-entry, no ADR |
 | D71 | Extract stream-assembler + finalize_answer (ADR 034 E4) | **Move the streaming sentence-assembler and the shared `finalize_answer` post-processing seam out of `orchestrator.py` into `dmbot/llm/stream_assembler.py`.** `StreamAssembler`/`StreamResult`/`_open_marker_index`/`_FIRST_CHUNK_MIN_CHARS` + `finalize_answer` are pure (no `DMBrain` state); `finalize_answer` is the batch+stream parity seam (ADR 017). `orchestrator` re-imports `StreamAssembler` + `finalize_answer` (`# noqa: F401`) and its now-unused `clean_narration`/`extract_*`/`dataclass`/`split_completed` imports were trimmed. Byte-exact slice migration; `orchestrator.py` 933→**783** (1175→783 over E1–E4); behaviour identical, **0 test edits**, suite **319 green** | Last self-contained, state-free block in `orchestrator` (Tobi: extract only the encapsulated methods so unrelated work doesn't load them, no functional change). The `DMBrain` body stays (shared per-channel state). Same re-export-shim + byte-exact-slice approach as D70 → **ADR 034** (E4) |

@@ -9,6 +9,26 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+**`orchestrator.py`-Verschlankung abgeschlossen (E1–E4): alle abgekapselten Blöcke nach `dmbot/llm/*` ausgelagert
+(2026-06-14, D70+D71 → ADR 034). `orchestrator.py` 1175→783, Suite 319 grün, verhaltensidentisch.** Tobis Ziel:
+nur **in sich geschlossene** Methoden auslagern, damit sie nicht mitgeladen werden, wenn ein Agent woanders arbeitet —
+**Funktionalität unverändert**. Umgesetzt (byte-exakt per Slice-Skript, Re-Export-Shims `# noqa: F401` in `orchestrator`,
+**0 Test-Änderungen**):
+- **D70 (E1–E3):** `dmbot/llm/sanitize.py` (Sprech-Säuberer: `_ROLE_LABEL` + Meta/Preamble/Trailing-Regexes,
+  `_cut_at_labels`, `_strip_leading_label`, `_sanitize*`, `_trim_to_last_sentence` — am häufigsten editiert),
+  `dmbot/llm/echo_guard.py` (`is_echo`/`is_self_repetition` + `_*_NUDGE`/`_ROLL_DIRECTIVE`, ADR 018/W4),
+  `dmbot/llm/director_msgs.py` (`build_opening/intro_director_msg`, ADR 031). 1175→933.
+- **D71 (E4):** `dmbot/llm/stream_assembler.py` (`StreamAssembler` + die geteilte `finalize_answer`-Naht, ADR-017-Parität;
+  pure, kein `DMBrain`-State). Ungenutzte Marker-/`dataclass`-/`split_completed`-Importe in `orchestrator` getrimmt. 933→783.
+- **Bleibt in `orchestrator`:** der `DMBrain`-Körper (geteilter Per-Channel-State, `_build_request`-Promptreihenfolge,
+  Aux-LLM-Calls `classify_test`/`summarize`/`answer_rules`) — Trennung würde nur an `self` koppeln.
+- _Aufgeschoben (kein „abgekapselte Methode" → eigenes Mixin-Idiom + ADR nötig): die **`dmcog.py`-Splits**
+  (Lore-Cog nach `_speak`/`_synthesize`→Runtime; Scene-Mixin)._ — _Nachgeholt: die Delivery-Pipeline-Auslagerung in D74 → ADR 035._
+- **D72-Nachzug (`dmcog.py`):** den doppelten End-of-Turn-Tail (autosave → mic-reanchor → Auto-Recap) von Batch- und
+  Streaming-Pfad in `_post_deliver` vereinheitlicht — von Hand (nicht `/simplify` frei laufen lassen), nur die wirklich
+  identische Sequenz; die pro-Pfad-`finally`-Platzierung von Dice/Scene (D40/D43) bleibt. Verhaltens-/geschwindigkeitsidentisch,
+  Suite 319 grün. Reine Wartbarkeit, kein Größen-Hebel (Datei bleibt groß → echtes Schrumpfen = späterer Cog-Split).
+
 **`orchestrator.py` verschlankt: reine Helfer nach `dmbot/llm/*` ausgelagert (2026-06-14, D70 → ADR 034). Suite 319 grün.**
 Ziel: Kontext-Effizienz für künftige Agenten — große, zusammenhängende Funktionen sinnvoll auslagern, **Funktionalität
 unverändert** (Tobis Vorgabe). Vorlauf: Fan-out-Analyse (zwei Plan-Agenten über `dmcog.py` + `orchestrator.py`); E1–E3
