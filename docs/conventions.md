@@ -73,6 +73,35 @@ here is its contract, which DMbot calls:
 - **Memory:** persistence test — a state change survives a restart.
 - **RAG:** sanity check — a concrete IM rule question answered correctly from a PDF.
 
+## Code-Review- & Lint-Gates (was automatisch läuft vs. wann du `/code-review` ziehst)
+
+Zwei Ebenen, bewusst getrennt — die billige läuft von selbst, die teure nach Urteil.
+
+**Automatisch, nach jeder Antwort** (Stop-Hook `tools/hooks/test-on-change.sh`): wenn etwas
+unter `dmbot/` `tests/` `data/systems/` geändert wurde, laufen **`ruff --select F`** (pyflakes:
+ungenutzte Importe/Namen, undefinierte Namen — fängt den Dead-Import-Cruft, den eine
+Auslagerung hinterlässt) **+ die Test-Suite**. Still bei grün, Ausgabe nur bei Fehler
+(nicht-blockierend, `exit 1` im Terminal; der Fix-Befehl steht in der Meldung). _Zeilenlänge/
+Style (`E*`) bleibt bewusst aus — lange Doc-Zeilen sind Absicht, Re-Export-Shims tragen
+`# noqa: F401`._
+
+**Manuell, gezielt — `/code-review`** ist abgerechnet + langsam, also **nicht vor jedem
+Commit**, sondern wenn ein Commit/Batch eine heiße Zone anfasst. Trigger-Checkliste (greift
+mind. eins → Review lohnt sich):
+- [ ] **Echte Logik** geändert (engine / orchestrator / delivery / memory / rag) — nicht nur
+  Docs, byte-exakte Moves, Renames, Konstanten.
+- [ ] Eine der **vier Golden-Rule-Zonen** berührt: dice=code, memory-split, Feedback-Schutz
+  (L1 Sink-User-ID-Filter / L2 VAD-Pause), Two-Bot-Isolation.
+- [ ] **Nebenläufigkeit / Ressourcen-Lebenszyklus** (asyncio-Tasks, Threads, Temp-WAVs,
+  Mute-Tiefenzähler) — da verstecken sich Regressionen, die die Suite selten fängt.
+- [ ] **Neue Datei** oder nennenswert neue, nicht-triviale Logik (nicht bloß „verschoben").
+
+Greift **kein** Kästchen → Suite + Lint-Hook reichen. **Tagesende / vor einem Meilenstein**
+mit viel akkumulierter Arbeit → der schwere Fan-out (`/code-review ultra` bzw. ein
+Fan-out-Workflow über den Commit-Range): der **gibt verhaltenserhaltende Refactors verifiziert
+frei**, statt einzelne Bugs zu suchen — genau dort liegt sein Wert. _Beleg D76: 14 Findings, 3
+bestätigt, alle in neuem Logik-/Test-Code, kein einziger in den byte-exakten Move-Commits._
+
 ## Runtime / operations
 
 - Python 3.12, managed with **uv**. No direct `pip`; `uv add`.
