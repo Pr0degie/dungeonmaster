@@ -232,6 +232,10 @@ class SessionRuntime:
         # the first audio plays while the rest is still generating. Off (DM_STREAMING=0) = the
         # byte-identical batch path. Only engages when a TTS backend loaded (else nothing to stream).
         self._streaming = config.streaming
+        # Length budget for the one-time !intro opening monologue (ADR 031) — larger than the normal
+        # per-turn cap so the auftakt can cover place + mission + how they arrived AND a personal beat
+        # for each player character. Read by DMCog's !intro command; the normal turn cap is unchanged.
+        self._intro_num_predict = config.dm_intro_num_predict
         # Per-turn conversation autosave (D41): append every completed turn to
         # data/sessions/<id>/history.jsonl so a crash doesn't lose the evening's thread; restored on
         # !join, rotated on !leave. World state already persists separately (ADR 015).

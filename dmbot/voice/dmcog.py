@@ -14,7 +14,7 @@ from datetime import datetime
 import discord
 from discord.ext import commands
 
-from ..orchestrator import build_opening_director_msg
+from ..orchestrator import build_intro_director_msg, build_opening_director_msg
 from ..tts.textsplit import has_speakable_content
 from ..shutdown import to_daemon_thread
 from ..discord_ui.scene import SceneChangeView
@@ -256,7 +256,8 @@ class DMCog(commands.Cog):
 
     async def _deliver_streaming(self, channel, guild_id: int | None, timing: _TurnTiming, *,
                                  redo: bool = False, extra_text: str | None = None,
-                                 opening: str | None = None) -> str | None:
+                                 opening: str | None = None,
+                                 opening_num_predict: int | None = None) -> str | None:
         """Streaming delivery (ADR 017): the producer drives the brain's streaming turn while a
         synth→playback pipeline speaks each sentence (synth N+1 while N plays); the Discord text
         post + 🎲 dice button happen at generation-end (mid-playback). Layer-2 mute spans the whole
@@ -273,11 +274,13 @@ class DMCog(commands.Cog):
         async def producer() -> None:
             try:
                 if opening is not None:
-                    # !start opening briefing: a GM-side director turn (dice suppressed) — same
-                    # stream→speak pipeline, just a different brain entry point.
+                    # A GM-side director turn (dice suppressed): the short !start briefing or the
+                    # longer !intro monologue (ADR 031) — same stream→speak pipeline, just a
+                    # different brain entry point + an optional larger length budget for !intro.
                     holder["answer"] = await self._rt._brain.respond_opening_streaming(
                         channel_id, opening, on_sentence=on_sentence,
                         should_abort=lambda: self._rt._paused,
+                        num_predict=opening_num_predict,
                     )
                 elif redo:
                     holder["answer"] = await self._rt._brain.redo_streaming(
@@ -531,6 +534,63 @@ class DMCog(commands.Cog):
                 timing.take_llm_stats(self._rt._brain.last_llm_stats)
         except Exception:
             log.exception("opening briefing failed")
+            await ctx.send("(Der Spielleiter schweigt — Fehler beim Auftakt, siehe Log.)")
+            return
+        if answer is None:
+            await ctx.send("(Kein Auftakt — siehe Log.)")
+            return
+        await self._deliver_answer(ctx.channel, guild_id, answer, timing)
+
+    @commands.command(name="intro", aliases=["einleitung", "eroeffnung"])
+    async def intro(self, ctx: commands.Context) -> None:
+        """`!intro` — the DM speaks a full opening *monologue* for the campaign (ADR 031): where the
+        party is, how they got here, what's going on + their mission, and a personal beat for each
+        player character (drawn from each sheet's flavour). Unlike the short `!start` briefing it
+        embeds a character roster into the director instruction and runs on a larger length budget
+        (DM_INTRO_NUM_PREDICT). Same opening pipeline: the scene pointer is moved deterministically
+        (golden rule #3), dice are suppressed, and it is streamed/spoken like any turn. `!start`
+        stays the quick briefing."""
+        if self._rt._paused:
+            await ctx.send("⏸ Pausiert — mit **Esc** oder dem ⏸-Knopf fortsetzen.")
+            return
+        cid = self._rt._brain_channel(ctx.channel)
+        # Mirror the turn-producing guards: a session must be active (state seeded on !join).
+        if self._rt._active_vc_id is None or cid not in self._rt._state:
+            await ctx.send("Keine aktive Sitzung — erst `!j`.")
+            return
+        # Point the scene pointer at the start scene if it isn't set yet (deterministic, golden rule
+        # #3 — code moves the pointer, not the model), so the prompt's "## Aktuelle Szene" is the
+        # opening scene. A loaded session keeps its saved pointer — the intro never resets progress.
+        if self._rt._adventure is not None and not self._rt._state[cid].scene_id:
+            moved = self._rt._set_scene(self._rt._state[cid], self._rt._adventure.start_scene)
+            if moved is not None:
+                self._rt._persist_and_refresh(ctx.channel)
+        roster = self._rt._characters.intro_roster_de() if self._rt._characters else ""
+        director_msg = build_intro_director_msg(roster)
+        np = self._rt._intro_num_predict
+        guild_id = ctx.guild.id if ctx.guild else None
+        timing = self._begin_turn(cid)
+        if self._use_streaming():
+            timing.streamed = True
+            try:
+                async with ctx.typing():
+                    answer = await self._deliver_streaming(
+                        ctx.channel, guild_id, timing, opening=director_msg, opening_num_predict=np
+                    )
+            except Exception:
+                log.exception("intro monologue failed (stream)")
+                await ctx.send("(Der Spielleiter schweigt — Fehler beim Auftakt, siehe Log.)")
+                return
+            if answer is None:
+                await ctx.send("(Kein Auftakt — siehe Log.)")
+            return
+        try:
+            async with ctx.typing():
+                answer = await self._rt._brain.respond_opening(cid, director_msg, num_predict=np)
+                timing.llm_done = time.monotonic()
+                timing.take_llm_stats(self._rt._brain.last_llm_stats)
+        except Exception:
+            log.exception("intro monologue failed")
             await ctx.send("(Der Spielleiter schweigt — Fehler beim Auftakt, siehe Log.)")
             return
         if answer is None:

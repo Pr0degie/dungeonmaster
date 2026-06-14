@@ -279,6 +279,49 @@ def build_opening_director_msg() -> str:
     return OPENING_DIRECTOR_MSG
 
 
+# --- Intro monologue (!intro) ------------------------------------------------------------------
+
+# The director instruction for the one-time !intro opening MONOLOGUE (ADR 031). Unlike the short
+# !start briefing (OPENING_DIRECTOR_MSG, 2–4 sentences), this asks for one coherent opening monologue
+# that establishes place + how they arrived + the mission AND gives each player character a personal
+# beat. The concrete adventure content (place, mission, leads) lives in the start scene's card +
+# adventure summary already in the system prompt; the party roster is embedded here (it rides in the
+# turn's user message so the ADR-019 prompt order is untouched). GM-side instruction, never read aloud.
+_INTRO_DIRECTOR_HEAD = (
+    "[Regie] Eröffne jetzt die Sitzung mit einem zusammenhängenden Eröffnungs-Monolog "
+    "(kein Aufzählen, keine Stichpunkte). Etabliere zuerst, wo die Gruppe ist und wie sie "
+    "hergekommen ist, dann die Lage und ihren Auftrag — stütze dich dabei auf deine aktuelle "
+    "Szene und die Abenteuer-Zusammenfassung."
+)
+_INTRO_DIRECTOR_CHARS = (
+    "Beziehe danach jede der folgenden Figuren mit einem kurzen, persönlichen Moment ein "
+    "(sprich sie namentlich an und knüpfe an ihre Herkunft, ihr Wesen und ihre Beweggründe an) — "
+    "webe das ins Bild ein, lies nichts davon wörtlich vor und sprich geheime oder rein private "
+    "Ziele höchstens andeutend aus:\n\n{roster}"
+)
+_INTRO_DIRECTOR_TAIL = (
+    "Bleib durchgehend in der Spielleitungs-Stimme. Das ist der Auftakt — er darf länger sein "
+    "als ein normaler Zug. Verlange keine Probe."
+)
+
+
+def build_intro_director_msg(roster_de: str = "") -> str:
+    """The GM-side director instruction for the ``!intro`` opening monologue (pure, unit-testable).
+
+    Asks for one coherent opening monologue (place + how they arrived + mission) and weaves in each
+    player character via the embedded ``roster_de`` block (from ``CharacterStore.intro_roster_de``).
+    With an empty roster it degrades to the place/mission monologue alone. Kept as a function so the
+    cog never inlines the prompt text and a test can assert its shape (one monologue, every figure
+    involved, no dice)."""
+    msg = _INTRO_DIRECTOR_HEAD
+    if roster_de.strip():
+        msg += " " + _INTRO_DIRECTOR_CHARS.format(roster=roster_de.strip())
+        msg += "\n\n" + _INTRO_DIRECTOR_TAIL
+    else:
+        msg += " " + _INTRO_DIRECTOR_TAIL
+    return msg
+
+
 # --- Streaming assembler (ADR 017) --------------------------------------------------------------
 
 # Hold the first chunk until it's a full sentence or this many chars, so a leading meta-preamble /
@@ -622,12 +665,12 @@ class DMBrain:
         history = self._history.setdefault(channel_id, [])
         return director_msg, labels, history
 
-    async def respond_opening(self, channel_id: int, director_msg: str) -> str | None:
+    async def respond_opening(self, channel_id: int, director_msg: str, num_predict: int | None = None) -> str | None:
         """Run the opening-briefing turn (``!start``, batch path): generate one GM turn from the
         ``director_msg`` instruction, append it to history, return the answer. Dice are suppressed
         (see :meth:`_prepare_opening`). ``None`` only on the rare echo-guard suppression."""
         user_msg, labels, history = self._prepare_opening(channel_id, director_msg)
-        answer = await self._generate(channel_id, user_msg, labels, history)
+        answer = await self._generate(channel_id, user_msg, labels, history, num_predict=num_predict)
         if answer is None:
             return ""  # echo-suppressed (parity with respond): content-less to the cog
         self._append_turn(history, user_msg, answer)
@@ -640,12 +683,13 @@ class DMBrain:
         *,
         on_sentence: Callable[[str], Awaitable[None]],
         should_abort: Callable[[], bool] | None = None,
+        num_predict: int | None = None,
     ) -> str | None:
         """Streaming variant of :meth:`respond_opening` (the live path, ADR 017): same one-off
         director turn, spoken sentence-by-sentence via ``on_sentence``. Dice stay suppressed."""
         user_msg, labels, history = self._prepare_opening(channel_id, director_msg)
         return await self._stream_and_store(
-            channel_id, user_msg, labels, history, on_sentence, should_abort
+            channel_id, user_msg, labels, history, on_sentence, should_abort, num_predict=num_predict
         )
 
     def _build_request(
@@ -654,6 +698,7 @@ class DMBrain:
         user_msg: str,
         labels: list[str],
         history_prefix: list[dict[str, str]],
+        num_predict: int | None = None,
     ) -> tuple[str, list[dict[str, str]], dict]:
         """Assemble ``(system, messages, options)`` for one DM turn — the shared head both the
         batch (:meth:`_generate`) and streaming (:meth:`_stream_and_store`) paths use, so they
@@ -683,7 +728,7 @@ class DMBrain:
         if hint:
             system = f"{system}\n\n{hint}"
         messages = [*history_prefix, {"role": "user", "content": user_msg}]
-        options = {"stop": [f"\n{label}:" for label in labels], "num_predict": self._num_predict}
+        options = {"stop": [f"\n{label}:" for label in labels], "num_predict": num_predict or self._num_predict}
         return system, messages, options
 
     async def _chat_once(
@@ -692,12 +737,13 @@ class DMBrain:
         user_msg: str,
         labels: list[str],
         history_prefix: list[dict[str, str]],
+        num_predict: int | None = None,
     ) -> tuple[str, list[TestRequest], list[ManifestRequest], list[SceneRequest]]:
         """One non-streaming LLM call for ``user_msg`` on top of ``history_prefix`` → (sanitised
         answer, parsed dice tests, parsed Manifest requests, parsed scene requests). The raw building block of
         :meth:`_generate` (which wraps the echo-guard retry around it) and of the streaming path's
         echo retry."""
-        system, messages, options = self._build_request(channel_id, user_msg, labels, history_prefix)
+        system, messages, options = self._build_request(channel_id, user_msg, labels, history_prefix, num_predict=num_predict)
         raw = await self._client.chat(system, messages, options=options)
         # narration call's token counts (for [latency]); getattr so a test double without the attr
         # (or a future client) degrades to None instead of raising.
@@ -733,6 +779,7 @@ class DMBrain:
         user_msg: str,
         labels: list[str],
         history_prefix: list[dict[str, str]],
+        num_predict: int | None = None,
     ) -> str | None:
         """One DM answer for ``user_msg`` with the echo guard (D43/ADR 018 + W4): if the answer
         merely parrots a player line or re-narrates the DM's own previous answer, retry once with
@@ -740,13 +787,13 @@ class DMBrain:
         the turn entirely (nothing spoken, nothing stored — degenerate turns in history
         self-reinforce, seen live 2026-06-12)."""
         prev = self._prev_answer(history_prefix)
-        answer, tests, manifests, scenes = await self._chat_once(channel_id, user_msg, labels, history_prefix)
+        answer, tests, manifests, scenes = await self._chat_once(channel_id, user_msg, labels, history_prefix, num_predict=num_predict)
         problem = self._answer_problem(answer, user_msg, prev)
         if problem is not None:
             label, nudge = problem
             log.warning("echo guard: answer %s (%r) — retrying once", label, answer)
             nudged = f"{user_msg}\n{nudge}"
-            answer, tests, manifests, scenes = await self._chat_once(channel_id, nudged, labels, history_prefix)
+            answer, tests, manifests, scenes = await self._chat_once(channel_id, nudged, labels, history_prefix, num_predict=num_predict)
             if self._answer_problem(answer, user_msg, prev) is not None:
                 log.warning("echo guard: the retry misfired again — suppressing the turn")
                 return None
@@ -820,13 +867,14 @@ class DMBrain:
         history: list[dict[str, str]],
         on_sentence: Callable[[str], Awaitable[None]],
         should_abort: Callable[[], bool] | None,
+        num_predict: int | None = None,
     ) -> str:
         """Drive ``chat_stream`` through a :class:`StreamAssembler`, speaking sentences via
         ``on_sentence`` as they're ready, then finalise: store the canonical answer (parity with
         the batch path), surface pending tests, set the latency stats. Degrades on a mid-stream
         error — keeps what was spoken, marks the stored answer, never raises out of a half-spoken
         turn."""
-        system, messages, options = self._build_request(channel_id, user_msg, labels, history)
+        system, messages, options = self._build_request(channel_id, user_msg, labels, history, num_predict=num_predict)
         assembler = StreamAssembler(labels, self._profile)
         errored = False
         spoke_any = False
@@ -863,7 +911,7 @@ class DMBrain:
             log.warning("echo guard (stream): answer %s (%r) — retrying once", label, answer)
             nudged = f"{user_msg}\n{nudge}"
             try:
-                answer, tests, manifests, scenes = await self._chat_once(channel_id, nudged, labels, history)
+                answer, tests, manifests, scenes = await self._chat_once(channel_id, nudged, labels, history, num_predict=num_predict)
             except Exception:
                 log.exception("echo-guard retry failed — suppressing the turn")
                 answer, tests, manifests, scenes = "", [], [], []

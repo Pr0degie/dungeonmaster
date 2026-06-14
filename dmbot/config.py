@@ -37,6 +37,7 @@ class Config:
     tts_speaker: str
     tts_device: str
     dm_num_predict: int
+    dm_intro_num_predict: int
     dm_max_lines: int
     system: str
     adventure: str
@@ -120,6 +121,11 @@ class Config:
             # speaker-label stops stay as the backstop against scripted-party runaways. The
             # orchestrator trims a capped turn to its last full sentence. Tune by ear.
             dm_num_predict=int(os.environ.get("DM_NUM_PREDICT", "220")),
+            # Length cap for the one-time !intro opening monologue (ADR 031). The intro establishes
+            # place + mission + how they got here AND gives each player character a personal beat —
+            # impossible inside the normal 2–4-sentence cap, so it runs on its own, larger budget.
+            # One-off command (not a per-turn cost), so a generous default is safe; tune by ear.
+            dm_intro_num_predict=int(os.environ.get("DM_INTRO_NUM_PREDICT", "800")),
             # Cap on how many buffered player lines a !dm turn sends. Continuous transcription
             # (no wake word) piles up table talk + jokes between turns; sending all of it drowns
             # the real action, so keep only the most recent N. 0 = unbounded. Lower = snappier

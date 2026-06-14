@@ -159,6 +159,42 @@ class CharacterStore:
             "Spielenden wirklich sagen oder tun."
         )
 
+    def intro_roster_de(self) -> str:
+        """A compact German party roster for the one-time ``!intro`` opening monologue (ADR 031):
+        one bullet per character with the flavour the DM needs to give each figure a personal beat —
+        concept, then (full depth, Tobi's choice) origin, faction, distinguishing marks, goals,
+        connections and character arc. Read from each :class:`Character`'s ``raw`` source dict and
+        tolerant of missing fields (the lean ``_example`` sheets carry only some), so it degrades
+        gracefully; ``""`` when no characters are loaded. Embedded into the ``!intro`` director
+        instruction — it rides in the turn's user message, so the ADR-019 prompt order is untouched.
+        Never read aloud verbatim: the director tells the model to weave it in and only hint at
+        private goals."""
+        if not self._by_name:
+            return ""
+        # (raw field, German label) appended after the concept lead descriptor, each present field as
+        # "Label: value"; whitespace in multi-line sheet fields (goals/arc) is collapsed to one line.
+        fields = [
+            ("origin", "Herkunft"),
+            ("faction", "Fraktion"),
+            ("distinguishing", "Auffällig"),
+            ("goals", "Ziele"),
+            ("connections", "Verbindungen"),
+            ("arc", "Wandel"),
+        ]
+        lines: list[str] = []
+        for char in self._by_name.values():
+            segs: list[str] = []
+            concept = " ".join(str(char.raw.get("concept", "")).split())
+            if concept:
+                segs.append(concept)  # lead descriptor (no label)
+            for key, label in fields:
+                value = " ".join(str(char.raw.get(key, "")).split())
+                if value:
+                    segs.append(f"{label}: {value}")
+            body = "; ".join(segs)
+            lines.append(f"- **{char.name}**" + (f" — {body}" if body else ""))
+        return "\n".join(lines)
+
     def speaker_labels(self) -> list[str]:
         """Every name that may prefix a *scripted* line the model must not write — each character
         name plus each player display name. The orchestrator adds these (beside the turn's own
