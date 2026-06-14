@@ -9,6 +9,21 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+**Delivery-Pipeline aus `dmcog.py` nach `dmbot/voice/delivery.py` ausgelagert (2026-06-14, D74 → ADR 035). `dmcog.py`
+1188→662, `delivery.py` 575, Suite 319 grün, 0 Test-Änderungen, ruff sauber.** Tobis Wahl „b" — der eigentliche Hebel
+(größte Datei nach dem Cog-Split), per **Komposition** statt Vererbung. Vorgehen:
+- **Boundary erst kartiert** (interner Call-Graph in `dmcog` + Test-Surface), dann geschnitten: `DeliveryPipeline`
+  (`DMCog` hält `self._delivery = DeliveryPipeline(runtime, post_deliver=self._post_deliver)`) bekommt die
+  Antwort→Audio-Methoden `_synthesize`/`_speak`/`_speak_seamless`/`_begin_turn`/`_use_streaming`/`_handle_scene`/
+  `_make_scene_confirm`/`_deliver_answer`/`_await_dice_scene`/`_deliver_streaming` + die Hooks `_auto_dm_turn`/`_run_and_deliver`.
+- **Auf dem Cog geblieben:** der Recap-Tail (`_post_deliver`/`_autosave_turn`/`_maybe_compact`/`_persist_recap`) — genau das,
+  was `test_autorecap` anfasst → als **eine** `post_deliver`-Callback injiziert (ADR-029-Hook-Muster, objekt-lokal) →
+  sauberer Schnitt **und 0 Test-Änderungen**. Commands + `_deliver_intro_chunked` + Lore-Helfer rufen jetzt `self._delivery._<m>`.
+- **Byte-exakt** per Slice-Skript verschoben (**29 835 Zeichen char-exakt gegen `HEAD` verifiziert**; AST-geprüft: 13 Methoden
+  in einer Klasse, keine Leaks im Cog). Glue von Hand (Import, `__init__` + Hook-Rewire, ~16 Call-Site-Prefixe), ruff `--fix`
+  für die 8 nun ungenutzten Imports. **ADR 035** geschrieben (Komposition vs Mixin, Callback-Schnitt, deferred Szenen-/Lore-Sub-Cog).
+- _Nicht-Byte-Effekt: verschobene `log.*`-Zeilen tragen `voice.delivery` in der `%(name)s`-Spalte (Nachrichten/Formatierung gleich)._
+
 **`_TurnTiming` aus `runtime.py` nach `dmbot/turn_timing.py` ausgelagert (2026-06-14, D73 → ADR 034). `runtime.py`
 610→516, Suite 319 grün, ruff sauber, 0 Test-Änderungen.** Fortsetzung der D70/D71-Linie (Kandidat #1 der gescouteten
 Liste): den per-Turn-Latenz-Record `_TurnTiming` + die Konstante `_CTX_WARN_FRACTION` byte-exakt in ein eigenes Modul
