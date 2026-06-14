@@ -183,14 +183,34 @@ async def disconnect_voice(vc: Any, timeout: float = VOICE_DISCONNECT_TIMEOUT) -
     and UDP socket — the bot leaves the channel immediately), then awaits a gateway
     ``voice_state_update`` confirmation for up to ``VoiceClient.timeout`` (30s, see discord
     ``voice_state.py``). That wait only guards a disconnect→immediate-reconnect race, which is
-    moot when we're quitting — so we bound it. The inner coroutine catches the resulting
-    ``CancelledError`` and still runs its own ``cleanup()``, so the leave stays clean.
+    moot when we're quitting — so we bound it.
 
     Returns ``True`` if it confirmed in time, ``False`` if the confirmation wait was abandoned
     (the leave itself already happened). Real disconnect errors propagate to the caller.
+
+    Detecting the abandonment is subtle, so we don't go through ``asyncio.wait_for``. When ``wait_for``
+    times out it *cancels* the inner ``disconnect``, but discord.py's confirmation wait **catches that
+    ``CancelledError`` and returns normally** — still running its own ``cleanup()``, so the leave stays
+    clean. A cancelled coroutine that swallows the cancel and returns makes ``wait_for`` *return*
+    rather than raise ``asyncio.TimeoutError`` (Python 3.12), so keying off ``TimeoutError`` left the
+    ``False`` branch — and the caller's "abandoned at shutdown" warning — dead against the real
+    library; deciding by elapsed time instead is flaky right at the ``timeout`` boundary. Instead we
+    run the disconnect as a task and ask ``asyncio.wait`` whether it *finished within the window*:
+    finished → confirmed (re-raise any real error); still pending → the leave already happened, so we
+    cancel the lingering confirmation wait (its swallowed-cancel cleanup runs) and report abandoned.
     """
-    try:
-        await asyncio.wait_for(vc.disconnect(force=True), timeout=timeout)
+    task = asyncio.ensure_future(vc.disconnect(force=True))
+    done, _pending = await asyncio.wait({task}, timeout=timeout)
+    if task in done:
+        task.result()  # re-raise a real disconnect error; a clean confirmation returns its value
         return True
-    except asyncio.TimeoutError:
-        return False
+    # Timed out: the network leave already happened inside disconnect; only the gateway confirmation
+    # is still pending. Abandon it — discord.py swallows this cancel and still runs its cleanup().
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    except Exception:
+        log.exception("voice disconnect cleanup raised after the confirmation wait was abandoned")
+    return False

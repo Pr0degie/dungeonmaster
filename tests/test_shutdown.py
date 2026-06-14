@@ -74,16 +74,47 @@ def _raise():
 
 
 def test_disconnect_voice_bounds_a_slow_confirmation():
-    """discord.py's disconnect leaves immediately but then awaits a gateway confirmation for up
-    to 30s — moot at exit. disconnect_voice must abandon that wait (return False) and return fast."""
+    """discord.py's disconnect leaves immediately but then awaits a gateway confirmation for up to
+    30s — moot at exit. The real coroutine SWALLOWS the cancel from our bounding wait_for and still
+    runs its own cleanup() (voice_state.py), so wait_for *returns* rather than raising TimeoutError.
+    disconnect_voice must still report the wait as abandoned (False, detected by elapsed time), stay
+    bounded, and leave the cleanup intact — so the mock models that real swallow-and-cleanup
+    contract, not a bare sleep that lets the cancel propagate (which would mask the False path)."""
 
-    class SlowVC:
+    class RealisticVC:
+        def __init__(self):
+            self.cleaned = False
+
         async def disconnect(self, *, force=False):
-            await asyncio.sleep(30)  # mimic the post-leave confirmation wait
+            try:
+                await asyncio.sleep(30)  # the post-leave gateway-confirmation wait
+            except asyncio.CancelledError:
+                pass  # discord.py catches the cancel from our bounding wait_for...
+            finally:
+                self.cleaned = True  # ...and still runs cleanup(), so the leave stays clean
+
+    async def go():
+        vc = RealisticVC()
+        t0 = time.monotonic()
+        ok = await disconnect_voice(vc, timeout=0.1)
+        assert ok is False                  # the confirmation wait was abandoned (by elapsed time)
+        assert time.monotonic() - t0 < 1.0  # bounded — didn't wait out the 30s
+        assert vc.cleaned is True           # the swallowed-cancel cleanup still ran (clean leave)
+    asyncio.run(go())
+
+
+def test_disconnect_voice_propagated_cancel_also_reports_abandoned():
+    """If the confirmation coroutine instead lets the cancel propagate (an older discord.py, or a VC
+    that doesn't swallow it), our bounding wait_for raises TimeoutError — disconnect_voice must report
+    abandoned (False) on that path too, and still return fast."""
+
+    class PropagatingVC:
+        async def disconnect(self, *, force=False):
+            await asyncio.sleep(30)  # no CancelledError handling → the cancel propagates out
 
     async def go():
         t0 = time.monotonic()
-        ok = await disconnect_voice(SlowVC(), timeout=0.1)
+        ok = await disconnect_voice(PropagatingVC(), timeout=0.1)
         assert ok is False
         assert time.monotonic() - t0 < 1.0
     asyncio.run(go())
