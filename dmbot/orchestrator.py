@@ -13,10 +13,8 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import threading
 from collections.abc import Awaitable, Callable
-from difflib import SequenceMatcher
 
 from .llm.client import OllamaClient
 from .llm.persona import load_system_prompt
