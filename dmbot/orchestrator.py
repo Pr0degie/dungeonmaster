@@ -35,138 +35,30 @@ from .rules.marker import (
 from .rules.profile import SystemProfile
 from .tts.textsplit import has_speakable_content, split_completed
 
+# Re-exported for back-compat after the pure helpers moved to dmbot/llm/* (ADR 034): tests
+# and DMBrain/StreamAssembler still reference these names from `orchestrator`.
+from .llm.sanitize import (  # noqa: F401
+    _ROLE_LABEL,
+    _ROLE_LABELS,
+    _cut_at_labels,
+    _sanitize,
+    _sanitize_leading,
+    _strip_leading_label,
+    _trim_to_last_sentence,
+)
+from .llm.echo_guard import (  # noqa: F401
+    _ECHO_NUDGE,
+    _REPEAT_NUDGE,
+    _ROLL_DIRECTIVE,
+    is_echo,
+    is_self_repetition,
+)
+from .llm.director_msgs import (  # noqa: F401
+    build_intro_director_msg,
+    build_opening_director_msg,
+)
+
 log = logging.getLogger(__name__)
-
-# Models sometimes prefix a "Spielleitung:" label or wrap text in markdown bold despite the
-# prompt; that would be read out literally by TTS, so strip it as a safety net.
-_ROLE_LABEL = re.compile(
-    r"^\s*(spielleit(?:ung|er)|erzähler|sl|dm|gm|game ?master)\s*:\s*", re.IGNORECASE
-)
-# Small models (nemo) open with a self-referential meta-preamble despite the persona forbidding it —
-# "Als Spielleitung beschreibe ich: …", but also colon-less forms read aloud verbatim:
-# "Als Spielleitung beschreibe ich die Szene, wie …" / "… beschreibe ich eine dunkle Gasse …".
-# Match "Als <rolle> <describe-verb> ich" + an optional object + an optional connector, then strip.
-# The "<verb> ich" anchor keeps it from eating real narration (the DM never says "ich" of itself).
-_META_PREAMBLE = re.compile(
-    r"^\s*als\s+(?:die\s+)?(?:spielleit(?:ung|er)|erzähler|gm|dm|game ?master)\s+"
-    r"(?:beschreib\w*|schilder\w*|erzähl\w*|sag\w*|gebe?)\s+ich\b"
-    r"(?:\s+(?:dir|euch|die\s+szene|eine\s+szene|folgende\s+szene))?"
-    # zero+ connector words ("so", "wie", "folgendermaßen", …), each maybe after a ":"/"," — so
-    # "… beschreibe ich die Szene so:" strips fully instead of leaving a stray "So:" (seen live).
-    r"(?:\s*[:,]?\s*(?:so|folgenderma(?:ß|ss)en|wie\s+folgt|wie|dass|in\s+der|in\s+dem))*"
-    r"\s*[:,]?\s*",
-    re.IGNORECASE,
-)
-# Small models echo their own instructions as a trailing parenthetical ("(Bitte beachte, dass ich
-# keine Repliken der Spielenden erfinde …)") that TTS would read aloud. Strip a trailing "(…)" only
-# when it carries meta-language, so a genuine in-fiction aside ("(ein Schuss fällt)") survives.
-_META_PAREN = re.compile(
-    r"\s*\((?=[^)]*\b(?:beachte|repliken|spielleit\w*|spielenden|figuren|erfinde\w*|entscheid\w*|"
-    r"transkri\w*|hinweis|anmerk\w*|na ?repl)\b)[^)]*\)\s*$",
-    re.IGNORECASE,
-)
-# nemo ends almost every turn with a generic "Was tut ihr?" / "Was tust du?" prompt despite the
-# persona asking it not to. Strip a *trailing* generic action-prompt question (a real mid-scene
-# question or an NPC's question doesn't match these verbs and survives).
-_TRAILING_PROMPT = re.compile(
-    r"\s*Was\s+(?:tust\s+du|tut\s+ihr|macht\s+ihr|unternehmt\s+ihr|"
-    r"(?:möchtet|wollt|werdet)\s+ihr(?:\s+tun)?)\b[^?]*\?\s*$",
-    re.IGNORECASE,
-)
-# Small models sometimes break the fiction to "correct themselves" out loud — they narrate, then
-# "Nein, warte kurz. Das ist ein Meta-Kommentar von mir als Sprachmodell … Hier ist die korrekte
-# Antwort: <echte Erzählung>". Drop everything up to such a self-correction frame so only the real
-# narration is spoken (the frame admits to being an AI — exactly what must never be read aloud).
-_META_SELFCORRECT = re.compile(
-    r"^.*?\bHier ist die (?:korrekte|richtige)\b[^:]*:\s*",
-    re.IGNORECASE | re.DOTALL,
-)
-# Generic role labels small models like to keep talking as / for. Combined with the player
-# names this turn, they become both Ollama stop sequences and a post-hoc truncation guard
-# against the model fabricating player replies and playing several turns itself.
-_ROLE_LABELS = ["Spielleitung", "Spielleiter", "Spieler", "Erzähler", "GM", "DM"]
-
-
-def _cut_at_labels(text: str, labels: list[str]) -> str:
-    """Truncate at the first ``<label>:`` after the start — where the model began inventing a
-    next speaker (a player reply or another DM turn). Position 0 (a leading label) is left for
-    :func:`_strip_leading_label`."""
-    cut = len(text)
-    for label in labels:
-        idx = text.find(f"{label}:")
-        if 0 < idx < cut:
-            cut = idx
-    return text[:cut].strip()
-
-
-def _strip_leading_label(text: str, labels: list[str]) -> str:
-    """Strip a single leading ``<label>:`` the model emits when it answers **as** a player
-    ("SezBoss69: …") or relabels itself — ``_cut_at_labels`` only cuts labels *mid*-text, and the
-    ``\\n<label>:`` stop sequence misses a label with no preceding newline. Only the turn's own
-    labels (player names this turn + the generic role labels) are stripped, case-insensitively, so
-    real narration that merely contains a colon is untouched."""
-    for label in labels:
-        prefix = f"{label}:"
-        if text[: len(prefix)].lower() == prefix.lower():
-            return text[len(prefix):].lstrip()
-    return text
-
-
-def _strip_meta_preamble(text: str) -> str:
-    """Drop a leading "Als Spielleitung beschreibe ich …" preamble (with or without a colon) and
-    re-capitalise the narration that follows, so it isn't read aloud verbatim."""
-    m = _META_PREAMBLE.match(text)
-    if not m or m.end() == 0:
-        return text
-    rest = text[m.end():].lstrip()
-    return rest[0].upper() + rest[1:] if rest else text
-
-
-def _strip_trailing_prompt(text: str) -> str:
-    """Drop a trailing generic "Was tut ihr?"/"Was tust du?" closing question — nemo tacks one on
-    almost every turn despite the persona. Only the *trailing* generic form goes (a real mid-scene
-    or NPC question survives), and never strips the answer down to nothing."""
-    stripped = _TRAILING_PROMPT.sub("", text).strip()
-    return stripped or text
-
-
-def _sanitize_leading(text: str) -> str:
-    """The leading/global half of :func:`_sanitize`: drop markdown, a self-correction frame, a
-    leading role label and a leading meta-preamble. Split out so the streaming assembler (ADR 017)
-    can apply it incrementally *without* the trailing strips, which only ever touch the held-back
-    last sentence."""
-    text = text.replace("*", "").replace("`", "").strip()  # drop markdown bold + code-fence backticks
-    text = _META_SELFCORRECT.sub("", text, count=1).strip()  # drop a "…Sprachmodell… Hier ist die korrekte Antwort:" frame
-    text = _ROLE_LABEL.sub("", text).strip()  # drop a leading role label
-    text = _strip_meta_preamble(text)  # drop a leading "Als Spielleitung beschreibe ich …" preamble
-    return text
-
-
-def _sanitize_trailing(text: str) -> str:
-    """The trailing half of :func:`_sanitize`: drop a trailing meta-disclaimer parenthetical and a
-    repetitive trailing 'Was tut ihr?' closer. Applied last, on the final/held-back sentence."""
-    text = _META_PAREN.sub("", text).strip()  # drop a trailing meta-disclaimer in parentheses
-    text = _strip_trailing_prompt(text)  # drop a repetitive trailing "Was tut ihr?" closer
-    return text
-
-
-def _sanitize(text: str) -> str:
-    return _sanitize_trailing(_sanitize_leading(text))
-
-
-# Sentence-ending punctuation, optionally followed by a closing quote/bracket.
-_SENTENCE_END = re.compile(r"[.!?…](?:[\"»”’)\]]+)?(?=\s|$)")
-
-
-def _trim_to_last_sentence(text: str) -> str:
-    """If a turn was cut mid-sentence (it hit the ``num_predict`` cap), drop the dangling
-    fragment so TTS doesn't read half a sentence aloud. Only trims when there *is* a complete
-    sentence to fall back to and real text follows it; a fully-punctuated answer is unchanged."""
-    ends = list(_SENTENCE_END.finditer(text))
-    if not ends:
-        return text  # nothing to fall back to — leave it rather than nuke the whole turn
-    last = ends[-1].end()
-    return text[:last].strip() if text[last:].strip() else text
 
 
 def finalize_answer(
@@ -186,140 +78,6 @@ def finalize_answer(
         answer, manifests = extract_manifests(answer, profile)  # strip <<MANIFEST …>> markers (ADR 022)
     answer, scenes = extract_scenes(answer)  # strip <<ORT …>> scene markers (ADR 026); profile-free
     return _trim_to_last_sentence(answer), tests, manifests, scenes
-
-
-# --- Echo guard (D43 / ADR 018) ------------------------------------------------------------------
-
-# Appended to the retry prompt when the model parroted a player line instead of narrating.
-_ECHO_NUDGE = (
-    "Antworte als Spielleitung: Beschreibe, was daraufhin in der Szene geschieht, "
-    "und wiederhole nicht die Worte der Spielenden."
-)
-
-# Appended when the model re-narrated its own previous answer (W4: players asked "warum hat er
-# das zweimal gesagt?" — seen live as a near-verbatim scene re-description on a direct question).
-_REPEAT_NUDGE = (
-    "Beantworte die konkrete Frage der Spielenden direkt und knapp; "
-    "wiederhole nicht deine letzte Beschreibung."
-)
-
-# Explicit directive on a results-only (post-roll) turn — without it the model sees a bare
-# "[Würfel] …" line and tends to predict the *next player line* instead of narrating (seen live
-# 2026-06-12: three identical echo turns poisoned the history).
-_ROLL_DIRECTIVE = (
-    "Beschreibe als Spielleitung kurz die Folgen dieses Würfelergebnisses in der Szene."
-)
-
-
-def _normalize_echo(text: str) -> str:
-    """Case/punctuation-insensitive view for the echo comparison."""
-    return re.sub(r"[\W_]+", " ", text.lower()).strip()
-
-
-def is_echo(answer: str, user_msg: str) -> bool:
-    """True when ``answer`` merely parrots a line of this turn's ``user_msg`` — the model
-    predicted the next table line ("Pr0degie: Ich greife den Kultisten an.") instead of narrating.
-    Once such an echo lands in history it self-reinforces, so the caller retries/suppresses.
-    Compares each user line (with and without its ``Name:``/``[Würfel] …:`` lead) normalized;
-    an echo is an exact match, the answer being a fragment of the line, or the line covering
-    ≥90% of the answer. Lines under 10 normalized chars never count (too short to call)."""
-    norm_answer = _normalize_echo(answer)
-    if not norm_answer:
-        return False
-    for line in user_msg.splitlines():
-        body = line.split(":", 1)[1] if ":" in line else line
-        for candidate in (line, body):
-            norm_line = _normalize_echo(candidate)
-            if len(norm_line) < 10:
-                continue
-            if (
-                norm_answer == norm_line
-                or norm_answer in norm_line
-                or (norm_line in norm_answer and len(norm_line) >= 0.9 * len(norm_answer))
-            ):
-                return True
-    return False
-
-
-def is_self_repetition(answer: str, previous_answer: str) -> bool:
-    """True when ``answer`` re-narrates the DM's **own previous answer** nearly verbatim — the W4
-    failure (live 2026-06-12: asked "Warum sind wir hier?", the model re-told the prior scene
-    description with only pronoun swaps). Fuzzy, not substring: pronoun/conjugation edits survive
-    a SequenceMatcher ratio. Short answers are exempt — "Du triffst." may legitimately recur."""
-    norm_new = _normalize_echo(answer)
-    norm_prev = _normalize_echo(previous_answer)
-    if len(norm_new) < 60 or len(norm_prev) < 60:
-        return False
-    return SequenceMatcher(None, norm_new, norm_prev).ratio() >= 0.75
-
-
-# --- Opening briefing (!start) ------------------------------------------------------------------
-
-# The director instruction that drives the !start opening turn. It is a GM-side ("director")
-# message, NOT a player line: it tells the model to OPEN the session out loud so the table knows
-# who they are and what their mission is (the first-session complaint: the bot "hat am Anfang
-# nicht gesagt, was abgeht"). The concrete content — the Halikarn briefing, the three leads — is
-# NOT spelled out here: it lives in the start scene's card (## Aktuelle Szene + guidance_de),
-# which the system prompt already carries. So this only has to point the model at that scene and
-# hold it to the persona's voice. Phrased as an instruction to the GM, never read aloud.
-OPENING_DIRECTOR_MSG = (
-    "[Regie] Eröffne jetzt die Sitzung: Spiele die Auftrags-/Eröffnungsszene aus deiner "
-    "aktuellen Szene. Mach den Spielenden klar, wer sie sind und was ihr Auftrag ist, und "
-    "deute die ersten Spuren über ein Detail der Umgebung an — nicht als Aufzählung. Halte "
-    "dich an die Spielleitungs-Stimme (2–4 Sätze). Verlange keine Probe."
-)
-
-
-def build_opening_director_msg() -> str:
-    """The GM-side director instruction for the ``!start`` opening turn (pure, unit-testable).
-
-    Kept as a function so the cog never inlines the prompt text and a test can assert its shape
-    (it must read as a GM/director instruction, not as a player action, and must forbid a dice
-    test on the briefing)."""
-    return OPENING_DIRECTOR_MSG
-
-
-# --- Intro monologue (!intro) ------------------------------------------------------------------
-
-# The director instruction for the one-time !intro opening MONOLOGUE (ADR 031). Unlike the short
-# !start briefing (OPENING_DIRECTOR_MSG, 2–4 sentences), this asks for one coherent opening monologue
-# that establishes place + how they arrived + the mission AND gives each player character a personal
-# beat. The concrete adventure content (place, mission, leads) lives in the start scene's card +
-# adventure summary already in the system prompt; the party roster is embedded here (it rides in the
-# turn's user message so the ADR-019 prompt order is untouched). GM-side instruction, never read aloud.
-_INTRO_DIRECTOR_HEAD = (
-    "[Regie] Eröffne jetzt die Sitzung mit einem zusammenhängenden Eröffnungs-Monolog "
-    "(kein Aufzählen, keine Stichpunkte). Etabliere zuerst, wo die Gruppe ist und wie sie "
-    "hergekommen ist, dann die Lage und ihren Auftrag — stütze dich dabei auf deine aktuelle "
-    "Szene und die Abenteuer-Zusammenfassung."
-)
-_INTRO_DIRECTOR_CHARS = (
-    "Beziehe danach jede der folgenden Figuren mit einem kurzen, persönlichen Moment ein "
-    "(sprich sie namentlich an und knüpfe an ihre Herkunft, ihr Wesen und ihre Beweggründe an) — "
-    "webe das ins Bild ein, lies nichts davon wörtlich vor und sprich geheime oder rein private "
-    "Ziele höchstens andeutend aus:\n\n{roster}"
-)
-_INTRO_DIRECTOR_TAIL = (
-    "Bleib durchgehend in der Spielleitungs-Stimme. Das ist der Auftakt — er darf länger sein "
-    "als ein normaler Zug. Verlange keine Probe."
-)
-
-
-def build_intro_director_msg(roster_de: str = "") -> str:
-    """The GM-side director instruction for the ``!intro`` opening monologue (pure, unit-testable).
-
-    Asks for one coherent opening monologue (place + how they arrived + mission) and weaves in each
-    player character via the embedded ``roster_de`` block (from ``CharacterStore.intro_roster_de``).
-    With an empty roster it degrades to the place/mission monologue alone. Kept as a function so the
-    cog never inlines the prompt text and a test can assert its shape (one monologue, every figure
-    involved, no dice)."""
-    msg = _INTRO_DIRECTOR_HEAD
-    if roster_de.strip():
-        msg += " " + _INTRO_DIRECTOR_CHARS.format(roster=roster_de.strip())
-        msg += "\n\n" + _INTRO_DIRECTOR_TAIL
-    else:
-        msg += " " + _INTRO_DIRECTOR_TAIL
-    return msg
 
 
 # --- Streaming assembler (ADR 017) --------------------------------------------------------------
