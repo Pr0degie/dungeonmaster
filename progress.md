@@ -278,6 +278,20 @@ _Ältere `## Last session`-Einträge (D69 `puffer`-Modus, D68 globaler Sprech-Mo
 D66 CPU-Ursache/`!intro` u. a.): siehe **[docs/progress-archive.md](docs/progress-archive.md)**._
 
 ## Next concrete step
+**Optionale Kontext-Lean-Auslagerungen — Fortsetzung von D70/D71, Tobis Linie „nur abgekapselte (in sich
+geschlossene) Methoden auslagern, Funktionalität unverändert".** Fertig gescoutete, konfliktfreie Kandidaten
+(Muster wie D70/D71: byte-exakt verschieben, **Re-Export-Shims**, Suite muss **319 grün** bleiben, 0 Test-Änderungen):
+1. **`runtime.py` `_TurnTiming`** (~90 Z., Dataclass + `log_line`/`respond_ms`/`ctx_over_budget`/`take_llm_stats`;
+   zieht die Konstante `_CTX_WARN_FRACTION` mit) → neues `dmbot/turn_timing.py`, **Re-Export aus `runtime`** hält
+   `dmcog`/`dicecog`/`test_autorecap`-Imports (`from ..runtime import _TurnTiming`) stabil → `runtime.py` 610→~520. **Top.**
+2. WAV-Free-Funcs `_write_utterance_wav`/`_wav_duration_s`/`_safe_remove` (~40 Z., pure) → `dmbot/voice/wavfiles.py`, Re-Export.
+3. `engine.py` `describe_*_de` (~80 Z.) von der Auflösung trennen — **niedrige Prio** (eng kohärent).
+4. **`dmcog.py`/`dicecog.py`:** kein simples Auslagern (Cog = eine Klasse) → brauchen **Mixin-Idiom / `_speak`→Runtime /
+   eigenes `LoreCog`** + **eigene ADR** (035). Separat, nicht „abgekapselte Methode".
+
+**Eigentliche Projekt-Priorität bleibt aber das Live-Gate (siehe unten):** `!j` in circlejerk → `!intro` / `!sprechmodus`
+(stream/puffer/nahtlos × flach/intoniert vergleichen) + die Phase-9/10-Checks. Das Refactoring ist Nebenstrang.
+
 **Kontext-Split erledigt (2026-06-14, D63 → ADR 032):** Live-Docs verschlankt, Historie/Detail in `docs/`; nichts
 Code-/Bot-seitig offen, Rotations-Regel aktiv. Der eigentliche nächste Schritt bleibt das `!intro`-Live-Gate unten.
 
