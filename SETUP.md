@@ -59,7 +59,7 @@ optional, sensible defaults):
 | `OLLAMA_HOST` / `OLLAMA_MODEL` | `127.0.0.1:11434` / `mistral-nemo` | LLM host + model |
 | `WHISPER_MODEL` / `WHISPER_DEVICE` / `WHISPER_COMPUTE` | `medium` / `cuda` / `float16` | STT; use `cpu`/`int8` to free GPU VRAM |
 | `TTS_ENGINE` | `xtts` | Coqui XTTS v2 (58 voices + cloning) — the default; set `piper` for the fast, lean fallback voice |
-| `TTS_SPEAKER` / `TTS_DEVICE` | *Dionisio Schuyler* / `cpu` | XTTS speaker + device (`cuda` for GPU; auto-falls back to CPU) |
+| `TTS_SPEAKER` / `TTS_DEVICE` | *Dionisio Schuyler* / `cuda` | XTTS speaker + device (`cuda` = GPU, the default; set `cpu` on a tight 12 GB card. Load-time auto-falls back to CPU) |
 | `DM_BRIDGE_HOST` / `DM_BRIDGE_PORT` | `127.0.0.1` / `8765` | Bot A's `/speak` bridge |
 | `DM_ADVENTURE` | — | scene-card adventure to load (e.g. `chemical_burn`); unset → no adventure |
 | `DM_LOG_FILE` | off | `1` records a run to `logs/terminal.log` + `logs/debug.log` |
