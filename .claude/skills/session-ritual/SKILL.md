@@ -20,7 +20,7 @@ the one canonical procedure; it formalizes the prose in `CLAUDE.md`.
    phase from `roadmap.md` (the running instance can't switch its own dial).
 
 Read on demand, **not** every session: `architecture.md` (only when the task touches design),
-`roadmap.md` (phase transitions / "goal of Phase X?"), `docs/SETUP.md` (Phase 0 / install
+`roadmap.md` (phase transitions / "goal of Phase X?"), `SETUP.md` (Phase 0 / install
 steps), older ADRs (when working in their area). Eager-loading everything burns the context
 window before useful work starts.
 

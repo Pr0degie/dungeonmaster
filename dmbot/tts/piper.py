@@ -36,7 +36,7 @@ class PiperTTS:
         if not model.exists():
             raise FileNotFoundError(
                 f"Piper voice not found at {model}. Download de_DE-thorsten-medium.onnx "
-                "(+ .onnx.json) into voices/ — see docs/SETUP.md B5."
+                "(+ .onnx.json) into voices/ — see SETUP.md B5."
             )
         config = model.with_suffix(model.suffix + ".json")  # de_DE-…onnx → …onnx.json
         # CPU: the GPU is busy with whisper + the LLM, and Piper is real-time on CPU.

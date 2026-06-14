@@ -48,16 +48,16 @@ uv run python -m dmbot        # or double-click start_dmbot.bat (Windows)
 ```
 
 You also need, running alongside: **Ollama** (`mistral-nemo` pulled) and **Bot A** (the music
-bot on its `dungeon_master` branch, in the same voice channel). Full step-by-step in
-**[`SETUP.md`](SETUP.md)**; the external prerequisites the bot can't install itself are in
-[`docs/SETUP.md`](docs/SETUP.md).
+bot on its `dungeon_master` branch, in the same voice channel). Full step-by-step — install,
+run, the external prerequisites the bot can't install itself, and what to copy to a fresh
+machine — in **[`SETUP.md`](SETUP.md)**.
 
 ## Running on another machine (e.g. a second GPU box)
 
 The project is two processes plus Ollama, all local. Note that the game content (bought PDFs,
 the adventure compendium, the curated lore, the vector store) is deliberately **not in git** —
-[`docs/CHECKLIST.md`](docs/CHECKLIST.md) lists exactly what to copy over privately. To bring the
-stack up on a fresh Windows + NVIDIA machine:
+[`SETUP.md` → "Running on another machine"](SETUP.md#running-on-another-machine-what-git-doesnt-carry)
+lists exactly what to copy over privately. To bring the stack up on a fresh Windows + NVIDIA machine:
 
 1. **Clone both repos.** This one (DMbot) and the music bot, `Pr0degie/musicbot` on branch
    `dungeon_master` (Bot A — the `/speak` mouth). DMbot can't speak without Bot A running.
@@ -185,7 +185,7 @@ Everything is env-driven (never hardcoded). Highlights — see [`.env.example`](
 | [`roadmap.md`](roadmap.md) | phased plan + model/effort recommendations |
 | [`progress.md`](progress.md) | live status, decision log, what's next |
 | [`docs/decisions/`](docs/decisions/) | Architecture Decision Records (ADRs) |
-| [`SETUP.md`](SETUP.md) · [`docs/SETUP.md`](docs/SETUP.md) | install & run · external prerequisites |
+| [`SETUP.md`](SETUP.md) | install & run · external prerequisites · fresh-machine checklist |
 
 > Convention: code and docs are **English**; game content (the GM persona, tone overlays, and
 > anything the DM says) is **German**.

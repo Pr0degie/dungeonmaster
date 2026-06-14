@@ -526,8 +526,8 @@ cogitator/                 # = the DMbot repo
 │   ├── dm_core_de.md      # generic GM persona (GERMAN — game content)
 │   └── campaign_tone_de.md # current campaign's tone/setting overlay (GERMAN)
 ├── docs/
-│   ├── SETUP.md
 │   └── decisions/         # ADRs
+├── SETUP.md               # install · run · external prerequisites · fresh-machine checklist
 ├── CLAUDE.md
 ├── roadmap.md
 ├── progress.md

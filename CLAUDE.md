@@ -31,7 +31,7 @@ files until that handshake is done.
 |---|---|
 | `architecture.md` | Only when the task touches design. Skim the relevant section; don't re-read top to bottom. |
 | `roadmap.md` | When transitioning into a new phase, or when the user asks "what's the goal of Phase X?" |
-| `docs/SETUP.md` | In Phase 0 or when a setup/install step comes up (Ollama, Discord tokens, cuDNN DLLs, PDFs). Point Tobi at the open items there — the agent cannot do them itself. |
+| `SETUP.md` | In Phase 0 or when a setup/install step comes up (Ollama, Discord tokens, cuDNN DLLs, PDFs, fresh-machine copy). Point Tobi at the open items there — the agent cannot do them itself. |
 | Older ADRs in `docs/decisions/` | When working in the area they cover. Don't guess which — the decision log + phase→ADR map in `progress.md` tell you which ADR governs the current decision/phase (e.g. ADR 003 before touching turn-taking, ADR 005 before the dice engine). |
 
 Eagerly loading everything fills the context window before useful work starts. Be selective.
@@ -122,7 +122,7 @@ dmbot/          the DM bot
   logsetup.py   console (green chat) + file logging
 data/           committed seed/reference: systems/ (profiles), lore/ + rules_de/ (curated DE setting/rules), party/ (party JSONs), sessions/_example + the live channel's characters.json. Generated/local (git-ignored — see the .gitignore allowlist): pdfs/ (RAG sources), adventures/ (scene cards, bought-book derivatives), sessions/<id>/ state+recaps, vectordb/ (rag.db)
 prompts/        dm_core_de.md (generic GM persona) + campaign_tone_de.md (campaign overlay)  — GERMAN, game content
-docs/           SETUP.md, decisions/ (ADRs)
+docs/           decisions/ (ADRs), how-to-*.html + character-creation-prompt.md (player guides). SETUP.md lives in the repo root.
 ```
 
 ## Bot A — the bridge (separate repo, already done)

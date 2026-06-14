@@ -59,7 +59,7 @@ sessions — after a model switch, re-run `/effort`.
 - Install Ollama locally on the 4070, pull models (`mistral-nemo`, `nomic-embed-text`).
 - Model taste test: Mistral Nemo 12B vs. alternatives with the same German Eisenhorn
   prompt; compare tone & speed → pick the primary model.
-- **Manual setup outside the agent:** see `docs/SETUP.md`.
+- **Manual setup outside the agent:** see `SETUP.md`.
 - **Verification:** `curl http://localhost:11434/api/generate …` returns a plausible
   German answer.
 

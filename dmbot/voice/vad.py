@@ -59,7 +59,7 @@ class SileroVad:
         if not model_path.exists():
             raise FileNotFoundError(
                 f"silero-vad model not found at {model_path}. It is vendored in the repo; "
-                "see docs/SETUP.md if it is missing."
+                "see SETUP.md if it is missing."
             )
         opts = ort.SessionOptions()
         # The model is tiny and runs per 32 ms window on the reader thread — single-threaded

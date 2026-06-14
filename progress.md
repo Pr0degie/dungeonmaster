@@ -1130,7 +1130,7 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 - [x] Discord DMbot app + token (in `.env`). _(Bot A token already exists in the music bot repo.)_
 - [x] Ollama installed locally on the 4070 + models pulled (`mistral-nemo`, `nomic-embed-text`) + reachable
 - [x] Model taste test → primary model chosen: **mistral-nemo**
-- **Manual setup (outside the agent): see `docs/SETUP.md`.**
+- **Manual setup (outside the agent): see `SETUP.md`.**
 - **Gate:** `curl` to Ollama from Tobi's machine → German answer.
 - **VERIFY EVIDENCE:** Gate met 2026-06-04 — `curl http://localhost:11434/api/generate` with
   `mistral-nemo` returned a plausible grimdark German answer ("Die Finsternis hat sich über die
