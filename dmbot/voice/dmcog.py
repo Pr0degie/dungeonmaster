@@ -608,6 +608,17 @@ class DMCog(commands.Cog):
             return
         await self._deliver_answer(ctx.channel, guild_id, answer, timing)
 
+    def _speech_status_text(self) -> str:
+        """Current spoken-delivery setting as a short `**mode** + **punct**` string with a per-mode
+        note (the puffer depth, or the nahtlos synth-wait warning)."""
+        if self._rt._speech_mode == "nahtlos":
+            note = " ⏳ wartet auf die volle Synthese vor dem ersten Ton (auf CPU langsam)"
+        elif self._rt._speech_mode == "puffer":
+            note = f" (Vorlauf: {self._rt._speech_prebuffer} Sätze)"
+        else:
+            note = ""
+        return f"**{self._rt._speech_mode}** + **{self._rt._speech_punct}**{note}"
+
     @commands.command(name="sprechmodus", aliases=["sprache", "voicemode"])
     async def sprechmodus(self, ctx: commands.Context, *, args: str = "") -> None:
         """`!sprechmodus` — global spoken-delivery mode for EVERY DM turn (ADR 033). Axes, each set
@@ -620,7 +631,9 @@ class DMCog(commands.Cog):
             `intoniert` (keep `.,!?;:-` for sentence/question prosody, but XTTS may babble, D55);
           • a number sets the `puffer` head-start depth (sentences pre-synthesised), e.g.
             `!sprechmodus puffer 4`.
-        Takes effect on the next turn. `!intro test` stays a fixed nahtlos+flach comparison anchor."""
+        Takes effect on the next turn. `!intro test` stays a fixed nahtlos+flach comparison anchor.
+        Bare `!sprechmodus` (or an unknown word) prints the full how-to + the current setting; a
+        successful change just confirms the new setting."""
         changed, unknown = False, []
         for w in args.lower().split():
             if w in ("stream", "puffer", "nahtlos"):
@@ -634,19 +647,30 @@ class DMCog(commands.Cog):
                 changed = True
             else:
                 unknown.append(w)
+        # A clean change → just confirm. Bare call or an unknown word → the full how-to + current.
+        if changed and not unknown:
+            await ctx.send(f"🔊 Sprechmodus jetzt: {self._speech_status_text()}")
+            return
+        n = self._rt._speech_prebuffer
+        lines = [
+            "🔊 **Sprechmodus** — wie alle DM-Antworten gesprochen werden (wirkt ab dem nächsten Zug).",
+            f"Aktuell: {self._speech_status_text()}",
+            "",
+            "**Lieferart** — wie abgespielt wird:",
+            "• `stream` — Satz für Satz; schnellster Start, kleine Lücken",
+            f"• `puffer` — erst {n} Sätze vorladen, dann los; glatter, kurze Startverzögerung",
+            "• `nahtlos` — alles am Stück; keine Lücken, wartet aber auf die volle Synthese (auf CPU langsam)",
+            "",
+            "**Betonung** — wie es klingt:",
+            "• `flach` — ohne Satzzeichen; sicher gegen Verhaspler, etwas monoton",
+            "• `intoniert` — mit `.,!?` für Satz-/Fragebetonung (kann selten verhaspeln)",
+            "",
+            "**Ändern:** `!sprechmodus <wert> …` (mehrere auf einmal); eine **Zahl** setzt die Puffertiefe.",
+            "Beispiele: `!sprechmodus nahtlos` · `!sprechmodus puffer 4` · `!sprechmodus stream intoniert`",
+        ]
         if unknown:
-            await ctx.send(
-                f"❓ Unbekannt: {', '.join(unknown)} — nutze `stream`/`puffer`/`nahtlos`, "
-                "`flach`/`intoniert` und/oder eine Zahl (Puffertiefe)."
-            )
-        if self._rt._speech_mode == "nahtlos":
-            note = " ⏳ wartet auf die volle Synthese vor dem ersten Ton (auf CPU langsam)"
-        elif self._rt._speech_mode == "puffer":
-            note = f" (Vorlauf: {self._rt._speech_prebuffer} Sätze)"
-        else:
-            note = ""
-        prefix = "🔊 Sprechmodus jetzt" if changed else "🔊 Sprechmodus"
-        await ctx.send(f"{prefix}: **{self._rt._speech_mode}** + **{self._rt._speech_punct}**{note}")
+            lines.insert(0, f"❓ Unbekannt: {', '.join(unknown)} — geänderte Werte sind übernommen.")
+        await ctx.send("\n".join(lines))
 
     @commands.command(name="intro", aliases=["einleitung", "eroeffnung"])
     async def intro(self, ctx: commands.Context, *, mode: str = "") -> None:
