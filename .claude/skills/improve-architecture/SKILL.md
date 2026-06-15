@@ -63,9 +63,15 @@ Use `architecture.md`'s names for the domain (talk about "the turn-delivery pipe
 enough to reopen it — flag it clearly (_"contradicts ADR 029, but worth reopening because…"_).
 Don't list every refactor an ADR forbids.
 
-### 3. Grilling loop
-Once Tobi picks one, hand off to `/grill-me` — walk the design tree (constraints, what sits
-behind the seam, which tests survive). Side effects happen inline as decisions crystallise:
+### 3. Nail down the chosen candidate
+Once Tobi picks one, settle the design before building — but **scale the ceremony to the
+refactor; don't grill by reflex**:
+- **Small / obvious** (extract this, inline that, collapse a pass-through): state the target
+  shape in a line or two and build it. No grilling.
+- **Real design forks** (what sits behind the seam, which tests survive, cross-cutting
+  constraints): grill them out — run `/grill-me` if it helps, or just walk the forks here.
+
+Either way, two side effects are **mandatory** — they outlast this session:
 - **Naming a deepened module after a concept not in `architecture.md`, or sharpening a fuzzy
   term?** Update `architecture.md` right there — design decisions live there and "if you change
   a decision, update architecture.md in the same change" (CLAUDE.md).
