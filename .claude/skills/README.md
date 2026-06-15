@@ -22,6 +22,7 @@ all of them); the full body loads only when the skill is actually used.
 | **rag-ingest** | `/rag-ingest` | Ingest a PDF/source into the RAG store: `pdf_to_md.py` (page/spoiler control) → inspect a real chunk → `dmbot.rag.ingest` → wire into `retrieve.py` `_SOURCES` → `rag_calibrate.py` → verify a question hits and a spoiler probe stays silent. |
 | **character-build** | `/character-build` | Validate + deploy an IM character (incoming JSON / from scratch / backstory backfill): recompute budgets, wounds, psyker powers, augmetics against the profile → write `data/party/<player>.json` → generate the PDF sheet → propose (confirm-first) the merge into the session `characters.json` + aliases. |
 | **session-ritual** | `/session-ritual` | Start handshake (read `CLAUDE.md` → `progress.md` → latest ADR, state where we are) + end-of-session wrap-up (`progress.md` fields) + scaffold the next-numbered ADR in the README format. |
+| **tdd** | `/tdd` | Drive a change to the deterministic core test-first: one failing fixed-seed test → confirm red → minimal green → refactor. Guardrails against the two things Claude does by default (impl-first, rewriting tests to pass). For existing code; new subsystems use `rules-subsystem`. |
 
 ## Related: the test hook (not a skill)
 
