@@ -25,6 +25,7 @@ all of them); the full body loads only when the skill is actually used.
 | **tdd** | `/tdd` | Drive a change to the deterministic core test-first: one failing fixed-seed test → confirm red → minimal green → refactor. Guardrails against the two things Claude does by default (impl-first, rewriting tests to pass). For existing code; new subsystems use `rules-subsystem`. |
 | **grill-me** | `/grill-me` | Stress-test a plan before building: walk the decision tree one fork at a time, answer from docs/ADRs/code where possible, recommend an answer per question, grill in German until the design is unambiguous → offer an ADR. Adapted from Matt Pocock's grill-me. |
 | **improve-architecture** | `/improve-architecture` | Whole-codebase deepening review: find shallow pass-through modules (deletion test) and propose turning them deep, for testability/AI-navigability. Markdown report → pick one → grill into a design (+ architecture.md/ADR updates). Informed by architecture.md + docs/decisions/; not diff-scoped (use /simplify or /code-review for that). Adapted from Matt Pocock. |
+| **to-prd** | `/to-prd` | Synthesize a grilled-out plan into a PRD written to `docs/plans/<slug>.md` (no interview — companion to `/grill-me`). Explores code + architecture.md + ADRs, sketches test seams at the engine boundary, writes Problem/Solution/User-Stories/Impl-/Testing-Decisions/Scope, points `progress.md`'s next step at it. Adapted from Matt Pocock. |
 
 ## Related: the test hook (not a skill)
 
