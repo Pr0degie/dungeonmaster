@@ -23,6 +23,7 @@ all of them); the full body loads only when the skill is actually used.
 | **character-build** | `/character-build` | Validate + deploy an IM character (incoming JSON / from scratch / backstory backfill): recompute budgets, wounds, psyker powers, augmetics against the profile → write `data/party/<player>.json` → generate the PDF sheet → propose (confirm-first) the merge into the session `characters.json` + aliases. |
 | **session-ritual** | `/session-ritual` | Start handshake (read `CLAUDE.md` → `progress.md` → latest ADR, state where we are) + end-of-session wrap-up (`progress.md` fields) + scaffold the next-numbered ADR in the README format. |
 | **tdd** | `/tdd` | Drive a change to the deterministic core test-first: one failing fixed-seed test → confirm red → minimal green → refactor. Guardrails against the two things Claude does by default (impl-first, rewriting tests to pass). For existing code; new subsystems use `rules-subsystem`. |
+| **grill-me** | `/grill-me` | Stress-test a plan before building: walk the decision tree one fork at a time, answer from docs/ADRs/code where possible, recommend an answer per question, grill in German until the design is unambiguous → offer an ADR. Adapted from Matt Pocock's grill-me. |
 
 ## Related: the test hook (not a skill)
 
