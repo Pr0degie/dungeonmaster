@@ -9,6 +9,28 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+**Review-getriebene Fix-Runde nach Fan-out-`/code-review` über die Tagescommits `7b5af54..HEAD` (2026-06-15, D76). Suite 324 grün, 2 Commits gepusht.**
+Tobi: „viele Commits heute — lohnt sich Fan-out + `/code-review`?" Da alles schon auf `main` (synced) lag, hatte der eingebaute
+Branch/PR-Review nichts zu diffen → stattdessen Fan-out-Review (21 Agenten, jedes Finding adversarial gegengeprüft) über den
+Commit-Range selbst: **14 Findings → 3 bestätigt, 11 entwarnt**. Kein Refactor-Regress (D70–D75) überlebte die Gegenprüfung,
+Golden-Rules-Querschnitt (dice=code, memory-split, Feedback-Schutz L1/L2, Two-Bot-Isolation) sauber.
+- **#2/#3 (Bug + maskierender Test) — `dmbot/shutdown.py::disconnect_voice` (`2b608e7`):** Der True/False-Rückgabewert hing an
+  `asyncio.wait_for`, das `TimeoutError` wirft. Gegen das echte discord.py + Py 3.12 ist der Zweig **tot** — die
+  Bestätigungs-Wartung **schluckt** den Bound-Cancel und kehrt normal zurück → `wait_for` *returns*, die Funktion gab immer
+  `True`, die „abandoned at shutdown"-Warnung feuerte nie. Der Test maskierte das (nackter `sleep`-Mock, der den Cancel
+  propagieren lässt → grünes `False`, das die Produktion nie liefert). **Neu deterministisch:** Disconnect als Task, `asyncio.wait`
+  prüft, ob er *im Fenster* fertig wurde (fertig → confirmed, sonst cancel + abandoned) — kein wackeliges Elapsed-Timing. Test auf
+  den echten swallow-and-cleanup-Kontrakt umgestellt + zweiter Test für den propagierenden Pfad.
+- **#1 (größte Test-Lücke) — `tests/test_delivery.py` neu (`5499066`):** `_deliver_streaming` (die größte ADR-035-Auslagerung)
+  hatte für seine neue `puffer`-State-Machine **null** Tests. Vier Verhaltensweisen festgenagelt (echte Pipeline, Fake-Brain +
+  Fake-Bridge, nur TTS-Synth gefakt mit echten Temp-Files): Head-Start-Füllung vor dem ersten Play, plain-stream Sofortstart,
+  Transform-zu-leer-Skip, **und der early-abort Temp-WAV-Cleanup (Bridge-5xx → kein Leak)**.
+- **Eigener Stolperstein:** mein *erster* `disconnect_voice`-Fix (elapsed-basiert) kippte in der vollen Suite um (Flake genau an
+  der `timeout`-Grenze) — gefangen, weil die Suite nach dem Fix lief; der task-basierte Zweitwurf ist verhaltensdeterministisch
+  (Shutdown-Test 5× wiederholt, stabil).
+- **Bewusst liegen gelassen:** die 11 entwarnten Nits — alle intentional (ADR-033 `flach`-Default), unerreichbar
+  (`num_predict=0`, leerer `content`) oder „so geboren, kein Regress". Kein ADR (Bugfixes, kein Trade-off).
+
 **`setup.ps1` macht jetzt alles end-to-end + dauerhaft im PATH; winget/ExecutionPolicy-Snags des Kollegen gelöst
 (2026-06-14, D75 → ADR 036). parse-OK, Suite 319 grün (nur Skripte/Doku).** Tobi: Setup soll wirklich alles erledigen
 (Download/Install/**PATH**/startklar, idempotent); beim Kollegen hakten **winget** + die **Skriptausführungs-Richtlinie**.
