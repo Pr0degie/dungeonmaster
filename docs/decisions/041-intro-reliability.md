@@ -74,3 +74,34 @@ turns are untouched). The existing director-shape asserts (`[Regie]` / `Monolog`
   mirrors `num_predict`). The right value is empirical — 0.5 is a starting point to tune live.
 - **Live-unverified:** the quality win is a model-behaviour claim; confirm at the table and adjust
   `DM_INTRO_TEMPERATURE` / the brief wording if nemo still wanders.
+
+## Addendum — D84 (2026-06-16): deterministic cleanup, and temperature 0.7
+
+Live retest **with this ADR's commit active** (temp 0.5 + hardened brief): the party was now woven
+in richly (D82 + the brief working), but nemo **still** emitted the exact thing the brief forbids —
+"**Als Spielleitung beginne ich die Sitzung:**", wrapped the whole monologue in `"…"`, and closed
+with "Was werdet ihr als nächstes tun?". Conclusion: a prompt instruction is **not** a reliable lever
+against this tic on a 12B model — it must be handled deterministically.
+
+Two follow-ups (D84), both in `dmbot/llm/sanitize.py` (the existing spoken-answer sanitiser, which
+already strips "Als Spielleitung *beschreibe* ich …" and trailing "Was tut ihr?"):
+
+1. **Close the two gaps that let the !intro tic through:**
+   - `_META_PREAMBLE` gained the opener verbs (`beginn\w*|eröffn\w*|start\w*|leite?`) and objects
+     (`… die Sitzung|Runde|Spielrunde`), so "Als Spielleitung beginne ich die Sitzung:" strips like
+     the older `beschreibe`-forms.
+   - New `_unwrap_enclosing_quotes`: drops **one** pair of quotes that wraps the *entire* answer
+     (`"…"` / `„…"`), but only a clean single envelope (the closing quote must not recur inside), so
+     an NPC line keeps its quotes. Wired into `_sanitize` **between** the leading and trailing strips
+     — the unwrap is what lets the now-unblocked trailing "Was tut ihr?" strip fire (the wrap had
+     left the text ending `…?"` instead of `…?`). Both intro paths benefit: batch and the streaming
+     `finish()` both finalise through `_sanitize`.
+2. **Raise the default `DM_INTRO_TEMPERATURE` 0.5 → 0.7.** 0.5 followed the brief but read flat and
+   formulaic ("X ist ein … Sein Ziel ist es …"); the table preferred the richer, atmospheric weaving
+   that higher temperature produces. With the meta-open + wrap now stripped deterministically, the
+   main downside of higher temperature (the tic leaking into the chat text) is caught, so the richer
+   value is affordable. Still env-tunable.
+
++3 sanitiser tests (the full intro tic; verb variants; clean-envelope-only unwrap). Suite **379
+green**. The split of labour is the point: **deterministic** post-processing owns *removing* the tic
+(guaranteed), the **brief + temperature** own *shaping* the prose (best-effort).

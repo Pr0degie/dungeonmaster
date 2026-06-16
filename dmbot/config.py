@@ -132,12 +132,11 @@ class Config:
             # One-off command (not a per-turn cost), so a generous default is safe; tune by ear.
             dm_intro_num_predict=int(os.environ.get("DM_INTRO_NUM_PREDICT", "800")),
             # Sampling temperature for the !intro opening monologue only (D83). The opening turns
-            # otherwise run at the model default (~0.8), which made !intro a coin-flip: sometimes the
-            # rich character-weaving monologue (great), sometimes a short generic turn that just
-            # *narrates* the director brief ("Als Spielleitung beginne ich…"). A lower, fixed value
-            # steadies instruction-following without going fully deterministic. Tune by ear; raise
-            # toward 0.8 for more flair, lower toward 0.3 for more obedience.
-            dm_intro_temperature=float(os.environ.get("DM_INTRO_TEMPERATURE", "0.5")),
+            # otherwise run at the model default (~0.8). 0.5 (D83) steadied instruction-following but
+            # read flat/formulaic; with the meta-open + quote-wrap now stripped deterministically (D84),
+            # the higher-temp downside is caught, so the default is raised to 0.7 for the richer,
+            # atmospheric weaving the table liked. Tune by ear: toward 0.8 = more flair, 0.3 = flatter.
+            dm_intro_temperature=float(os.environ.get("DM_INTRO_TEMPERATURE", "0.7")),
             # Cap on how many buffered player lines a !dm turn sends. Continuous transcription
             # (no wake word) piles up table talk + jokes between turns; sending all of it drowns
             # the real action, so keep only the most recent N. 0 = unbounded. Lower = snappier

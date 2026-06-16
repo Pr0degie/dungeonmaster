@@ -22,13 +22,15 @@ _ROLE_LABEL = re.compile(
 )
 # Small models (nemo) open with a self-referential meta-preamble despite the persona forbidding it —
 # "Als Spielleitung beschreibe ich: …", but also colon-less forms read aloud verbatim:
-# "Als Spielleitung beschreibe ich die Szene, wie …" / "… beschreibe ich eine dunkle Gasse …".
-# Match "Als <rolle> <describe-verb> ich" + an optional object + an optional connector, then strip.
-# The "<verb> ich" anchor keeps it from eating real narration (the DM never says "ich" of itself).
+# "Als Spielleitung beschreibe ich die Szene, wie …" / "… beschreibe ich eine dunkle Gasse …", and
+# the !intro opener "Als Spielleitung beginne ich die Sitzung: …" (D84 — the brief forbids it but
+# nemo writes it anyway, so strip it deterministically). Match "Als <rolle> <verb> ich" + an optional
+# object + an optional connector, then strip. The "<verb> ich" anchor keeps it from eating real
+# narration (the DM never says "ich" of itself — "Als der Inquisitor eintrifft …" doesn't match).
 _META_PREAMBLE = re.compile(
     r"^\s*als\s+(?:die\s+)?(?:spielleit(?:ung|er)|erzähler|gm|dm|game ?master)\s+"
-    r"(?:beschreib\w*|schilder\w*|erzähl\w*|sag\w*|gebe?)\s+ich\b"
-    r"(?:\s+(?:dir|euch|die\s+szene|eine\s+szene|folgende\s+szene))?"
+    r"(?:beschreib\w*|schilder\w*|erzähl\w*|sag\w*|gebe?|beginn\w*|eröffn\w*|er ?öffn\w*|start\w*|leite?)\s+ich\b"
+    r"(?:\s+(?:dir|euch|(?:die|eine|folgende|unsere|heutige)\s+(?:szene|sitzung|runde|spielrunde)))?"
     # zero+ connector words ("so", "wie", "folgendermaßen", …), each maybe after a ":"/"," — so
     # "… beschreibe ich die Szene so:" strips fully instead of leaving a stray "So:" (seen live).
     r"(?:\s*[:,]?\s*(?:so|folgenderma(?:ß|ss)en|wie\s+folgt|wie|dass|in\s+der|in\s+dem))*"
@@ -100,6 +102,25 @@ def _strip_meta_preamble(text: str) -> str:
     return rest[0].upper() + rest[1:] if rest else text
 
 
+# A single pair of quotes wrapping the WHOLE answer (open char → close char). nemo sometimes renders
+# an entire !intro monologue as one quotation ("…" / „…"), which TTS would read as "Anführungszeichen"
+# and which also blocks the trailing-prompt strip (the text then ends '…?"' instead of '…?'). D84.
+_ENCLOSING_QUOTES = (('"', '"'), ('„', '"'), ('“', '”'), ('»', '«'))
+
+
+def _unwrap_enclosing_quotes(text: str) -> str:
+    """Drop one pair of quotes that encloses the ENTIRE answer. Only strips a clean single envelope
+    — the first char opens and the last closes a known pair AND that closing char doesn't recur
+    inside — so an answer that merely *contains* a quotation (e.g. an NPC line) is untouched."""
+    t = text.strip()
+    if len(t) < 2:
+        return text
+    for open_q, close_q in _ENCLOSING_QUOTES:
+        if t[0] == open_q and t[-1] == close_q and close_q not in t[1:-1]:
+            return t[1:-1].strip()
+    return text
+
+
 def _strip_trailing_prompt(text: str) -> str:
     """Drop a trailing generic "Was tut ihr?"/"Was tust du?" closing question — nemo tacks one on
     almost every turn despite the persona. Only the *trailing* generic form goes (a real mid-scene
@@ -129,7 +150,9 @@ def _sanitize_trailing(text: str) -> str:
 
 
 def _sanitize(text: str) -> str:
-    return _sanitize_trailing(_sanitize_leading(text))
+    # leading (incl. the meta-preamble that may precede an enclosing quote) → unwrap a whole-answer
+    # "…" envelope → trailing (so the now-unblocked "Was tut ihr?" closer strips). D84.
+    return _sanitize_trailing(_unwrap_enclosing_quotes(_sanitize_leading(text)))
 
 
 # Sentence-ending punctuation, optionally followed by a closing quote/bracket.

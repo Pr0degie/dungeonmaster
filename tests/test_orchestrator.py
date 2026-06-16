@@ -129,6 +129,25 @@ def test_sanitize_strips_meta_preamble_with_and_without_colon() -> None:
     )
 
 
+def test_sanitize_strips_intro_meta_open_and_unwraps_quotes() -> None:
+    # The live !intro tic (D84): "Als Spielleitung beginne ich die Sitzung:" + the whole monologue
+    # wrapped in one pair of quotes + a trailing "Was werdet ihr … tun?" — all three must go.
+    raw = ('Als Spielleitung beginne ich die Sitzung: "Willkommen, meine Freunde. '
+           'Ihr steht in Rokarth. Was werdet ihr als nächstes tun?"')
+    assert _sanitize(raw) == "Willkommen, meine Freunde. Ihr steht in Rokarth."
+
+
+def test_sanitize_strips_intro_meta_open_verb_variants() -> None:
+    assert _sanitize("Als Spielleitung eröffne ich die Sitzung: Die Halle ist still.") == "Die Halle ist still."
+    assert _sanitize("Als Spielleitung beginne ich die Runde: Ihr erwacht.") == "Ihr erwacht."
+
+
+def test_unwrap_clean_envelope_only() -> None:
+    assert _sanitize('"Es ist dunkel und kalt."') == "Es ist dunkel und kalt."   # clean envelope → unwrap
+    # an NPC line inside narration is not an envelope (doesn't start with a quote) → untouched
+    assert _sanitize('Der Wächter knurrt: "Halt!"') == 'Der Wächter knurrt: "Halt!"'
+
+
 def test_sanitize_strips_trailing_action_prompt() -> None:
     # nemo ends almost every turn with "Was tut ihr?"/"Was tust du?" despite the persona — strip it.
     assert _sanitize("Du bemerkst einen Tech-Priester.\n\nWas tust du?") == "Du bemerkst einen Tech-Priester."
