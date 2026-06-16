@@ -507,7 +507,7 @@ the contract in §3. Do not create a `bot_a_bridge/` folder here.
 ```
 cogitator/                 # = the DMbot repo
 ├── dmbot/                 # the DM bot
-│   ├── voice/             # recv, resample, VAD + the Discord cogs (voicecog/dicecog/dmcog) + delivery.py (turn-delivery pipeline, ADR 035)
+│   ├── voice/             # recv, resample, VAD + the Discord cogs (voicecog/dicecog/dmcog + scenecog/lorecog split off in ADR 039) + delivery.py (turn-delivery pipeline, ADR 035)
 │   ├── stt/               # faster-whisper wrapper
 │   ├── tts/               # piper wrapper
 │   ├── llm/               # Ollama client, prompt building

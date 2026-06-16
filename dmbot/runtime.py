@@ -272,6 +272,7 @@ class SessionRuntime:
         # after !join, so registration order doesn't matter.
         self.run_and_deliver = None   # ← DMCog._run_and_deliver  (called by DiceCog roll callbacks)
         self.auto_dm_turn = None      # ← DMCog._auto_dm_turn      (called by VoiceCog mic release)
+        self.speak = None             # ← DMCog delivery._speak    (called by LoreCog !lore tts)
         self.handle_dice = None       # ← DiceCog._handle_dice     (called by DMCog delivery)
         self.reanchor_mic = None      # ← VoiceCog._post_mic_button (called by DMCog delivery end)
         self.post_turn_order = None   # ← DiceCog._post_turn_order (called by VoiceCog !join)

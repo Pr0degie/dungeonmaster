@@ -1,7 +1,8 @@
 """Discord commands for the DM turn pipeline: !dm/!redo/!start, streaming+batch delivery, TTS speak,
-auto-recap, !wrap, !say/!voice/!voices, scenes (!ort/!szenen/!ortmodus + the <<ORT>> marker), !lore.
-Shared state lives on SessionRuntime (dmbot/runtime.py); cross-cog flow goes through its hooks (ADR 029).
-Bot replies are German; logs English.
+auto-recap, !wrap, !say/!voice/!voices. Scenes (!ort/!szenen/!ortmodus) and !lore moved to their own
+thin cogs (SceneCog/LoreCog, ADR 039); the automatic <<ORT>> marker drain lives in the delivery
+pipeline (ADR 035). Shared state lives on SessionRuntime (dmbot/runtime.py); cross-cog flow goes
+through its hooks (ADR 029). Bot replies are German; logs English.
 """
 from __future__ import annotations
 
@@ -10,17 +11,13 @@ import logging
 import time
 from datetime import datetime
 
-import discord
 from discord.ext import commands
 
 from ..orchestrator import build_intro_director_msg, build_opening_director_msg
 from ..tts.textsplit import has_speakable_content, strip_speech_punctuation
-from ..discord_ui.rules import RulesView
-from ..discord_ui.lore_read import LoreReadView
 from ..memory import history as history_store
-from ..rag.lore import available_topics, lore_pages
 from .delivery import DeliveryPipeline
-from ..runtime import SessionRuntime, _TurnTiming, _DATA_DIR
+from ..runtime import SessionRuntime, _TurnTiming
 
 log = logging.getLogger(__name__)
 
@@ -35,6 +32,7 @@ class DMCog(commands.Cog):
         self._delivery = DeliveryPipeline(runtime, post_deliver=self._post_deliver)
         runtime.run_and_deliver = self._delivery._run_and_deliver  # hook: DiceCog roll callbacks narrate consequence
         runtime.auto_dm_turn = self._delivery._auto_dm_turn        # hook: VoiceCog mic release runs a DM turn
+        runtime.speak = self._delivery._speak                      # hook: LoreCog !lore tts reads the compendium aloud
 
     async def _autosave_turn(self, channel, answer: str, *, user_msg: str | None = None,
                              redo: bool = False) -> None:
@@ -379,164 +377,6 @@ class DMCog(commands.Cog):
         if self._rt._push_to_talk and self._rt._sink is not None:
             await self._rt.reanchor_mic(ctx.channel)
         await self._autosave_turn(ctx.channel, answer)
-
-    # Display names for the curated lore topics (data/lore/<topic>.md, ADR 021); unknown
-    # (future) files fall back to topic.title().
-    _LORE_TITLES = {"imperium": "Weltwissen: Imperium", "chaos": "Weltwissen: Chaos"}
-    # !lore questions search the Weltwissen sources only — rule questions belong to the DM
-    # turn / !rules, and raw rulebook chunks are English layout soup, not player reading.
-    _LORE_SOURCES = ("lore_imperium", "lore_chaos", "setting")
-    _LORE_SOURCE_NAMES = {"lore_imperium": "Imperium", "lore_chaos": "Chaos", "setting": "Hive Rokarth"}
-
-    @commands.command(name="lore", aliases=["hintergrund"])
-    async def lore(self, ctx: commands.Context, *, arg: str = "") -> None:
-        """Weltwissen: `!lore` / `!lore chaos` blättert den Rundown (◀/▶); `!lore <frage>`
-        schlägt die passenden Kompendiums-Abschnitte nach (`!lore wer ist der Imperator?`).
-        `!lore tts [thema]` liest das Kompendium über Bot A vor. Sonst Lese-Material, kein
-        DM-Turn — wird nicht gesprochen. Alias: !hintergrund"""
-        lore_dir = _DATA_DIR / "lore"
-        topic = arg.lower().strip()
-        head, _, rest = topic.partition(" ")
-        if head == "tts":
-            await self._lore_speak(ctx, lore_dir, rest.strip() or "imperium")
-            return
-        if not topic or (lore_dir / f"{topic}.md").is_file():
-            await self._lore_rundown(ctx, lore_dir, topic or "imperium")
-            return
-        await self._lore_question(ctx, arg)
-
-    async def _lore_rundown(self, ctx: commands.Context, lore_dir, topic: str) -> None:
-        """The paged ◀/▶ view over data/lore/<topic>.md (the original !lore mode)."""
-        path = lore_dir / f"{topic}.md"
-        if not path.is_file():
-            topics = available_topics(lore_dir)
-            hint = ", ".join(f"`{t}`" for t in topics) if topics else "—"
-            await ctx.send(f"Kein Lore-Thema `{topic}`. Verfügbar: {hint}")
-            return
-        text = await asyncio.to_thread(path.read_text, encoding="utf-8")
-        pages = lore_pages(text)
-        if not pages:
-            await ctx.send(f"`{path.name}` enthält keine lesbaren Abschnitte.")
-            return
-        view = RulesView(pages, self._LORE_TITLES.get(topic, topic.title()))
-        await self._rt._send_with_retry(ctx.channel, view=view, embed=view.embed())
-
-    async def _lore_speak(self, ctx: commands.Context, lore_dir, topic: str) -> None:
-        """`!lore tts [thema]` — read the data/lore/<topic>.md compendium aloud via Piper +
-        Bot A, section by section. Lese-Material that *is* spoken on demand (opposite of the
-        silent rundown); reuses ``_speak`` so the feedback guard + WAV cleanup are identical to
-        a DM turn. Pages are spoken one at a time so /speak blocks per section, not the whole
-        file at once."""
-        if not self._rt._tts_enabled:
-            await ctx.send("Keine TTS-Stimme geladen (siehe SETUP B5).")
-            return
-        path = lore_dir / f"{topic}.md"
-        if not path.is_file():
-            topics = available_topics(lore_dir)
-            hint = ", ".join(f"`{t}`" for t in topics) if topics else "—"
-            await ctx.send(f"Kein Lore-Thema `{topic}`. Verfügbar: {hint}")
-            return
-        text = await asyncio.to_thread(path.read_text, encoding="utf-8")
-        pages = lore_pages(text)
-        if not pages:
-            await ctx.send(f"`{path.name}` enthält keine lesbaren Abschnitte.")
-            return
-        title = self._LORE_TITLES.get(topic, topic.title())
-        guild_id = ctx.guild.id if ctx.guild else None
-        log.info("📚 !lore tts %r → interactive reader, %d sections", topic, len(pages))
-        # Interactive reader: shows each block's text in chat + reads it; ⏭ Weiter advances to the
-        # next block (a fast click-through skips intermediate audio), ⏹ Stopp ends it. Bot A's
-        # /speak blocks per WAV with no stop, so a running block can't be cut mid-playback.
-        view = LoreReadView(pages, title, speak_fn=self._delivery._speak, guild_id=guild_id)
-        await self._rt._send_with_retry(ctx.channel, view=view, embed=view.embed())
-        view.begin_speaking()  # speak block 0 now
-
-    async def _lore_question(self, ctx: commands.Context, question: str) -> None:
-        """`!lore <frage>` — show the best-matching Weltwissen sections (deterministic chunk
-        display, no LLM: the compendium text IS the answer; the DM narrates in-game)."""
-        if not self._rt._retriever.available():
-            await ctx.send("Kein RAG-Store vorhanden — `!lore <frage>` braucht `data/vectordb/rag.db`.")
-            return
-        hits = await self._rt._retriever.lookup(question, sources=self._LORE_SOURCES)
-        if not hits:
-            await ctx.send(
-                f"Dazu steht nichts im Weltwissen: *{question}*\n"
-                f"(Rundown: `!lore` / `!lore chaos` — Regelfragen: `!rules`)"
-            )
-            return
-        parts = []
-        for source, heading, text, dist in hits:
-            label = self._LORE_SOURCE_NAMES.get(source, source)
-            parts.append(f"**{heading}** · _{label}_\n{text}")
-            log.info("📚 !lore %r → %s:%r (d=%.2f)", question, source, heading, dist)
-        description = "\n\n".join(parts)
-        if len(description) > 4000:  # embed description cap; two lore chunks normally fit
-            description = description[:4000].rsplit(" ", 1)[0] + " …"
-        embed = discord.Embed(
-            title="📚 Weltwissen", description=description, color=discord.Color.dark_gold()
-        )
-        await self._rt._send_with_retry(ctx.channel, embed=embed)
-
-    @commands.command(name="ort", aliases=["szene"])
-    async def ort(self, ctx: commands.Context, scene_id: str = "") -> None:
-        """`!ort <szenen-id>` — set the adventure's scene pointer (Phase 10a): the DM's prompt then
-        carries that scene's card. Deterministic by design (golden rule #3) — the human at the
-        table moves the plot pointer, the model never does."""
-        if self._rt._adventure is None:
-            await ctx.send("Kein Abenteuer geladen (`DM_ADVENTURE` in `.env`).")
-            return
-        cid = self._rt._brain_channel(ctx.channel)
-        state = self._rt._state.get(cid)
-        if state is None:
-            await ctx.send("Keine aktive Sitzung — erst `!j`.")
-            return
-        if not scene_id:
-            scene = self._rt._adventure.get_scene(state.scene_id)
-            current = f"**{scene.title_de}** (`{scene.id}`)" if scene else "—"
-            await ctx.send(f"Aktuelle Szene: {current}. Wechsel: `!ort <id>` (`!szenen` zeigt alle).")
-            return
-        scene = self._rt._set_scene(state, scene_id)
-        if scene is None:
-            await ctx.send(f"Unbekannte Szene `{scene_id}` — `!szenen` zeigt alle Ids.")
-            return
-        self._rt._persist_and_refresh(ctx.channel)
-        log.info("scene → %s (%s)", scene.id, scene.title_de)
-        await ctx.send(f"📖 Szene gewechselt: **{scene.title_de}** (Teil {scene.part}).")
-
-    @commands.command(name="szenen")
-    async def szenen(self, ctx: commands.Context) -> None:
-        """List the loaded adventure's scenes by part — the ids `!ort` accepts."""
-        if self._rt._adventure is None:
-            await ctx.send("Kein Abenteuer geladen (`DM_ADVENTURE` in `.env`).")
-            return
-        cid = self._rt._brain_channel(ctx.channel)
-        current = self._rt._state[cid].scene_id if cid in self._rt._state else ""
-        by_part: dict[int, list[str]] = {}
-        for part, sid, title in self._rt._adventure.scene_overview():
-            marker = " ◀" if sid == current else ""
-            by_part.setdefault(part, []).append(f"`{sid}` {title}{marker}")
-        lines = [f"**Teil {part}:** " + " · ".join(entries)
-                 for part, entries in sorted(by_part.items())]
-        await ctx.send(f"📖 **{self._rt._adventure.title}**\n" + "\n".join(lines))
-
-    @commands.command(name="ortmodus", aliases=["szenenmodus"])
-    async def ortmodus(self, ctx: commands.Context, mode: str = "") -> None:
-        """`!ortmodus [verbunden|frei]` — how far an automatic scene change (ADR 026) may jump.
-        `verbunden` (default): only the current scene's `leads_to` neighbours. `frei`: any scene.
-        No argument shows the current mode."""
-        mode = mode.strip().lower()
-        if not mode:
-            await ctx.send(
-                f"Automatischer Szenenwechsel: **{self._rt._scene_mode}** "
-                f"(`verbunden` = nur Nachbarorte, `frei` = jede Szene). Wechsel: `!ortmodus <modus>`."
-            )
-            return
-        if mode not in ("verbunden", "frei"):
-            await ctx.send(f"Unbekannter Modus `{mode}` — erlaubt: `verbunden`, `frei`.")
-            return
-        self._rt._scene_mode = mode
-        log.info("scene mode → %s", mode)
-        await ctx.send(f"📖 Szenenmodus: **{mode}**.")
 
     @commands.command(name="wrap", aliases=["wrapup"])
     async def wrap(self, ctx: commands.Context, *, _arg: str = "") -> None:

@@ -27,6 +27,8 @@ from .shutdown import disconnect_voice, progress
 from .voice.voicecog import VoiceCog
 from .voice.dicecog import DiceCog
 from .voice.dmcog import DMCog
+from .voice.scenecog import SceneCog
+from .voice.lorecog import LoreCog
 
 log = logging.getLogger("dmbot")
 
@@ -60,14 +62,18 @@ class DMBot(commands.Bot):
         self._config = config
 
     async def setup_hook(self) -> None:
-        # Build the shared session state/services once from the config, then register the three
-        # cogs that share it (VoiceCog/DiceCog/DMCog). The kwarg avalanche moved into SessionRuntime
-        # (ADR 029); cross-cog flow goes through the runtime's hooks, not bot.get_cog. VoiceCog is
-        # added first so its cog_unload (which closes the shared services) runs first on shutdown.
+        # Build the shared session state/services once from the config, then register the cogs that
+        # share it (VoiceCog/DiceCog/DMCog + the thin SceneCog/LoreCog split off in ADR 039). The
+        # kwarg avalanche moved into SessionRuntime (ADR 029); cross-cog flow goes through the
+        # runtime's hooks, not bot.get_cog. VoiceCog is added first so its cog_unload (which closes
+        # the shared services) runs first on shutdown. DMCog is added before LoreCog so the
+        # runtime.speak hook LoreCog uses is wired (hooks fire only after !join anyway).
         runtime = SessionRuntime(self._config)
         await self.add_cog(VoiceCog(self, runtime))
         await self.add_cog(DiceCog(self, runtime))
         await self.add_cog(DMCog(self, runtime))
+        await self.add_cog(SceneCog(self, runtime))
+        await self.add_cog(LoreCog(self, runtime))
 
     async def on_ready(self) -> None:
         log.info("logged in as %s (id=%s)", self.user, self.user and self.user.id)
