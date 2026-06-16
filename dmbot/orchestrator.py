@@ -18,6 +18,7 @@ from collections.abc import Awaitable, Callable
 
 from .llm.client import OllamaClient
 from .llm.persona import load_system_prompt
+from .llm.prompt_assembly import assemble_system_prompt
 from .llm.roll_router import classifier_schema, classifier_system, to_test_request
 from .memory.recap import RECAP_SYSTEM_DE, build_recap_user
 from .rules.marker import ManifestRequest, SceneRequest, TestRequest
@@ -307,31 +308,17 @@ class DMBrain:
     ) -> tuple[str, list[dict[str, str]], dict]:
         """Assemble ``(system, messages, options)`` for one DM turn — the shared head both the
         batch (:meth:`_generate`) and streaming (:meth:`_stream_and_store`) paths use, so they
-        can't drift. Memory order per docs/conventions.md: persona (core+tone) → recap → JSON state →
-        who-plays-whom → history. Labels become Ollama stop sequences (the anti-puppeting guard)."""
-        system = load_system_prompt()
-        recap = self._recap.get(channel_id)
-        if recap:
-            system = (
-                f"{system}\n\n## Was bisher geschah "
-                f"(den Spielenden bereits bekannt — nicht erneut ausführlich erzählen)\n{recap}"
-            )
-        # Adventure summary + current scene card (ADR 019) between recap and hard state: the
-        # narrative thread leads, then "where we are in the plot", then the hard facts.
-        adventure = self._adventure_block.get(channel_id)
-        if adventure:
-            system = f"{system}\n\n{adventure}"
-        state_summary = self._state_summary.get(channel_id)
-        if state_summary:
-            system = f"{system}\n\n{state_summary}"
-        # Rulebook chunks for this turn (stage 3, ADR 019) — present only when the player input
-        # actually matched rule text (threshold in the retriever), so narration turns stay lean.
-        rag = self._rag_block.get(channel_id)
-        if rag:
-            system = f"{system}\n\n{rag}"
-        hint = self._alias_hint.get(channel_id)
-        if hint:
-            system = f"{system}\n\n{hint}"
+        can't drift. The system-prompt slice order lives in :func:`assemble_system_prompt`; the
+        ``.get()`` cache reads stay here so the per-turn vs cached timing is unchanged. Labels
+        become Ollama stop sequences (the anti-puppeting guard)."""
+        system = assemble_system_prompt(
+            load_system_prompt(),
+            recap=self._recap.get(channel_id),
+            adventure=self._adventure_block.get(channel_id),
+            state_summary=self._state_summary.get(channel_id),
+            rag=self._rag_block.get(channel_id),
+            alias_hint=self._alias_hint.get(channel_id),
+        )
         messages = [*history_prefix, {"role": "user", "content": user_msg}]
         options = {"stop": [f"\n{label}:" for label in labels], "num_predict": num_predict or self._num_predict}
         return system, messages, options
