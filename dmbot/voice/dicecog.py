@@ -346,12 +346,7 @@ class DiceCog(commands.Cog):
         if key is None:
             await self._rt._send_with_retry(channel, "Ich bin in keinem Voice-Channel — erst `!j`.")
             return
-        if self._rt._turn_message is not None:
-            try:
-                await self._rt._turn_message.delete()
-            except discord.HTTPException:
-                pass
-            self._rt._turn_message = None
+        await self._rt.clear_panel("_turn_message")
 
         async def advance() -> None:
             self._turn_step(key, +1)

@@ -163,12 +163,7 @@ class VoiceCog(commands.Cog):
     async def pausebutton(self, ctx: commands.Context) -> None:
         """(Re)post the pause control panel (embed + ⏸ button) at the bottom of the text channel."""
         self._rt._text_channel = ctx.channel
-        if self._rt._pause_message is not None:
-            try:
-                await self._rt._pause_message.delete()
-            except discord.HTTPException:
-                pass
-            self._rt._pause_message = None
+        await self._rt.clear_panel("_pause_message")
         await self._refresh_pause_panel()
 
     @commands.command(name="join", aliases=["j"])
@@ -202,39 +197,7 @@ class VoiceCog(commands.Cog):
         self._rt._dm_listening = not self._rt._push_to_talk  # fresh session: gate closed if push-to-talk
         sink = voice_recv.SilenceGeneratorSink(vad_sink)
         vc.listen(sink, after=self._on_listen_done)
-        self._rt._active_vc_id = channel.id  # buffer transcripts + answer for this channel
-        self._rt._text_channel = ctx.channel  # where the pause panel (and other panels) are posted
-        # Phase 8: load this channel's party (else the example), wire the "who plays whom" alias
-        # hint into the prompt (open item F), and seed the turn order from the voice members.
-        self._rt._characters, char_fallback = self._rt._load_characters(channel.id)
-        self._rt._brain.set_alias_hint(channel.id, self._rt._characters.alias_hint_de())
-        # All table names → cut-labels/stop sequences, so a puppeted "Seskin: …" script is truncated.
-        self._rt._brain.set_known_speakers(channel.id, self._rt._characters.speaker_labels())
-        self._rt._turn_order[channel.id] = self._rt._build_turn_order(channel)
-        self._rt._turn_index[channel.id] = 0
-        # Memory (Phase 9): load this channel's world state (or seed it from the sheet on first join),
-        # then inject the stored recap + current state into the prompt so the DM picks up where it
-        # left off — the "next session opens with a correct recap" half of the gate.
-        self._rt._state[channel.id] = self._rt._load_or_seed_state(channel.id)
-        # Adventure (Phase 10a): point a fresh session at the start scene; a loaded state keeps
-        # its stored pointer (the plot position survives restarts like HP does).
-        if self._rt._adventure is not None and not self._rt._state[channel.id].scene_id:
-            self._rt._state[channel.id].scene_id = self._rt._adventure.start_scene
-        self._rt._persist_and_refresh(channel)
-        # Crash recovery (D41): restore the conversation thread from the autosave if the in-memory
-        # history is empty (a fresh process after a crash). A clean !leave rotates the file away, so
-        # this only fires when the previous session didn't shut down cleanly.
-        if self._rt._autosave:
-            try:
-                turns = history_store.load_recent(
-                    self._rt._history_path(channel.id), self._rt._brain.max_history_turns
-                )
-            except OSError:
-                log.exception("could not read the history autosave for channel %s", channel.id)
-                turns = []
-            restored = self._rt._brain.restore_history(channel.id, turns)
-            if restored:
-                log.info("restored %d conversation turns from the autosave (!redo unavailable for the last)", restored)
+        char_fallback = self._rt.seed_session(channel, ctx.channel)
 
         log.info(
             "joined voice '%s' (id=%s) and started VAD pipeline (16k mono + silero, push_to_talk=%s)",
@@ -316,12 +279,7 @@ class VoiceCog(commands.Cog):
         """(Re)post the push-to-talk button at the bottom of the text channel, deleting the previous
         one so it doesn't scroll out of reach as the DM talks (players asked for this). Best-effort —
         a failed delete/post never breaks a turn."""
-        if self._rt._mic_message is not None:
-            try:
-                await self._rt._mic_message.delete()
-            except discord.HTTPException:
-                pass
-            self._rt._mic_message = None
+        await self._rt.clear_panel("_mic_message")
         view = MicToggleView(
             self.toggle_listening, listening=self._rt._dm_listening, on_stop=self._on_mic_stop
         )
@@ -383,13 +341,7 @@ class VoiceCog(commands.Cog):
             self._anim_task.cancel()
         self._rt._text_channel = None
         for msg_attr in ("_mic_message", "_turn_message", "_pause_message"):
-            msg = getattr(self._rt, msg_attr)
-            if msg is not None:
-                try:
-                    await msg.delete()
-                except discord.HTTPException:
-                    pass
-                setattr(self._rt, msg_attr, None)
+            await self._rt.clear_panel(msg_attr)
         await ctx.send("Voice-Channel verlassen.")
 
     @commands.command(name="vstatus")

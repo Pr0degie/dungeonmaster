@@ -38,6 +38,7 @@ from .bridge import BridgeClient
 from .rules import profile as profile_mod
 from .rules.profile import ProfileError, SystemProfile
 from .rules.characters import CharacterStore
+from .memory import history as history_store
 from .memory.state import WorldState, world_state_summary_de
 from .rag.adventure import Adventure, Scene
 from .rag.retrieve import RulebookRetriever
@@ -319,6 +320,18 @@ class SessionRuntime:
 
     # ----- Shared Discord send util --------------------------------------------------------------
 
+    async def clear_panel(self, attr: str) -> None:
+        """Delete the bottom-pinned panel message stored at self.<attr> (mic / turn-order /
+        pause) if one exists, and null the handle. Best-effort: a panel already gone is
+        ignored. Shared by the re-post paths so a fresh panel replaces the old one."""
+        msg = getattr(self, attr)
+        if msg is not None:
+            try:
+                await msg.delete()
+            except discord.HTTPException:
+                pass
+            setattr(self, attr, None)
+
     async def _send_with_retry(self, channel, content: str | None = None, *,
                                view: discord.ui.View | None = None,
                                embed: discord.Embed | None = None):
@@ -514,3 +527,45 @@ class SessionRuntime:
             char = self._characters.get(m.display_name) if self._characters else None
             names.append(char.name if char else m.display_name)
         return names
+
+    def seed_session(self, voice_channel, text_channel) -> bool:
+        """Seed all per-session state for a fresh !join in the right order: active + text
+        channel, party (+ alias/speaker hints), turn order from the voice members, world
+        state (seeded from the sheet on first join, else loaded), the start-scene pointer for
+        a fresh state (a loaded state keeps its stored pointer), persist+refresh, and the D41
+        crash-recovery history restore. Returns the example-party fallback flag."""
+        cid = voice_channel.id
+        self._active_vc_id = cid  # buffer transcripts + answer for this channel
+        self._text_channel = text_channel  # where the pause panel (and other panels) are posted
+        # Phase 8: load this channel's party (else the example), wire the "who plays whom" alias
+        # hint into the prompt (open item F), and seed the turn order from the voice members.
+        self._characters, char_fallback = self._load_characters(cid)
+        self._brain.set_alias_hint(cid, self._characters.alias_hint_de())
+        # All table names → cut-labels/stop sequences, so a puppeted "Seskin: …" script is truncated.
+        self._brain.set_known_speakers(cid, self._characters.speaker_labels())
+        self._turn_order[cid] = self._build_turn_order(voice_channel)
+        self._turn_index[cid] = 0
+        # Memory (Phase 9): load this channel's world state (or seed it from the sheet on first join),
+        # then inject the stored recap + current state into the prompt so the DM picks up where it
+        # left off — the "next session opens with a correct recap" half of the gate.
+        self._state[cid] = self._load_or_seed_state(cid)
+        # Adventure (Phase 10a): point a fresh session at the start scene; a loaded state keeps
+        # its stored pointer (the plot position survives restarts like HP does).
+        if self._adventure is not None and not self._state[cid].scene_id:
+            self._state[cid].scene_id = self._adventure.start_scene
+        self._persist_and_refresh(voice_channel)
+        # Crash recovery (D41): restore the conversation thread from the autosave if the in-memory
+        # history is empty (a fresh process after a crash). A clean !leave rotates the file away, so
+        # this only fires when the previous session didn't shut down cleanly.
+        if self._autosave:
+            try:
+                turns = history_store.load_recent(
+                    self._history_path(cid), self._brain.max_history_turns
+                )
+            except OSError:
+                log.exception("could not read the history autosave for channel %s", cid)
+                turns = []
+            restored = self._brain.restore_history(cid, turns)
+            if restored:
+                log.info("restored %d conversation turns from the autosave (!redo unavailable for the last)", restored)
+        return char_fallback
