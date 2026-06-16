@@ -56,6 +56,11 @@ tools/rag_calibrate_report.md
 !data/systems/*.json
 !data/sessions/_example/
 !data/sessions/_example/*.json
+# the default party (D82): loaded for any voice channel that has no own characters.json, so the
+# real party travels to a teammate's clone and every channel — not bound to one channel id. Only
+# characters.json ships; no runtime state lives under _default.
+!data/sessions/_default/
+!data/sessions/_default/characters.json
 # the live circlejerk party ships so the bot runs on a teammate's clone (loaded at !join);
 # only characters.json — runtime state (state.json/history/recap) + bought-sheet PDFs stay ignored.
 !data/sessions/1343673766487654464/

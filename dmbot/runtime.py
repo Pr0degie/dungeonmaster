@@ -179,8 +179,13 @@ class SessionRuntime:
                      self._profile.dice, self._profile.resolution)
         except ProfileError:
             log.exception("no usable system profile %r — running without the dice engine", config.system)
-        # Characters: start from the example party so !test/!roll work out of the box; !join prefers
-        # a channel-specific data/sessions/<id>/characters.json if present. Engine rolls (RNG) here.
+        # Default party (D82): which data/sessions/<name>/characters.json a channel WITHOUT its own
+        # sheet falls back to. The committed "_default" party makes the real party travel to a
+        # teammate's clone and load in every voice channel — instead of the generic _example one
+        # (the party was previously bound to one channel id, so a new channel got the example party).
+        self._default_party = config.default_party
+        # Characters: start from the default/example party so !test/!roll work out of the box; !join
+        # prefers a channel-specific data/sessions/<id>/characters.json if present. Engine rolls here.
         self._characters, _ = self._load_characters(None)
         # Adventure compendium (Phase 10a, ADR 019): German scene cards + NPC statblocks under
         # data/adventures/<name>/. The scene pointer lives in WorldState.scene_id; the block is
@@ -396,17 +401,25 @@ class SessionRuntime:
         return self._active_vc_id if self._active_vc_id is not None else channel.id
 
     def _load_characters(self, channel_id: int | None) -> tuple[CharacterStore, bool]:
-        """Load the party JSON: a channel-specific sheet if present, else the example party.
-        Returns ``(store, fallback)`` — ``fallback`` is True when the example party was loaded so
-        ``!join`` can warn loudly (D43: a session in the wrong channel silently ran the example
-        party, wrong names + wrong sheet values, and nobody noticed until the DM felt broken).
-        A missing file yields an empty store (the engine then rolls without a target)."""
+        """Load the party JSON: a channel-specific sheet if present, else the configured default
+        party (D82), else the example party. Returns ``(store, fallback)`` — ``fallback`` is True
+        ONLY when the *example* party was loaded (the real misconfig: no channel sheet AND no
+        default party), so ``!join`` warns loudly (D43: a wrong-channel session silently ran the
+        example party, wrong names + sheet values, unnoticed until the DM felt broken). The committed
+        ``_default`` party is the *intended* fallback and loads silently — so a teammate's clone and
+        every voice channel get the real party without binding it to one channel id. A missing file
+        yields an empty store (the engine then rolls without a target)."""
         sessions = _DATA_DIR / "sessions"
         if channel_id is not None:
             specific = sessions / str(channel_id) / "characters.json"
             if specific.is_file():
                 log.info("loaded characters from %s", specific)
                 return CharacterStore.load(specific), False
+        if self._default_party:
+            default = sessions / self._default_party / "characters.json"
+            if default.is_file():
+                log.info("no channel sheet — loaded default party from %s", default)
+                return CharacterStore.load(default), False
         return CharacterStore.load(sessions / "_example" / "characters.json"), True
 
     def _state_path(self, channel_id: int):

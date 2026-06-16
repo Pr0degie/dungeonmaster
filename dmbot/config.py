@@ -41,6 +41,7 @@ class Config:
     dm_max_lines: int
     system: str
     adventure: str
+    default_party: str
     push_to_talk: bool
     pause_vad_while_speaking: bool
     button_autosend: bool
@@ -140,6 +141,12 @@ class Config:
             # Active adventure compendium (Phase 10a, ADR 019): which data/adventures/<name>/
             # scene cards + NPC statblocks the DM runs. Empty = no adventure (pre-10a behaviour).
             adventure=os.environ.get("DM_ADVENTURE", "").strip(),
+            # Default party (D82): the session sheet loaded for a voice channel that has no own
+            # data/sessions/<id>/characters.json — names a data/sessions/<name>/ whose characters.json
+            # is used as the fallback. Defaults to the committed "_default" party, so a teammate's
+            # clone AND any new/other voice channel load the real party instead of the generic
+            # _example one (the party is no longer bound to one channel id). Empty → _example.
+            default_party=os.environ.get("DM_DEFAULT_PARTY", "_default").strip(),
             # Push-to-talk: the whole table is always transcribed + logged, but only speech said
             # while the Discord mic button is engaged is routed to the DM (tap before talking to
             # the DM, tap to stop). Keeps the full transcript record while letting the table pick
