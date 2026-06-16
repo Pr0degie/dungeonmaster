@@ -14,9 +14,9 @@ from ..discord_ui.dice import DiceTestView
 from ..discord_ui.turnorder import TurnOrderView
 from ..discord_ui.rules import RulesView
 from ..discord_ui.target import TargetSelectView
-from ..rules import engine
+from ..rules import combat, engine
 from ..rules.characters import (
-    Character, augmetic_armour, resolve_manifest_request, resolve_target,
+    Character, resolve_manifest_request, resolve_target,
 )
 from ..rules.marker import ManifestRequest, TestRequest, extract_tests
 from ..rules.summary import rules_pages_de
@@ -58,17 +58,7 @@ class DiceCog(commands.Cog):
     def _toughness_bonus(self, target: Character | None) -> int:
         """Toughness Bonus for a player from the sheet: the profile's soak characteristic (IM: Tgh),
         rendered per soak mode (IM: tens digit). 0 if no profile/character/characteristic."""
-        if self._rt._profile is None or target is None:
-            return 0
-        char_key = self._rt._profile.soak_characteristic()
-        if not char_key:
-            return 0
-        # Reuse the store's lookup (case-insensitive + strip, skill→characteristic fallback) so a
-        # whitespace-drifted sheet key (e.g. "Tgh ") still resolves (finding #9).
-        value = self._rt._characters.skill_value(target, char_key) if self._rt._characters else None
-        if value is None:
-            return 0
-        return value // 10 if self._rt._profile.soak_mode() == "tens" else value
+        return combat.toughness_bonus(self._rt._profile, self._rt._characters, target)
 
     async def _post_router_dice(self, channel) -> None:
         """Roll-detection router (ADR 014): classify the latest player action in a separate
@@ -236,26 +226,19 @@ class DiceCog(commands.Cog):
         turn Overt), on failure Perils erupt. Timing note: IM runs the containment check at the
         psyker's end of turn; the conversational loop has no hard turn boundary, so we resolve it at
         the end of the manifesting action — deterministic and visible rather than left to the LLM."""
-        if not (result.immediate_perils or result.over_threshold):
-            return []
-        over_by = max(0, result.warp_charge - result.threshold)
-        lines: list[str] = []
-        if not result.immediate_perils:  # over threshold → containment Test first
-            # The containment Test rolls against Disziplin (Psi), not Psi-Meisterschaft (IM p.163).
-            contain_target = (resolved.contain_base or 0) + (self._rt._profile.difficulty_modifier("Herausfordernd") or 0)
-            contain = engine.resolve_test(self._rt._profile, contain_target, self._rt._rng)
-            lines.append(engine.describe_result_de(
-                contain, skill="Warp-Kontrolle", character=who, difficulty="Herausfordernd"))
-            if contain.success:
-                lines.append(f"🜏 {who} hält die Warp-Energie zurück — alle gewirkten Kräfte gelten "
-                             "bis zur Beruhigung als offen (Overt).")
-                return lines
-        perils = engine.resolve_perils(self._rt._profile, over_by=over_by, rng=self._rt._rng)
-        lines.append(engine.describe_perils_de(perils, character=who))
-        if perils.effect:
-            lines.append(f"   → {perils.effect}")
-        state.reset_warp_charge(who)  # Perils resets Warp Charge to 0 and ends Sustained powers
-        return lines
+        consq = combat.resolve_warp_consequences(
+            self._rt._profile,
+            immediate_perils=result.immediate_perils,
+            over_threshold=result.over_threshold,
+            warp_charge=result.warp_charge,
+            threshold=result.threshold,
+            contain_base=resolved.contain_base,
+            character=who,
+            rng=self._rt._rng,
+        )
+        if consq.reset_charge:
+            state.reset_warp_charge(who)  # Perils resets Warp Charge to 0 and ends Sustained powers
+        return consq.lines
 
     def _choose_weapon(self, attacker: Character | None) -> tuple[str | None, str]:
         """Pick the attacker's weapon + its damage notation: the first inventory item the profile
@@ -324,22 +307,17 @@ class DiceCog(commands.Cog):
         target = state.find(target_name)
         if target is None:  # picker only lists state names, but guard: register an ad-hoc enemy
             target = state.add_or_update_npc(target_name, wounds=10)
-        augm_armour = 0
-        if target.is_npc:
-            tb = target.toughness_bonus
-        else:
-            sheet = self._rt._characters.get(target_name) if self._rt._characters else None
-            tb = self._toughness_bonus(sheet)
-            if self._rt._profile is not None:  # augmetic armour adds to a PC's soak (ADR 023)
-                augm_armour = augmetic_armour(self._rt._profile, sheet)
-        soak = tb + target.armour + augm_armour
-        weapon_roll = engine.roll_damage(notation, self._rt._rng)
-        dmg = engine.resolve_damage(weapon_roll, result.degrees, soak)
-        state.apply_damage(target_name, dmg.applied)
+        sheet = None if target.is_npc else (self._rt._characters.get(target_name) if self._rt._characters else None)
+        outcome = combat.resolve_attack(
+            self._rt._profile, self._rt._characters,
+            target=target, target_sheet=sheet,
+            notation=notation, success_level=result.degrees, rng=self._rt._rng,
+        )
+        state.apply_damage(target_name, outcome.damage.applied)
         updated = state.find(target_name)
         downed = updated is not None and updated.wounds <= 0
         line = engine.describe_damage_de(
-            dmg, attacker=attacker, target=target_name, weapon=weapon,
+            outcome.damage, attacker=attacker, target=target_name, weapon=weapon,
             new_wounds=updated.wounds if updated else 0,
             max_wounds=updated.max_wounds if updated else 0, downed=downed,
         )
