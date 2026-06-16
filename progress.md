@@ -4,11 +4,7 @@ Living status document. A phase counts as done only when its **verification gate
 met and the proof is recorded here.
 
 ## Current focus
-**`!intro`-Meta-Auftakt deterministisch gestrippt + Temp 0.7 (2026-06-16, D84 → ADR 041 Addendum).** Live-Retest *mit* D83 zeigte: nemo schreibt trotz gehärteter Direktive weiter „Als Spielleitung beginne ich die Sitzung:", wickelt den Monolog in `"…"` und schließt „Was werdet ihr … tun?". Prompt-Anweisung reicht nicht → im Sanitizer (`sanitize.py`) deterministisch entfernt: `_META_PREAMBLE` um die Auftakt-Verben/Objekte erweitert + neuer `_unwrap_enclosing_quotes` (ganzer-Antwort-`"…"`-Umschlag, nur sauberer Einzel-Envelope), zwischen Leading/Trailing eingehängt (so greift der „Was tut ihr?"-Strip wieder). Beide Intro-Pfade finalisieren über `_sanitize`. Default `DM_INTRO_TEMPERATURE` 0.5 → **0.7** (0.5 las flach/formelhaft; der Tic ist jetzt eh gestrippt → höhere Temp ist leistbar). +3 Tests, Suite **379 grün**. Arbeitsteilung: Deterministik *entfernt* den Tic, Brief+Temp *formen* die Prosa.
-
-**`!intro`-Zuverlässigkeit (2026-06-16, D83 → ADR 041): der Auftakt ist nicht mehr Glückssache.** Live: trotz geladener Party (D82) + angeglichener Konfig lieferte `!intro test` mal den reichen 14.06.-Monolog (jede Figur eingewoben), mal einen kurzen generischen Zug, der die `[Regie]`-Anweisung nur *nacherzählte* („Als Spielleitung beginne ich die Sitzung…") ohne Figuren. Direktive + Roster waren intakt → **Modell-Varianz** (Opening lief auf nemo-Default-Temp ~0.8). Fix: (1) feste, niedrigere **Temperatur nur fürs `!intro`** (`DM_INTRO_TEMPERATURE`, Default 0.5), als `temperature` parallel zu `num_predict` durch den Opening-Pfad gereicht (nur gesetzt, wenn übergeben → Normal-Turns unverändert); (2) **gehärtete Direktive** (kein Meta-Erzählen, mehrere Absätze, stimmungsvoller Abschluss statt knapper „Was tut ihr?"-Abbruch). Suite **376 grün** (+2). Live-unverified — Temp/Wortlaut am Tisch nachjustieren.
-
-**Default-Party-Fix (2026-06-16, D82 → ADR 040): die echte Party hängt nicht mehr an einer Voice-Channel-ID.** Live-Symptom: `!intro` in einem *neuen* Voice-Channel ("fett", `1355…`) nannte die **Beispiel**-Party (Seskin/Vask/Mortn) — wirkte „generisch". Ursache: nur „circlejerk" (`1343…`) hatte eine committete `characters.json`, jeder andere Channel fiel auf `_example` zurück, und beim Kollegen (wo der Bot läuft) ist die Session per `.gitignore` ohnehin nur für die eine allowlistete ID da. Fix: committete **`data/sessions/_default/characters.json`**, von `_load_characters` *vor* `_example` geladen (Reihenfolge Channel-Sheet → Default → `_example`; die laute D43-Warnung nur noch im echten `_example`-Fall). Neue Config `default_party` (`DM_DEFAULT_PARTY`, Default `_default`). Repo bleibt **öffentlich** → gekaufte `adventures/`/PDFs bleiben lokal (Copyright). Suite **374 grün** (+5 `test_load_characters.py`).
+**Playtest-Fix-Runde (2026-06-16): drei Fixes aus Tobis Live-Sessions auf `main` (`e36bad7`), live-unverified.** Default-Party lädt jetzt **channel-unabhängig** (committete `data/sessions/_default/characters.json`, vor `_example` geladen — D82 → ADR 040), also Fridolin & Co. in jedem Voice-Channel + beim Kollegen. `!intro` gegen **Modell-Varianz** gehärtet: feste, niedrigere `!intro`-Temperatur (`DM_INTRO_TEMPERATURE`) + Director-Brief (D83), und der Meta-Auftakt („Als Spielleitung beginne ich…") + `"…"`-Umschlag **deterministisch** im Sanitizer gestrippt + Default-Temp auf **0.7** (D84 → ADR 041 + Addendum). Suite **379 grün**. **Offen/live:** klingt `!intro` jetzt zuverlässig wie der gelobte 14.06.-Lauf? Kollege testet `e36bad7`; ggf. `DM_INTRO_TEMPERATURE` Richtung 0.8 oder Brief-Wortlaut. Projekt sonst: Phase-9/10-Live-Gates (siehe Phasen-Status). _(Hinweis: die älteren „Current focus"-Blöcke unten [D75–D81] sind Vorsessions-Verlauf — gehören eigentlich ins Archiv; eigener Aufräum-Pass offen.)_
 
 **`/improve-architecture`-Runde 3 (2026-06-16, D81 → ADR 039): Szenen + `!lore` aus `DMCog` in eigene dünne Sub-Cogs (`scenecog.py`/`lorecog.py`) ausgelagert — der zurückgestellte ADR-035-Folgeschritt. `dmcog.py` 662→502; Suite 369 grün (359 + 10 neue Sub-Cog-Tests), 0 Test-Änderungen, byte-identische Bodies.** Der offene ADR-035-Fork ist entschieden: **Sub-Cog statt Mixin** (umgeht die `CogMeta`-Sammel-Frage), **zwei** Cogs statt einem `AdventureCog` (kein geteilter State). Die eine Cross-Cog-Kante (`!lore tts` → `delivery._speak`) läuft über einen neuen `runtime.speak`-Hook (ADR 029). Gewählt aus dem `/improve-architecture`-Befund (Workflow: 3 Finder + adversariale Verify, 13 Kandidaten → 7 überlebt); Tobis Ziel: ein Agent soll nur laden, was seine Aufgabe braucht. Von Hand gebaut (kleiner, klarer Schnitt). Damit ist das ADR-035-Deferred-Umbrella für `DMCog` abgeschlossen.
 
@@ -346,20 +342,13 @@ Delivery-Pipeline-Auslagerung, D73 `_TurnTiming`-Auslagerung, D70–D72 `orchest
 D68 globaler Sprech-Modus, D67 Shutdown-Leave-Limit u. a.): siehe **[docs/progress-archive.md](docs/progress-archive.md)**._
 
 ## Next concrete step
-**Kontext-Lean-Auslagerungen — Fortsetzung von D70–D74.** Der große Hebel (Delivery-Pipeline) ist mit **D74 → ADR 035**
-erledigt (`dmcog.py` 1188→662); verbleibende Kandidaten:
-1. ~~`runtime.py` `_TurnTiming`~~ — **ERLEDIGT (D73 → ADR 034):** `dmbot/turn_timing.py`, Re-Export, `runtime.py` 610→516.
-2. WAV-Free-Funcs `_write_utterance_wav`/`_wav_duration_s`/`_safe_remove` (~40 Z., pure) → `dmbot/voice/wavfiles.py`, Re-Export.
-   _Nächster Top-Kandidat (billiges byte-exaktes Muster wie D73)._ Achtung: jetzt importiert **`delivery.py`** `_wav_duration_s`/
-   `_safe_remove` aus `..runtime` (Re-Export muss sie weiter exportieren); `dmcog` braucht sie nach D74 nicht mehr.
-3. ~~**`dmcog.py`: Szenen + `!lore` → Sub-Cog**~~ — **ERLEDIGT (D81 → ADR 039):** `scenecog.py`/`lorecog.py`,
-   Sub-Cog statt Mixin (`CogMeta`-Sammel-Frage gelöst), `runtime.speak`-Hook für `!lore tts`; `dmcog.py` 662→502.
-   `dicecog.py` (557 Z.) bliebe analog, hat aber kein vergleichbar sauberes Command-Cluster → vorerst gelassen.
-4. `engine.py` `describe_*_de` (~80 Z.) von der Auflösung trennen — **niedrige Prio** (eng kohärent).
-5. **`/improve-architecture`-Strang — ABGESCHLOSSEN (D79–D80).** #1 (Whisper-Filter) + #2 (Attack/Warp → `rules/combat.py`, ADR 037) + #4 (`runtime.seed_session`) + #5 (`llm/prompt_assembly.py`, ADR 038) + #6 (`runtime.clear_panel`) erledigt; **#3 verworfen** (Turn-Order — Tobi egal). Kein offener Vertiefungs-Kandidat aus dieser Runde mehr.
+**1. Das `!intro` am Tisch verifizieren (Top-Prio — schließt die Fix-Runde D82–D84 ab).** Kollege pullt `e36bad7` + Neustart, dann `!intro test` (in circlejerk *und* fett — beide laden jetzt die echte Party über die Default-Party D82). Prüfen: kommt zuverlässig **ein** zusammenhängender Monolog, der **jede Figur** namentlich einbindet, **ohne** „Als Spielleitung beginne ich…"-Auftakt, **ohne** `"…"`-Umschlag und **ohne** kurzes „Was tut ihr?"-Abwürgen (alle drei werden jetzt deterministisch gestrippt, D84)? Wenn die Prosa noch nicht 14.06.-Niveau hat: `DM_INTRO_TEMPERATURE` Richtung **0.8** (mehr Flair) bzw. 0.3 (ruhiger), oder den Director-Brief-Wortlaut feilen. Lässt das Modell eine Figur aus: `DM_INTRO_NUM_PREDICT` prüfen.
 
-**Eigentliche Projekt-Priorität bleibt aber das Live-Gate (siehe unten):** `!j` in circlejerk → `!intro` / `!sprechmodus`
-(stream/puffer/nahtlos × flach/intoniert vergleichen) + die Phase-9/10-Checks. Das Refactoring ist Nebenstrang.
+**2. Die offenen Phase-9/10-Live-Gates abhaken (Code ist da, nur Live-Abnahme fehlt):**
+- **Phase 9:** eine HP-Änderung übersteht einen echten Neustart + der Recap erscheint beim nächsten `!join` (in-prompt).
+- **Phase 10:** eine konkrete **Regelfrage** wird korrekt aus dem Regelbuch-RAG beantwortet. Danach das **einzige noch zu bauende** Feature: **Profil-Bootstrap (§9)** — der DM schlägt aus dem Regelbuch ein System-Profil vor → Tobi bestätigt → speichern.
+
+_(Die älteren „Next concrete step"-Einträge unten [D61–D74] sind erledigter Verlauf — Aufräum-Pass offen, wie beim Current-focus-Hinweis.)_
 
 **Kontext-Split erledigt (2026-06-14, D63 → ADR 032):** Live-Docs verschlankt, Historie/Detail in `docs/`; nichts
 Code-/Bot-seitig offen, Rotations-Regel aktiv. Der eigentliche nächste Schritt bleibt das `!intro`-Live-Gate unten.
@@ -759,6 +748,15 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 ---
 
 ## Open questions / to clarify
+
+**Vom Playtest-Fix-Runde (2026-06-16, D82–D84) — live-unverified:**
+- **Klingt `!intro` jetzt zuverlässig wie der 14.06.-Lauf?** Party lädt channel-unabhängig (D82), die drei
+  Chat-Tics (Meta-Auftakt, `"…"`-Umschlag, „Was tut ihr?"-Abwürgen) werden deterministisch gestrippt (D84),
+  Temp auf 0.7 (D84). Ob die **Prosa-Reichheit** (atmosphärisch vs. formelhaft) jetzt passt, ist Modell-Sache —
+  am Tisch prüfen; Stellschraube `DM_INTRO_TEMPERATURE` (0.3–0.8) bzw. Director-Brief-Wortlaut.
+- **Aufräum-Pass `progress.md`:** „Current focus" (D75–D81) + „Next concrete step" (D61–D74) haben Vorsessions-
+  Verlauf angesammelt, der eigentlich ins `docs/progress-archive.md` gehört (Rotation wurde übersprungen). Ein
+  dedizierter Lean-Pass steht aus — bei Gelegenheit, kein Bot-Risiko.
 
 **From the skill-tooling round (2026-06-15, D78):**
 - **Golden-Rules-Konformitäts-Check noch offen** — die brauchbare Idee aus Pococks `review`-Skill (Standards-Achse als
