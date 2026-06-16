@@ -513,7 +513,7 @@ cogitator/                 # = the DMbot repo
 │   ├── llm/               # Ollama client, prompt building
 │   ├── rag/               # ingestion + retrieval + profile bootstrap
 │   ├── memory/            # JSON state + recaps
-│   ├── rules/             # engine.py (generic) + profile loader (+ tests)  ← deterministic core
+│   ├── rules/             # engine.py + combat.py (attack/Warp resolution, ADR 037) + profile loader (+ tests)  ← deterministic core
 │   ├── discord_ui/        # buttons, turn-order view
 │   ├── orchestrator.py    # the DM brain (history + buffer → LLM)
 │   └── runtime.py         # SessionRuntime — shared session state/services, injected into the cogs (ADR 029)
