@@ -7,7 +7,8 @@ faster-whisper's per-utterance lines) is hidden from the console.
 
 Two **files** (both opt-in via ``DM_LOG_FILE=1``, UTF-8, both kept token-light so they can be
 pasted whole when debugging):
-- ``logs/terminal.log`` — a plain (no-ANSI) **mirror of exactly what the console shows**.
+- ``logs/terminal.log`` — a plain (no-ANSI) **mirror of exactly what the console shows**, **reset
+  on every start** (it only ever holds the current run; ``debug.log`` stays append).
 - ``logs/debug.log`` — **more** detail for debugging (third-party INFO like the ``httpx`` request
   lines, full tracebacks), but the 2 s ``PCM ⟳`` heartbeat flood is collapsed to ~one-in-N so it
   stays small. This replaces the old single ``dmbot.log`` (which kept the heartbeat torrent and was
@@ -269,7 +270,8 @@ def setup_logging(
             _LOGS_DIR.mkdir(parents=True, exist_ok=True)
             # 1) terminal.log — a plain (no-ANSI) mirror of exactly what the console shows: the
             #    curated, lean view (dmbot.* + WARNING/ERROR; no PCM heartbeat, no third-party INFO).
-            term_h = logging.FileHandler(_TERMINAL_FILE, mode="a", encoding="utf-8")
+            #    Truncated on every start (mode="w") so it only ever holds the current run's console.
+            term_h = logging.FileHandler(_TERMINAL_FILE, mode="w", encoding="utf-8")
             term_h.setFormatter(_PlainMirrorFormatter())
             term_h.addFilter(_ConsoleNoiseFilter())
             root.addHandler(term_h)
