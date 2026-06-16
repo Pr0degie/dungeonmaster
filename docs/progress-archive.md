@@ -9,6 +9,14 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+**Skill-Tooling-Runde: 4 Claude-Code-Skills nach `.claude/skills/` (2026-06-15, D78). Kein Bot-Code — Suite unberührt (324 grün), 5 Commits auf `main`.**
+Tobi wollte den (nicht existenten) „tdd"-Skill → recherchiert + repo-eigenen `/tdd` gebaut, dann aus Matt Pococks `mattpocock/skills` drei adaptiert. Stil wie die bestehenden Skills (English, repo-spezifisch), README-Index je Schritt gepflegt.
+- **`/tdd` (`abb49c8`):** Red-Green-Refactor am deterministischen Kern (`dmbot/rules/`), fixed-seed; Guardrails gegen die zwei Default-Fehler (impl-first, Tests grün-schreiben).
+- **`/grill-me` (`0f371be`):** verhört den Plan Ast für Ast (Entscheidungsbaum), antwortet aus `architecture.md`/ADRs/Code wo möglich, empfiehlt je Frage; mündet in einen ADR.
+- **`/improve-architecture` (`1cd671c`, entschärft `76c0b1a`):** Whole-Codebase-Vertiefungs-Review (Deletion-Test → flache Pass-Through-Module → deep), Markdown-Report (kein HTML), informiert durch `architecture.md`/`docs/decisions`. Grillen **bedingt** statt erzwungen (Tobis Einwand) — zwei Seiteneffekte bleiben Pflicht (`architecture.md` fortschreiben, ADR-bei-Ablehnung).
+- **`/to-prd` (`0924001`):** Begleiter zu `/grill-me` — synthetisiert den gegrillten Kontext (ohne Interview) zum PRD nach `docs/plans/<slug>.md` (kein Issue-Tracker; das Original published in einen Tracker). Die Kette ist `/grill-me`→`/to-prd`→`/tdd`.
+- **Verworfen:** `rohitg00/awesome-claude-code-toolkit` komplett (generische Stack-Tutorials, Cloud-API-orientiert oder überlappend mit `/code-review`·`/simplify`) — nichts importiert, Set bleibt schlank (golden rule #9).
+
 **Dev-Gates-Runde: Lint im Test-Hook + blockierender pre-commit + Review/Simplify-Trigger-Checkliste (2026-06-15, D77). Suite 324 grün, 4 Commits gepusht.**
 Aus der Frage „soll `/code-review` (und `/simplify`) automatisch vor jedem Commit laufen?" — Entscheidung **nein** (abgerechnete
 LLM-Pässe; `/simplify` *schreibt* Code → widerspricht der Hand-Kontroll-Disziplin, D72). Stattdessen: billige + deterministische
