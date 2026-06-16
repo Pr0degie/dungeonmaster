@@ -308,11 +308,12 @@ class DMCog(commands.Cog):
         roster = self._rt._characters.intro_roster_de() if self._rt._characters else ""
         director_msg = build_intro_director_msg(roster)
         np = self._rt._intro_num_predict
+        tmp = self._rt._intro_temperature  # lower, fixed !intro temperature (D83) — steadier monologue
         guild_id = ctx.guild.id if ctx.guild else None
         timing = self._delivery._begin_turn(cid)
         # B-variant: batch-generate, then read smaller chunks out one after another (see helper).
         if mode.strip().lower() == "test":
-            await self._deliver_intro_chunked(ctx, cid, guild_id, director_msg, np, timing)
+            await self._deliver_intro_chunked(ctx, cid, guild_id, director_msg, np, tmp, timing)
             return
         if not self._rt.deliver_seamless() and self._delivery._use_streaming():
             timing.streamed = True
@@ -320,6 +321,7 @@ class DMCog(commands.Cog):
                 async with ctx.typing():
                     answer = await self._delivery._deliver_streaming(
                         ctx.channel, guild_id, timing, opening=director_msg, opening_num_predict=np,
+                        opening_temperature=tmp,
                     )
             except Exception:
                 log.exception("intro monologue failed (stream)")
@@ -330,7 +332,7 @@ class DMCog(commands.Cog):
             return
         try:
             async with ctx.typing():
-                answer = await self._rt._brain.respond_opening(cid, director_msg, num_predict=np)
+                answer = await self._rt._brain.respond_opening(cid, director_msg, num_predict=np, temperature=tmp)
                 timing.llm_done = time.monotonic()
                 timing.take_llm_stats(self._rt._brain.last_llm_stats)
         except Exception:
@@ -343,7 +345,8 @@ class DMCog(commands.Cog):
         await self._delivery._deliver_answer(ctx.channel, guild_id, answer, timing)
 
     async def _deliver_intro_chunked(self, ctx: commands.Context, cid: int, guild_id: int | None,
-                                     director_msg: str, np: int, timing: _TurnTiming) -> None:
+                                     director_msg: str, np: int, tmp: float | None,
+                                     timing: _TurnTiming) -> None:
         """`!intro test` delivery (ADR 031): generate the whole monologue in one batch (same
         `respond_opening` path, dice suppressed), post it once, then synthesise each sentence
         **separately and punctuation-free** (`strip_speech_punctuation`, since XTTS babbles on
@@ -356,7 +359,7 @@ class DMCog(commands.Cog):
         proposal (an opening turn never queues either)."""
         try:
             async with ctx.typing():
-                answer = await self._rt._brain.respond_opening(cid, director_msg, num_predict=np)
+                answer = await self._rt._brain.respond_opening(cid, director_msg, num_predict=np, temperature=tmp)
                 timing.llm_done = time.monotonic()
                 timing.take_llm_stats(self._rt._brain.last_llm_stats)
         except Exception:

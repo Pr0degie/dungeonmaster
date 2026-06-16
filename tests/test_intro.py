@@ -124,6 +124,25 @@ def test_opening_path_defaults_when_no_override() -> None:
     assert client.options["num_predict"] == 220   # unchanged default for the short briefing
 
 
+# --- the !intro temperature override (D83) ----------------------------------------------------
+
+def test_opening_path_forwards_temperature() -> None:
+    # !intro pins a lower temperature so the monologue reliably follows the director brief.
+    client = _CaptureClient()
+    brain = DMBrain(client, profile=_IM, num_predict=220)
+    asyncio.run(brain.respond_opening(1, build_intro_director_msg("- **X**"), num_predict=800, temperature=0.5))
+    assert client.options["temperature"] == 0.5   # the fixed intro temperature reached the request
+
+
+def test_opening_path_omits_temperature_by_default() -> None:
+    # Without an explicit temperature (e.g. the short !start briefing) the model default is kept —
+    # no temperature key is forced into the options, so normal turns are unchanged.
+    client = _CaptureClient()
+    brain = DMBrain(client, profile=_IM, num_predict=220)
+    asyncio.run(brain.respond_opening(2, build_opening_director_msg()))
+    assert "temperature" not in client.options
+
+
 # --- punctuation strip for the `!intro test` delivery ----------------------------------------
 
 def test_strip_speech_punctuation_drops_all_punctuation_keeps_words() -> None:

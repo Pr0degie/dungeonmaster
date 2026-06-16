@@ -271,12 +271,15 @@ class DMBrain:
         history = self._history.setdefault(channel_id, [])
         return director_msg, labels, history
 
-    async def respond_opening(self, channel_id: int, director_msg: str, num_predict: int | None = None) -> str | None:
+    async def respond_opening(self, channel_id: int, director_msg: str, num_predict: int | None = None,
+                              temperature: float | None = None) -> str | None:
         """Run the opening-briefing turn (``!start``, batch path): generate one GM turn from the
         ``director_msg`` instruction, append it to history, return the answer. Dice are suppressed
-        (see :meth:`_prepare_opening`). ``None`` only on the rare echo-guard suppression."""
+        (see :meth:`_prepare_opening`). ``None`` only on the rare echo-guard suppression. ``!intro``
+        passes a lower ``temperature`` (D83) so the monologue reliably follows the director brief
+        instead of wandering into a short generic turn."""
         user_msg, labels, history = self._prepare_opening(channel_id, director_msg)
-        answer = await self._generate(channel_id, user_msg, labels, history, num_predict=num_predict)
+        answer = await self._generate(channel_id, user_msg, labels, history, num_predict=num_predict, temperature=temperature)
         if answer is None:
             return ""  # echo-suppressed (parity with respond): content-less to the cog
         self._append_turn(history, user_msg, answer)
@@ -290,12 +293,15 @@ class DMBrain:
         on_sentence: Callable[[str], Awaitable[None]],
         should_abort: Callable[[], bool] | None = None,
         num_predict: int | None = None,
+        temperature: float | None = None,
     ) -> str | None:
         """Streaming variant of :meth:`respond_opening` (the live path, ADR 017): same one-off
-        director turn, spoken sentence-by-sentence via ``on_sentence``. Dice stay suppressed."""
+        director turn, spoken sentence-by-sentence via ``on_sentence``. Dice stay suppressed.
+        ``!intro`` passes a lower ``temperature`` (D83) for steadier instruction-following."""
         user_msg, labels, history = self._prepare_opening(channel_id, director_msg)
         return await self._stream_and_store(
-            channel_id, user_msg, labels, history, on_sentence, should_abort, num_predict=num_predict
+            channel_id, user_msg, labels, history, on_sentence, should_abort,
+            num_predict=num_predict, temperature=temperature,
         )
 
     def _build_request(
@@ -305,12 +311,15 @@ class DMBrain:
         labels: list[str],
         history_prefix: list[dict[str, str]],
         num_predict: int | None = None,
+        temperature: float | None = None,
     ) -> tuple[str, list[dict[str, str]], dict]:
         """Assemble ``(system, messages, options)`` for one DM turn — the shared head both the
         batch (:meth:`_generate`) and streaming (:meth:`_stream_and_store`) paths use, so they
         can't drift. The system-prompt slice order lives in :func:`assemble_system_prompt`; the
         ``.get()`` cache reads stay here so the per-turn vs cached timing is unchanged. Labels
-        become Ollama stop sequences (the anti-puppeting guard)."""
+        become Ollama stop sequences (the anti-puppeting guard). ``temperature`` is only set by the
+        opening turns (D83), which pin a lower value for steadier instruction-following; a normal
+        turn passes ``None`` → the model default (unchanged)."""
         system = assemble_system_prompt(
             load_system_prompt(),
             recap=self._recap.get(channel_id),
@@ -321,6 +330,8 @@ class DMBrain:
         )
         messages = [*history_prefix, {"role": "user", "content": user_msg}]
         options = {"stop": [f"\n{label}:" for label in labels], "num_predict": num_predict or self._num_predict}
+        if temperature is not None:
+            options["temperature"] = temperature
         return system, messages, options
 
     async def _chat_once(
@@ -330,12 +341,13 @@ class DMBrain:
         labels: list[str],
         history_prefix: list[dict[str, str]],
         num_predict: int | None = None,
+        temperature: float | None = None,
     ) -> tuple[str, list[TestRequest], list[ManifestRequest], list[SceneRequest]]:
         """One non-streaming LLM call for ``user_msg`` on top of ``history_prefix`` → (sanitised
         answer, parsed dice tests, parsed Manifest requests, parsed scene requests). The raw building block of
         :meth:`_generate` (which wraps the echo-guard retry around it) and of the streaming path's
         echo retry."""
-        system, messages, options = self._build_request(channel_id, user_msg, labels, history_prefix, num_predict=num_predict)
+        system, messages, options = self._build_request(channel_id, user_msg, labels, history_prefix, num_predict=num_predict, temperature=temperature)
         raw = await self._client.chat(system, messages, options=options)
         # narration call's token counts (for [latency]); getattr so a test double without the attr
         # (or a future client) degrades to None instead of raising.
@@ -372,6 +384,7 @@ class DMBrain:
         labels: list[str],
         history_prefix: list[dict[str, str]],
         num_predict: int | None = None,
+        temperature: float | None = None,
     ) -> str | None:
         """One DM answer for ``user_msg`` with the echo guard (D43/ADR 018 + W4): if the answer
         merely parrots a player line or re-narrates the DM's own previous answer, retry once with
@@ -379,13 +392,13 @@ class DMBrain:
         the turn entirely (nothing spoken, nothing stored — degenerate turns in history
         self-reinforce, seen live 2026-06-12)."""
         prev = self._prev_answer(history_prefix)
-        answer, tests, manifests, scenes = await self._chat_once(channel_id, user_msg, labels, history_prefix, num_predict=num_predict)
+        answer, tests, manifests, scenes = await self._chat_once(channel_id, user_msg, labels, history_prefix, num_predict=num_predict, temperature=temperature)
         problem = self._answer_problem(answer, user_msg, prev)
         if problem is not None:
             label, nudge = problem
             log.warning("echo guard: answer %s (%r) — retrying once", label, answer)
             nudged = f"{user_msg}\n{nudge}"
-            answer, tests, manifests, scenes = await self._chat_once(channel_id, nudged, labels, history_prefix, num_predict=num_predict)
+            answer, tests, manifests, scenes = await self._chat_once(channel_id, nudged, labels, history_prefix, num_predict=num_predict, temperature=temperature)
             if self._answer_problem(answer, user_msg, prev) is not None:
                 log.warning("echo guard: the retry misfired again — suppressing the turn")
                 return None
@@ -460,13 +473,14 @@ class DMBrain:
         on_sentence: Callable[[str], Awaitable[None]],
         should_abort: Callable[[], bool] | None,
         num_predict: int | None = None,
+        temperature: float | None = None,
     ) -> str:
         """Drive ``chat_stream`` through a :class:`StreamAssembler`, speaking sentences via
         ``on_sentence`` as they're ready, then finalise: store the canonical answer (parity with
         the batch path), surface pending tests, set the latency stats. Degrades on a mid-stream
         error — keeps what was spoken, marks the stored answer, never raises out of a half-spoken
         turn."""
-        system, messages, options = self._build_request(channel_id, user_msg, labels, history, num_predict=num_predict)
+        system, messages, options = self._build_request(channel_id, user_msg, labels, history, num_predict=num_predict, temperature=temperature)
         assembler = StreamAssembler(labels, self._profile)
         errored = False
         spoke_any = False
@@ -503,7 +517,7 @@ class DMBrain:
             log.warning("echo guard (stream): answer %s (%r) — retrying once", label, answer)
             nudged = f"{user_msg}\n{nudge}"
             try:
-                answer, tests, manifests, scenes = await self._chat_once(channel_id, nudged, labels, history, num_predict=num_predict)
+                answer, tests, manifests, scenes = await self._chat_once(channel_id, nudged, labels, history, num_predict=num_predict, temperature=temperature)
             except Exception:
                 log.exception("echo-guard retry failed — suppressing the turn")
                 answer, tests, manifests, scenes = "", [], [], []

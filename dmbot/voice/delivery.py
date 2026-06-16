@@ -263,7 +263,8 @@ class DeliveryPipeline:
     async def _deliver_streaming(self, channel, guild_id: int | None, timing: _TurnTiming, *,
                                  redo: bool = False, extra_text: str | None = None,
                                  opening: str | None = None,
-                                 opening_num_predict: int | None = None) -> str | None:
+                                 opening_num_predict: int | None = None,
+                                 opening_temperature: float | None = None) -> str | None:
         """Streaming delivery (ADR 017): the producer drives the brain's streaming turn while a
         synth→playback pipeline speaks each sentence (synth N+1 while N plays); the Discord text
         post + 🎲 dice button happen at generation-end (mid-playback). Layer-2 mute spans the whole
@@ -295,7 +296,7 @@ class DeliveryPipeline:
                     holder["answer"] = await self._rt._brain.respond_opening_streaming(
                         channel_id, opening, on_sentence=on_sentence,
                         should_abort=lambda: self._rt._paused,
-                        num_predict=opening_num_predict,
+                        num_predict=opening_num_predict, temperature=opening_temperature,
                     )
                 elif redo:
                     holder["answer"] = await self._rt._brain.redo_streaming(

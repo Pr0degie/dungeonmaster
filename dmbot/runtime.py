@@ -144,6 +144,9 @@ class SessionRuntime:
         # per-turn cap so the auftakt can cover place + mission + how they arrived AND a personal beat
         # for each player character. Read by DMCog's !intro command; the normal turn cap is unchanged.
         self._intro_num_predict = config.dm_intro_num_predict
+        # Fixed (lower) sampling temperature for !intro only (D83), so the opening monologue
+        # reliably follows the director brief instead of wandering into a short generic turn.
+        self._intro_temperature = config.dm_intro_temperature
         # Global spoken-delivery mode (ADR 033), applied to every turn, switchable live via
         # !sprechmodus. _speech_mode: "stream" | "puffer" (stream with a head-start buffer) |
         # "nahtlos" (continuous one-track playback). _speech_punct: "flach" (strip all punctuation)

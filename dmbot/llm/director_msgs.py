@@ -46,8 +46,10 @@ def build_opening_director_msg() -> str:
 # turn's user message so the ADR-019 prompt order is untouched). GM-side instruction, never read aloud.
 _INTRO_DIRECTOR_HEAD = (
     "[Regie] Eröffne jetzt die Sitzung mit einem zusammenhängenden Eröffnungs-Monolog "
-    "(kein Aufzählen, keine Stichpunkte). Etabliere zuerst, wo die Gruppe ist und wie sie "
-    "hergekommen ist, dann die Lage und ihren Auftrag — stütze dich dabei auf deine aktuelle "
+    "(mehrere Absätze, kein Aufzählen, keine Stichpunkte). Beginne sofort als Erzähler mitten "
+    "in der Szene — schreibe NICHT, dass du die Sitzung eröffnest oder was du als Spielleitung "
+    "gerade tust, und kündige den Monolog nicht an. Etabliere zuerst, wo die Gruppe ist und wie "
+    "sie hergekommen ist, dann die Lage und ihren Auftrag — stütze dich dabei auf deine aktuelle "
     "Szene und die Abenteuer-Zusammenfassung."
 )
 _INTRO_DIRECTOR_CHARS = (
@@ -57,8 +59,10 @@ _INTRO_DIRECTOR_CHARS = (
     "Ziele höchstens andeutend aus:\n\n{roster}"
 )
 _INTRO_DIRECTOR_TAIL = (
-    "Bleib durchgehend in der Spielleitungs-Stimme. Das ist der Auftakt — er darf länger sein "
-    "als ein normaler Zug. Verlange keine Probe."
+    "Bleib durchgehend in der Spielleitungs-Stimme und nimm dir Raum — das ist der Auftakt, er "
+    "darf deutlich länger sein als ein normaler Zug. Schließe ihn stimmungsvoll ab und lade die "
+    "Gruppe in die Szene ein (etwa welche Spur sie zuerst verfolgt); brich nicht nach wenigen "
+    "Sätzen mit einer knappen „Was tut ihr?\"-Frage ab. Verlange keine Probe."
 )
 
 
