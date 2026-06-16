@@ -30,6 +30,8 @@ from typing import Callable
 
 import numpy as np
 
+from .segments import confident_text
+
 log = logging.getLogger(__name__)
 
 
@@ -97,12 +99,7 @@ from faster_whisper import WhisperModel  # noqa: E402  (after the DLL-dir regist
 
 _I16_FULL_SCALE = 32768.0
 
-# Hallucination guard. On short/quiet clips Whisper invents stock phrases ("Vielen Dank
-# für's Zuhören", "Das war's für heute" …). Those segments fire when the model thinks the
-# audio is mostly non-speech (high no_speech_prob) or is low-confidence (low avg_logprob).
-# Drop them; thresholds tuned conservatively so real (even mumbled) speech is kept.
-_NO_SPEECH_MAX = 0.7   # drop a segment whose no_speech_prob exceeds this
-_LOGPROB_MIN = -1.0    # …or whose avg_logprob falls below this
+# Hallucination guard lives in segments.confident_text (extracted for unit-testing).
 
 # Callback shape: (speaker_name, transcript_text, clip_seconds, transcribe_ms, for_dm).
 # for_dm carries the push-to-talk routing decision made when the utterance was cut — the whole
@@ -232,16 +229,7 @@ class Transcriber:
             beam_size=5,
             condition_on_previous_text=False,
         )
-        kept, dropped = [], []
-        for seg in segments:
-            seg_text = seg.text.strip()
-            if not seg_text:
-                continue
-            if seg.no_speech_prob > _NO_SPEECH_MAX or seg.avg_logprob < _LOGPROB_MIN:
-                dropped.append((seg_text, seg.no_speech_prob, seg.avg_logprob))
-                continue
-            kept.append(seg_text)
-        text = " ".join(kept).strip()
+        text, dropped = confident_text(segments)
         latency_ms = (time.perf_counter() - t0) * 1000.0
 
         if dropped:
