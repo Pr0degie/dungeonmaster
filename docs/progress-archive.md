@@ -9,6 +9,22 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+**Dev-Gates-Runde: Lint im Test-Hook + blockierender pre-commit + Review/Simplify-Trigger-Checkliste (2026-06-15, D77). Suite 324 grün, 4 Commits gepusht.**
+Aus der Frage „soll `/code-review` (und `/simplify`) automatisch vor jedem Commit laufen?" — Entscheidung **nein** (abgerechnete
+LLM-Pässe; `/simplify` *schreibt* Code → widerspricht der Hand-Kontroll-Disziplin, D72). Stattdessen: billige + deterministische
+Gates automatisch (0 Tokens), teure LLM-Reviews nach Urteil, als Checkliste verankert.
+- **Lint im Stop-Hook (`c80bee2`):** `ruff --select F` (pyflakes: ungenutzte Importe/Namen) läuft jetzt vor pytest — gleiche
+  Philosophie (nur bei `dmbot`/`tests`/`data/systems`-Änderungen, still bei grün, nicht-blockierend). F-only bewusst
+  (Zeilenlänge/Style `E*` aus — lange Doc-Zeilen Absicht, Re-Export-Shims `# noqa: F401`). Fand + entfernte sofort **2 tote
+  Importe** (`re`, `difflib.SequenceMatcher` in `orchestrator.py`, D70-Auslagerungs-Rückstände).
+- **Blockierender git pre-commit (`855bf8a`):** `tools/hooks/pre-commit` (aktiviert via `git config core.hooksPath tools/hooks`)
+  fährt dieselben ruff-F + Suite bei *Tobis eigenen* Commits, bricht bei Rot ab (Bypass `git commit --no-verify`), Scope-Guard auf
+  gestagete `dmbot`/`tests`/`data/systems` (Docs-only-Commits überspringen). Beide Pfade (skip/run) verifiziert.
+- **Checkliste in `conventions.md` (`de804ac`, `f63e630`):** neue Sektion „Code-Review-, Simplify- & Lint-Gates" — wann
+  `/code-review` (read-only) lohnt vs. der Tagesend-Fan-out, und `/simplify` (schreibender Pass → nie automatisch, race-sensibler
+  Code von Hand, D72). Überlebt Context-Clears.
+- _Andere Skills (verify/run, security-review) als stehende Erinnerung verworfen — Projekt-Skills stehen im `.claude/skills/README`._
+
 **Review-getriebene Fix-Runde nach Fan-out-`/code-review` über die Tagescommits `7b5af54..HEAD` (2026-06-15, D76). Suite 324 grün, 2 Commits gepusht.**
 Tobi: „viele Commits heute — lohnt sich Fan-out + `/code-review`?" Da alles schon auf `main` (synced) lag, hatte der eingebaute
 Branch/PR-Review nichts zu diffen → stattdessen Fan-out-Review (21 Agenten, jedes Finding adversarial gegengeprüft) über den
