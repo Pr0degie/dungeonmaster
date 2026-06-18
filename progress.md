@@ -350,7 +350,10 @@ Delivery-Pipeline-Auslagerung, D73 `_TurnTiming`-Auslagerung, D70–D72 `orchest
 D68 globaler Sprech-Modus, D67 Shutdown-Leave-Limit u. a.): siehe **[docs/progress-archive.md](docs/progress-archive.md)**._
 
 ## Next concrete step
-**1. Das `!intro` am Tisch verifizieren (Top-Prio — schließt die Fix-Runde D82–D84 ab).** Kollege pullt `e36bad7` + Neustart, dann `!intro test` (in circlejerk *und* fett — beide laden jetzt die echte Party über die Default-Party D82). Prüfen: kommt zuverlässig **ein** zusammenhängender Monolog, der **jede Figur** namentlich einbindet, **ohne** „Als Spielleitung beginne ich…"-Auftakt, **ohne** `"…"`-Umschlag und **ohne** kurzes „Was tut ihr?"-Abwürgen (alle drei werden jetzt deterministisch gestrippt, D84)? Wenn die Prosa noch nicht 14.06.-Niveau hat: `DM_INTRO_TEMPERATURE` Richtung **0.8** (mehr Flair) bzw. 0.3 (ruhiger), oder den Director-Brief-Wortlaut feilen. Lässt das Modell eine Figur aus: `DM_INTRO_NUM_PREDICT` prüfen.
+**1. Der EINE Live-Run der Spielbarkeits-Tuning-Runde (Top-Prio, Tobi nächste Session — pullt `f44cba8` + Neustart).** Zwei Teile in einem Run:
+- **Workstream A (Tempo/GPU-Offload) zuerst, reine `.env`:** `OLLAMA_HOST` auf die Offload-Box + `TTS_DEVICE=cuda` setzen → `nvidia-smi` (kein OOM, XTTS-cuda + Whisper passen auf die freie 4070) → `[latency]`-Zeile vorher/nachher (`first_audio`/`tts` fallen klar, Sprech-Lücken weg). Wenn schnell genug: Default-Lieferart Richtung `nahtlos` live abwägen; dann **ADR-002-Addendum + `architecture.md` §3** nachziehen.
+- **Dann `!intro test` + ein paar Spieler-Turns + eine Regelfrage:** Intro zuverlässig **ein** Monolog mit **jeder Figur** (C1-Retry greift bei zu kurz/Figur fehlt, D86), **weniger Wiederholung/Generik** (B1 repeat_penalty, D85). Tuning live: `DM_REPEAT_PENALTY` (1.0 = aus, höher = strenger), `DM_INTRO_TEMPERATURE` (0.8 mehr Flair / 0.3 ruhiger). Schließt nebenbei **Phase-10-Gate-Hälfte 1** (Regelfrage aus RAG) + die offenen D82–D84-Intro-Punkte ab.
+- Danach: Log pasten → Playtest-Triage-Iteration. **Bootstrap bleibt zurückgestellt**, bis das Spielen rund läuft.
 
 **2. Die offenen Phase-9/10-Live-Gates abhaken (Code ist da, nur Live-Abnahme fehlt):**
 - **Phase 9:** eine HP-Änderung übersteht einen echten Neustart + der Recap erscheint beim nächsten `!join` (in-prompt).
