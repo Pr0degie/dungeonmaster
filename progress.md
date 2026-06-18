@@ -698,6 +698,9 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 - [ ] Profile bootstrap: DM proposes a draft system profile from the rulebook → user confirms → saved
 - VERIFY EVIDENCE: _(pending the circlejerk run)_
 - **Decided approach (D28, 2026-06-08 — lore + RAG; full plan in this session's plan file):**
+  - **→ superseded on the embedder:** D28 planned `nomic-embed-text`; Phase 10a (ADR 019) switched to
+    **`bge-m3`** because nomic barely aligns German queries with the English rulebook (DE-query↔EN-text).
+    The `nomic` mentions below record the original plan.
   - **Lore = RAG, never fact-fine-tuning** (golden rule #7). Fine-tuning only later as a **tone-LoRA**
     (style, on `logs/transcript.log`), Part-2 backlog — facts always stay in RAG.
   - **Both wiki sources** into one **`sqlite-vec`** DB, **text only (no images)**: **Fandom** (official

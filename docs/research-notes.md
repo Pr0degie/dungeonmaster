@@ -39,6 +39,10 @@ uncertain actions in prose ("du bemerkst …", "es gelingt dir …"). Happened o
 
 ## 2. Representing 40k lore: RAG, not fine-tuning (→ D28; Phase 10 plan)
 
+> **→ Embedder superseded:** this note (and D28) plans `nomic-embed-text`; Phase 10a (ADR 019) switched
+> to **`bge-m3`** — nomic barely aligns German queries with the English rulebook (DE-query↔EN-text). The
+> `nomic-embed-text` mention below is the original plan, kept for the record.
+
 **Question:** how to give the DM Warhammer 40k lore — scrape a wiki? fine-tune mistral-nemo on it?
 
 **Key findings:**

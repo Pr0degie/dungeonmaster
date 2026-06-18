@@ -5,8 +5,8 @@ OFFLINE CLI, not the bot runtime (like ``tools/pdf_to_md.py``, which produces it
     uv run python -m dmbot.rag.ingest "data/pdfs/md/Imperium Maledictum Core Rulebook.md" --source rulebook
 
 Heading-aware chunking (a chunk never crosses a ``#`` heading, so a retrieved rule passage carries
-its section title as the source), embeddings via Ollama's ``/api/embed`` (``nomic-embed-text``,
-already pulled in Phase 0, with the model's recommended ``search_document:`` task prefix), stored
+its section title as the source), embeddings via Ollama's ``/api/embed`` (``bge-m3``, multilingual —
+see the ``EMBED_MODEL`` note below for why not nomic, and ``embed_texts`` re task prefixes), stored
 in ``data/vectordb/rag.db`` (sqlite-vec, cosine distance). Re-running with the same ``--source``
 replaces that source's rows. The adventure is deliberately NOT ingested — scene cards cover it,
 and similarity search would surface part-3 spoilers in part 1 (ADR 019).
