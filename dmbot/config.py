@@ -21,6 +21,8 @@ class Config:
     ollama_host: str
     ollama_model: str
     ollama_num_ctx: int
+    ollama_repeat_penalty: float
+    ollama_repeat_last_n: int
     bridge_host: str
     bridge_port: int
     bridge_secret: str
@@ -81,6 +83,12 @@ class Config:
             # 16 GB 4080 — 8k silently truncated the system prompt (persona + adventure) mid-session.
             # Lower it if VRAM gets tight (XTTS + Whisper share the GPU).
             ollama_num_ctx=int(os.environ.get("OLLAMA_NUM_CTX", "24576")),
+            # Anti-repetition sampling. nemo with no penalty (the old default) loops or drifts into
+            # generic filler on a 12B model; a mild penalty curbs it before the post-hoc echo guard
+            # has to. 1.1 is gentle — too high frays German fluency / blocks legitimate re-use of a
+            # name. repeat_last_n is the look-back window. Tune by ear (1.0 = off).
+            ollama_repeat_penalty=float(os.environ.get("DM_REPEAT_PENALTY", "1.1")),
+            ollama_repeat_last_n=int(os.environ.get("DM_REPEAT_LAST_N", "256")),
             bridge_host=os.environ.get("DM_BRIDGE_HOST", "127.0.0.1").strip(),
             bridge_port=int(os.environ.get("DM_BRIDGE_PORT", "8765")),
             # Shared secret for the cross-machine bridge. Empty = localhost path mode (no secret).

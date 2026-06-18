@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 
+from dmbot.llm.intro_guard import is_weak_intro
 from dmbot.orchestrator import DMBrain, build_intro_director_msg, build_opening_director_msg
 from dmbot.rules import profile as profile_mod
 from dmbot.rules.characters import CharacterStore
@@ -141,6 +142,80 @@ def test_opening_path_omits_temperature_by_default() -> None:
     brain = DMBrain(client, profile=_IM, num_predict=220)
     asyncio.run(brain.respond_opening(2, build_opening_director_msg()))
     assert "temperature" not in client.options
+
+
+# --- the deterministic weak-intro retry (batch path, ADR 041 follow-up) -----------------------
+
+class _SequenceClient:
+    """Returns a queued answer per chat() call, so a test can stage weak-then-strong openings."""
+
+    def __init__(self, answers: list[str]) -> None:
+        self._answers = list(answers)
+        self.calls = 0
+
+    async def chat(self, system, messages, options=None) -> str:
+        self.calls += 1
+        return self._answers.pop(0)
+
+    async def aclose(self) -> None:
+        pass
+
+
+# A strong opening: long, names every figure (sanitizer leaves it untouched — no meta/markdown/
+# "Was tut ihr?" closer), so the test asserts the exact returned string.
+_STRONG = (
+    "Der Rost-Regen trommelt auf Rokarth, als ihr durch das Schmugglertor tretet, der Spur des "
+    "Ketzers folgend, die hier in der Hive-Tiefe endet. Fridolin spürt die Kälte im Warp-Sinn "
+    "aufsteigen. Seskin prüft beiläufig den Sitz seiner Klinge, während die Menge sich teilt und "
+    "der Markt der Verlorenen sich vor euch öffnet."
+)
+_ROSTER = ["Fridolin Feuchtgebietheld", "Seskin"]
+
+
+def _weak(text: str) -> bool:
+    return is_weak_intro(text, _ROSTER)
+
+
+def test_intro_regenerates_once_when_weak_then_keeps_strong() -> None:
+    client = _SequenceClient(["Ein karger Auftakt.", _STRONG])
+    brain = DMBrain(client, profile=_IM, num_predict=220)
+    out = asyncio.run(
+        brain.respond_opening(1, build_intro_director_msg(_STORE.intro_roster_de()), num_predict=800,
+                              temperature=0.7, is_weak=_weak)
+    )
+    assert out == _STRONG       # the weak first attempt was replaced by the strong retry
+    assert client.calls == 2    # generated once, regenerated exactly once
+
+
+def test_intro_does_not_retry_when_first_is_strong() -> None:
+    client = _SequenceClient([_STRONG, "must not be used"])
+    brain = DMBrain(client, profile=_IM, num_predict=220)
+    out = asyncio.run(
+        brain.respond_opening(1, build_intro_director_msg(_STORE.intro_roster_de()), num_predict=800,
+                              temperature=0.7, is_weak=_weak)
+    )
+    assert out == _STRONG
+    assert client.calls == 1    # a strong first turn is kept as-is, no wasted regen
+
+
+def test_intro_retry_is_capped_at_one_even_if_still_weak() -> None:
+    client = _SequenceClient(["Zu kurz A.", "Auch zu kurz B."])
+    brain = DMBrain(client, profile=_IM, num_predict=220)
+    out = asyncio.run(
+        brain.respond_opening(1, build_intro_director_msg(_STORE.intro_roster_de()), num_predict=800,
+                              temperature=0.7, is_weak=_weak)
+    )
+    assert client.calls == 2          # retried at most once...
+    assert out == "Auch zu kurz B."   # ...and never speaks less than it had — keeps the retry
+
+
+def test_intro_without_guard_keeps_legacy_behaviour() -> None:
+    # No is_weak passed (e.g. the short !start briefing) → exactly one generation, no validation.
+    client = _SequenceClient(["Eine knappe Lagebesprechung."])
+    brain = DMBrain(client, profile=_IM, num_predict=220)
+    out = asyncio.run(brain.respond_opening(1, build_opening_director_msg()))
+    assert out == "Eine knappe Lagebesprechung."
+    assert client.calls == 1
 
 
 # --- punctuation strip for the `!intro test` delivery ----------------------------------------

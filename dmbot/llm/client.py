@@ -60,12 +60,21 @@ class OllamaClient:
         model: str,
         *,
         num_ctx: int = 24576,
+        repeat_penalty: float | None = None,
+        repeat_last_n: int | None = None,
         timeout: float = 120.0,
         keep_alive: str = "30m",
     ) -> None:
         self._host = host.rstrip("/")
         self._model = model
         self._num_ctx = num_ctx
+        # Anti-repetition, off unless tuned (DM_REPEAT_PENALTY / DM_REPEAT_LAST_N → config). nemo
+        # with no penalty loops / drifts into generic filler on a 12B model. As an instance default
+        # it rides on every call; deterministic/constrained calls that need exact sampling override
+        # it per-call (the roll router sets repeat_penalty=1.0 so the penalty can't fight the enum it
+        # must pick — golden rule #2).
+        self._repeat_penalty = repeat_penalty
+        self._repeat_last_n = repeat_last_n
         # Keep the model resident between DM turns so it isn't cold-loaded each time (a cold
         # load of a ~9 GB model under VRAM pressure is the dominant latency — measured 15 s).
         self._keep_alive = keep_alive
@@ -80,6 +89,19 @@ class OllamaClient:
     @property
     def model(self) -> str:
         return self._model
+
+    def _merged_options(self, options: dict | None) -> dict:
+        """Sampling options for one call: the module defaults + this instance's ``num_ctx`` and
+        (when tuned) ``repeat_penalty`` / ``repeat_last_n``, with any per-call ``options`` layered
+        on top so a caller can still override (e.g. the roll router's ``temperature`` 0). Shared by
+        :meth:`chat` and :meth:`chat_stream` so the two paths can't drift."""
+        merged: dict = {**_DEFAULT_OPTIONS, "num_ctx": self._num_ctx}
+        if self._repeat_penalty is not None:
+            merged["repeat_penalty"] = self._repeat_penalty
+        if self._repeat_last_n is not None:
+            merged["repeat_last_n"] = self._repeat_last_n
+        merged.update(options or {})
+        return merged
 
     async def chat(
         self,
@@ -102,7 +124,7 @@ class OllamaClient:
             "stream": False,
             "keep_alive": self._keep_alive,
             "messages": [{"role": "system", "content": system}, *messages],
-            "options": {**_DEFAULT_OPTIONS, "num_ctx": self._num_ctx, **(options or {})},
+            "options": self._merged_options(options),
         }
         if format is not None:
             payload["format"] = format
@@ -139,7 +161,7 @@ class OllamaClient:
             "stream": True,
             "keep_alive": self._keep_alive,
             "messages": [{"role": "system", "content": system}, *messages],
-            "options": {**_DEFAULT_OPTIONS, "num_ctx": self._num_ctx, **(options or {})},
+            "options": self._merged_options(options),
         }
         num_ctx = payload["options"].get("num_ctx")
         # Generous read timeout for the stream: the first delta can take minutes on a cold start

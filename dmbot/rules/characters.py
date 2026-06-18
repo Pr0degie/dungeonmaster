@@ -195,6 +195,11 @@ class CharacterStore:
             lines.append(f"- **{char.name}**" + (f" — {body}" if body else ""))
         return "\n".join(lines)
 
+    def character_names(self) -> list[str]:
+        """The player-character names (no alias display names), in load order — used by the intro
+        guard to check the opening monologue actually weaves in every figure (ADR 041 follow-up)."""
+        return [c.name for c in self._by_name.values() if c.name]
+
     def speaker_labels(self) -> list[str]:
         """Every name that may prefix a *scripted* line the model must not write — each character
         name plus each player display name. The orchestrator adds these (beside the turn's own

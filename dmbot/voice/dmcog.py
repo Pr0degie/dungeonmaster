@@ -14,6 +14,7 @@ from datetime import datetime
 from discord.ext import commands
 
 from ..orchestrator import build_intro_director_msg, build_opening_director_msg
+from ..llm.intro_guard import is_weak_intro
 from ..tts.textsplit import has_speakable_content, strip_speech_punctuation
 from ..memory import history as history_store
 from .delivery import DeliveryPipeline
@@ -357,9 +358,16 @@ class DMCog(commands.Cog):
         (XTTS ~0.5x realtime) — the price of gapless playback. The posted chat text keeps its
         punctuation (readable, D38). A pause during synthesis aborts cleanly. No dice button / scene
         proposal (an opening turn never queues either)."""
+        # The batch path can validate the opening before it's spoken: if it comes out weak (too
+        # short / a figure skipped — the 12B model's high-variance failure, ADR 041), regenerate
+        # once. Streaming !intro can't (audio already plays), so this is the path to prefer.
+        roster_names = self._rt._characters.character_names() if self._rt._characters else []
         try:
             async with ctx.typing():
-                answer = await self._rt._brain.respond_opening(cid, director_msg, num_predict=np, temperature=tmp)
+                answer = await self._rt._brain.respond_opening(
+                    cid, director_msg, num_predict=np, temperature=tmp,
+                    is_weak=lambda t: is_weak_intro(t, roster_names),
+                )
                 timing.llm_done = time.monotonic()
                 timing.take_llm_stats(self._rt._brain.last_llm_stats)
         except Exception:

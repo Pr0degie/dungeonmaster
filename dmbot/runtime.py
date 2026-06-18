@@ -228,7 +228,13 @@ class SessionRuntime:
         else:
             log.info("no RAG store under data/vectordb/ — rule questions run without the book")
         self._brain = DMBrain(
-            OllamaClient(config.ollama_host, config.ollama_model, num_ctx=config.ollama_num_ctx),
+            OllamaClient(
+                config.ollama_host,
+                config.ollama_model,
+                num_ctx=config.ollama_num_ctx,
+                repeat_penalty=config.ollama_repeat_penalty,
+                repeat_last_n=config.ollama_repeat_last_n,
+            ),
             profile=self._profile,
             num_predict=config.dm_num_predict,
             max_buffer_lines=config.dm_max_lines,

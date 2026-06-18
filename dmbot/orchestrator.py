@@ -47,6 +47,7 @@ from .llm.director_msgs import (  # noqa: F401
     build_intro_director_msg,
     build_opening_director_msg,
 )
+from .llm.intro_guard import INTRO_RETRY_NUDGE
 from .llm.stream_assembler import StreamAssembler, finalize_answer  # noqa: F401
 
 log = logging.getLogger(__name__)
@@ -272,14 +273,27 @@ class DMBrain:
         return director_msg, labels, history
 
     async def respond_opening(self, channel_id: int, director_msg: str, num_predict: int | None = None,
-                              temperature: float | None = None) -> str | None:
-        """Run the opening-briefing turn (``!start``, batch path): generate one GM turn from the
-        ``director_msg`` instruction, append it to history, return the answer. Dice are suppressed
-        (see :meth:`_prepare_opening`). ``None`` only on the rare echo-guard suppression. ``!intro``
-        passes a lower ``temperature`` (D83) so the monologue reliably follows the director brief
-        instead of wandering into a short generic turn."""
+                              temperature: float | None = None,
+                              is_weak: Callable[[str], bool] | None = None) -> str | None:
+        """Run the opening-briefing turn (``!start`` / ``!intro test``, batch path): generate one GM
+        turn from the ``director_msg`` instruction, append it to history, return the answer. Dice are
+        suppressed (see :meth:`_prepare_opening`). ``None`` only on the rare echo-guard suppression.
+        ``!intro`` passes a lower ``temperature`` (D83) so the monologue reliably follows the director
+        brief instead of wandering into a short generic turn.
+
+        ``is_weak`` (the batch-only intro guard, ADR 041 follow-up): when given and the generated
+        opening reads weak (too short / a player figure skipped — the 12B model's high-variance
+        failure), regenerate **once** with a firmer nudge before the turn reaches the table. Only the
+        kept answer is appended to history. Streaming ``!intro`` can't use this (audio already plays),
+        which is why the validated batch path is the one to prefer once synthesis is fast enough."""
         user_msg, labels, history = self._prepare_opening(channel_id, director_msg)
         answer = await self._generate(channel_id, user_msg, labels, history, num_predict=num_predict, temperature=temperature)
+        if answer and is_weak is not None and is_weak(answer):
+            log.warning("intro guard: opening came out weak — regenerating once")
+            nudged = f"{user_msg}\n{INTRO_RETRY_NUDGE}"
+            retry = await self._generate(channel_id, nudged, labels, history, num_predict=num_predict, temperature=temperature)
+            if retry:
+                answer = retry  # keep the retry even if still weak — never speak less than we had
         if answer is None:
             return ""  # echo-suppressed (parity with respond): content-less to the cog
         self._append_turn(history, user_msg, answer)
@@ -619,7 +633,12 @@ class DMBrain:
             raw = await self._client.chat(
                 system,
                 [{"role": "user", "content": f"Spieler-Handlung: {action}"}],
-                options={"temperature": 0, "num_predict": 80},
+                # Anti-repetition OFF for the constrained verdict (overrides the client's narration
+                # default, B1): the classifier_system prompt lists every skill + difficulty in the
+                # repeat_last_n window, so a repeat_penalty would penalise the very enum value the
+                # router must pick — corrupting a deterministic, reliability-critical path (golden
+                # rule #2 / ADR 014). Per-call options win over the instance default.
+                options={"temperature": 0, "num_predict": 80, "repeat_penalty": 1.0, "repeat_last_n": 0},
                 format=schema,
             )
             data = json.loads(raw)
