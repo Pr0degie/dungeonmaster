@@ -105,3 +105,27 @@ already strips "Als Spielleitung *beschreibe* ich …" and trailing "Was tut ihr
 +3 sanitiser tests (the full intro tic; verb variants; clean-envelope-only unwrap). Suite **379
 green**. The split of labour is the point: **deterministic** post-processing owns *removing* the tic
 (guaranteed), the **brief + temperature** own *shaping* the prose (best-effort).
+
+## Addendum 2 — D86 (2026-06-18): deterministic weakness check + one-shot retry
+
+ADR 041 + addendum 1 fix *what the opening says wrong* (meta-open, quote-wrap, curt close), but not
+*when it comes out thin*: the other observed failure is a short, generic turn that silently **skips a
+player figure** — pure sampling variance the brief + temperature reduce but can't guarantee. Same
+conclusion as addendum 1: don't rely on the prompt; add a deterministic backstop.
+
+- New pure module `dmbot/llm/intro_guard.py`: `is_weak_intro(text, roster_names)` — the opening is
+  "weak" if it is too short (< 280 chars; a real multi-paragraph monologue runs far longer) **or** a
+  roster figure's first name is never named (whole-word, genitive-`s` tolerant so "Seskins Hand"
+  counts). Plus `INTRO_RETRY_NUDGE`, a firmer `[Regie]` corrective.
+- `respond_opening` gained an optional `is_weak` callback: when the generated opening is weak it
+  **regenerates once** with the nudge appended, keeping only the better answer in history (and never
+  speaking *less* — the retry is kept even if still weak). The cog's batch path (`!intro test`) wires
+  it with the live roster (`CharacterStore.character_names()`).
+- **Batch only, by design:** streaming `!intro` can't validate-then-retry (audio already plays). This
+  is the lever that makes the batch path the one to prefer once TTS synthesis is fast enough (the
+  GPU-offload tuning, Workstream A) — a validated, gapless opener.
+
++5 tests (`test_intro_guard.py` truth table incl. genitive + word-boundary; 4 retry-path tests in
+`test_intro.py`: regenerate-once-then-keep-strong, no-retry-when-strong, capped-at-one, no-guard
+legacy). The router-deterministic carve-out of the sibling sampling change rides in **ADR 042**.
+
