@@ -128,6 +128,10 @@ hier (ich schlage `/simplify` vor, wenn ein Batch die Trigger trifft)._
   4070, later optionally on the 5080 (Tailscale). Switchable via `OLLAMA_HOST`.
 - Keep the latency chain lean (LAN/Tailscale). Streaming TTS is a later optimization, not
   an MVP must.
+- **Two machines drift** — the must-haves that git doesn't carry (`data/adventures/`,
+  `rag.db`, `.env` keys): run `uv run python tools/sync_check.py` on both and diff the
+  `[sync]` blocks; the differing line is what to send over / rebuild (details:
+  SETUP.md „Staying in sync (second machine)").
 
 ## When you're stuck on reality
 
