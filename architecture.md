@@ -344,7 +344,15 @@ adventure and the rulebook take **different paths**:
   profile-aligned skills/difficulties, secrets flagged never-say, leads_to, off-script guidance)
   plus `npcs.json` statblocks (`!npc add` resolves them). A code-owned pointer —
   `WorldState.scene_id`, persisted like HP — selects the **one** card injected per turn. Humans
-  move the pointer (`!ort <id>` / `!szenen`); the model never does. **The adventure is NOT in
+  move the pointer (`!ort <id>` / `!szenen`), or the model *requests* a move via `<<ORT id>>`
+  (validated + human-confirmed, ADR 026) — it never writes the pointer itself. The card is
+  **state-aware** (ADR 043): opportunities/secrets carry element ids (`[opp-1]`, explicit ids via
+  the `{"id","text_de"}` entry form) and can be flagged resolved — via the `<<ERLEDIGT id>>`
+  marker (confirm button, `DM_FLAG_CONFIRM`) or `!erledigt`/`!offen` — moving them to „Bereits
+  geschehen"/„Bekannt" on the render (flag store: code-owned `WorldState.scene_flags`); NPCs the
+  engine downed render `(tot)`; `leads_to` entries may be gated
+  (`{"ziel","requires"}` — hidden and rejected until the required element of the owning scene is
+  flagged; `frei` mode and manual `!ort` bypass). **The adventure is NOT in
   the vector store** (spoiler discipline). Compendium content is a derivative of a bought book —
   it stays untracked (`data/**`), like the PDFs, while the repo is public.
 - **Stage 3 — rulebook RAG (vector search where lookup is the right shape):** md (from

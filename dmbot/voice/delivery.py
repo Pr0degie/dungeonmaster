@@ -29,6 +29,7 @@ import discord
 from ..tts.textsplit import has_speakable_content, split_completed
 from ..tts.wavio import concat_wavs
 from ..shutdown import to_daemon_thread
+from ..discord_ui.flag import FlagView
 from ..discord_ui.scene import SceneChangeView
 from ..rag.adventure import Scene
 from ..runtime import (
@@ -163,8 +164,11 @@ class DeliveryPipeline:
         if state is None:
             return
         req = reqs[0]  # ≤1 move per turn; ignore any extras the model emitted
-        target = self._rt._adventure.resolve_move(state.scene_id, req.scene_id, self._rt._scene_mode)
-        if target is None:  # no-op, unknown id, or (in verbunden mode) not a leads_to neighbour
+        target = self._rt._adventure.resolve_move(
+            state.scene_id, req.scene_id, self._rt._scene_mode,
+            resolved_ids=state.resolved_ids(state.scene_id),  # gated exits, ADR 043
+        )
+        if target is None:  # no-op, unknown id, not a leads_to neighbour, or a locked gate
             log.info("🚫 Auto-Szenenwechsel '%s' abgelehnt (Modus '%s', aktuelle Szene '%s')",
                      req.scene_id, self._rt._scene_mode, state.scene_id)
             return
@@ -190,6 +194,77 @@ class DeliveryPipeline:
             log.info("scene → %s (%s) [auto, bestätigt]", moved.id, moved.title_de)
             await interaction.edit_original_response(
                 content=f"📖 Szene gewechselt: **{moved.title_de}** (Teil {moved.part})."
+            )
+        return _confirm
+
+    async def _handle_erledigt(self, channel) -> None:
+        """Apply the DM turn's ``<<ERLEDIGT id>>`` scene-element flags (ADR 043): validate each id
+        against the CURRENT scene card and either post a confirm button per element
+        (``DM_FLAG_CONFIRM=1``, default) or apply them immediately. The flag is deterministic
+        (golden rule #3): the model never writes ``scene_flags``, it only *requests* the flag.
+        Unlike ``<<ORT>>`` every valid request in the turn is processed — flags are idempotent and
+        low-stakes. Unknown/foreign/duplicate ids are ignored + logged, never applied.
+
+        Guard order is load-bearing: the adventure check comes BEFORE the brain drain, so a stub
+        brain without ``take_pending_erledigt`` (tests/test_delivery.py) is never touched when no
+        adventure is loaded. Pending requests then simply expire on redo/reset — harmless, they
+        are never queued in practice without a scene card in the prompt."""
+        if self._rt._adventure is None:
+            return
+        cid = self._rt._brain_channel(channel)
+        reqs = self._rt._brain.take_pending_erledigt(cid)
+        if not reqs:
+            return
+        state = self._rt._state.get(cid)
+        if state is None:
+            return
+        scene = self._rt._adventure.get_scene(state.scene_id)
+        if scene is None:
+            return
+        valid = set(scene.element_ids())
+        already = set(state.resolved_ids(scene.id))
+        seen_this_turn: set[str] = set()
+        applied_any = False
+        for req in reqs:
+            eid = req.element_id
+            if not req.parsed or eid not in valid or eid in seen_this_turn or eid in already:
+                log.info("🚫 ERLEDIGT '%s' abgelehnt (Szene '%s')", eid or req.raw, scene.id)
+                continue
+            seen_this_turn.add(eid)
+            text = scene.element_text(eid) or eid
+            if self._rt._flag_confirm:
+                log.info("✅ Erledigt vorgeschlagen: %s (%s)", eid, scene.id)
+                await channel.send(
+                    f"✅ Erledigt vorgeschlagen: **{text}** (`{eid}`). Abhaken?",
+                    view=FlagView(eid, text, self._make_flag_confirm(channel, eid)),
+                )
+            else:
+                self._rt._set_scene_flag(state, eid, resolved=True)
+                applied_any = True
+                log.info("✅ erledigt (auto): %s — %s (Szene '%s')", eid, text, scene.id)
+        if applied_any:
+            self._rt._persist_and_refresh(channel)
+
+    def _make_flag_confirm(self, channel, element_id: str):
+        """Build the confirm callback for a proposed element flag: on click, perform the same
+        deterministic flag ``!erledigt`` does (``_set_scene_flag`` + persist + prompt refresh) and
+        edit the proposal message. A click after a scene change degrades cleanly — the id no longer
+        validates against the (new) current scene."""
+        async def _confirm(interaction: discord.Interaction) -> None:
+            cid = self._rt._brain_channel(channel)
+            state = self._rt._state.get(cid)
+            if state is None:
+                return
+            text = self._rt._set_scene_flag(state, element_id, resolved=True)
+            if text is None:  # the scene changed between proposal and click
+                await interaction.edit_original_response(
+                    content="Nicht mehr aktuell — die Szene hat gewechselt."
+                )
+                return
+            self._rt._persist_and_refresh(channel)
+            log.info("✅ erledigt: %s [auto, bestätigt]", element_id)
+            await interaction.edit_original_response(
+                content=f"✅ Abgehakt: **{text}** (`{element_id}`)."
             )
         return _confirm
 
@@ -229,6 +304,7 @@ class DeliveryPipeline:
             log.info("(inhaltslose Antwort — nichts gepostet/gesprochen; nur ggf. Würfel)")
         dice_task = asyncio.create_task(self._rt.handle_dice(channel))
         scene_task = asyncio.create_task(self._handle_scene(channel))  # ADR 026: propose a scene move
+        flag_task = asyncio.create_task(self._handle_erledigt(channel))  # ADR 043: element flags
         # dice_task/scene_task must ALWAYS be awaited — even if _speak raises a bridge-side error.
         # Otherwise the dice button is never posted and the orphaned tasks log "Task exception was
         # never retrieved". The finally awaits them (logging, not dropping, their own exceptions) and
@@ -240,19 +316,21 @@ class DeliveryPipeline:
             timing.log_line()
         finally:
             # The dice button must land before the mic button re-anchors at the bottom; likewise the
-            # scene-change proposal. await_dice_scene awaits both and logs (never drops) their errors.
-            await self._await_dice_scene(dice_task, scene_task)
+            # scene-change proposal. await_dice_scene awaits all and logs (never drops) their errors.
+            await self._await_dice_scene(dice_task, scene_task, flag_task)
         await self._post_deliver(channel, answer, timing,
                                  saved_user_msg=saved_user_msg, redo=timing.kind == "redo")
 
     @staticmethod
     async def _await_dice_scene(dice_task: asyncio.Task | None,
-                                scene_task: asyncio.Task | None) -> None:
-        """Await the concurrent dice-button and scene-proposal tasks, retrieving (and logging, never
-        dropping) any exception each raised. Used by both delivery paths so a failing task can't leave
-        a 'Task exception was never retrieved' warning. Order matters: dice first, then scene, so both
-        land before the mic button re-anchors at the bottom."""
-        for task, what in ((dice_task, "dice button"), (scene_task, "scene proposal")):
+                                scene_task: asyncio.Task | None,
+                                flag_task: asyncio.Task | None = None) -> None:
+        """Await the concurrent dice-button, scene-proposal and element-flag tasks, retrieving (and
+        logging, never dropping) any exception each raised. Used by both delivery paths so a failing
+        task can't leave a 'Task exception was never retrieved' warning. Order matters: dice first,
+        then scene, then flags, so all land before the mic button re-anchors at the bottom."""
+        for task, what in ((dice_task, "dice button"), (scene_task, "scene proposal"),
+                           (flag_task, "flag proposal")):
             if task is None:
                 continue
             try:
@@ -392,6 +470,7 @@ class DeliveryPipeline:
         pw = asyncio.create_task(play_worker())
         dice_task: asyncio.Task | None = None
         scene_task: asyncio.Task | None = None
+        flag_task: asyncio.Task | None = None
         saved_user_msg: str | None = None
         try:
             try:
@@ -415,6 +494,7 @@ class DeliveryPipeline:
                     await self._rt._send_with_retry(channel, answer)
                 dice_task = asyncio.create_task(self._rt.handle_dice(channel))
                 scene_task = asyncio.create_task(self._handle_scene(channel))  # ADR 026
+                flag_task = asyncio.create_task(self._handle_erledigt(channel))  # ADR 043
             # gather() re-raises the FIRST worker exception WITHOUT cancelling its siblings — so if
             # play_worker dies on a mid-stream bridge 5xx, synth_worker would hang forever on the
             # bounded wav_q.put and leak its temp WAV. Log a worker failure here; the finally then
@@ -447,7 +527,7 @@ class DeliveryPipeline:
         if holder["answer"] is not None:
             timing.end = time.monotonic()  # last /speak returned
             timing.log_line()
-            await self._await_dice_scene(dice_task, scene_task)
+            await self._await_dice_scene(dice_task, scene_task, flag_task)
             await self._post_deliver(channel, holder["answer"], timing,
                                      saved_user_msg=saved_user_msg, redo=redo)
         return holder["answer"]

@@ -120,11 +120,15 @@ class WorldState:
     # Scene pointer into the loaded adventure compendium (Phase 10a, ADR 019) — the code-owned
     # "where are we in the plot" the prompt's scene card is selected by. Empty = no adventure.
     scene_id: str = ""
+    # Scene-element flags (ADR 043): scene_id → element ids resolved there (used Gelegenheiten,
+    # revealed Geheimnisse). Code-owned like scene_id (golden rule #3) — the LLM only *requests*
+    # a flag via <<ERLEDIGT>>; validation lives in the runtime, this is dumb storage.
+    scene_flags: dict[str, list[str]] = field(default_factory=dict)
 
     # -- (de)serialisation ----------------------------------------------------------------
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "session_id": self.session_id,
             "system": self.system,
             "characters": [c.to_dict() for c in self.characters],
@@ -135,6 +139,9 @@ class WorldState:
             "recap": self.recap,
             "scene_id": self.scene_id,
         }
+        if self.scene_flags:  # omit-when-empty, like the Combatant extras
+            d["scene_flags"] = {k: list(v) for k, v in self.scene_flags.items() if v}
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "WorldState":
@@ -148,6 +155,10 @@ class WorldState:
             time_ingame=str(d.get("time_ingame", "") or ""),
             recap=str(d.get("recap", "") or ""),
             scene_id=str(d.get("scene_id", "") or ""),
+            scene_flags={
+                str(k): [str(x) for x in (v or [])]
+                for k, v in (d.get("scene_flags") or {}).items()
+            },
         )
 
     @classmethod
@@ -203,6 +214,31 @@ class WorldState:
             if n.name.lower() == key:
                 return n
         return None
+
+    # -- scene-element flags (ADR 043) ------------------------------------------------------
+
+    def resolved_ids(self, scene_id: str) -> list[str]:
+        """The element ids flagged resolved for ``scene_id`` (order of resolution)."""
+        return list(self.scene_flags.get(scene_id, []))
+
+    def mark_resolved(self, scene_id: str, element_id: str) -> bool:
+        """Flag ``element_id`` resolved for ``scene_id``; False if it already was (idempotent)."""
+        flags = self.scene_flags.setdefault(scene_id, [])
+        if element_id in flags:
+            return False
+        flags.append(element_id)
+        return True
+
+    def mark_open(self, scene_id: str, element_id: str) -> bool:
+        """Un-flag ``element_id`` for ``scene_id``; False if it wasn't set. Drops an emptied
+        scene key so ``to_dict``'s omit-when-empty stays clean."""
+        flags = self.scene_flags.get(scene_id, [])
+        if element_id not in flags:
+            return False
+        flags.remove(element_id)
+        if not flags:
+            self.scene_flags.pop(scene_id, None)
+        return True
 
     # -- deterministic advancement (golden rule #3) ---------------------------------------
 

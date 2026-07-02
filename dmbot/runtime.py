@@ -173,6 +173,10 @@ class SessionRuntime:
         # "verbunden" = only the current scene's leads_to neighbours; "frei" = any known scene.
         # Switchable live via !ortmodus; an unknown value degrades to "verbunden".
         self._scene_mode = config.scene_mode if config.scene_mode in ("verbunden", "frei") else "verbunden"
+        # Scene-element flags (ADR 043): True → a valid <<ERLEDIGT id>> posts a confirm button
+        # (human-in-the-loop, like the scene-change button); False → apply immediately (flags only
+        # change what the card renders — lower stakes than the scene pointer).
+        self._flag_confirm = config.flag_confirm
         # Rules engine (Phase 8): load the active system profile (data/systems/<system>.json). A
         # missing/broken profile must not down the bot — log loudly and run rules-less (no dice).
         self._profile: SystemProfile | None = None
@@ -464,7 +468,11 @@ class SessionRuntime:
             log.exception("could not persist world state for channel %s", cid)
         adventure_block = ""
         if self._adventure is not None:
-            adventure_block = self._adventure.adventure_block_de(state.scene_id)
+            adventure_block = self._adventure.adventure_block_de(
+                state.scene_id,
+                resolved_ids=state.resolved_ids(state.scene_id),
+                dead_npcs=[n.name for n in state.npcs if n.wounds <= 0],
+            )
         summary = world_state_summary_de(state)
         for block in (self._psyker_block(state), self._augmetic_block()):
             if block:
@@ -539,6 +547,26 @@ class SessionRuntime:
         if scene.title_de:
             state.set_location(scene.title_de)  # keep the prose state block in sync
         return scene
+
+    def _set_scene_flag(self, state: WorldState, element_id: str, *, resolved: bool) -> str | None:
+        """Deterministically flag an element of the CURRENT scene resolved/open (ADR 043, golden
+        rule #3) — the single mutator shared by ``!erledigt``/``!offen`` and the ``<<ERLEDIGT>>``
+        auto path. Validates ``element_id`` against the current scene card; returns the element's
+        German text on success (for the reply), None for an unknown/foreign id or no adventure.
+        Idempotent. The caller persists + refreshes the prompt."""
+        if self._adventure is None:
+            return None
+        scene = self._adventure.get_scene(state.scene_id)
+        if scene is None:
+            return None
+        text = scene.element_text(element_id)
+        if text is None:
+            return None
+        if resolved:
+            state.mark_resolved(scene.id, element_id)
+        else:
+            state.mark_open(scene.id, element_id)
+        return text
 
     def _build_turn_order(self, voice_channel) -> list[str]:
         """Seed the turn order from a voice channel's human members (Bot A + bots filtered),

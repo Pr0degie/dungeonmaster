@@ -21,7 +21,7 @@ from .llm.persona import load_system_prompt
 from .llm.prompt_assembly import assemble_system_prompt
 from .llm.roll_router import classifier_schema, classifier_system, to_test_request
 from .memory.recap import RECAP_SYSTEM_DE, build_recap_user
-from .rules.marker import ManifestRequest, SceneRequest, TestRequest
+from .rules.marker import ErledigtRequest, ManifestRequest, SceneRequest, TestRequest
 from .rules.profile import SystemProfile
 from .tts.textsplit import has_speakable_content
 
@@ -101,6 +101,9 @@ class DMBrain:
         # Pending scene-transition requests parsed from the last DM turn (ADR 026) — drained by the
         # cog, which validates the target against the adventure and posts a confirm button.
         self._pending_scenes: dict[int, list[SceneRequest]] = {}
+        # Pending scene-element flag requests (ADR 043) — drained by the delivery pipeline, which
+        # validates each id against the current scene card and confirms/auto-applies the flag.
+        self._pending_erledigt: dict[int, list[ErledigtRequest]] = {}
         self._test_results: dict[int, list[str]] = {}
         # A light "who plays whom" hint (display name → character) appended to the system prompt,
         # so the model stops confusing player and character names (open item F). Set per channel.
@@ -248,6 +251,7 @@ class DMBrain:
         self._pending_tests.pop(channel_id, None)  # the redo supersedes the old turn's test markers
         self._pending_manifests.pop(channel_id, None)
         self._pending_scenes.pop(channel_id, None)
+        self._pending_erledigt.pop(channel_id, None)
         await self._refresh_rag(channel_id, user_msg)
         answer = await self._generate(channel_id, user_msg, labels, history)
         if answer is None:
@@ -356,9 +360,9 @@ class DMBrain:
         history_prefix: list[dict[str, str]],
         num_predict: int | None = None,
         temperature: float | None = None,
-    ) -> tuple[str, list[TestRequest], list[ManifestRequest], list[SceneRequest]]:
+    ) -> tuple[str, list[TestRequest], list[ManifestRequest], list[SceneRequest], list[ErledigtRequest]]:
         """One non-streaming LLM call for ``user_msg`` on top of ``history_prefix`` → (sanitised
-        answer, parsed dice tests, parsed Manifest requests, parsed scene requests). The raw building block of
+        answer, parsed dice tests, parsed Manifest requests, parsed scene + flag requests). The raw building block of
         :meth:`_generate` (which wraps the echo-guard retry around it) and of the streaming path's
         echo retry."""
         system, messages, options = self._build_request(channel_id, user_msg, labels, history_prefix, num_predict=num_predict, temperature=temperature)
@@ -406,13 +410,13 @@ class DMBrain:
         the turn entirely (nothing spoken, nothing stored — degenerate turns in history
         self-reinforce, seen live 2026-06-12)."""
         prev = self._prev_answer(history_prefix)
-        answer, tests, manifests, scenes = await self._chat_once(channel_id, user_msg, labels, history_prefix, num_predict=num_predict, temperature=temperature)
+        answer, tests, manifests, scenes, erledigt = await self._chat_once(channel_id, user_msg, labels, history_prefix, num_predict=num_predict, temperature=temperature)
         problem = self._answer_problem(answer, user_msg, prev)
         if problem is not None:
             label, nudge = problem
             log.warning("echo guard: answer %s (%r) — retrying once", label, answer)
             nudged = f"{user_msg}\n{nudge}"
-            answer, tests, manifests, scenes = await self._chat_once(channel_id, nudged, labels, history_prefix, num_predict=num_predict, temperature=temperature)
+            answer, tests, manifests, scenes, erledigt = await self._chat_once(channel_id, nudged, labels, history_prefix, num_predict=num_predict, temperature=temperature)
             if self._answer_problem(answer, user_msg, prev) is not None:
                 log.warning("echo guard: the retry misfired again — suppressing the turn")
                 return None
@@ -426,6 +430,8 @@ class DMBrain:
                 self._pending_manifests.setdefault(channel_id, []).extend(manifests)
             if scenes:
                 self._pending_scenes.setdefault(channel_id, []).extend(scenes)
+            if erledigt:
+                self._pending_erledigt.setdefault(channel_id, []).extend(erledigt)
         return answer
 
     async def respond_streaming(
@@ -473,6 +479,7 @@ class DMBrain:
         self._pending_tests.pop(channel_id, None)  # the redo supersedes the old turn's test markers
         self._pending_manifests.pop(channel_id, None)
         self._pending_scenes.pop(channel_id, None)
+        self._pending_erledigt.pop(channel_id, None)
         await self._refresh_rag(channel_id, user_msg)
         return await self._stream_and_store(
             channel_id, user_msg, labels, history, on_sentence, should_abort
@@ -520,6 +527,7 @@ class DMBrain:
         answer, tests, remaining = result.answer, result.tests, list(result.remaining)
         manifests = result.manifests
         scenes = result.scenes
+        erledigt = result.erledigt
         suppressed = False
         # Echo guard (D43/ADR 018 + W4). Only when nothing was spoken yet — an echo/repetition is
         # held back by the assembler's last-sentence rule for short answers; a half-spoken turn is
@@ -531,13 +539,13 @@ class DMBrain:
             log.warning("echo guard (stream): answer %s (%r) — retrying once", label, answer)
             nudged = f"{user_msg}\n{nudge}"
             try:
-                answer, tests, manifests, scenes = await self._chat_once(channel_id, nudged, labels, history, num_predict=num_predict, temperature=temperature)
+                answer, tests, manifests, scenes, erledigt = await self._chat_once(channel_id, nudged, labels, history, num_predict=num_predict, temperature=temperature)
             except Exception:
                 log.exception("echo-guard retry failed — suppressing the turn")
-                answer, tests, manifests, scenes = "", [], [], []
+                answer, tests, manifests, scenes, erledigt = "", [], [], [], []
             if self._answer_problem(answer, user_msg, prev) is not None:
                 log.warning("echo guard: the retry misfired again — suppressing the turn")
-                answer, tests, manifests, scenes = "", [], [], []
+                answer, tests, manifests, scenes, erledigt = "", [], [], [], []
             suppressed = not answer
             remaining = [answer] if answer else []
         elif not errored and spoke_any and is_self_repetition(answer, prev):
@@ -560,6 +568,8 @@ class DMBrain:
                 self._pending_manifests.setdefault(channel_id, []).extend(manifests)
             if scenes:
                 self._pending_scenes.setdefault(channel_id, []).extend(scenes)
+            if erledigt:
+                self._pending_erledigt.setdefault(channel_id, []).extend(erledigt)
         stored = answer
         if errored and stored:
             stored = f"{stored} … [Antwort unterbrochen]"  # noted in history; never spoken
@@ -586,6 +596,11 @@ class DMBrain:
         """Return and clear the scene-transition requests the last DM turn made (ADR 026) — the cog
         validates the target against the adventure and posts a confirm button for the move."""
         return self._pending_scenes.pop(channel_id, [])
+
+    def take_pending_erledigt(self, channel_id: int) -> list[ErledigtRequest]:
+        """Return and clear the scene-element flag requests the last DM turn made (ADR 043) — the
+        delivery pipeline validates each id against the current scene card and confirms/applies."""
+        return self._pending_erledigt.pop(channel_id, [])
 
     def last_action(self, channel_id: int) -> tuple[str, str] | None:
         """The latest player action (display-name, text) the last turn answered, or None — the
@@ -788,6 +803,7 @@ class DMBrain:
         self._pending_tests.pop(channel_id, None)
         self._pending_manifests.pop(channel_id, None)
         self._pending_scenes.pop(channel_id, None)
+        self._pending_erledigt.pop(channel_id, None)
         self._test_results.pop(channel_id, None)
         self._last_action.pop(channel_id, None)
         self._alias_hint.pop(channel_id, None)

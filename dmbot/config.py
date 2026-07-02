@@ -53,6 +53,7 @@ class Config:
     autosave: bool
     autorecap: bool
     scene_mode: str
+    flag_confirm: bool
     speech_mode: str
     speech_punct: str
     speech_prebuffer: int
@@ -211,6 +212,11 @@ class Config:
             scene_mode=(os.environ.get("DM_SCENE_MODE", "verbunden").strip().lower()
                         if os.environ.get("DM_SCENE_MODE", "verbunden").strip().lower()
                         in ("verbunden", "frei") else "verbunden"),
+            # Stateful scene cards (ADR 043): when the DM emits <<ERLEDIGT id>>, post a confirm
+            # button before the element flag is applied (default). DM_FLAG_CONFIRM=0 auto-applies
+            # valid flags — lower stakes than the scene pointer, they only change the card render.
+            flag_confirm=os.environ.get("DM_FLAG_CONFIRM", "1").strip().lower()
+            in ("1", "true", "yes", "on"),
             # Spoken-delivery mode (ADR 033), applied to EVERY turn, also switchable live via
             # !sprechmodus. Two orthogonal axes:
             #  - DM_SPEECH_MODE: "stream" (sentence-by-sentence, fast start, small gaps) |

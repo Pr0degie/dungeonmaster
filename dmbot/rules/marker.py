@@ -33,6 +33,7 @@ from .profile import SystemProfile
 _MARKER_RE = re.compile(r"<<\s*TEST[\s:]*(.*?)>>", re.IGNORECASE | re.DOTALL)
 _MANIFEST_RE = re.compile(r"<<\s*MANIFEST[\s:]*(.*?)>>", re.IGNORECASE | re.DOTALL)
 _ORT_RE = re.compile(r"<<\s*ORT[\s:]*(.*?)>>", re.IGNORECASE | re.DOTALL)
+_ERLEDIGT_RE = re.compile(r"<<\s*ERLEDIGT[\s:]*(.*?)>>", re.IGNORECASE | re.DOTALL)
 _FUER_RE = re.compile(r"\b(?:für|fuer|for)\b", re.IGNORECASE)
 _MOD_RE = re.compile(r"([+\-−]\s*\d+)")  # ASCII +/- and the unicode minus the LLM may emit
 _PUSH_RE = re.compile(r"\b(?:push|gepusht|pushen)\b", re.IGNORECASE)  # Pushing a Manifest Test
@@ -193,4 +194,36 @@ def extract_scenes(text: str) -> tuple[str, list[SceneRequest]]:
         scene_id = re.sub(r"\s{2,}", " ", m.group(1)).strip(" :,-_")
         requests.append(SceneRequest(scene_id=scene_id, raw=m.group(0), parsed=bool(scene_id)))
     clean = _clean(_ORT_RE.sub("", text))
+    return clean, requests
+
+
+@dataclass(frozen=True, slots=True)
+class ErledigtRequest:
+    """A parsed scene-element flag request from a DM turn (ADR 043, stateful scene cards).
+
+    Grammar: ``<<ERLEDIGT <element-id>>>``, e.g. ``<<ERLEDIGT opp-1>>`` — the model *requests*
+    marking an opportunity/secret of the current scene resolved; code validates the id against
+    the scene card and applies the flag (golden rule #3). Unlike ``<<ORT>>`` (one move per turn),
+    every valid flag in a turn is processed — flags are idempotent and low-stakes.
+
+    Profile-free like :class:`SceneRequest`: elements belong to the *adventure*, so validation
+    happens where the adventure lives (the delivery pipeline), not here."""
+
+    element_id: str
+    raw: str = ""          # the original marker text
+    parsed: bool = True    # False → empty/garbled marker; stripped but ignored
+
+
+def extract_erledigt(text: str) -> tuple[str, list[ErledigtRequest]]:
+    """Strip every ``<<ERLEDIGT …>>`` from ``text`` and return (clean narration, parsed requests).
+
+    Same glue tolerance as ``extract_scenes``: a leading ``_``/``-`` separator is peeled too, so
+    the glued forms (``<<ERLEDIGTopp-1>>``, ``<<ERLEDIGT_geh-2>>``) still parse and never reach TTS.
+    Note the trailing strip means an element id must not *end* in ``-``/``_`` (derived ids are
+    digit-final, so always safe)."""
+    requests: list[ErledigtRequest] = []
+    for m in _ERLEDIGT_RE.finditer(text):
+        element_id = re.sub(r"\s{2,}", " ", m.group(1)).strip(" :,-_")
+        requests.append(ErledigtRequest(element_id=element_id, raw=m.group(0), parsed=bool(element_id)))
+    clean = _clean(_ERLEDIGT_RE.sub("", text))
     return clean, requests
