@@ -326,8 +326,10 @@ Discord connection).
 "Is my copy current?" is answered by the tool, not by guessing:
 
 ```
-uv run python tools/sync_check.py
+uv run dm-sync
 ```
+
+(The entry point lands with `uv sync` — after a pull that's the usual first step anyway.)
 
 Run it on **both** machines and compare the `[sync]` blocks (by eye or diff). A line that
 differs is exactly what to send over (adventure files: same short sha = same file; mtime is

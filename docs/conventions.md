@@ -129,7 +129,7 @@ hier (ich schlage `/simplify` vor, wenn ein Batch die Trigger trifft)._
 - Keep the latency chain lean (LAN/Tailscale). Streaming TTS is a later optimization, not
   an MVP must.
 - **Two machines drift** — the must-haves that git doesn't carry (`data/adventures/`,
-  `rag.db`, `.env` keys): run `uv run python tools/sync_check.py` on both and diff the
+  `rag.db`, `.env` keys): run `uv run dm-sync` on both and diff the
   `[sync]` blocks; the differing line is what to send over / rebuild (details:
   SETUP.md „Staying in sync (second machine)").
 

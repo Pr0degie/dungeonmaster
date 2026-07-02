@@ -103,7 +103,8 @@ def ensure_schema(conn: sqlite3.Connection, *, model: str, dim: int) -> None:
     """Create (or, on a model/dim change, drop + recreate) the store. The meta table pins which
     embedder built the store, so the retriever always queries with the matching model. It also
     carries one ``ingested:<source>`` row per source (set by ``ingest``) — a human-readable
-    ingest timestamp for ``tools/sync_check.py``; DBs built before the row existed simply lack
+    ingest timestamp for ``dm-sync`` (``dmbot/tools/sync_check.py``); DBs built before the row
+    existed simply lack
     it and read as unknown."""
     conn.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
     stored = dict(conn.execute("SELECT key, value FROM meta"))

@@ -1,6 +1,6 @@
 """Sync fingerprint for the untracked must-have artifacts — run on BOTH machines, compare blocks.
 
-    uv run python tools/sync_check.py
+    uv run dm-sync
 
 The adventure compendia, ``rag.db`` and the ``.env`` keys don't travel with git, so they drift
 silently between machines. This prints one compact, copy-pasteable block per machine; a line
@@ -22,10 +22,9 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO_ROOT))  # so `dmbot` imports when run as a script
+from dmbot.rag.adventure import Adventure
 
-from dmbot.rag.adventure import Adventure  # noqa: E402 (after the path insert)
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 ADVENTURES_DIR = REPO_ROOT / "data" / "adventures"
 RAG_DB = REPO_ROOT / "data" / "vectordb" / "rag.db"

@@ -148,7 +148,7 @@ wheels = [
 [[package]]
 name = "cogitator"
 version = "0.0.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "colorama", marker = "sys_platform == 'win32'" },
     { name = "coqui-tts", marker = "sys_platform == 'win32'" },

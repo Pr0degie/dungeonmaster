@@ -1,4 +1,4 @@
-"""tools/sync_check.py — the pure parts: env key diff, fingerprint format, tolerant reading of
+"""dmbot/tools/sync_check.py — the pure parts: env key diff, fingerprint format, tolerant reading of
 old rag.db stores (no ingest timestamps / no meta table), adventure fingerprint lines. No git,
 no network; sqlite fixtures in tmp_path.
 """
@@ -15,7 +15,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from tools.sync_check import (  # noqa: E402
+from dmbot.tools.sync_check import (  # noqa: E402
     adventure_lines,
     env_key_diff,
     env_lines,
