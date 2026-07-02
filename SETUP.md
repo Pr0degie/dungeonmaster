@@ -314,3 +314,24 @@ Same command block as **§B9** above — Ollama with `bge-m3` must be running an
   in Discord).
 - Get both bots into the same voice channel (`!j`), then the session runs. Quick lore check: ask a
   Chaos question — a `📚 lore_chaos:` line must show up in the log.
+
+### 5. Staying in sync (second machine)
+
+The must-haves that git does **not** keep current: `data/adventures/<id>/` (scene cards + NPCs),
+`data/vectordb/rag.db`, and your `.env` **keys** (maintain your own from `.env.example` — never
+copy Tobi's; new keys arrive with pulls). Session state (`data/sessions/<id>/state.json` etc.)
+moves only when the *hosting* machine changes; tokens stay per-machine (one token = one live
+Discord connection).
+
+"Is my copy current?" is answered by the tool, not by guessing:
+
+```
+uv run python tools/sync_check.py
+```
+
+Run it on **both** machines and compare the `[sync]` blocks (by eye or diff). A line that
+differs is exactly what to send over (adventure files: same short sha = same file; mtime is
+just a hint) or rebuild (`rag.db`: compare model + per-source chunk counts + ingest dates) or
+fix up (`.env`: missing keys vs the template; `seeds`: a locally modified tracked file — e.g.
+a stale sent-around `characters.json` shadowing the committed party). The block prints file
+names, hashes and counts only — no book content, no `.env` values.

@@ -19,6 +19,7 @@ import json
 import re
 import sqlite3
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -100,12 +101,16 @@ def embed_texts(
 
 def ensure_schema(conn: sqlite3.Connection, *, model: str, dim: int) -> None:
     """Create (or, on a model/dim change, drop + recreate) the store. The meta table pins which
-    embedder built the store, so the retriever always queries with the matching model."""
+    embedder built the store, so the retriever always queries with the matching model. It also
+    carries one ``ingested:<source>`` row per source (set by ``ingest``) — a human-readable
+    ingest timestamp for ``tools/sync_check.py``; DBs built before the row existed simply lack
+    it and read as unknown."""
     conn.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
     stored = dict(conn.execute("SELECT key, value FROM meta"))
     if stored and (stored.get("model") != model or stored.get("dim") != str(dim)):
         conn.execute("DROP TABLE IF EXISTS chunks")
         conn.execute("DROP TABLE IF EXISTS chunks_vec")
+        conn.execute("DELETE FROM meta WHERE key LIKE 'ingested:%'")
     conn.execute(
         "CREATE TABLE IF NOT EXISTS chunks (id INTEGER PRIMARY KEY, source TEXT NOT NULL, "
         "heading TEXT NOT NULL, text TEXT NOT NULL)"
@@ -146,6 +151,10 @@ def ingest(md_path: Path, *, source: str, db_path: Path, host: str, model: str =
                 "INSERT INTO chunks_vec (rowid, embedding) VALUES (?, ?)",
                 (cur.lastrowid, json.dumps(vec)),
             )
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+            (f"ingested:{source}", datetime.now().astimezone().strftime("%Y-%m-%d %H:%M")),
+        )
         conn.commit()
     finally:
         conn.close()
