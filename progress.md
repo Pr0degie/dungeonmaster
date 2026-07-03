@@ -324,6 +324,7 @@ Ziel: NSCs sollen sich wie bei einem menschlichen Spielleiter erinnern, was mit 
 - **Injektion (`llm/prompt_assembly.py`, neuer order-expliziter Slice state→**npc_memory**→rag):** `_persist_and_refresh` rendert pro *lebendem* NSC der aktuellen Szenenkarte einen `[NPC-Gedächtnis: Name — Haltung: …]`-Block, Top-K (`DM_NPC_MEMORY_TOP_K`=6; aufgeflogene Lügen immer dabei, Rest Wichtigkeit→Recency), Gist hart ≤200 Zeichen, Gossip als „(Hörensagen)" markiert. Kill-Switch `DM_NPC_MEMORY` (Default an); `!npcmem <Name>` read-only-Debug in DiceCog.
 - **Trigger-Nähte:** `scenecog.!ort` + der Delivery-Scene-Confirm feuern fire-and-forget für die *verlassene* Szene; `!wrap` wartet die Extraktion der letzten Szene ab (Catch-all); `_maybe_compact` setzt das Fenster zurück; `seed_session` startet es am Join-Punkt (restaurierte History wird nicht re-gemint).
 - **ADR 044** löst die Spannung zu Golden Rule #3 auf: memories = narrative Schicht (wie Recaps), harte Felder bleiben code-owned — LLM requests, Code entscheidet. `architecture.md` §7 um Schicht (c) ergänzt.
+- **Nachtrag (gleiche Session):** alle offenen Live-Gates als abhakbares Drehbuch in **`docs/live-test-checklist.md`** gebündelt (Session-Reihenfolge, inkl. des neuen NPC-Gedächtnis-Gates + optionalem `faction`-Seed für den Gossip-Test); Next-step verweist darauf.
 
 **`uv run dm-sync`: Sync-Check als Package-Entry-Point (2026-07-02, D90, Dev-Tooling). Suite 459 grün (0 neue/geänderte Assertions), ruff ohne neue Findings, committet + gepusht auf `main`.**
 Reine Ergonomie, null Verhaltensänderung: der D89-Fingerprint soll auf beiden Maschinen als kurzer Befehl laufen.
@@ -338,6 +339,11 @@ Delivery-Pipeline-Auslagerung, D73 `_TurnTiming`-Auslagerung, D70–D72 `orchest
 D68 globaler Sprech-Modus, D67 Shutdown-Leave-Limit u. a.): siehe **[docs/progress-archive.md](docs/progress-archive.md)**._
 
 ## Next concrete step
+> **Drehbuch für den Live-Run:** alle offenen Gates unten sind als abhakbare Checkliste in
+> **[docs/live-test-checklist.md](docs/live-test-checklist.md)** ausformuliert (Session-Reihenfolge:
+> Vorbereitung → Tempo → Intro → Gespräch → Würfel → Scene Cards → **NPC-Gedächtnis** → RAG →
+> Neustart-Gate → Nachbereitung). Nach dem Run: Ergebnisse hierher zurückschreiben, Liste ausmisten.
+
 **0. Vorab (D89 ✅ / D90):** Die 20 fehlenden `.env`-Keys sind nachgezogen (`dm-sync` meldet 38/38, 2026-07-02). Vor dem nächsten Timo-Sync auf beiden Maschinen `uv run dm-sync` (Timo vorher einmal `git pull` + `uv sync`), Blöcke diffen (SETUP.md §„Staying in sync").
 
 **1. Der EINE Live-Run der Spielbarkeits-Tuning-Runde (Top-Prio, Tobi nächste Session — pullt `f44cba8` + Neustart).** Zwei Teile in einem Run:
