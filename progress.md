@@ -774,6 +774,16 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 
 ## Open questions / to clarify
 
+**Von der Replay-Eval-Runde (2026-07-03, D93 / ADR 046):**
+- **Live-Modellvergleich (Nemo vs. Mistral Small auf Timos Box)** — die explizite Folge-Runde,
+  setzt genau dieses Harness voraus (echte LLM-Calls + Qualitäts-Report statt Playback). Nicht
+  starten, bevor der Tuning-Live-Run durch ist (sonst vergleicht man ein untuned Setup).
+- **Würfel-RNG-Replay aufgeschoben** — gewürfelte Rohwerte aufzeichnen und durch die Engine
+  re-runnen (voller State-Snapshot-Diff statt Verdikte) lohnt erst, wenn ein Refactor den
+  Roll→Damage-Pfad anfasst; die Fixed-Seed-Engine-Tests decken ihn heute dicht ab (ADR 046).
+- **Erstes Live-Golden fehlt noch** — die eingecheckten Goldens sind synthetisch; das erste
+  echte kommt aus dem rotierten Journal des nächsten Live-Runs (Schritt in „Next concrete step").
+
 **Vom Playtest-Fix-Runde (2026-06-16, D82–D84) — live-unverified:**
 - **Klingt `!intro` jetzt zuverlässig wie der 14.06.-Lauf?** Party lädt channel-unabhängig (D82), die drei
   Chat-Tics (Meta-Auftakt, `"…"`-Umschlag, „Was tut ihr?"-Abwürgen) werden deterministisch gestrippt (D84),
