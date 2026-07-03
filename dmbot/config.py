@@ -54,6 +54,7 @@ class Config:
     autorecap: bool
     scene_mode: str
     flag_confirm: bool
+    scene_time_advance: int
     npc_memory: bool
     npc_memory_top_k: int
     consistency_guard: bool
@@ -220,6 +221,10 @@ class Config:
             # valid flags — lower stakes than the scene pointer, they only change the card render.
             flag_confirm=os.environ.get("DM_FLAG_CONFIRM", "1").strip().lower()
             in ("1", "true", "yes", "on"),
+            # In-game time (ADR 048): default advance in minutes on a real scene change —
+            # travel/regrouping is about half an hour; bigger jumps ride the <<ZEIT>> marker
+            # or !zeit. 0 disables the automatic advance.
+            scene_time_advance=max(0, int(os.environ.get("DM_SCENE_TIME_ADVANCE", "30") or "30")),
             # NPC memory (ADR 044): at scene change / wrap-up an extra LLM call extracts what the
             # scene's NPCs would remember (incl. player lies); code clamps attitude drift and
             # spreads faction gossip. ON by default; DM_NPC_MEMORY=0 disables the subsystem.

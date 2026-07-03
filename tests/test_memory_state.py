@@ -132,8 +132,12 @@ def test_summary_lists_the_hard_facts() -> None:
     assert "Kultist" in out
 
 
-def test_summary_empty_state_is_empty() -> None:
-    assert world_state_summary_de(WorldState()) == ""
+def test_summary_empty_state_still_carries_the_time() -> None:
+    # Since ADR 048 the in-game time is always a hard fact — an otherwise empty state renders
+    # exactly the header + the time line (day 1, 08:00, morning) and nothing else.
+    out = world_state_summary_de(WorldState())
+    assert "Zeit: Tag 1, 08:00 (Morgen)" in out
+    assert len(out.splitlines()) == 2  # header + time — no other sections appear
 
 
 def test_summary_hides_dead_npcs() -> None:

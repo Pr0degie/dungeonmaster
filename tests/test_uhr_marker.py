@@ -40,7 +40,7 @@ def test_extract_uhr_multiple_markers_all_collected() -> None:
 
 def test_finalize_answer_returns_uhr_requests() -> None:
     raw = "Die Ermittler kommen näher. <<UHR arbites>>"
-    answer, tests, manifests, scenes, erledigt, uhr = finalize_answer(raw, LABELS, None)
+    answer, tests, manifests, scenes, erledigt, uhr, _zeit = finalize_answer(raw, LABELS, None)
     assert "<<" not in answer
     assert tests == [] and manifests == [] and scenes == [] and erledigt == []
     assert len(uhr) == 1 and uhr[0].clock_id == "arbites"
@@ -68,5 +68,5 @@ def test_uhr_marker_split_across_a_chunk_boundary_is_extracted_not_spoken() -> N
 def test_stream_and_batch_parity_for_uhr_text() -> None:
     deltas = ["Der Alarm schrillt weiter. <<UHR alarm>>", " Niemand schläft heute."]
     _, res = _run(deltas)
-    expected, _t, _m, _s, _e, _u = finalize_answer("".join(deltas), LABELS, None)
+    expected, _t, _m, _s, _e, _u, _z = finalize_answer("".join(deltas), LABELS, None)
     assert res.answer == expected

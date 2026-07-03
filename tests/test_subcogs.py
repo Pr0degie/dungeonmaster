@@ -79,6 +79,11 @@ def test_ort_moves_pointer_via_code_not_llm() -> None:
     # + _persist_and_refresh — the model is never consulted here.
     flags = {}
     scene = types.SimpleNamespace(id="s2", title_de="Die Brücke", part=2)
+
+    async def _advance_scene_time(ch):
+        flags["time_advanced"] = True
+        return 30
+
     rt = types.SimpleNamespace(
         _adventure=types.SimpleNamespace(),
         _brain_channel=lambda ch: 7,
@@ -86,11 +91,13 @@ def test_ort_moves_pointer_via_code_not_llm() -> None:
         _set_scene=lambda st, sid: scene if sid == "s2" else None,
         _persist_and_refresh=lambda ch: flags.__setitem__("persisted", True),
         schedule_npc_memory_extraction=lambda ch, sid: flags.__setitem__("mined", sid),
+        advance_scene_time=_advance_scene_time,
     )
     ctx = _Ctx()
     asyncio.run(SceneCog.ort.callback(_scene_cog(rt), ctx, "s2"))
     assert flags.get("persisted") is True
     assert flags.get("mined") == "s1"  # the DEPARTED scene is mined for NPC memories (ADR 044)
+    assert flags.get("time_advanced") is True  # a REAL move lets travel time pass (ADR 048 #10)
     assert any("Szene gewechselt" in m and "Die Brücke" in m for m in ctx.sent)
 
 

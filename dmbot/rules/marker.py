@@ -20,6 +20,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+# Duration grammar shared with the !zeit/!frist commands (ADR 048). gametime is pure and
+# imports nothing back from rules/, so this cross-package import can't cycle.
+from ..memory.gametime import parse_duration_de
 from .profile import SystemProfile
 
 # Match the keyword then take everything up to ``>>`` as the payload. A ``\b`` boundary after the
@@ -35,6 +38,7 @@ _MANIFEST_RE = re.compile(r"<<\s*MANIFEST[\s:]*(.*?)>>", re.IGNORECASE | re.DOTA
 _ORT_RE = re.compile(r"<<\s*ORT[\s:]*(.*?)>>", re.IGNORECASE | re.DOTALL)
 _ERLEDIGT_RE = re.compile(r"<<\s*ERLEDIGT[\s:]*(.*?)>>", re.IGNORECASE | re.DOTALL)
 _UHR_RE = re.compile(r"<<\s*UHR[\s:]*(.*?)>>", re.IGNORECASE | re.DOTALL)
+_ZEIT_RE = re.compile(r"<<\s*ZEIT[\s:]*(.*?)>>", re.IGNORECASE | re.DOTALL)
 _FUER_RE = re.compile(r"\b(?:für|fuer|for)\b", re.IGNORECASE)
 _MOD_RE = re.compile(r"([+\-−]\s*\d+)")  # ASCII +/- and the unicode minus the LLM may emit
 _PUSH_RE = re.compile(r"\b(?:push|gepusht|pushen)\b", re.IGNORECASE)  # Pushing a Manifest Test
@@ -255,4 +259,34 @@ def extract_uhr(text: str) -> tuple[str, list[ClockTickRequest]]:
         clock_id = re.sub(r"\s{2,}", " ", m.group(1)).strip(" :,-_")
         requests.append(ClockTickRequest(clock_id=clock_id, raw=m.group(0), parsed=bool(clock_id)))
     clean = _clean(_UHR_RE.sub("", text))
+    return clean, requests
+
+
+@dataclass(frozen=True, slots=True)
+class ZeitRequest:
+    """A parsed in-game time-advance request from a DM turn (ADR 048).
+
+    Grammar: ``<<ZEIT +30m>>`` / ``<<ZEIT +4h>>`` (units tolerant: m/min/minuten, h/std/
+    stunden; the ``+`` optional) — the model *requests* a forward time advance; code clamps
+    to max 12h per turn and applies it (golden rule #3). ``minutes`` is the parsed duration
+    (pre-clamp), ``None`` when the payload isn't a positive duration — such requests are
+    stripped but rejected (time never runs backwards on the marker path)."""
+
+    minutes: int | None
+    raw: str = ""          # the original marker text
+    parsed: bool = True    # False → empty/unparseable payload; stripped but ignored
+
+
+def extract_zeit(text: str) -> tuple[str, list[ZeitRequest]]:
+    """Strip every ``<<ZEIT …>>`` from ``text`` and return (clean narration, parsed requests).
+
+    Same glue tolerance as the other extractors (``<<ZEIT+30m>>``, ``<<ZEIT_2h>>`` still
+    parse and never reach TTS). Unlike ids there is no trailing-strip hazard: durations end
+    in a unit letter."""
+    requests: list[ZeitRequest] = []
+    for m in _ZEIT_RE.finditer(text):
+        payload = re.sub(r"\s{2,}", " ", m.group(1)).strip(" :,_")
+        minutes = parse_duration_de(payload) if payload else None
+        requests.append(ZeitRequest(minutes=minutes, raw=m.group(0), parsed=minutes is not None))
+    clean = _clean(_ZEIT_RE.sub("", text))
     return clean, requests

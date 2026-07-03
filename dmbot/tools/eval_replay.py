@@ -27,9 +27,9 @@ from ..memory.state import WorldState
 from ..orchestrator import DMBrain
 from ..rag.adventure import Adventure
 from ..rules import profile as profile_mod
-from ..rules.marker import ClockTickRequest, ErledigtRequest
+from ..rules.marker import ClockTickRequest, ErledigtRequest, ZeitRequest
 from ..rules.profile import ProfileError
-from ..voice.delivery import erledigt_verdict, uhr_verdict
+from ..voice.delivery import erledigt_verdict, uhr_verdict, zeit_verdict
 
 log = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ _LABEL_WIDTH = 10
 
 # The marker categories a turn records/queues, in report order (mirrors _markers_dict).
 # "uhr" (ADR 047) defaults to [] on both sides for pre-047 goldens — they keep replaying green.
-_MARKER_KEYS = ("tests", "manifests", "scenes", "erledigt", "uhr")
+_MARKER_KEYS = ("tests", "manifests", "scenes", "erledigt", "uhr", "zeit")
 
 
 class TranscriptError(Exception):
@@ -294,6 +294,33 @@ def _replay_uhr_verdicts(
     _compare(result, turn_no, "state", soll, actual)
 
 
+def _replay_zeit_verdicts(
+    result: FileResult, turn_no: int, turn: dict, *, replayed_markers: dict,
+) -> None:
+    """Re-run the time-advance validation (ADR 048) and compare the verdicts. Pure — the
+    accept/clamp rule depends only on the request + first-of-turn, not on any state."""
+    zeit_verdicts = turn.get("zeit_verdicts")
+    if zeit_verdicts is None:
+        return
+    seen = False
+    actual: list[dict] = []
+    for d in replayed_markers.get("zeit") or []:
+        req = ZeitRequest(**d)
+        verdict, minutes = zeit_verdict(req, seen=seen)
+        if verdict == "ok":
+            seen = True
+            actual.append({"raw": req.raw, "minutes": minutes, "verdict": "ok"})
+        else:
+            actual.append({"raw": req.raw, "verdict": "rejected"})
+    # "proposed"/"applied" both mean: passed validation (same DM_FLAG_CONFIRM reasoning as flags).
+    soll = [
+        {"raw": v.get("raw"), "verdict": "rejected"} if v.get("verdict") == "rejected"
+        else {"raw": v.get("raw"), "minutes": v.get("minutes"), "verdict": "ok"}
+        for v in zeit_verdicts
+    ]
+    _compare(result, turn_no, "state", soll, actual)
+
+
 async def _replay_turn(
     result: FileResult, turn_no: int, turn: dict, *,
     brain: DMBrain, client: PlaybackClient, profile, adventure: Adventure | None, scene_mode: str,
@@ -343,6 +370,7 @@ async def _replay_turn(
         "scenes": [asdict(r) for r in brain.take_pending_scenes(_CID)],
         "erledigt": [asdict(r) for r in brain.take_pending_erledigt(_CID)],
         "uhr": [asdict(r) for r in brain.take_pending_uhr(_CID)],
+        "zeit": [asdict(r) for r in brain.take_pending_zeit(_CID)],
     }
     recorded_markers = turn.get("markers")
     if recorded_markers is None:
@@ -370,6 +398,7 @@ async def _replay_turn(
         adventure=adventure, scene_mode=scene_mode, replayed_markers=replayed_markers,
     )
     _replay_uhr_verdicts(result, turn_no, turn, replayed_markers=replayed_markers)
+    _replay_zeit_verdicts(result, turn_no, turn, replayed_markers=replayed_markers)
 
     if client.unused:
         result.deviations.append(Deviation(

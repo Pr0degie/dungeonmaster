@@ -27,6 +27,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .gametime import (
+    DEFAULT_START_MINUTES,
+    day_phase_de,
+    deadline_line_de,
+    remaining_de,
+    render_time_de,
+    render_time_phase_de,
+)
+
 if TYPE_CHECKING:
     from ..rules.characters import CharacterStore
 
@@ -245,15 +254,44 @@ class Clock:
         )
 
 
-def slugify_clock_id(name: str) -> str:
-    """A stable, marker-safe id from a clock name: lowercase, DE transliteration, non-alnum → ``-``.
-    Never starts/ends with a separator (the glued-marker strip would peel a trailing ``-``/``_``,
-    ADR 043's binding). Empty input degrades to ``uhr``."""
+def slugify_clock_id(name: str, *, fallback: str = "uhr") -> str:
+    """A stable, marker-safe id from a clock/deadline name: lowercase, DE transliteration,
+    non-alnum → ``-``. Never starts/ends with a separator (the glued-marker strip would peel a
+    trailing ``-``/``_``, ADR 043's binding). Empty input degrades to ``fallback``. Deadlines
+    (ADR 048) reuse this — same shape, same marker-safety habit."""
     text = name.strip().lower()
     for src, dst in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):
         text = text.replace(src, dst)
     text = re.sub(r"[^a-z0-9]+", "-", text).strip("-")
-    return text or "uhr"
+    return text or fallback
+
+
+@dataclass
+class Deadline:
+    """One in-game deadline (ADR 048) — code-owned like every hard fact (golden rule #3):
+    created/removed by humans only (``!frist``), advanced against by the code-owned time
+    counter. ``notified`` latches after the one-shot expiry note so it can never re-fire
+    (persisted — a restart doesn't re-notify)."""
+
+    id: str
+    label: str
+    due_minutes: int
+    notified: bool = False
+
+    def to_dict(self) -> dict:
+        d: dict = {"id": self.id, "label": self.label, "due_minutes": self.due_minutes}
+        if self.notified:
+            d["notified"] = True
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Deadline":
+        return cls(
+            id=str(d.get("id", "") or ""),
+            label=str(d.get("label", "") or ""),
+            due_minutes=int(d.get("due_minutes", 0) or 0),
+            notified=bool(d.get("notified", False)),
+        )
 
 
 @dataclass
@@ -279,7 +317,11 @@ class WorldState:
     npcs: list[Combatant] = field(default_factory=list)
     quests: list[Quest] = field(default_factory=list)
     location: str = ""
+    # In-game time (ADR 048): the minutes counter since day 1, 00:00 is the model; the string
+    # is the code-rendered human-readable mirror ("Tag 2, 14:30") — never parsed back, never
+    # written by the LLM. Fresh campaigns start day 1, 08:00.
     time_ingame: str = ""
+    time_minutes: int = DEFAULT_START_MINUTES
     recap: str = ""
     # Scene pointer into the loaded adventure compendium (Phase 10a, ADR 019) — the code-owned
     # "where are we in the plot" the prompt's scene card is selected by. Empty = no adventure.
@@ -291,6 +333,8 @@ class WorldState:
     # Consequence clocks (ADR 047): code-owned pressure meters. The LLM only *requests* a tick
     # via <<UHR id>>; validation + the per-turn clamp live in the delivery pipeline.
     clocks: list[Clock] = field(default_factory=list)
+    # Deadlines (ADR 048): human-created, expire against the code-owned time counter.
+    deadlines: list[Deadline] = field(default_factory=list)
 
     # -- (de)serialisation ----------------------------------------------------------------
 
@@ -303,6 +347,7 @@ class WorldState:
             "quests": [q.to_dict() for q in self.quests],
             "location": self.location,
             "time_ingame": self.time_ingame,
+            "time_minutes": self.time_minutes,
             "recap": self.recap,
             "scene_id": self.scene_id,
         }
@@ -310,10 +355,28 @@ class WorldState:
             d["scene_flags"] = {k: list(v) for k, v in self.scene_flags.items() if v}
         if self.clocks:  # omit-when-empty (ADR 047) — an old state.json shape stays untouched
             d["clocks"] = [c.to_dict() for c in self.clocks]
+        if self.deadlines:  # omit-when-empty (ADR 048)
+            d["deadlines"] = [dl.to_dict() for dl in self.deadlines]
         return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "WorldState":
+        # Time migration (ADR 048 #2): a pre-048 state.json has no counter — start it at the
+        # default (day 1, 08:00) and say so. A legacy free-text time_ingame is NOT parsed
+        # (prose); it stays visible until the first advance re-renders it from the counter.
+        raw_minutes = d.get("time_minutes")
+        if raw_minutes is None:
+            time_minutes = DEFAULT_START_MINUTES
+            legacy = str(d.get("time_ingame", "") or "")
+            if d:  # only a real loaded state is a migration; the {}-default path stays quiet
+                log.info(
+                    "state migration (ADR 048): no time_minutes — starting the clock at %s%s",
+                    render_time_de(time_minutes),
+                    f" (legacy time_ingame {legacy!r} left as display until the first advance)"
+                    if legacy else "",
+                )
+        else:
+            time_minutes = max(0, int(raw_minutes or 0))
         return cls(
             system=str(d.get("system", "") or ""),
             session_id=str(d.get("session_id", "") or ""),
@@ -322,6 +385,7 @@ class WorldState:
             quests=[Quest.from_dict(q) for q in d.get("quests", []) or []],
             location=str(d.get("location", "") or ""),
             time_ingame=str(d.get("time_ingame", "") or ""),
+            time_minutes=time_minutes,
             recap=str(d.get("recap", "") or ""),
             scene_id=str(d.get("scene_id", "") or ""),
             scene_flags={
@@ -329,6 +393,7 @@ class WorldState:
                 for k, v in (d.get("scene_flags") or {}).items()
             },
             clocks=[Clock.from_dict(c) for c in d.get("clocks", []) or []],
+            deadlines=[Deadline.from_dict(dl) for dl in d.get("deadlines", []) or []],
         )
 
     @classmethod
@@ -457,6 +522,52 @@ class WorldState:
         clock.filled = max(0, clock.filled - 1)
         return clock
 
+    # -- in-game time + deadlines (ADR 048) --------------------------------------------------
+
+    def advance_time(self, minutes: int) -> list[Deadline]:
+        """Advance the code-owned clock by ``minutes`` (≤0 is a no-op) and re-render the
+        human-readable mirror. Returns the deadlines that *newly* expired on this advance
+        (crossed ``due_minutes`` and were not yet notified) — each is latched ``notified``
+        here, so the expiry note fires exactly once (ADR 048 #8). The caller (runtime)
+        queues the [Regie] notes and persists."""
+        if minutes <= 0:
+            return []
+        self.time_minutes += minutes
+        self.time_ingame = render_time_de(self.time_minutes)
+        expired: list[Deadline] = []
+        for dl in self.deadlines:
+            if not dl.notified and dl.due_minutes <= self.time_minutes:
+                dl.notified = True
+                expired.append(dl)
+        return expired
+
+    def find_deadline(self, deadline_id: str | None) -> Deadline | None:
+        """Find a deadline by id, case-insensitively (like :meth:`find_clock`)."""
+        if not deadline_id:
+            return None
+        key = deadline_id.strip().lower()
+        return next((dl for dl in self.deadlines if dl.id.lower() == key), None)
+
+    def add_deadline(self, label: str, in_minutes: int) -> Deadline:
+        """Create a deadline ``in_minutes`` from now, with a slug id derived from the label
+        (deduped with a numeric suffix, the clock-id scheme). Human-only (ADR 048 #7)."""
+        base = slugify_clock_id(label, fallback="frist")
+        did, n = base, 1
+        while self.find_deadline(did) is not None:
+            n += 1
+            did = f"{base}-{n}"
+        deadline = Deadline(id=did, label=label.strip(),
+                            due_minutes=self.time_minutes + max(0, in_minutes))
+        self.deadlines.append(deadline)
+        return deadline
+
+    def remove_deadline(self, deadline_id: str) -> Deadline | None:
+        """Remove a deadline by id; returns it, or ``None`` if unknown."""
+        deadline = self.find_deadline(deadline_id)
+        if deadline is not None:
+            self.deadlines.remove(deadline)
+        return deadline
+
     # -- deterministic advancement (golden rule #3) ---------------------------------------
 
     def apply_damage(
@@ -566,9 +677,6 @@ class WorldState:
     def set_location(self, location: str) -> None:
         self.location = location.strip()
 
-    def set_time(self, time_ingame: str) -> None:
-        self.time_ingame = time_ingame.strip()
-
     def add_quest(self, title: str, *, status: str = "open") -> Quest:
         existing = next((q for q in self.quests if q.title.lower() == title.strip().lower()), None)
         if existing is not None:
@@ -643,14 +751,33 @@ def clocks_panel_de(clocks: list[Clock]) -> str:
     return "\n".join(lines)
 
 
+def pressure_panel_de(state: WorldState) -> str:
+    """The combined pressure-panel body (ADR 048 #11): current time + day phase on top, then
+    open deadlines, then the clocks — one edit-in-place panel instead of a second one. The
+    caller shows it whenever clocks OR deadlines exist."""
+    lines = [f"🕐 **{render_time_de(state.time_minutes)}** ({day_phase_de(state.time_minutes)})"]
+    for dl in state.deadlines:
+        line = f"⏳ **{dl.label}** (`{dl.id}`) — {remaining_de(dl.due_minutes, state.time_minutes)}"
+        lines.append(line)
+    if state.clocks:
+        lines.append(clocks_panel_de(state.clocks))
+    return "\n".join(lines)
+
+
 def world_state_summary_de(state: WorldState) -> str:
     """A compact, *structured* German block for the prompt (docs/conventions.md: 'state as structured data,
     don't boil it into prose'). Only non-empty sections appear. Empty state → ''."""
     lines: list[str] = []
     if state.location:
         lines.append(f"Ort: {state.location}")
-    if state.time_ingame:
-        lines.append(f"Zeit: {state.time_ingame}")
+    # Time renders from the counter (ADR 048) — always present, phase included so the DM can
+    # play it (nachts ist der Wirt nicht da). The legacy time_ingame string is display-only.
+    lines.append(f"Zeit: {render_time_phase_de(state.time_minutes)}")
+    if state.deadlines:
+        lines.append("Fristen: " + "; ".join(
+            deadline_line_de(dl.id, dl.label, dl.due_minutes, state.time_minutes)
+            for dl in state.deadlines
+        ))
     if state.characters:
         lines.append("Gruppe: " + "; ".join(_combatant_line_de(c) for c in state.characters))
     living_npcs = [n for n in state.npcs if n.wounds > 0]

@@ -32,6 +32,8 @@ from ..shutdown import to_daemon_thread
 from ..discord_ui.clock import ClockView
 from ..discord_ui.flag import FlagView
 from ..discord_ui.scene import SceneChangeView
+from ..discord_ui.zeit import ZeitView
+from ..memory.gametime import MAX_MARKER_ADVANCE_MINUTES, render_time_phase_de
 from ..rag.adventure import Scene
 from ..runtime import (
     SessionRuntime, _TurnTiming, _wav_duration_s, _safe_remove, _TTS_LOAD_TIMEOUT_S,
@@ -66,6 +68,17 @@ def uhr_verdict(req, *, known: set[str], full: set[str], seen: set[str]) -> str:
     if not req.parsed or cid not in known or cid in seen or cid in full:
         return "rejected"
     return "ok"
+
+
+def zeit_verdict(req, *, seen: bool) -> tuple[str, int]:
+    """Pure accept/clamp rule for one ``<<ZEIT>>`` request (ADR 048): unparseable/non-positive
+    proposals and everything after the first honoured marker of the turn (``seen`` — advances
+    are not idempotent, duplicates would double-advance) are ``("rejected", 0)``; a valid one
+    is ``("ok", minutes)`` with minutes hard-clamped to +12h. Shared by
+    :meth:`DeliveryPipeline._handle_zeit` and the replay harness (dm-eval, ADR 046)."""
+    if not req.parsed or not req.minutes or req.minutes <= 0 or seen:
+        return "rejected", 0
+    return "ok", min(req.minutes, MAX_MARKER_ADVANCE_MINUTES)
 
 
 class DeliveryPipeline:
@@ -238,6 +251,9 @@ class DeliveryPipeline:
             log.info("scene → %s (%s) [auto, bestätigt]", moved.id, moved.title_de)
             if old_scene != moved.id:  # mine the departed scene for NPC memories (ADR 044)
                 self._rt.schedule_npc_memory_extraction(channel, old_scene)
+            if old_scene and old_scene != moved.id:
+                # a *real* move: default travel time passes (ADR 048 #10)
+                await self._rt.advance_scene_time(channel)
             await interaction.edit_original_response(
                 content=f"📖 Szene gewechselt: **{moved.title_de}** (Teil {moved.part})."
             )
@@ -395,6 +411,75 @@ class DeliveryPipeline:
             )
         return _confirm
 
+    async def _handle_zeit(self, channel) -> None:
+        """Apply the DM turn's ``<<ZEIT +…>>`` time-advance request (ADR 048): only the FIRST
+        valid proposal per turn is honoured (advances are not idempotent — duplicates would
+        double-advance), hard-clamped to +12h, and either posted as a ZeitView confirm button
+        (``DM_FLAG_CONFIRM=1``, default — the one knob for the marker-confirm class) or applied
+        immediately. The advance is deterministic (golden rule #3): the model never writes the
+        counter, it only *requests* the advance. Unparseable/non-positive/surplus proposals are
+        rejected + logged, never applied.
+
+        Needs no adventure (time lives in the world state). The brain drain is getattr-guarded
+        so a stub brain without ``take_pending_zeit`` (tests/test_delivery.py) keeps working."""
+        take = getattr(self._rt._brain, "take_pending_zeit", None)
+        if take is None:
+            return
+        cid = self._rt._brain_channel(channel)
+        reqs = take(cid)
+        if not reqs:
+            return
+        state = self._rt._state.get(cid)
+        if state is None:
+            return
+        seen_this_turn = False
+        verdicts: list[dict] = []
+        for req in reqs:
+            verdict, minutes = zeit_verdict(req, seen=seen_this_turn)
+            if verdict == "rejected":
+                verdicts.append({"raw": req.raw, "verdict": "rejected"})
+                log.info("🚫 ZEIT '%s' abgelehnt (unlesbar/rückwärts/Duplikat)", req.raw)
+                continue
+            seen_this_turn = True
+            if minutes < (req.minutes or 0):
+                log.info("🕐 ZEIT-Vorschlag %d min auf %d min geklemmt (max 12h pro Turn)",
+                         req.minutes, minutes)
+            if self._rt._flag_confirm:
+                verdicts.append({"raw": req.raw, "minutes": minutes, "verdict": "proposed"})
+                log.info("🕐 Zeitfortschritt vorgeschlagen: +%d min", minutes)
+                hours, rest = divmod(minutes, 60)
+                pretty = (f"{hours} Std {rest} Min" if hours and rest
+                          else f"{hours} Std" if hours else f"{rest} Min")
+                await channel.send(
+                    f"🕐 Zeitfortschritt vorgeschlagen: **+{pretty}** "
+                    f"(aktuell {render_time_phase_de(state.time_minutes)}). Anwenden?",
+                    view=ZeitView(minutes, self._make_zeit_confirm(channel, minutes)),
+                )
+            else:
+                applied = await self._rt._advance_time(channel, minutes)
+                verdicts.append({"raw": req.raw, "minutes": applied, "verdict": "applied"})
+                log.info("🕐 Zeitfortschritt (auto): +%d min → %s", applied,
+                         render_time_phase_de(state.time_minutes))
+        self._replay_note(channel, "zeit_verdicts", verdicts)
+
+    def _make_zeit_confirm(self, channel, minutes: int):
+        """Build the confirm callback for a proposed time advance: on click, perform the same
+        deterministic advance ``!zeit +…`` does (``_advance_time`` incl. deadline-expiry notes
+        + persist + prompt refresh + panel update) and edit the proposal message."""
+        async def _confirm(interaction: discord.Interaction) -> None:
+            applied = await self._rt._advance_time(channel, minutes)
+            if applied <= 0:  # session gone between proposal and click
+                await interaction.edit_original_response(content="Nicht mehr aktuell.")
+                return
+            cid = self._rt._brain_channel(channel)
+            state = self._rt._state.get(cid)
+            now = render_time_phase_de(state.time_minutes) if state is not None else "?"
+            log.info("🕐 Zeitfortschritt: +%d min → %s [bestätigt]", applied, now)
+            await interaction.edit_original_response(
+                content=f"🕐 Zeit vergangen: **+{applied} Min** → jetzt **{now}**."
+            )
+        return _confirm
+
     async def _deliver_answer(self, channel, guild_id: int | None, answer: str,
                               timing: _TurnTiming) -> None:
         """Batch delivery: log, post (5xx-resilient), then speak and post the dice button
@@ -434,6 +519,7 @@ class DeliveryPipeline:
         scene_task = asyncio.create_task(self._handle_scene(channel))  # ADR 026: propose a scene move
         flag_task = asyncio.create_task(self._handle_erledigt(channel))  # ADR 043: element flags
         uhr_task = asyncio.create_task(self._handle_uhr(channel))  # ADR 047: clock ticks
+        zeit_task = asyncio.create_task(self._handle_zeit(channel))  # ADR 048: time advance
         # dice_task/scene_task must ALWAYS be awaited — even if _speak raises a bridge-side error.
         # Otherwise the dice button is never posted and the orphaned tasks log "Task exception was
         # never retrieved". The finally awaits them (logging, not dropping, their own exceptions) and
@@ -446,7 +532,7 @@ class DeliveryPipeline:
         finally:
             # The dice button must land before the mic button re-anchors at the bottom; likewise the
             # scene-change proposal. await_dice_scene awaits all and logs (never drops) their errors.
-            await self._await_dice_scene(dice_task, scene_task, flag_task, uhr_task)
+            await self._await_dice_scene(dice_task, scene_task, flag_task, uhr_task, zeit_task)
         await self._post_deliver(channel, answer, timing,
                                  saved_user_msg=saved_user_msg, redo=timing.kind == "redo")
 
@@ -472,14 +558,16 @@ class DeliveryPipeline:
     async def _await_dice_scene(dice_task: asyncio.Task | None,
                                 scene_task: asyncio.Task | None,
                                 flag_task: asyncio.Task | None = None,
-                                uhr_task: asyncio.Task | None = None) -> None:
-        """Await the concurrent dice-button, scene-proposal, element-flag and clock-tick tasks,
-        retrieving (and logging, never dropping) any exception each raised. Used by both delivery
-        paths so a failing task can't leave a 'Task exception was never retrieved' warning. Order
-        matters: dice first, then scene, then flags, then clock ticks, so all land before the mic
-        button re-anchors at the bottom."""
+                                uhr_task: asyncio.Task | None = None,
+                                zeit_task: asyncio.Task | None = None) -> None:
+        """Await the concurrent dice-button, scene-proposal, element-flag, clock-tick and
+        time-advance tasks, retrieving (and logging, never dropping) any exception each raised.
+        Used by both delivery paths so a failing task can't leave a 'Task exception was never
+        retrieved' warning. Order matters: dice first, then scene, then flags, then ticks, then
+        time, so all land before the mic button re-anchors at the bottom."""
         for task, what in ((dice_task, "dice button"), (scene_task, "scene proposal"),
-                           (flag_task, "flag proposal"), (uhr_task, "clock tick")):
+                           (flag_task, "flag proposal"), (uhr_task, "clock tick"),
+                           (zeit_task, "time advance")):
             if task is None:
                 continue
             try:
@@ -621,6 +709,7 @@ class DeliveryPipeline:
         scene_task: asyncio.Task | None = None
         flag_task: asyncio.Task | None = None
         uhr_task: asyncio.Task | None = None
+        zeit_task: asyncio.Task | None = None
         saved_user_msg: str | None = None
         try:
             try:
@@ -648,6 +737,7 @@ class DeliveryPipeline:
                 scene_task = asyncio.create_task(self._handle_scene(channel))  # ADR 026
                 flag_task = asyncio.create_task(self._handle_erledigt(channel))  # ADR 043
                 uhr_task = asyncio.create_task(self._handle_uhr(channel))  # ADR 047
+                zeit_task = asyncio.create_task(self._handle_zeit(channel))  # ADR 048
             # gather() re-raises the FIRST worker exception WITHOUT cancelling its siblings — so if
             # play_worker dies on a mid-stream bridge 5xx, synth_worker would hang forever on the
             # bounded wav_q.put and leak its temp WAV. Log a worker failure here; the finally then
@@ -680,7 +770,7 @@ class DeliveryPipeline:
         if holder["answer"] is not None:
             timing.end = time.monotonic()  # last /speak returned
             timing.log_line()
-            await self._await_dice_scene(dice_task, scene_task, flag_task, uhr_task)
+            await self._await_dice_scene(dice_task, scene_task, flag_task, uhr_task, zeit_task)
             await self._post_deliver(channel, holder["answer"], timing,
                                      saved_user_msg=saved_user_msg, redo=redo)
         return holder["answer"]

@@ -54,6 +54,9 @@ class SceneCog(commands.Cog):
         log.info("scene → %s (%s)", scene.id, scene.title_de)
         if old_scene != scene.id:  # mine the departed scene for NPC memories (ADR 044)
             self._rt.schedule_npc_memory_extraction(ctx.channel, old_scene)
+        if old_scene and old_scene != scene.id:
+            # a *real* move (not the initial pointer seed): default travel time (ADR 048 #10)
+            await self._rt.advance_scene_time(ctx.channel)
         await ctx.send(f"📖 Szene gewechselt: **{scene.title_de}** (Teil {scene.part}).")
 
     @commands.command(name="szenen")

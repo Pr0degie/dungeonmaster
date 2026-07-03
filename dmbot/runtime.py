@@ -42,12 +42,13 @@ from .rules.profile import ProfileError, SystemProfile
 from .rules.characters import CharacterStore
 from .memory import history as history_store
 from .memory import npc_memory as npc_memory_mod
+from .memory.gametime import deadline_note_de
 from .memory.state import (
     Clock,
     Combatant,
     WorldState,
     clock_full_note_de,
-    clocks_panel_de,
+    pressure_panel_de,
     world_state_summary_de,
 )
 from .rag.adventure import Adventure, Scene
@@ -191,6 +192,9 @@ class SessionRuntime:
         # (human-in-the-loop, like the scene-change button); False → apply immediately (flags only
         # change what the card renders — lower stakes than the scene pointer).
         self._flag_confirm = config.flag_confirm
+        # In-game time (ADR 048): default advance (minutes) applied on a real scene change —
+        # travel/regrouping time. 0 = off. The <<ZEIT>> marker and !zeit carry bigger jumps.
+        self._scene_time_advance = config.scene_time_advance
         # NPC memory (ADR 044): extract at scene exit / wrap-up what the scene's NPCs would
         # remember; code clamps attitude drift and spreads faction gossip. _npc_mem_marks tracks
         # per channel how many history messages were already mined (the extraction window seam —
@@ -638,17 +642,18 @@ class SessionRuntime:
         return state.untick_clock(clock_id)
 
     async def update_clock_panel(self) -> None:
-        """(Re)render the clock panel in the session's text channel — edit-in-place (the pause-
-        panel pattern), so ticks update one message instead of spamming. No clocks → the panel
-        is removed. Best-effort: a send/edit failure logs, never breaks a turn/command."""
+        """(Re)render the pressure panel (time + deadlines + clocks, ADR 047/048) in the
+        session's text channel — edit-in-place (the pause-panel pattern), so ticks/advances
+        update one message instead of spamming. No clocks AND no deadlines → the panel is
+        removed (`!zeit` shows the bare time on demand). Best-effort: a send/edit failure
+        logs, never breaks a turn/command."""
         if self._text_channel is None:
             return
         state = self._state.get(self._active_vc_id) if self._active_vc_id is not None else None
-        clocks = state.clocks if state is not None else []
-        if not clocks:
+        if state is None or not (state.clocks or state.deadlines):
             await self.clear_panel("_clock_panel")
             return
-        content = clocks_panel_de(clocks)
+        content = pressure_panel_de(state)
         if self._clock_panel is not None:
             try:
                 await self._clock_panel.edit(content=content)
@@ -659,6 +664,33 @@ class SessionRuntime:
             self._clock_panel = await self._text_channel.send(content)
         except discord.HTTPException:
             log.warning("could not post the clock panel", exc_info=True)
+
+    # ----- In-game time + deadlines (ADR 048) -----------------------------------------------
+
+    async def _advance_time(self, channel, minutes: int) -> int:
+        """Deterministically advance the in-game clock (golden rule #3) — the single mutator
+        shared by ``!zeit``, the ``<<ZEIT>>`` confirm/auto path and the scene-change default
+        advance. Queues the one-shot ``[Regie]`` note for each newly expired deadline
+        (ADR 048 #8), persists, refreshes the prompt and the pressure panel. Returns the
+        applied minutes (0 = no session or a non-positive amount)."""
+        cid = self._brain_channel(channel)
+        state = self._state.get(cid)
+        if state is None or minutes <= 0:
+            return 0
+        expired = state.advance_time(minutes)
+        for dl in expired:
+            self._brain.add_gm_note(cid, deadline_note_de(dl.label))
+            log.info("⏳ Frist '%s' (%s) verstrichen — Konsequenz-Hinweis für den nächsten "
+                     "Turn eingereiht", dl.label, dl.id)
+        self._persist_and_refresh(channel)
+        await self.update_clock_panel()
+        return minutes
+
+    async def advance_scene_time(self, channel) -> int:
+        """The default time cost of a *real* scene change (ADR 048 #10) — called by the two
+        move paths (``!ort``, confirmed ``<<ORT>>``) after a successful move to a different
+        scene. ``DM_SCENE_TIME_ADVANCE=0`` disables it. Returns the applied minutes."""
+        return await self._advance_time(channel, self._scene_time_advance)
 
     # ----- Consistency guard (ADR 045) ------------------------------------------------------
 
