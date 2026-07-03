@@ -1,7 +1,7 @@
 # Live-Test-Checkliste — der eine Run mit den Freunden
 
 Alle offenen **Live-Gates** (Code fertig + Suite grün, aber am Tisch unbestätigt), als
-Ablauf für EINE Session in circlejerk sortiert. Stand: 2026-07-03 (nach D91 / ADR 044).
+Ablauf für EINE Session in circlejerk sortiert. Stand: 2026-07-03 (nach D96 / ADR 049).
 Hake ab, was klappt; was nicht klappt, **nicht live debuggen** — notieren, Log sichern,
 danach pasten (→ `/playtest-triage`).
 
@@ -169,6 +169,23 @@ Setup: nichts nötig — Zeit läuft mit und ohne Abenteuer. Confirm-Buttons hä
 - [ ] Gegen-Check: erfindet der Extraktor Erinnerungen für NSCs, die nichts mitbekommen
       haben? Falls ja/nervig: `prompts/npc_memory_extract_de.md` nachschärfen oder
       `DM_NPC_MEMORY=0`.
+
+## 7b. NPC-Agenden (D96 / ADR 049) — **neues Gate**
+
+- [ ] Einem markanten NSC ein Ziel geben: `!agenda <NSC> "will die Ware aus der Stadt
+      schaffen"` → `!agenden` zeigt Ziel (🎯).
+- [ ] **Zwei Szenen spielen** (jeder Wechsel triggert die 🧠-Extraktion, die jetzt auch den
+      Agenda-Schritt vorschlägt) → `!agenden` zeigt nach jedem Wechsel einen neuen
+      offscreen-Schritt mit Ingame-Zeitstempel.
+- [ ] **Die Kernfrage:** hat sich seine Lage **glaubwürdig** bewegt? Kleine konkrete
+      Schritte (jemanden treffen, etwas verstecken, Wachen anheuern), plausibel zur
+      verstrichenen Ingame-Zeit — keine Festungsbauten über Nacht.
+- [ ] Zum NSC **zurückkehren**: spielt der DM die veränderte Lage (der Block trägt Ziel +
+      Schritte)? Ist er woanders, tauchen **Gerüchte/Spuren** auf (Weltzustand-Zeile)?
+- [ ] Gegen-Check: erfindet der Extraktor Schritte für NSCs **ohne** Ziel (Code verwirft
+      sie — Konsole `agenda step … without a goal`)? Absurde Sprünge? → Agenda-Regel in
+      `prompts/npc_memory_extract_de.md` nachschärfen; `!agenda <NSC> weg` oder
+      `DM_NPC_MEMORY=0` schaltet ab.
 
 ## 8. Regelfragen / RAG (Phase-10-Gate, Hälfte 1)
 

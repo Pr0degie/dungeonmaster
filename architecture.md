@@ -384,8 +384,23 @@ importance −1, no re-gossip). While an NPC is in the current scene, its top-K 
 `[NPC-Gedächtnis: …]` block between world state and RAG; gossip renders as „Hörensagen".
 `DM_NPC_MEMORY=0` switches the subsystem off; `!npcmem <name>` is the read-only debug view.
 
+**d) NPC agendas (ADR 049) — the world moves offscreen**
+A few explicitly marked NPCs (2–5 intended) pursue a goal *between* scenes: a non-empty
+`goal` on the NPC (set by humans via `!agenda <npc> "<Ziel>"` / removed with `weg`, or
+authored as `goal_de` on the `npcs.json` statblock — never LLM output) makes it an **agenda
+NPC**. The **same** scene-change extractor call (no second call — latency) may propose one
+`agenda_step` per agenda NPC: 1–2 sentences of what it did offscreen for its goal, plausible
+against the elapsed in-game time (ADR 048). Code clamps to **max one step per NPC per scene
+change**, discards steps for goalless/dead NPCs, and appends to `agenda_log`
+(`AgendaStep{ts_ingame, text}`, FIFO-capped at 10). Steps are **narrative only** — hard
+mutations (death, relocating scene NPCs) stay code/command territory. Injection is
+two-sided: a *present* agenda NPC carries goal + recent steps in its `[NPC-Gedächtnis]`
+block; *absent* ones get one line in the world-state block so the DM surfaces offscreen
+movement as rumours and traces. `!agenden` lists goals + recent steps; the whole feature
+rides inside the ADR-044 extraction (`DM_NPC_MEMORY=0` disables it too).
+
 > Interplay: JSON = state (what *is*), recap = story (what *was*), NPC memories = what each
-> NPC believes happened.
+> NPC believes happened, agendas = what important NPCs are *doing about it*.
 
 ---
 
