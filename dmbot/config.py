@@ -54,6 +54,8 @@ class Config:
     autorecap: bool
     scene_mode: str
     flag_confirm: bool
+    npc_memory: bool
+    npc_memory_top_k: int
     speech_mode: str
     speech_punct: str
     speech_prebuffer: int
@@ -217,6 +219,14 @@ class Config:
             # valid flags — lower stakes than the scene pointer, they only change the card render.
             flag_confirm=os.environ.get("DM_FLAG_CONFIRM", "1").strip().lower()
             in ("1", "true", "yes", "on"),
+            # NPC memory (ADR 044): at scene change / wrap-up an extra LLM call extracts what the
+            # scene's NPCs would remember (incl. player lies); code clamps attitude drift and
+            # spreads faction gossip. ON by default; DM_NPC_MEMORY=0 disables the subsystem.
+            npc_memory=os.environ.get("DM_NPC_MEMORY", "1").strip().lower()
+            in ("1", "true", "yes", "on"),
+            # How many memories per scene NPC ride in the prompt (ranked importance → recency;
+            # revealed lies are always included on top). Floor 1.
+            npc_memory_top_k=max(1, int(os.environ.get("DM_NPC_MEMORY_TOP_K", "6") or "6")),
             # Spoken-delivery mode (ADR 033), applied to EVERY turn, also switchable live via
             # !sprechmodus. Two orthogonal axes:
             #  - DM_SPEECH_MODE: "stream" (sentence-by-sentence, fast start, small gaps) |

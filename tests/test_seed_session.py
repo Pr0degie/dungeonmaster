@@ -48,6 +48,9 @@ class _FakeBrain:
         self.restore_calls.append((channel_id, turns))
         return self._restore_return
 
+    def history_len(self, channel_id: int) -> int:
+        return 0  # seed_session seeds the NPC-memory mark from it (ADR 044)
+
 
 def _make_runtime(
     *,
@@ -70,6 +73,7 @@ def _make_runtime(
     rt._state = {}
     rt._turn_order = {}
     rt._turn_index = {}
+    rt._npc_mem_marks = {}
 
     rt._persist_calls: list[object] = []  # recorder for _persist_and_refresh
 

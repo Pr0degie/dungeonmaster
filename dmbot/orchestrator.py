@@ -121,6 +121,9 @@ class DMBrain:
         # The adventure block (stage 1+2 of the hybrid, ADR 019): always-on adventure summary +
         # the current scene card, selected by code from WorldState.scene_id. Set by the cog.
         self._adventure_block: dict[int, str] = {}
+        # The NPC-memory block (ADR 044): what the current scene's NPCs remember, rendered by the
+        # runtime from the world state (top-K per NPC). Set alongside the state summary.
+        self._npc_memory_block: dict[int, str] = {}
         # The last turn's (user_msg, labels) per channel, so !redo can re-generate it when the DM
         # misunderstood — same input, a fresh answer that replaces the last one in history.
         self._last_turn: dict[int, tuple[str, list[str]]] = {}
@@ -343,6 +346,7 @@ class DMBrain:
             recap=self._recap.get(channel_id),
             adventure=self._adventure_block.get(channel_id),
             state_summary=self._state_summary.get(channel_id),
+            npc_memory=self._npc_memory_block.get(channel_id),
             rag=self._rag_block.get(channel_id),
             alias_hint=self._alias_hint.get(channel_id),
         )
@@ -689,12 +693,13 @@ class DMBrain:
 
     def set_context(
         self, channel_id: int, *, recap: str = "", state_summary: str = "",
-        adventure_block: str = "",
+        adventure_block: str = "", npc_memory_block: str = "",
     ) -> None:
         """Set the memory context injected into this channel's prompt: the stored recap (narrative
-        thread), the compact world-state block (hard facts, Phase 9) and the adventure block
-        (summary + current scene card, Phase 10a). Empty strings clear them. The cog calls this on
-        join (from the loaded state) and after every state change."""
+        thread), the compact world-state block (hard facts, Phase 9), the adventure block
+        (summary + current scene card, Phase 10a) and the NPC-memory block (what the scene's NPCs
+        remember, ADR 044). Empty strings clear them. The cog calls this on join (from the loaded
+        state) and after every state change."""
         if recap:
             self._recap[channel_id] = recap
         else:
@@ -707,6 +712,10 @@ class DMBrain:
             self._adventure_block[channel_id] = adventure_block
         else:
             self._adventure_block.pop(channel_id, None)
+        if npc_memory_block:
+            self._npc_memory_block[channel_id] = npc_memory_block
+        else:
+            self._npc_memory_block.pop(channel_id, None)
 
     async def summarize(self, channel_id: int, *, prior_recap: str = "") -> str | None:
         """Produce a German "Was bisher geschah" recap from this channel's history (the `wrap up`
@@ -745,6 +754,17 @@ class DMBrain:
         """Number of stored messages (user + assistant) in this channel's history — lets the cog see
         whether a compaction actually shrank the running history."""
         return len(self._history.get(channel_id) or [])
+
+    def history_messages(self, channel_id: int, start: int = 0) -> list[dict[str, str]]:
+        """A copy of this channel's history messages from index ``start`` on — the NPC-memory
+        extractor's input window (ADR 044): the turns of the scene just left."""
+        return [dict(m) for m in (self._history.get(channel_id) or [])[start:]]
+
+    @property
+    def client(self) -> "OllamaClient":
+        """The shared Ollama client — injected into side-band callers that own their own prompt
+        (the NPC-memory extractor, ADR 044), so they stay testable pure-function modules."""
+        return self._client
 
     def clear_history(self, channel_id: int) -> None:
         """Drop the channel's rolling conversation history *only* (the auto-compaction reset, D56).
@@ -810,6 +830,7 @@ class DMBrain:
         self._recap.pop(channel_id, None)
         self._state_summary.pop(channel_id, None)
         self._adventure_block.pop(channel_id, None)
+        self._npc_memory_block.pop(channel_id, None)
         self._rag_block.pop(channel_id, None)
 
     async def aclose(self) -> None:

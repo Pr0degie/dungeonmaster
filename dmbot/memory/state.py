@@ -19,6 +19,7 @@ Pure data + pure functions, unit-tested without Discord or the LLM. Combat *math
 from __future__ import annotations
 
 import json
+import logging
 import os
 import tempfile
 from dataclasses import dataclass, field
@@ -28,9 +29,65 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..rules.characters import CharacterStore
 
+log = logging.getLogger(__name__)
+
 # Condition set on a combatant whose wounds reach 0. German (play language); the caller can pass a
 # system-specific word, but this is the sensible default for IM ("kampfunfähig" → out of the fight).
 DOWNED_CONDITION = "kampfunfähig"
+
+# NPC attitude scale (ADR 044) — the fixed, code-owned axis attitude drift moves along. Stored
+# tokens are English (code); the prompt renders German labels. Order matters: index distance is
+# what step_attitude clamps.
+ATTITUDE_SCALE = ("hostile", "wary", "neutral", "friendly", "loyal")
+
+# Hard cap on stored memories per NPC (ADR 044) — keeps state.json and the prompt block bounded.
+NPC_MEMORY_CAP = 30
+
+
+@dataclass
+class NpcMemory:
+    """One thing an NPC remembers (ADR 044) — a narrative-layer entry, like the recap: the *text*
+    is LLM-extracted, but code stores, caps and serialises it, and no hard field is ever derived
+    from it (golden rule #3). ``believed`` covers player lies: the NPC stores what it *believes*;
+    a revealed lie flips it to False (the NPC now knows it was lied to)."""
+
+    about: list[str]        # ["party"] or ["pc:Kael"] (several possible)
+    gist: str               # 1–3 German sentences
+    quote: str = ""         # verbatim key quote — only for promises/lies/threats, else empty
+    believed: bool = True   # False = the NPC knows by now this was a lie
+    importance: int = 3     # 1–5
+    source: str = "direct"  # "direct" | "gossip"
+    scene: str = ""         # scene id of origin
+    ts: str = ""            # ISO timestamp
+
+    def to_dict(self) -> dict:
+        d: dict = {"about": list(self.about), "gist": self.gist}
+        if self.quote:
+            d["quote"] = self.quote
+        if not self.believed:
+            d["believed"] = False
+        if self.importance != 3:
+            d["importance"] = self.importance
+        if self.source != "direct":
+            d["source"] = self.source
+        if self.scene:
+            d["scene"] = self.scene
+        if self.ts:
+            d["ts"] = self.ts
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "NpcMemory":
+        return cls(
+            about=[str(a) for a in d.get("about", []) or []],
+            gist=str(d.get("gist", "") or ""),
+            quote=str(d.get("quote", "") or ""),
+            believed=bool(d.get("believed", True)),
+            importance=min(5, max(1, int(d.get("importance", 3) or 3))),
+            source=str(d.get("source", "direct") or "direct"),
+            scene=str(d.get("scene", "") or ""),
+            ts=str(d.get("ts", "") or ""),
+        )
 
 
 @dataclass
@@ -55,6 +112,10 @@ class Combatant:
     # code-owned, like wounds — advanced by the Manifest/Purgation flow, never by LLM free text.
     warp_charge: int = 0
     sustained_powers: list[str] = field(default_factory=list)
+    # NPC memory (ADR 044): gossip group + what this NPC remembers. ``faction`` is authored data
+    # (npcs.json statblock / manual), never LLM output; ``memories`` is the capped narrative layer.
+    faction: str = ""
+    memories: list[NpcMemory] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         d: dict = {"name": self.name, "wounds": self.wounds, "max_wounds": self.max_wounds}
@@ -72,6 +133,10 @@ class Combatant:
             d["warp_charge"] = self.warp_charge
         if self.sustained_powers:
             d["sustained_powers"] = list(self.sustained_powers)
+        if self.faction:
+            d["faction"] = self.faction
+        if self.memories:
+            d["memories"] = [m.to_dict() for m in self.memories]
         return d
 
     @classmethod
@@ -89,7 +154,53 @@ class Combatant:
             attitude=str(d.get("attitude", "") or ""),
             warp_charge=int(d.get("warp_charge", 0) or 0),
             sustained_powers=list(d.get("sustained_powers", []) or []),
+            faction=str(d.get("faction", "") or ""),
+            memories=[NpcMemory.from_dict(m) for m in d.get("memories", []) or []],
         )
+
+    def add_memory(self, memory: NpcMemory) -> None:
+        """Append a memory, pruning past :data:`NPC_MEMORY_CAP` (ADR 044): the lowest-importance
+        entry goes first (tie: the oldest). ``believed: False`` entries and importance 5 are
+        prune-protected — a known lie or a promise must not scroll out. If *everything* is
+        protected the oldest entry goes anyway (the hard cap wins, loud log)."""
+        self.memories.append(memory)
+        if len(self.memories) <= NPC_MEMORY_CAP:
+            return
+        candidates = [
+            i for i, m in enumerate(self.memories) if m.believed and m.importance < 5
+        ]
+        if not candidates:
+            log.warning(
+                "NPC '%s': all %d memories prune-protected — dropping the oldest anyway",
+                self.name, len(self.memories),
+            )
+            self.memories.pop(0)
+            return
+        victim = min(candidates, key=lambda i: (self.memories[i].importance, i))
+        self.memories.pop(victim)
+
+
+def step_attitude(npc: Combatant, proposed: str) -> str:
+    """Apply an attitude *proposal* to an NPC, clamped to ±1 step on :data:`ATTITUDE_SCALE`
+    (ADR 044, golden rule #3): the extractor (LLM) only proposes, this code decides. An unknown
+    proposed value is a no-op + log. An off-scale/empty *current* attitude (legacy free-text
+    states) anchors at ``neutral`` so old states can still drift. Returns the (new) attitude."""
+    key = (proposed or "").strip().lower()
+    if key not in ATTITUDE_SCALE:
+        if key:
+            log.info(
+                "NPC '%s': attitude proposal '%s' ignored (not on the scale)", npc.name, proposed
+            )
+        return npc.attitude
+    current = npc.attitude.strip().lower()
+    cur_idx = (
+        ATTITUDE_SCALE.index(current)
+        if current in ATTITUDE_SCALE
+        else ATTITUDE_SCALE.index("neutral")
+    )
+    new_idx = cur_idx + max(-1, min(1, ATTITUDE_SCALE.index(key) - cur_idx))
+    npc.attitude = ATTITUDE_SCALE[new_idx]
+    return npc.attitude
 
 
 @dataclass
@@ -290,6 +401,7 @@ class WorldState:
         toughness_bonus: int = 0,
         armour: int = 0,
         attitude: str = "hostile",
+        faction: str = "",
     ) -> Combatant:
         """Register an NPC (an enemy the party can damage) or update an existing one."""
         existing = next((n for n in self.npcs if n.name.lower() == name.strip().lower()), None)
@@ -303,6 +415,7 @@ class WorldState:
                 armour=armour,
                 is_npc=True,
                 attitude=attitude,
+                faction=faction,
             )
             self.npcs.append(npc)
             return npc
@@ -316,6 +429,8 @@ class WorldState:
             existing.armour = armour
         if attitude:
             existing.attitude = attitude
+        if faction:
+            existing.faction = faction
         return existing
 
     # -- psyker / Warp Charge (ADR 022) ---------------------------------------------------

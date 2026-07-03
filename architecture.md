@@ -327,7 +327,24 @@ next time as narrative memory. The story stays coherent without dragging the who
 history along. (A rolling mid-session summary is a later refinement; with Nemo's 128k
 context there is plenty of headroom.)
 
-> Interplay: JSON = state (what *is*), recap = story (what *was*).
+**c) NPC memory (ADR 044) — what each NPC remembers**
+Per-NPC memories (`memories: [NpcMemory]` on the NPC entries in `state.json`,
+`dmbot/memory/npc_memory.py`): gist + optional verbatim key quote (promises/lies/threats),
+scoped to the group or single PCs, capped at 30/NPC. Extracted by one LLM call at **scene
+exit** and on `wrap up` (never per turn), then applied by code — the recap pattern, per NPC.
+The NPC stores what it *believes* (a player's lie included, `believed: true`); when a lie is
+revealed, **code** flips the entry, records the reveal (importance 5) and steps the attitude
+toward `hostile`. **Attitude stays a code-owned hard field:** the extractor only *proposes*;
+code clamps to ±1 step per scene on the fixed scale `hostile→wary→neutral→friendly→loyal`
+(golden rule #3, same request/validate/apply pattern as dice). Important news (importance ≥ 4)
+spreads deterministically to same-`faction` NPCs as hearsay (`source: "gossip"`, no quote,
+importance −1, no re-gossip). While an NPC is in the current scene, its top-K memories
+(`DM_NPC_MEMORY_TOP_K`, revealed lies always included) ride in the prompt as a compact German
+`[NPC-Gedächtnis: …]` block between world state and RAG; gossip renders as „Hörensagen".
+`DM_NPC_MEMORY=0` switches the subsystem off; `!npcmem <name>` is the read-only debug view.
+
+> Interplay: JSON = state (what *is*), recap = story (what *was*), NPC memories = what each
+> NPC believes happened.
 
 ---
 

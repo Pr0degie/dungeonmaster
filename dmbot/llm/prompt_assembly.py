@@ -20,16 +20,18 @@ def assemble_system_prompt(
     recap: str | None = None,
     adventure: str | None = None,
     state_summary: str | None = None,
+    npc_memory: str | None = None,
     rag: str | None = None,
     alias_hint: str | None = None,
 ) -> str:
     """Join the present prompt slices into one system prompt, in the fixed memory order
-    ``persona → recap (wrapped) → adventure → state_summary → rag → alias_hint``.
+    ``persona → recap (wrapped) → adventure → state_summary → npc_memory → rag → alias_hint``.
 
     Each optional slice is included ONLY when truthy — both ``None`` and ``""`` are skipped,
     replicating the old ``if recap:`` chain in ``_build_request``. Slices are separated by exactly
     one blank line (``"\\n\\n"``). ``recap`` is wrapped in the German "Was bisher geschah" header;
-    every other slice is appended verbatim.
+    every other slice is appended verbatim. ``npc_memory`` (ADR 044) sits right after the hard
+    state it colours, before the retrieved rulebook text.
     """
     parts = [persona]
     if recap:
@@ -42,6 +44,8 @@ def assemble_system_prompt(
         parts.append(adventure)
     if state_summary:
         parts.append(state_summary)
+    if npc_memory:
+        parts.append(npc_memory)
     if rag:
         parts.append(rag)
     if alias_hint:

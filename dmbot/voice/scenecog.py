@@ -45,12 +45,15 @@ class SceneCog(commands.Cog):
                 reply += f"\nElemente: {elements} (`!erledigt <id>` / `!offen <id>`)"
             await ctx.send(reply)
             return
+        old_scene = state.scene_id
         scene = self._rt._set_scene(state, scene_id)
         if scene is None:
             await ctx.send(f"Unbekannte Szene `{scene_id}` — `!szenen` zeigt alle Ids.")
             return
         self._rt._persist_and_refresh(ctx.channel)
         log.info("scene → %s (%s)", scene.id, scene.title_de)
+        if old_scene != scene.id:  # mine the departed scene for NPC memories (ADR 044)
+            self._rt.schedule_npc_memory_extraction(ctx.channel, old_scene)
         await ctx.send(f"📖 Szene gewechselt: **{scene.title_de}** (Teil {scene.part}).")
 
     @commands.command(name="szenen")

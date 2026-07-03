@@ -187,11 +187,14 @@ class DeliveryPipeline:
             state = self._rt._state.get(cid)
             if state is None:
                 return
+            old_scene = state.scene_id
             moved = self._rt._set_scene(state, scene.id)
             if moved is None:  # the scene vanished between proposal and click — shouldn't happen
                 return
             self._rt._persist_and_refresh(channel)
             log.info("scene → %s (%s) [auto, bestätigt]", moved.id, moved.title_de)
+            if old_scene != moved.id:  # mine the departed scene for NPC memories (ADR 044)
+                self._rt.schedule_npc_memory_extraction(channel, old_scene)
             await interaction.edit_original_response(
                 content=f"📖 Szene gewechselt: **{moved.title_de}** (Teil {moved.part})."
             )

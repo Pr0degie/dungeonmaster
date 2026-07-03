@@ -23,6 +23,7 @@ import tempfile
 import threading
 import time
 import wave
+from datetime import datetime
 
 import discord
 
@@ -39,7 +40,8 @@ from .rules import profile as profile_mod
 from .rules.profile import ProfileError, SystemProfile
 from .rules.characters import CharacterStore
 from .memory import history as history_store
-from .memory.state import WorldState, world_state_summary_de
+from .memory import npc_memory as npc_memory_mod
+from .memory.state import Combatant, WorldState, world_state_summary_de
 from .rag.adventure import Adventure, Scene
 from .rag.retrieve import RulebookRetriever
 
@@ -177,6 +179,15 @@ class SessionRuntime:
         # (human-in-the-loop, like the scene-change button); False → apply immediately (flags only
         # change what the card renders — lower stakes than the scene pointer).
         self._flag_confirm = config.flag_confirm
+        # NPC memory (ADR 044): extract at scene exit / wrap-up what the scene's NPCs would
+        # remember; code clamps attitude drift and spreads faction gossip. _npc_mem_marks tracks
+        # per channel how many history messages were already mined (the extraction window seam —
+        # approximate around compaction, deduped at apply); _npc_mem_running is the per-channel
+        # reentrancy guard (two quick scene changes must not extract concurrently).
+        self._npc_memory = config.npc_memory
+        self._npc_memory_top_k = config.npc_memory_top_k
+        self._npc_mem_marks: dict[int, int] = {}
+        self._npc_mem_running: set[int] = set()
         # Rules engine (Phase 8): load the active system profile (data/systems/<system>.json). A
         # missing/broken profile must not down the bot — log loudly and run rules-less (no dice).
         self._profile: SystemProfile | None = None
@@ -477,8 +488,14 @@ class SessionRuntime:
         for block in (self._psyker_block(state), self._augmetic_block()):
             if block:
                 summary = f"{summary}\n\n{block}" if summary else block
+        npc_block = ""
+        if self._npc_memory:
+            npc_block = npc_memory_mod.npc_memory_block_de(
+                self._scene_npcs(state), top_k=self._npc_memory_top_k
+            )
         self._brain.set_context(
             cid, recap=state.recap, state_summary=summary, adventure_block=adventure_block,
+            npc_memory_block=npc_block,
         )
 
     def _psyker_block(self, state: WorldState) -> str:
@@ -568,6 +585,89 @@ class SessionRuntime:
             state.mark_open(scene.id, element_id)
         return text
 
+    # ----- NPC memory (ADR 044) -------------------------------------------------------------
+
+    def _scene_npcs(self, state: WorldState, scene_id: str | None = None) -> list[Combatant]:
+        """The *living, registered* NPCs of a scene (default: the current one) — whose memories
+        ride in the prompt. With an adventure loaded the card's ``npcs_here`` filters the
+        registered list (case-insensitive, like ``WorldState.find``); without one, every living
+        registered NPC counts (there is no scene notion to scope by)."""
+        living = [n for n in state.npcs if n.wounds > 0]
+        if self._adventure is None:
+            return living
+        scene = self._adventure.get_scene(scene_id if scene_id is not None else state.scene_id)
+        if scene is None:
+            return living
+        here = {n.strip().lower() for n in scene.npcs_here}
+        return [n for n in living if n.name.lower() in here]
+
+    def schedule_npc_memory_extraction(self, channel, scene_id: str) -> None:
+        """Fire-and-forget NPC-memory extraction for the scene just left (ADR 044) — called by
+        the scene-change seams (!ort, the confirmed <<ORT>> move) right after the pointer moved.
+        Off the hot path by design: the scene change never waits for the LLM."""
+        if not self._npc_memory:
+            return
+        try:
+            asyncio.get_running_loop().create_task(
+                self.extract_npc_memories(channel, scene_id)
+            )
+        except RuntimeError:  # no running loop (sync/test context) — extraction is best-effort
+            log.debug("NPC-memory: no running event loop — extraction skipped")
+
+    async def extract_npc_memories(self, channel, scene_id: str) -> int:
+        """Mine the history since the last extraction for what ``scene_id``'s NPCs would remember
+        and apply it (memories + clamped attitude drift + lie flips + faction gossip — all hard
+        effects in code, golden rule #3). Best-effort end to end: any failure logs and returns 0,
+        never blocks the caller. Returns the number of new direct memories."""
+        if not self._npc_memory:
+            return 0
+        cid = self._brain_channel(channel)
+        state = self._state.get(cid)
+        if state is None or cid in self._npc_mem_running:
+            if cid in self._npc_mem_running:
+                log.info("NPC-memory: extraction already running for channel %s — skipped", cid)
+            return 0
+        mark = min(self._npc_mem_marks.get(cid, 0), self._brain.history_len(cid))
+        turns = self._brain.history_messages(cid, mark)
+        # Candidates: every living registered NPC (incl. off-card !npc add spawns of this scene)
+        # plus the departed scene card's npcs_here — the latter may be unregistered talk-only
+        # NPCs; a dummy carrier lets the extractor name them, apply registers on first memory.
+        # The extractor prompt binds memories to what actually happened in the transcript.
+        candidates = [n for n in state.npcs if n.wounds > 0]
+        known = {n.name.lower() for n in candidates}
+        if self._adventure is not None:
+            scene = self._adventure.get_scene(scene_id)
+            for name in scene.npcs_here if scene else []:
+                if name.strip().lower() not in known:
+                    candidates.append(Combatant(name=name.strip(), wounds=1, max_wounds=1, is_npc=True))
+        if not turns or not candidates:
+            self._npc_mem_marks[cid] = mark + len(turns)
+            return 0
+        self._npc_mem_running.add(cid)
+        try:
+            payload = await npc_memory_mod.request_extraction(
+                self._brain.client, turns=turns, npcs=candidates, scene_id=scene_id
+            )
+            # The window is consumed even when extraction failed (skip, don't re-mine it against
+            # a different scene later); the gist-dedup in apply covers the overlap cases.
+            self._npc_mem_marks[cid] = mark + len(turns)
+            if payload is None:
+                return 0
+            new_entries = npc_memory_mod.apply_extraction(
+                state, payload, scene_id=scene_id,
+                now=datetime.now().isoformat(timespec="seconds"),
+                statblock=self._adventure.npc if self._adventure is not None else None,
+            )
+            npc_memory_mod.propagate_gossip(state, new_entries)
+            self._persist_and_refresh(channel)
+            log.info("🧠 NPC-Gedächtnis: %d neue Erinnerungen (Szene '%s')", len(new_entries), scene_id or "—")
+            return len(new_entries)
+        except Exception:
+            log.exception("NPC-memory extraction failed for scene '%s' — skipped", scene_id)
+            return 0
+        finally:
+            self._npc_mem_running.discard(cid)
+
     def _build_turn_order(self, voice_channel) -> list[str]:
         """Seed the turn order from a voice channel's human members (Bot A + bots filtered),
         preferring each player's character name via the alias map (open item F)."""
@@ -619,4 +719,7 @@ class SessionRuntime:
             restored = self._brain.restore_history(cid, turns)
             if restored:
                 log.info("restored %d conversation turns from the autosave (!redo unavailable for the last)", restored)
+        # NPC memory (ADR 044): don't re-mine restored/pre-join history — extraction starts at
+        # the join point (the previous session's tail was covered by its own wrap-up/scene exits).
+        self._npc_mem_marks[cid] = self._brain.history_len(cid)
         return char_fallback

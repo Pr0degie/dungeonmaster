@@ -85,10 +85,12 @@ def test_ort_moves_pointer_via_code_not_llm() -> None:
         _state={7: types.SimpleNamespace(scene_id="s1")},
         _set_scene=lambda st, sid: scene if sid == "s2" else None,
         _persist_and_refresh=lambda ch: flags.__setitem__("persisted", True),
+        schedule_npc_memory_extraction=lambda ch, sid: flags.__setitem__("mined", sid),
     )
     ctx = _Ctx()
     asyncio.run(SceneCog.ort.callback(_scene_cog(rt), ctx, "s2"))
     assert flags.get("persisted") is True
+    assert flags.get("mined") == "s1"  # the DEPARTED scene is mined for NPC memories (ADR 044)
     assert any("Szene gewechselt" in m and "Die Brücke" in m for m in ctx.sent)
 
 

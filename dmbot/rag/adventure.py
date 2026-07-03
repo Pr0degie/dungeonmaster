@@ -160,6 +160,9 @@ class AdventureNpc:
     attack_value: int | None = None
     weapon: str | None = None
     damage: str | None = None
+    # Gossip group (ADR 044): NPCs sharing a non-empty faction hear each other's important
+    # memories as hearsay. Authored data — optional, absent statblocks simply don't gossip.
+    faction: str = ""
 
     @classmethod
     def from_dict(cls, d: dict) -> "AdventureNpc":
@@ -174,6 +177,7 @@ class AdventureNpc:
             attack_value=d.get("attack_value"),
             weapon=d.get("weapon"),
             damage=d.get("damage"),
+            faction=str(d.get("faction", "") or ""),
         )
 
 

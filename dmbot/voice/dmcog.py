@@ -395,6 +395,12 @@ class DMCog(commands.Cog):
         front of the next session so the story carries over. Non-destructive: play can continue."""
         cid = self._rt._brain_channel(ctx.channel)
         await ctx.send("📜 Ich fasse die Sitzung zusammen …")
+        # NPC memory (ADR 044), catch-all for the last scene: the scene-change trigger never fires
+        # for the scene the session ends in, so mine it here BEFORE the recap (awaited — wrap-up is
+        # not latency-critical, and the extractor is best-effort/no-raise by contract).
+        state = self._rt._state.get(cid)
+        if state is not None:
+            await self._rt.extract_npc_memories(ctx.channel, state.scene_id)
         try:
             # Cumulative, like the rolling auto-recap (D57): fold the recap already in the prompt into
             # the new one. The auto-recap may have cleared the running history mid-session, so the
@@ -463,6 +469,10 @@ class DMCog(commands.Cog):
             # Reset the rolling history only now that the recap is safely persisted (clear_history
             # keeps recap/state/buffer — only the turn-by-turn thread goes).
             self._rt._brain.clear_history(cid)
+            # NPC-memory window (ADR 044): the mark counted from the old history head; after the
+            # compaction only the turns appended during the summarize await remain, so restart the
+            # window at 0. Overlap (extracted-but-unconsumed turns) is deduped at apply.
+            self._rt._npc_mem_marks.pop(cid, None)
             log.info("🧵 Auto-Recap fertig — history kompaktiert, Recap aktualisiert.")
             if self._rt._text_channel is not None:  # a brief, lightweight Discord note (matches status posts)
                 await self._rt._send_with_retry(

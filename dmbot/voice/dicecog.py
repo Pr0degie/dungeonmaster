@@ -545,7 +545,8 @@ class DiceCog(commands.Cog):
                 return
             display = block.name if block is not None else name  # canonical spelling from the sheet
             n = state.add_or_update_npc(
-                display, wounds=w, max_wounds=w, toughness_bonus=t, armour=a
+                display, wounds=w, max_wounds=w, toughness_bonus=t, armour=a,
+                faction=block.faction if block is not None else "",
             )
             self._rt._persist_and_refresh(ctx.channel)
             src = " *(Statblock aus dem Abenteuer)*" if block is not None and not wounds else ""
@@ -555,3 +556,36 @@ class DiceCog(commands.Cog):
             )
             return
         await ctx.send("Nutzung: `!npc add <Name> [Wunden] [TB] [Rüstung]` oder `!npc list`.")
+
+    @commands.command(name="npcmem")
+    async def npcmem(self, ctx: commands.Context, name: str = "") -> None:
+        """`!npcmem <Name>` — read-only debug view of an NPC's stored memories (ADR 044): gist,
+        importance, source, believed flag. Editing stays out of scope (state is code-owned)."""
+        cid = self._rt._brain_channel(ctx.channel)
+        state = self._rt._state.get(cid)
+        if state is None:
+            await ctx.send("Keine aktive Sitzung — erst `!j`.")
+            return
+        if not name:
+            with_mem = [n.name for n in state.npcs if n.memories]
+            await ctx.send(
+                "Nutzung: `!npcmem <Name>`. NSCs mit Erinnerungen: "
+                + (", ".join(with_mem) if with_mem else "—")
+            )
+            return
+        npc = next((n for n in state.npcs if n.name.lower() == name.strip().lower()), None)
+        if npc is None:
+            await ctx.send(f"Unbekannter NSC `{name}` — `!npc list` zeigt alle.")
+            return
+        if not npc.memories:
+            await ctx.send(f"**{npc.name}** hat noch keine Erinnerungen.")
+            return
+        lines = [f"🧠 **{npc.name}** — Haltung: {npc.attitude or '—'}"
+                 + (f", Fraktion: {npc.faction}" if npc.faction else "")]
+        for i, m in enumerate(npc.memories):
+            tags = [f"W{m.importance}", m.source]
+            if not m.believed:
+                tags.append("LÜGE aufgeflogen")
+            quote = f" — Zitat: „{m.quote}“" if m.quote else ""
+            lines.append(f"[{i}] ({', '.join(tags)}) {m.gist}{quote}")
+        await self._rt._send_with_retry(ctx.channel, "\n".join(lines))
