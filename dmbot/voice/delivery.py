@@ -324,6 +324,24 @@ class DeliveryPipeline:
         await self._post_deliver(channel, answer, timing,
                                  saved_user_msg=saved_user_msg, redo=timing.kind == "redo")
 
+    def _log_consistency_streamed(self, channel, answer: str) -> None:
+        """Streaming-path consistency guard (ADR 045): by the time the full text exists the
+        sentences have already been synthesized and (mostly) played, so regenerating would
+        desync audio from text — the trade-off recorded in the ADR is to LOG the violation
+        here, nothing more. The regenerate protection lives on the batch path. Fail-open."""
+        checker = self._rt.consistency_checker(channel)
+        if checker is None:
+            return
+        try:
+            violations = checker(answer)
+        except Exception:
+            log.exception("consistency guard raised on streamed answer — ignoring (fail-open)")
+            return
+        if violations:
+            log.warning("[consistency] streamed answer violates (%s) — audio already played, "
+                        "logged only (ADR 045)",
+                        ",".join(f"{v.kind}:{v.npc}" for v in violations))
+
     @staticmethod
     async def _await_dice_scene(dice_task: asyncio.Task | None,
                                 scene_task: asyncio.Task | None,
@@ -488,6 +506,7 @@ class DeliveryPipeline:
                 timing.answer_chars = len(answer)
                 if answer:
                     log.info("🎭 %s", answer)
+                    self._log_consistency_streamed(channel, answer)
                 log.info("⏱ LLM %d ms%s", timing.respond_ms(),
                          " (redo)" if timing.kind == "redo" else "")
                 # Post the text only if there's something to read; the sentences were already
@@ -622,7 +641,9 @@ class DeliveryPipeline:
                 await self._rt._send_with_retry(channel, "(Der Spielleiter schweigt — Fehler, siehe Log.)")
             return
         try:
-            answer = await self._rt._brain.respond(channel_id)
+            answer = await self._rt._brain.respond(
+                channel_id, check=self._rt.consistency_checker(channel)
+            )
             timing.llm_done = time.monotonic()
             timing.take_llm_stats(self._rt._brain.last_llm_stats)
         except Exception:
@@ -647,7 +668,9 @@ class DeliveryPipeline:
                 await self._rt._send_with_retry(channel, "(Der Spielleiter schweigt — Fehler, siehe Log.)")
             return
         try:
-            answer = await self._rt._brain.respond(self._rt._brain_channel(channel))
+            answer = await self._rt._brain.respond(
+                self._rt._brain_channel(channel), check=self._rt.consistency_checker(channel)
+            )
             timing.llm_done = time.monotonic()
             timing.take_llm_stats(self._rt._brain.last_llm_stats)
         except Exception:

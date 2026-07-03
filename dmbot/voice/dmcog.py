@@ -108,7 +108,10 @@ class DMCog(commands.Cog):
             return
         try:
             async with ctx.typing():
-                answer = await self._rt._brain.respond(channel_id, extra_text=text or None)
+                answer = await self._rt._brain.respond(
+                    channel_id, extra_text=text or None,
+                    check=self._rt.consistency_checker(ctx.channel),
+                )
                 timing.llm_done = time.monotonic()
                 timing.take_llm_stats(self._rt._brain.last_llm_stats)
         except Exception:
@@ -143,7 +146,9 @@ class DMCog(commands.Cog):
             return
         try:
             async with ctx.typing():
-                answer = await self._rt._brain.redo(channel_id)
+                answer = await self._rt._brain.redo(
+                    channel_id, check=self._rt.consistency_checker(ctx.channel)
+                )
                 timing.llm_done = time.monotonic()
                 timing.take_llm_stats(self._rt._brain.last_llm_stats)
         except Exception:

@@ -47,6 +47,7 @@ from .llm.director_msgs import (  # noqa: F401
     build_intro_director_msg,
     build_opening_director_msg,
 )
+from .llm.consistency import Violation, retry_nudge_de
 from .llm.intro_guard import INTRO_RETRY_NUDGE
 from .llm.stream_assembler import StreamAssembler, finalize_answer  # noqa: F401
 
@@ -219,11 +220,13 @@ class DMBrain:
             self._rag_block.pop(channel_id, None)
 
     async def respond(
-        self, channel_id: int, *, extra_text: str | None = None
+        self, channel_id: int, *, extra_text: str | None = None,
+        check: Callable[[str], list[Violation]] | None = None,
     ) -> str | None:
         """Run one DM turn for ``channel_id``: consume the buffered player lines (plus any
         directly typed ``extra_text``), ask the LLM, append to history and return the answer.
-        Returns ``None`` if there is nothing to respond to.
+        Returns ``None`` if there is nothing to respond to. ``check`` is the consistency guard
+        (ADR 045): violations regenerate the answer once before it reaches the table.
         """
         prep = self._prepare_turn(channel_id, extra_text)
         if prep is None:
@@ -233,10 +236,12 @@ class DMBrain:
         answer = await self._generate(channel_id, user_msg, labels, history)
         if answer is None:
             return ""  # echo-suppressed (D43): content-less to the cog, the pair stays out of history
+        answer = await self._apply_consistency(channel_id, user_msg, labels, history, answer, check)
         self._append_turn(history, user_msg, answer)
         return answer
 
-    async def redo(self, channel_id: int) -> str | None:
+    async def redo(self, channel_id: int, *,
+                   check: Callable[[str], list[Violation]] | None = None) -> str | None:
         """Re-generate the **last** DM turn (same player input, a fresh answer) — for when the DM
         misunderstood. Drops the previous answer + its user turn from history first, so the new one
         replaces it rather than stacking. ``None`` if there is no turn to redo yet."""
@@ -259,8 +264,63 @@ class DMBrain:
         answer = await self._generate(channel_id, user_msg, labels, history)
         if answer is None:
             return ""  # echo-suppressed (D43): content-less to the cog, the pair stays out of history
+        answer = await self._apply_consistency(channel_id, user_msg, labels, history, answer, check)
         self._append_turn(history, user_msg, answer)
         return answer
+
+    async def _apply_consistency(
+        self,
+        channel_id: int,
+        user_msg: str,
+        labels: list[str],
+        history: list[dict[str, str]],
+        answer: str,
+        check: Callable[[str], list[Violation]] | None,
+    ) -> str:
+        """The consistency guard (ADR 045): check the answer against the world state and, on a
+        violation, regenerate **once** with a concrete German correction appended (the echo/intro
+        nudge mechanism). Strictly fail-open — a guard error, an empty retry or a still-violating
+        retry all deliver an answer anyway; the guard never blocks the session. Max one retry.
+
+        Marker hygiene: markers the discarded first answer queued must not survive it — snapshot
+        + clear the pending queues before the retry (whose own ``_generate`` re-queues its
+        markers) and restore the snapshot only if the retry is discarded (mirrors ``redo``)."""
+        if check is None or not answer:
+            return answer
+        try:
+            violations = check(answer)
+        except Exception:
+            log.exception("consistency guard raised — delivering unchecked (fail-open)")
+            return answer
+        if not violations:
+            return answer
+        found = ",".join(f"{v.kind}:{v.npc}" for v in violations)
+        log.warning("[consistency] violated (%s) — regenerating once", found)
+        snapshot = {
+            "tests": self._pending_tests.pop(channel_id, None),
+            "manifests": self._pending_manifests.pop(channel_id, None),
+            "scenes": self._pending_scenes.pop(channel_id, None),
+            "erledigt": self._pending_erledigt.pop(channel_id, None),
+        }
+        nudged = f"{user_msg}\n{retry_nudge_de(violations)}"
+        retry = await self._generate(channel_id, nudged, labels, history)
+        if not retry:
+            for attr, key in ((self._pending_tests, "tests"), (self._pending_manifests, "manifests"),
+                              (self._pending_scenes, "scenes"), (self._pending_erledigt, "erledigt")):
+                if snapshot[key] is not None:
+                    attr[channel_id] = snapshot[key]
+            log.warning("[consistency] retry came back empty — keeping the first answer (fail-open)")
+            return answer
+        try:
+            still = check(retry)
+        except Exception:
+            still = []
+        retry_ok = not still
+        if not retry_ok:
+            log.warning("[consistency] retry still violates (%s) — delivering anyway (fail-open)",
+                        ",".join(f"{v.kind}:{v.npc}" for v in still))
+        log.info("[consistency] regenerated=1 violations=%s retry_ok=%s", found, retry_ok)
+        return retry
 
     def _prepare_opening(self, channel_id: int, director_msg: str) -> tuple[str, list[str], list[dict[str, str]]]:
         """Assemble the one-off ``(user_msg, labels, history)`` for the ``!start`` opening turn.

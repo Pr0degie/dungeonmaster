@@ -122,6 +122,9 @@ class _StubRuntime:
     async def handle_dice(self, channel) -> None:
         return None
 
+    def consistency_checker(self, channel):
+        return None  # guard off (ADR 045) — the streamed log-only check is tested separately
+
 
 def _run_streaming(*, sentences, prebuffer=1, transform=None, fail_first=False):
     """Drive one real _deliver_streaming turn and return the recorder + the stored answer."""

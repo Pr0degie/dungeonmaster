@@ -31,6 +31,7 @@ from .config import Config
 from .voice.recv import VadSink
 from .voice.preflight import check_static
 from .stt import Transcriber
+from .llm import consistency as consistency_mod
 from .llm.client import OllamaClient
 from .orchestrator import DMBrain
 from .tts.piper import PiperTTS
@@ -186,6 +187,9 @@ class SessionRuntime:
         # reentrancy guard (two quick scene changes must not extract concurrently).
         self._npc_memory = config.npc_memory
         self._npc_memory_top_k = config.npc_memory_top_k
+        # Consistency guard (ADR 045): deterministic pre-delivery check (dead/absent NPC
+        # speaking) with max one regenerate on the batch path; the streaming path logs only.
+        self._consistency_guard = config.consistency_guard
         self._npc_mem_marks: dict[int, int] = {}
         self._npc_mem_running: set[int] = set()
         # Rules engine (Phase 8): load the active system profile (data/systems/<system>.json). A
@@ -584,6 +588,21 @@ class SessionRuntime:
         else:
             state.mark_open(scene.id, element_id)
         return text
+
+    # ----- Consistency guard (ADR 045) ------------------------------------------------------
+
+    def consistency_checker(self, channel):
+        """The consistency check for this channel's turn, or ``None`` when the guard is off or
+        no world state exists yet (both mean: don't check). Closes over the channel's live
+        world state + active scene card; passed into ``DMBrain.respond``/``redo`` (batch path,
+        regenerate-once) and run log-only at the end of a streamed turn (ADR 045)."""
+        if not self._consistency_guard:
+            return None
+        state = self._state.get(self._brain_channel(channel))
+        if state is None:
+            return None
+        scene = self._adventure.get_scene(state.scene_id) if self._adventure is not None else None
+        return lambda text: consistency_mod.check(text, state, scene)
 
     # ----- NPC memory (ADR 044) -------------------------------------------------------------
 

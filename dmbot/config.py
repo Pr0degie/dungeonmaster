@@ -56,6 +56,7 @@ class Config:
     flag_confirm: bool
     npc_memory: bool
     npc_memory_top_k: int
+    consistency_guard: bool
     speech_mode: str
     speech_punct: str
     speech_prebuffer: int
@@ -227,6 +228,11 @@ class Config:
             # How many memories per scene NPC ride in the prompt (ranked importance → recency;
             # revealed lies are always included on top). Floor 1.
             npc_memory_top_k=max(1, int(os.environ.get("DM_NPC_MEMORY_TOP_K", "6") or "6")),
+            # Consistency guard (ADR 045): deterministic pre-delivery check of the DM answer
+            # against the world state (dead/absent NPC speaking) with max ONE regenerate,
+            # strictly fail-open. ON by default; DM_CONSISTENCY_GUARD=0 disables it.
+            consistency_guard=os.environ.get("DM_CONSISTENCY_GUARD", "1").strip().lower()
+            in ("1", "true", "yes", "on"),
             # Spoken-delivery mode (ADR 033), applied to EVERY turn, also switchable live via
             # !sprechmodus. Two orthogonal axes:
             #  - DM_SPEECH_MODE: "stream" (sentence-by-sentence, fast start, small gaps) |
