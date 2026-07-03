@@ -124,6 +124,7 @@ dmbot/          the DM bot
   memory/       JSON state + recaps
   rules/        engine.py (generic) + combat.py (attack/Warp resolution, ADR 037) + profile loader (+ tests)  ← deterministic core
   discord_ui/   buttons, turn-order view
+  tools/        dev CLIs via [project.scripts]: sync_check (`uv run dm-sync`, D89/D90) + eval_replay (`uv run dm-eval`, golden-transcript regression replay, ADR 046 — goldens in tests/golden/)
   orchestrator.py   the DM brain (history + buffer → LLM)
   bridge.py     HTTP client to Bot A's /speak
   logsetup.py   console (green chat) + file logging

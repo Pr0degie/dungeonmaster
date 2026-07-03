@@ -73,6 +73,26 @@ here is its contract, which DMbot calls:
 - **Memory:** persistence test — a state change survives a restart.
 - **RAG:** sanity check — a concrete IM rule question answered correctly from a PDF.
 
+### Replay-Eval (`uv run dm-eval`, ADR 046)
+
+Golden-Transcripts (`tests/golden/*.jsonl` — aufgezeichnete/synthetische Sessions im
+erweiterten `history.jsonl`-Journal-Format) werden mit **gemocktem LLM** (Playback der
+aufgezeichneten Roh-Antworten) durch die Pipeline gespielt; verglichen werden pro Turn die
+deterministischen Entscheidungen — Turn-Komposition, Sanitizer-Antwort, geparste Marker,
+Roll-Router-Verdikt, Szenen-/Flag-Verdikte. **Regression, nicht Qualität.** Exit 0 grün /
+1 Abweichung / 2 unbrauchbares Transcript.
+
+- **Wann laufen lassen:** vor dem Merge/Push einer **Refactor-Runde**, die orchestrator /
+  llm-Helfer / marker / roll_router / delivery-Verdikte anfasst — zusätzlich zur Suite (die
+  Suite prüft Einheiten, `dm-eval` die aufgezeichnete End-to-End-Kette). Nicht im Stop-Hook:
+  bewusst ein gezieltes Gate, wie `/code-review`.
+- **Gewollte Verhaltensänderung:** `dm-eval` schlägt an → Diff lesen, prüfen, dass nur die
+  beabsichtigte Kategorie abweicht, dann Goldens **neu erzeugen** (synthetisch:
+  `uv run python tests/golden/generate_synthetic.py`, dann den `.jsonl`-git-Diff absegnen;
+  live gezogene: aus einer frischen Session neu ziehen). Goldens nie von Hand „grün editieren".
+- **Frisches Golden aus einer Live-Session ziehen:** Anleitung in `tests/golden/README.md`
+  (rotiertes Journal kopieren, kürzen, `dm-eval` muss sofort Exit 0 sein, committen).
+
 ## Code-Review-, Simplify- & Lint-Gates (was automatisch läuft vs. was du gezielt ziehst)
 
 Zwei Ebenen, bewusst getrennt — die billige läuft von selbst, die teure nach Urteil.

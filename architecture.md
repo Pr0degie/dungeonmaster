@@ -312,6 +312,11 @@ after the recap and before the history.
 >   record survives. Crash recovery for the *narrative thread* (`state.json` already covers the hard
 >   facts). Code-owned like `state.json` — the read-only `characters.json` split is unchanged.
 >   _Known limitation:_ `_last_turn` isn't restored, so `!redo` is unavailable for the restored last turn.
+>   **Doubles as the replay journal (ADR 046):** the turn records additionally carry the replay
+>   fields (structured `lines`/`results`, the raw pre-sanitize LLM text, queued `markers`, the
+>   router verdict, `state_before` + scene/flag verdicts) plus a `{"kind": "session"}` header per
+>   `!join` — all invisible to the crash restore. Trimmed copies become the golden transcripts
+>   `uv run dm-eval` replays as a refactor regression gate (`tests/golden/`).
 >
 > **Character sheets are the source of this JSON, not RAG.** The *shape* of a character (which
 > characteristics, skills, resource tracks exist) is dictated by the active **system profile**
