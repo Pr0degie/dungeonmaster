@@ -340,7 +340,7 @@ class VoiceCog(commands.Cog):
         if self._anim_task is not None and not self._anim_task.done():
             self._anim_task.cancel()
         self._rt._text_channel = None
-        for msg_attr in ("_mic_message", "_turn_message", "_pause_message"):
+        for msg_attr in ("_mic_message", "_turn_message", "_pause_message", "_clock_panel"):
             await self._rt.clear_panel(msg_attr)
         await ctx.send("Voice-Channel verlassen.")
 

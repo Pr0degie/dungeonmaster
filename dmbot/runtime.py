@@ -42,7 +42,14 @@ from .rules.profile import ProfileError, SystemProfile
 from .rules.characters import CharacterStore
 from .memory import history as history_store
 from .memory import npc_memory as npc_memory_mod
-from .memory.state import Combatant, WorldState, world_state_summary_de
+from .memory.state import (
+    Clock,
+    Combatant,
+    WorldState,
+    clock_full_note_de,
+    clocks_panel_de,
+    world_state_summary_de,
+)
 from .rag.adventure import Adventure, Scene
 from .rag.retrieve import RulebookRetriever
 
@@ -241,6 +248,8 @@ class SessionRuntime:
         # the animation/Esc tasks) lives in VoiceCog, and DMCog's streaming workers read _paused.
         self._paused = False
         self._pause_message: discord.Message | None = None
+        # Consequence-clock panel (ADR 047): edit-in-place like the pause panel, no spam.
+        self._clock_panel: discord.Message | None = None
         self._text_channel: discord.abc.Messageable | None = None  # where panels are posted (set on join)
         # Rulebook retriever (stage 3, ADR 019): only wired in when an ingested store exists
         # (data/vectordb/rag.db, built offline via `python -m dmbot.rag.ingest`). Without it the
@@ -592,6 +601,64 @@ class SessionRuntime:
         else:
             state.mark_open(scene.id, element_id)
         return text
+
+    # ----- Consequence clocks (ADR 047) -----------------------------------------------------
+
+    def _tick_clock(self, channel, clock_id: str) -> Clock | None:
+        """Deterministically advance a clock one segment (golden rule #3) — the single mutator
+        shared by ``!uhr tick`` and the ``<<UHR>>`` confirm/auto path. Rejects unknown ids and
+        already-full clocks (returns ``None``). A fresh fill queues the one-shot ``[Regie]``
+        consequence note for the next DM turn (ADR 047 #8). The caller persists + refreshes the
+        prompt + updates the panel."""
+        cid = self._brain_channel(channel)
+        state = self._state.get(cid)
+        if state is None:
+            return None
+        clock = state.tick_clock(clock_id)
+        if clock is None:
+            return None
+        if clock.full:
+            self._brain.add_gm_note(cid, clock_full_note_de(clock))
+            log.info("⌛ Uhr '%s' (%s) ist voll — Konsequenz-Hinweis für den nächsten Turn "
+                     "eingereiht", clock.name, clock.id)
+        return clock
+
+    def _untick_clock(self, channel, clock_id: str) -> Clock | None:
+        """Take one segment back (``!uhr zurück``). Unticking a *full* clock retracts a
+        still-queued consequence note — an accidental fill must not fire (ADR 047 #8)."""
+        cid = self._brain_channel(channel)
+        state = self._state.get(cid)
+        if state is None:
+            return None
+        clock = state.find_clock(clock_id)
+        if clock is None:
+            return None
+        if clock.full and self._brain.discard_gm_notes(cid, containing=f"„{clock.name}“"):
+            log.info("⏱ Uhr '%s': eingereihter Konsequenz-Hinweis zurückgezogen", clock.name)
+        return state.untick_clock(clock_id)
+
+    async def update_clock_panel(self) -> None:
+        """(Re)render the clock panel in the session's text channel — edit-in-place (the pause-
+        panel pattern), so ticks update one message instead of spamming. No clocks → the panel
+        is removed. Best-effort: a send/edit failure logs, never breaks a turn/command."""
+        if self._text_channel is None:
+            return
+        state = self._state.get(self._active_vc_id) if self._active_vc_id is not None else None
+        clocks = state.clocks if state is not None else []
+        if not clocks:
+            await self.clear_panel("_clock_panel")
+            return
+        content = clocks_panel_de(clocks)
+        if self._clock_panel is not None:
+            try:
+                await self._clock_panel.edit(content=content)
+                return
+            except discord.HTTPException:
+                self._clock_panel = None  # message gone — fall through and re-post
+        try:
+            self._clock_panel = await self._text_channel.send(content)
+        except discord.HTTPException:
+            log.warning("could not post the clock panel", exc_info=True)
 
     # ----- Consistency guard (ADR 045) ------------------------------------------------------
 

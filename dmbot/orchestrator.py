@@ -22,7 +22,13 @@ from .llm.persona import load_system_prompt
 from .llm.prompt_assembly import assemble_system_prompt
 from .llm.roll_router import classifier_schema, classifier_system, to_test_request
 from .memory.recap import RECAP_SYSTEM_DE, build_recap_user
-from .rules.marker import ErledigtRequest, ManifestRequest, SceneRequest, TestRequest
+from .rules.marker import (
+    ClockTickRequest,
+    ErledigtRequest,
+    ManifestRequest,
+    SceneRequest,
+    TestRequest,
+)
 from .rules.profile import SystemProfile
 from .tts.textsplit import has_speakable_content
 
@@ -57,19 +63,26 @@ log = logging.getLogger(__name__)
 
 def _markers_dict(
     tests: list[TestRequest], manifests: list[ManifestRequest],
-    scenes: list[SceneRequest], erledigt: list[ErledigtRequest], *, queued: bool,
+    scenes: list[SceneRequest], erledigt: list[ErledigtRequest],
+    uhr: list[ClockTickRequest], *, queued: bool,
 ) -> dict:
     """The turn's parsed marker requests as plain dicts for the replay journal (ADR 046).
     ``queued=False`` (a results-only turn suppressed them) records empty lists — the
-    suppression itself is behaviour the replay must reproduce."""
-    if not queued:
-        return {"tests": [], "manifests": [], "scenes": [], "erledigt": []}
-    return {
-        "tests": [asdict(t) for t in tests],
-        "manifests": [asdict(m) for m in manifests],
-        "scenes": [asdict(s) for s in scenes],
-        "erledigt": [asdict(e) for e in erledigt],
-    }
+    suppression itself is behaviour the replay must reproduce. ``uhr`` is exempt from that
+    suppression (ADR 047: the post-roll consequence turn is the canonical tick moment), so it
+    records what was parsed regardless."""
+    d: dict = (
+        {"tests": [], "manifests": [], "scenes": [], "erledigt": []}
+        if not queued
+        else {
+            "tests": [asdict(t) for t in tests],
+            "manifests": [asdict(m) for m in manifests],
+            "scenes": [asdict(s) for s in scenes],
+            "erledigt": [asdict(e) for e in erledigt],
+        }
+    )
+    d["uhr"] = [asdict(u) for u in uhr]
+    return d
 
 
 class DMBrain:
@@ -123,6 +136,14 @@ class DMBrain:
         # Pending scene-element flag requests (ADR 043) — drained by the delivery pipeline, which
         # validates each id against the current scene card and confirms/auto-applies the flag.
         self._pending_erledigt: dict[int, list[ErledigtRequest]] = {}
+        # Pending clock-tick requests (ADR 047) — drained by the delivery pipeline, which
+        # validates each id against WorldState.clocks, clamps to +1 per clock per turn and
+        # confirms/auto-applies the tick.
+        self._pending_uhr: dict[int, list[ClockTickRequest]] = {}
+        # One-shot GM directives injected into the NEXT turn's user message as "[Regie] …" lines
+        # (ADR 047: "clock X is full — the consequence hits now"). Code-queued only, drained by
+        # _prepare_turn like dice results, exempt from the player-line cap.
+        self._gm_notes: dict[int, list[str]] = {}
         self._test_results: dict[int, list[str]] = {}
         # A light "who plays whom" hint (display name → character) appended to the system prompt,
         # so the model stops confusing player and character names (open item F). Set per channel.
@@ -211,16 +232,21 @@ class DMBrain:
         if not lines and not results:
             return None
 
+        # GM notes (ADR 047, e.g. "clock full — consequence now") ride whatever turn comes next.
+        # Drained AFTER the nothing-to-respond-to guard, so an empty auto-turn can't swallow them.
+        notes = self._gm_notes.pop(channel_id, [])
+
         # Remember the latest player action for the roll-detection router (ADR 014); None on a
         # results-only turn so the router doesn't re-fire on a stale action after a dice roll.
         self._last_action[channel_id] = lines[-1] if lines else None
         # Replay capture (ADR 046): the structured turn input, post-cap — what dm-eval re-feeds.
         self._replay_turn[channel_id] = {
-            "lines": [[n, t] for n, t in lines], "results": list(results),
+            "lines": [[n, t] for n, t in lines], "results": list(results), "notes": list(notes),
         }
 
-        # Result lines (engine rolls) lead, then the player lines — both as context for this turn.
+        # Result lines (engine rolls) lead, then GM notes, then the player lines — all context.
         parts = [f"[Würfel] {r}" for r in results]
+        parts += [f"[Regie] {n}" for n in notes]
         parts += [f"{name}: {text}" for name, text in lines]
         if results and not lines:
             # Results-only turn: tell the model explicitly what to do with the bare roll line —
@@ -293,6 +319,7 @@ class DMBrain:
         self._pending_manifests.pop(channel_id, None)
         self._pending_scenes.pop(channel_id, None)
         self._pending_erledigt.pop(channel_id, None)
+        self._pending_uhr.pop(channel_id, None)
         await self._refresh_rag(channel_id, user_msg)
         answer = await self._generate(channel_id, user_msg, labels, history)
         if answer is None:
@@ -334,12 +361,14 @@ class DMBrain:
             "manifests": self._pending_manifests.pop(channel_id, None),
             "scenes": self._pending_scenes.pop(channel_id, None),
             "erledigt": self._pending_erledigt.pop(channel_id, None),
+            "uhr": self._pending_uhr.pop(channel_id, None),
         }
         nudged = f"{user_msg}\n{retry_nudge_de(violations)}"
         retry = await self._generate(channel_id, nudged, labels, history)
         if not retry:
             for attr, key in ((self._pending_tests, "tests"), (self._pending_manifests, "manifests"),
-                              (self._pending_scenes, "scenes"), (self._pending_erledigt, "erledigt")):
+                              (self._pending_scenes, "scenes"), (self._pending_erledigt, "erledigt"),
+                              (self._pending_uhr, "uhr")):
                 if snapshot[key] is not None:
                     attr[channel_id] = snapshot[key]
             log.warning("[consistency] retry came back empty — keeping the first answer (fail-open)")
@@ -459,11 +488,14 @@ class DMBrain:
         history_prefix: list[dict[str, str]],
         num_predict: int | None = None,
         temperature: float | None = None,
-    ) -> tuple[str, list[TestRequest], list[ManifestRequest], list[SceneRequest], list[ErledigtRequest]]:
+    ) -> tuple[
+        str, list[TestRequest], list[ManifestRequest], list[SceneRequest],
+        list[ErledigtRequest], list[ClockTickRequest],
+    ]:
         """One non-streaming LLM call for ``user_msg`` on top of ``history_prefix`` → (sanitised
-        answer, parsed dice tests, parsed Manifest requests, parsed scene + flag requests). The raw building block of
-        :meth:`_generate` (which wraps the echo-guard retry around it) and of the streaming path's
-        echo retry."""
+        answer, parsed dice tests, parsed Manifest requests, parsed scene + flag + clock-tick
+        requests). The raw building block of :meth:`_generate` (which wraps the echo-guard retry
+        around it) and of the streaming path's echo retry."""
         system, messages, options = self._build_request(channel_id, user_msg, labels, history_prefix, num_predict=num_predict, temperature=temperature)
         raw = await self._client.chat(system, messages, options=options)
         # narration call's token counts (for [latency]); getattr so a test double without the attr
@@ -512,19 +544,21 @@ class DMBrain:
         the turn entirely (nothing spoken, nothing stored — degenerate turns in history
         self-reinforce, seen live 2026-06-12)."""
         prev = self._prev_answer(history_prefix)
-        answer, tests, manifests, scenes, erledigt = await self._chat_once(channel_id, user_msg, labels, history_prefix, num_predict=num_predict, temperature=temperature)
+        answer, tests, manifests, scenes, erledigt, uhr = await self._chat_once(channel_id, user_msg, labels, history_prefix, num_predict=num_predict, temperature=temperature)
         problem = self._answer_problem(answer, user_msg, prev)
         if problem is not None:
             label, nudge = problem
             log.warning("echo guard: answer %s (%r) — retrying once", label, answer)
             nudged = f"{user_msg}\n{nudge}"
-            answer, tests, manifests, scenes, erledigt = await self._chat_once(channel_id, nudged, labels, history_prefix, num_predict=num_predict, temperature=temperature)
+            answer, tests, manifests, scenes, erledigt, uhr = await self._chat_once(channel_id, nudged, labels, history_prefix, num_predict=num_predict, temperature=temperature)
             if self._answer_problem(answer, user_msg, prev) is not None:
                 log.warning("echo guard: the retry misfired again — suppressing the turn")
                 return None
         # Suppress inline <<TEST>>/<<MANIFEST>>/<<ORT>> markers on a results-only (post-roll
         # consequence) turn — a consequence narration must not request a NEW roll or scene move or
         # the loop never ends (seen live); only queue them when this turn answered a player action.
+        # <<UHR>> is exempt (ADR 047): the post-roll consequence turn is the canonical tick moment,
+        # and a tick never triggers a new roll/turn — there is no loop to guard against.
         queued = self._last_action.get(channel_id) is not None
         if queued:
             if tests:
@@ -535,10 +569,12 @@ class DMBrain:
                 self._pending_scenes.setdefault(channel_id, []).extend(scenes)
             if erledigt:
                 self._pending_erledigt.setdefault(channel_id, []).extend(erledigt)
+        if uhr:
+            self._pending_uhr.setdefault(channel_id, []).extend(uhr)
         # Replay capture (ADR 046): what this turn actually queued (empty when suppressed) —
         # the marker Soll dm-eval compares against.
         self._replay_gen.setdefault(channel_id, {})["markers"] = _markers_dict(
-            tests, manifests, scenes, erledigt, queued=queued,
+            tests, manifests, scenes, erledigt, uhr, queued=queued,
         )
         return answer
 
@@ -588,6 +624,7 @@ class DMBrain:
         self._pending_manifests.pop(channel_id, None)
         self._pending_scenes.pop(channel_id, None)
         self._pending_erledigt.pop(channel_id, None)
+        self._pending_uhr.pop(channel_id, None)
         await self._refresh_rag(channel_id, user_msg)
         return await self._stream_and_store(
             channel_id, user_msg, labels, history, on_sentence, should_abort
@@ -639,6 +676,7 @@ class DMBrain:
         manifests = result.manifests
         scenes = result.scenes
         erledigt = result.erledigt
+        uhr = result.uhr
         suppressed = False
         # Echo guard (D43/ADR 018 + W4). Only when nothing was spoken yet — an echo/repetition is
         # held back by the assembler's last-sentence rule for short answers; a half-spoken turn is
@@ -650,13 +688,13 @@ class DMBrain:
             log.warning("echo guard (stream): answer %s (%r) — retrying once", label, answer)
             nudged = f"{user_msg}\n{nudge}"
             try:
-                answer, tests, manifests, scenes, erledigt = await self._chat_once(channel_id, nudged, labels, history, num_predict=num_predict, temperature=temperature)
+                answer, tests, manifests, scenes, erledigt, uhr = await self._chat_once(channel_id, nudged, labels, history, num_predict=num_predict, temperature=temperature)
             except Exception:
                 log.exception("echo-guard retry failed — suppressing the turn")
-                answer, tests, manifests, scenes, erledigt = "", [], [], [], []
+                answer, tests, manifests, scenes, erledigt, uhr = "", [], [], [], [], []
             if self._answer_problem(answer, user_msg, prev) is not None:
                 log.warning("echo guard: the retry misfired again — suppressing the turn")
-                answer, tests, manifests, scenes, erledigt = "", [], [], [], []
+                answer, tests, manifests, scenes, erledigt, uhr = "", [], [], [], [], []
             suppressed = not answer
             remaining = [answer] if answer else []
         elif not errored and spoke_any and is_self_repetition(answer, prev):
@@ -672,6 +710,8 @@ class DMBrain:
         # Suppress inline <<TEST>>/<<MANIFEST>>/<<ORT>> markers on a results-only (post-roll
         # consequence) turn — a consequence narration must not request a NEW roll or scene move or
         # the loop never ends (seen live); only queue them when this turn answered a player action.
+        # <<UHR>> is exempt (ADR 047): the post-roll consequence turn is the canonical tick moment,
+        # and a tick never triggers a new roll/turn — there is no loop to guard against.
         queued = self._last_action.get(channel_id) is not None
         if queued:
             if tests:
@@ -682,8 +722,10 @@ class DMBrain:
                 self._pending_scenes.setdefault(channel_id, []).extend(scenes)
             if erledigt:
                 self._pending_erledigt.setdefault(channel_id, []).extend(erledigt)
+        if uhr:
+            self._pending_uhr.setdefault(channel_id, []).extend(uhr)
         self._replay_gen.setdefault(channel_id, {})["markers"] = _markers_dict(
-            tests, manifests, scenes, erledigt, queued=queued,
+            tests, manifests, scenes, erledigt, uhr, queued=queued,
         )
         stored = answer
         if errored and stored:
@@ -716,6 +758,31 @@ class DMBrain:
         """Return and clear the scene-element flag requests the last DM turn made (ADR 043) — the
         delivery pipeline validates each id against the current scene card and confirms/applies."""
         return self._pending_erledigt.pop(channel_id, [])
+
+    def take_pending_uhr(self, channel_id: int) -> list[ClockTickRequest]:
+        """Return and clear the clock-tick requests the last DM turn made (ADR 047) — the delivery
+        pipeline validates each id against ``WorldState.clocks``, clamps to +1 per clock per turn
+        and confirms/applies the tick."""
+        return self._pending_uhr.pop(channel_id, [])
+
+    def add_gm_note(self, channel_id: int, note: str) -> None:
+        """Queue a one-shot GM directive for the NEXT turn's user message (``[Regie] …`` line,
+        ADR 047 — e.g. "clock X is full, the consequence hits now"). Code-queued only, never
+        LLM-written; drained by ``_prepare_turn`` like dice results."""
+        if note:
+            self._gm_notes.setdefault(channel_id, []).append(note)
+
+    def discard_gm_notes(self, channel_id: int, *, containing: str) -> int:
+        """Drop still-queued GM notes containing ``containing`` (ADR 047: ``!uhr zurück`` from a
+        full clock must retract the not-yet-fired consequence note). Returns how many went."""
+        notes = self._gm_notes.get(channel_id, [])
+        keep = [n for n in notes if containing not in n]
+        dropped = len(notes) - len(keep)
+        if keep:
+            self._gm_notes[channel_id] = keep
+        else:
+            self._gm_notes.pop(channel_id, None)
+        return dropped
 
     def last_action(self, channel_id: int) -> tuple[str, str] | None:
         """The latest player action (display-name, text) the last turn answered, or None — the
@@ -949,6 +1016,8 @@ class DMBrain:
         self._pending_manifests.pop(channel_id, None)
         self._pending_scenes.pop(channel_id, None)
         self._pending_erledigt.pop(channel_id, None)
+        self._pending_uhr.pop(channel_id, None)
+        self._gm_notes.pop(channel_id, None)
         self._test_results.pop(channel_id, None)
         self._last_action.pop(channel_id, None)
         self._alias_hint.pop(channel_id, None)

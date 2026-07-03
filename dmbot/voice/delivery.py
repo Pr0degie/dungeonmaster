@@ -29,6 +29,7 @@ import discord
 from ..tts.textsplit import has_speakable_content, split_completed
 from ..tts.wavio import concat_wavs
 from ..shutdown import to_daemon_thread
+from ..discord_ui.clock import ClockView
 from ..discord_ui.flag import FlagView
 from ..discord_ui.scene import SceneChangeView
 from ..rag.adventure import Scene
@@ -51,6 +52,18 @@ def erledigt_verdict(req, *, valid: set[str], already: set[str], seen: set[str])
     :meth:`DeliveryPipeline._handle_erledigt` and the replay harness (dm-eval, ADR 046)."""
     eid = req.element_id
     if not req.parsed or eid not in valid or eid in seen or eid in already:
+        return "rejected"
+    return "ok"
+
+
+def uhr_verdict(req, *, known: set[str], full: set[str], seen: set[str]) -> str:
+    """Pure accept/reject rule for one ``<<UHR>>`` request (ADR 047): unparseable markers,
+    unknown clock ids, duplicates within the turn (the hard +1-per-clock-per-turn clamp) and
+    already-full clocks are ``"rejected"``, everything else ``"ok"``. Shared by
+    :meth:`DeliveryPipeline._handle_uhr` and the replay harness (dm-eval, ADR 046).
+    Ids in the sets are lowercase; the request id is lowered here to match ``find_clock``."""
+    cid = req.clock_id.strip().lower()
+    if not req.parsed or cid not in known or cid in seen or cid in full:
         return "rejected"
     return "ok"
 
@@ -306,6 +319,82 @@ class DeliveryPipeline:
             )
         return _confirm
 
+    async def _handle_uhr(self, channel) -> None:
+        """Apply the DM turn's ``<<UHR id>>`` clock-tick requests (ADR 047): validate each id
+        against ``WorldState.clocks`` and either post a ClockView confirm button per tick
+        (``DM_FLAG_CONFIRM=1``, default — one knob for flags AND ticks) or apply immediately.
+        The tick is deterministic (golden rule #3): the model never writes clock state, it only
+        *requests* the tick. Hard clamp: max +1 per clock per turn — duplicates, unknown ids and
+        already-full clocks are rejected + logged, never applied (and never guessed).
+
+        Unlike the scene/flag handlers this needs no adventure — clocks live in the world state.
+        The brain drain is getattr-guarded so a stub brain without ``take_pending_uhr``
+        (tests/test_delivery.py) keeps working."""
+        take = getattr(self._rt._brain, "take_pending_uhr", None)
+        if take is None:
+            return
+        cid = self._rt._brain_channel(channel)
+        reqs = take(cid)
+        if not reqs:
+            return
+        state = self._rt._state.get(cid)
+        if state is None:
+            return
+        known = {c.id.lower() for c in state.clocks}
+        full = {c.id.lower() for c in state.clocks if c.full}
+        seen_this_turn: set[str] = set()
+        applied_any = False
+        verdicts: list[dict] = []
+        for req in reqs:
+            key = req.clock_id.strip().lower()
+            if uhr_verdict(req, known=known, full=full, seen=seen_this_turn) == "rejected":
+                verdicts.append({"id": key or req.raw, "verdict": "rejected"})
+                log.info("🚫 UHR '%s' abgelehnt (unbekannt/voll/Duplikat)", key or req.raw)
+                continue
+            seen_this_turn.add(key)  # the +1-per-clock-per-turn clamp (ADR 047 #2)
+            clock = state.find_clock(key)
+            if self._rt._flag_confirm:
+                verdicts.append({"id": key, "verdict": "proposed"})
+                log.info("⏱ Tick vorgeschlagen: %s (%d/%d)", clock.name, clock.filled, clock.size)
+                await channel.send(
+                    f"⏱ Tick vorgeschlagen: **{clock.name}** (`{clock.id}`) "
+                    f"{clock.filled}/{clock.size} → {clock.filled + 1}/{clock.size}. Ticken?",
+                    view=ClockView(clock.id, clock.name, self._make_uhr_confirm(channel, clock.id)),
+                )
+            else:
+                ticked = self._rt._tick_clock(channel, key)
+                if ticked is None:  # state raced away between validation and tick — log, move on
+                    verdicts.append({"id": key, "verdict": "rejected"})
+                    continue
+                applied_any = True
+                verdicts.append({"id": key, "verdict": "applied"})
+                log.info("⏱ Tick (auto): %s → %d/%d", ticked.name, ticked.filled, ticked.size)
+        self._replay_note(channel, "uhr_verdicts", verdicts)
+        if applied_any:
+            self._rt._persist_and_refresh(channel)
+            await self._rt.update_clock_panel()
+
+    def _make_uhr_confirm(self, channel, clock_id: str):
+        """Build the confirm callback for a proposed tick: on click, perform the same
+        deterministic advance ``!uhr tick`` does (``_tick_clock`` + persist + prompt refresh +
+        panel update) and edit the proposal message. A click after the clock filled or was
+        removed degrades cleanly (the id no longer validates)."""
+        async def _confirm(interaction: discord.Interaction) -> None:
+            clock = self._rt._tick_clock(channel, clock_id)
+            if clock is None:  # removed or already full since the proposal
+                await interaction.edit_original_response(
+                    content="Nicht mehr aktuell — die Uhr ist voll oder wurde entfernt."
+                )
+                return
+            self._rt._persist_and_refresh(channel)
+            await self._rt.update_clock_panel()
+            log.info("⏱ Tick: %s → %d/%d [bestätigt]", clock.name, clock.filled, clock.size)
+            suffix = " — **VOLL**" if clock.full else ""
+            await interaction.edit_original_response(
+                content=f"⏱ **{clock.name}** (`{clock.id}`) → {clock.filled}/{clock.size}{suffix}"
+            )
+        return _confirm
+
     async def _deliver_answer(self, channel, guild_id: int | None, answer: str,
                               timing: _TurnTiming) -> None:
         """Batch delivery: log, post (5xx-resilient), then speak and post the dice button
@@ -344,6 +433,7 @@ class DeliveryPipeline:
         dice_task = asyncio.create_task(self._rt.handle_dice(channel))
         scene_task = asyncio.create_task(self._handle_scene(channel))  # ADR 026: propose a scene move
         flag_task = asyncio.create_task(self._handle_erledigt(channel))  # ADR 043: element flags
+        uhr_task = asyncio.create_task(self._handle_uhr(channel))  # ADR 047: clock ticks
         # dice_task/scene_task must ALWAYS be awaited — even if _speak raises a bridge-side error.
         # Otherwise the dice button is never posted and the orphaned tasks log "Task exception was
         # never retrieved". The finally awaits them (logging, not dropping, their own exceptions) and
@@ -356,7 +446,7 @@ class DeliveryPipeline:
         finally:
             # The dice button must land before the mic button re-anchors at the bottom; likewise the
             # scene-change proposal. await_dice_scene awaits all and logs (never drops) their errors.
-            await self._await_dice_scene(dice_task, scene_task, flag_task)
+            await self._await_dice_scene(dice_task, scene_task, flag_task, uhr_task)
         await self._post_deliver(channel, answer, timing,
                                  saved_user_msg=saved_user_msg, redo=timing.kind == "redo")
 
@@ -381,13 +471,15 @@ class DeliveryPipeline:
     @staticmethod
     async def _await_dice_scene(dice_task: asyncio.Task | None,
                                 scene_task: asyncio.Task | None,
-                                flag_task: asyncio.Task | None = None) -> None:
-        """Await the concurrent dice-button, scene-proposal and element-flag tasks, retrieving (and
-        logging, never dropping) any exception each raised. Used by both delivery paths so a failing
-        task can't leave a 'Task exception was never retrieved' warning. Order matters: dice first,
-        then scene, then flags, so all land before the mic button re-anchors at the bottom."""
+                                flag_task: asyncio.Task | None = None,
+                                uhr_task: asyncio.Task | None = None) -> None:
+        """Await the concurrent dice-button, scene-proposal, element-flag and clock-tick tasks,
+        retrieving (and logging, never dropping) any exception each raised. Used by both delivery
+        paths so a failing task can't leave a 'Task exception was never retrieved' warning. Order
+        matters: dice first, then scene, then flags, then clock ticks, so all land before the mic
+        button re-anchors at the bottom."""
         for task, what in ((dice_task, "dice button"), (scene_task, "scene proposal"),
-                           (flag_task, "flag proposal")):
+                           (flag_task, "flag proposal"), (uhr_task, "clock tick")):
             if task is None:
                 continue
             try:
@@ -528,6 +620,7 @@ class DeliveryPipeline:
         dice_task: asyncio.Task | None = None
         scene_task: asyncio.Task | None = None
         flag_task: asyncio.Task | None = None
+        uhr_task: asyncio.Task | None = None
         saved_user_msg: str | None = None
         try:
             try:
@@ -554,6 +647,7 @@ class DeliveryPipeline:
                 dice_task = asyncio.create_task(self._rt.handle_dice(channel))
                 scene_task = asyncio.create_task(self._handle_scene(channel))  # ADR 026
                 flag_task = asyncio.create_task(self._handle_erledigt(channel))  # ADR 043
+                uhr_task = asyncio.create_task(self._handle_uhr(channel))  # ADR 047
             # gather() re-raises the FIRST worker exception WITHOUT cancelling its siblings — so if
             # play_worker dies on a mid-stream bridge 5xx, synth_worker would hang forever on the
             # bounded wav_q.put and leak its temp WAV. Log a worker failure here; the finally then
@@ -586,7 +680,7 @@ class DeliveryPipeline:
         if holder["answer"] is not None:
             timing.end = time.monotonic()  # last /speak returned
             timing.log_line()
-            await self._await_dice_scene(dice_task, scene_task, flag_task)
+            await self._await_dice_scene(dice_task, scene_task, flag_task, uhr_task)
             await self._post_deliver(channel, holder["answer"], timing,
                                      saved_user_msg=saved_user_msg, redo=redo)
         return holder["answer"]

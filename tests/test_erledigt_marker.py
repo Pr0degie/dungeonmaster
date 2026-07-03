@@ -62,7 +62,7 @@ def test_multiple_erledigt_all_collected_in_order() -> None:
 
 def test_finalize_answer_returns_erledigt_requests() -> None:
     raw = "Ihr habt den Schmuggel aufgedeckt. <<ERLEDIGT geh-1>>"
-    answer, tests, manifests, scenes, erledigt = finalize_answer(raw, LABELS, None)
+    answer, tests, manifests, scenes, erledigt, _uhr = finalize_answer(raw, LABELS, None)
     assert "<<" not in answer
     assert tests == [] and manifests == [] and scenes == []
     assert len(erledigt) == 1 and erledigt[0].element_id == "geh-1"
@@ -90,5 +90,5 @@ def test_erledigt_marker_split_across_a_chunk_boundary_is_extracted_not_spoken()
 def test_stream_and_batch_parity_for_erledigt_text() -> None:
     deltas = ["Die Kiste ist offen. <<ERLEDIGT opp-2>>", " Ihr seht die Wahrheit."]
     _, res = _run(deltas)
-    expected, _t, _m, _s, _e = finalize_answer("".join(deltas), LABELS, None)
+    expected, _t, _m, _s, _e, _u = finalize_answer("".join(deltas), LABELS, None)
     assert res.answer == expected

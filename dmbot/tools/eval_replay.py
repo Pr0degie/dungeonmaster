@@ -27,9 +27,9 @@ from ..memory.state import WorldState
 from ..orchestrator import DMBrain
 from ..rag.adventure import Adventure
 from ..rules import profile as profile_mod
-from ..rules.marker import ErledigtRequest
+from ..rules.marker import ClockTickRequest, ErledigtRequest
 from ..rules.profile import ProfileError
-from ..voice.delivery import erledigt_verdict
+from ..voice.delivery import erledigt_verdict, uhr_verdict
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +42,8 @@ _CID = 1
 _LABEL_WIDTH = 10
 
 # The marker categories a turn records/queues, in report order (mirrors _markers_dict).
-_MARKER_KEYS = ("tests", "manifests", "scenes", "erledigt")
+# "uhr" (ADR 047) defaults to [] on both sides for pre-047 goldens — they keep replaying green.
+_MARKER_KEYS = ("tests", "manifests", "scenes", "erledigt", "uhr")
 
 
 class TranscriptError(Exception):
@@ -262,6 +263,37 @@ def _replay_state_verdicts(
         _compare(result, turn_no, "state", soll, actual)
 
 
+def _replay_uhr_verdicts(
+    result: FileResult, turn_no: int, turn: dict, *, replayed_markers: dict,
+) -> None:
+    """Re-run the clock-tick validation (ADR 047) against the recorded ``state_before`` and
+    compare the verdicts. Needs no adventure — clocks live in the world state."""
+    uhr_verdicts = turn.get("uhr_verdicts")
+    if uhr_verdicts is None:
+        return
+    state_before = turn.get("state_before")
+    if state_before is None:
+        result.notes.append(f"Turn {turn_no}: uhr-Vergleich übersprungen (kein state_before)")
+        return
+    state = WorldState.from_dict(state_before)
+    known = {c.id.lower() for c in state.clocks}
+    full = {c.id.lower() for c in state.clocks if c.full}
+    seen: set[str] = set()
+    actual: list[dict] = []
+    for d in replayed_markers.get("uhr") or []:
+        req = ClockTickRequest(**d)
+        verdict = uhr_verdict(req, known=known, full=full, seen=seen)
+        if verdict == "ok":
+            seen.add(req.clock_id.strip().lower())
+        actual.append({"id": req.clock_id.strip().lower() or req.raw, "verdict": verdict})
+    # "proposed"/"applied" both mean: passed validation (same DM_FLAG_CONFIRM reasoning as flags).
+    soll = [
+        {"id": v.get("id"), "verdict": "rejected" if v.get("verdict") == "rejected" else "ok"}
+        for v in uhr_verdicts
+    ]
+    _compare(result, turn_no, "state", soll, actual)
+
+
 async def _replay_turn(
     result: FileResult, turn_no: int, turn: dict, *,
     brain: DMBrain, client: PlaybackClient, profile, adventure: Adventure | None, scene_mode: str,
@@ -283,6 +315,8 @@ async def _replay_turn(
                 brain.add_player_line(_CID, str(name), str(text))
             for line in turn.get("results") or []:
                 brain.add_test_result(_CID, str(line))
+            for note in turn.get("notes") or []:  # GM notes, e.g. a full-clock directive (ADR 047)
+                brain.add_gm_note(_CID, str(note))
             answer = await brain.respond(_CID)
     except PlaybackExhausted as exc:
         result.deviations.append(Deviation(
@@ -308,6 +342,7 @@ async def _replay_turn(
         "manifests": [asdict(r) for r in brain.take_pending_manifests(_CID)],
         "scenes": [asdict(r) for r in brain.take_pending_scenes(_CID)],
         "erledigt": [asdict(r) for r in brain.take_pending_erledigt(_CID)],
+        "uhr": [asdict(r) for r in brain.take_pending_uhr(_CID)],
     }
     recorded_markers = turn.get("markers")
     if recorded_markers is None:
@@ -334,6 +369,7 @@ async def _replay_turn(
         result, turn_no, turn,
         adventure=adventure, scene_mode=scene_mode, replayed_markers=replayed_markers,
     )
+    _replay_uhr_verdicts(result, turn_no, turn, replayed_markers=replayed_markers)
 
     if client.unused:
         result.deviations.append(Deviation(

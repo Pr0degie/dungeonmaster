@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -203,6 +204,58 @@ def step_attitude(npc: Combatant, proposed: str) -> str:
     return npc.attitude
 
 
+# Allowed clock sizes (ADR 047) — the Blades-style small/medium/long fuse. Enforced at creation
+# (`!uhr neu`); from_dict stays tolerant so a hand-edited state.json degrades instead of crashing.
+CLOCK_SIZES = (4, 6, 8)
+
+
+@dataclass
+class Clock:
+    """One consequence/progress clock (ADR 047) — code-owned like every hard fact (golden rule
+    #3): the LLM only *requests* a tick via ``<<UHR id>>``, code validates and applies. ``visible``
+    is schema-ready for hidden GM clocks; the UI deliberately ignores it for now (ADR 047 #4)."""
+
+    id: str
+    name: str
+    size: int = 6
+    filled: int = 0
+    visible: bool = True
+
+    @property
+    def full(self) -> bool:
+        return self.filled >= self.size
+
+    def to_dict(self) -> dict:
+        d: dict = {"id": self.id, "name": self.name, "size": self.size, "filled": self.filled}
+        if not self.visible:
+            d["visible"] = False
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Clock":
+        size = int(d.get("size", 6) or 6)
+        if size < 1:  # tolerate a hand-edited file; creation enforces CLOCK_SIZES
+            size = 6
+        return cls(
+            id=str(d.get("id", "") or ""),
+            name=str(d.get("name", "") or ""),
+            size=size,
+            filled=min(size, max(0, int(d.get("filled", 0) or 0))),
+            visible=bool(d.get("visible", True)),
+        )
+
+
+def slugify_clock_id(name: str) -> str:
+    """A stable, marker-safe id from a clock name: lowercase, DE transliteration, non-alnum → ``-``.
+    Never starts/ends with a separator (the glued-marker strip would peel a trailing ``-``/``_``,
+    ADR 043's binding). Empty input degrades to ``uhr``."""
+    text = name.strip().lower()
+    for src, dst in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):
+        text = text.replace(src, dst)
+    text = re.sub(r"[^a-z0-9]+", "-", text).strip("-")
+    return text or "uhr"
+
+
 @dataclass
 class Quest:
     title: str
@@ -235,6 +288,9 @@ class WorldState:
     # revealed Geheimnisse). Code-owned like scene_id (golden rule #3) — the LLM only *requests*
     # a flag via <<ERLEDIGT>>; validation lives in the runtime, this is dumb storage.
     scene_flags: dict[str, list[str]] = field(default_factory=dict)
+    # Consequence clocks (ADR 047): code-owned pressure meters. The LLM only *requests* a tick
+    # via <<UHR id>>; validation + the per-turn clamp live in the delivery pipeline.
+    clocks: list[Clock] = field(default_factory=list)
 
     # -- (de)serialisation ----------------------------------------------------------------
 
@@ -252,6 +308,8 @@ class WorldState:
         }
         if self.scene_flags:  # omit-when-empty, like the Combatant extras
             d["scene_flags"] = {k: list(v) for k, v in self.scene_flags.items() if v}
+        if self.clocks:  # omit-when-empty (ADR 047) — an old state.json shape stays untouched
+            d["clocks"] = [c.to_dict() for c in self.clocks]
         return d
 
     @classmethod
@@ -270,6 +328,7 @@ class WorldState:
                 str(k): [str(x) for x in (v or [])]
                 for k, v in (d.get("scene_flags") or {}).items()
             },
+            clocks=[Clock.from_dict(c) for c in d.get("clocks", []) or []],
         )
 
     @classmethod
@@ -350,6 +409,53 @@ class WorldState:
         if not flags:
             self.scene_flags.pop(scene_id, None)
         return True
+
+    # -- consequence clocks (ADR 047) --------------------------------------------------------
+
+    def find_clock(self, clock_id: str | None) -> Clock | None:
+        """Find a clock by id, case-insensitively (ids are lowercase slugs; a hand-edited
+        state.json may differ in case — tolerate it like ``find`` does for names)."""
+        if not clock_id:
+            return None
+        key = clock_id.strip().lower()
+        return next((c for c in self.clocks if c.id.lower() == key), None)
+
+    def add_clock(self, name: str, size: int) -> Clock:
+        """Create a clock with a slug id derived from ``name`` (deduped with a numeric suffix).
+        ``size`` is the caller's job to validate against :data:`CLOCK_SIZES` (the command does)."""
+        base = slugify_clock_id(name)
+        cid, n = base, 1
+        while self.find_clock(cid) is not None:
+            n += 1
+            cid = f"{base}-{n}"
+        clock = Clock(id=cid, name=name.strip(), size=size)
+        self.clocks.append(clock)
+        return clock
+
+    def remove_clock(self, clock_id: str) -> Clock | None:
+        """Remove a clock by id; returns it, or ``None`` if unknown."""
+        clock = self.find_clock(clock_id)
+        if clock is not None:
+            self.clocks.remove(clock)
+        return clock
+
+    def tick_clock(self, clock_id: str) -> Clock | None:
+        """Advance a clock one segment (never past ``size``). Returns the clock, or ``None``
+        for an unknown id **or an already-full clock** — a full clock's consequence is due,
+        not tickable. The caller decides what a fresh fill triggers (the GM-note injection)."""
+        clock = self.find_clock(clock_id)
+        if clock is None or clock.full:
+            return None
+        clock.filled += 1
+        return clock
+
+    def untick_clock(self, clock_id: str) -> Clock | None:
+        """Take one segment back (never below 0). Returns the clock, or ``None`` if unknown."""
+        clock = self.find_clock(clock_id)
+        if clock is None:
+            return None
+        clock.filled = max(0, clock.filled - 1)
+        return clock
 
     # -- deterministic advancement (golden rule #3) ---------------------------------------
 
@@ -502,6 +608,41 @@ def _combatant_line_de(c: Combatant) -> str:
     return head + suffix
 
 
+def clock_segments(clock: Clock) -> str:
+    """'◉◉◉○○○' — the filled/empty segment string for panel + command replies (ADR 047)."""
+    return "◉" * min(clock.filled, clock.size) + "○" * max(0, clock.size - clock.filled)
+
+
+def clock_line_de(clock: Clock) -> str:
+    """'[arbites] Arbites-Ermittlung 3/6' (+ ' — VOLL') — the compact prompt rendering: the id in
+    brackets so the model can cite it in ``<<UHR id>>``, exactly like scene-element ids (ADR 043)."""
+    line = f"[{clock.id}] {clock.name} {clock.filled}/{clock.size}"
+    return f"{line} — VOLL" if clock.full else line
+
+
+def clock_full_note_de(clock: Clock) -> str:
+    """The one-shot ``[Regie]`` directive queued when a clock fills (ADR 047). The clock name is
+    wrapped in „…“ — ``discard_gm_notes(containing='„<name>“')`` relies on exactly this framing
+    to retract the note when ``!uhr zurück`` undoes an accidental fill."""
+    return (
+        f"Die Uhr „{clock.name}“ ist voll — die angekündigte Konsequenz tritt JETZT ein. "
+        "Erzähle sie in deinem nächsten Beitrag als Ereignis in der Szene."
+    )
+
+
+def clocks_panel_de(clocks: list[Clock]) -> str:
+    """The Discord clock panel body (ADR 047): one line per clock, filled/empty segments.
+    Visible-to-all first cut — ``visible`` is deliberately ignored here (ADR 047 #4)."""
+    lines = ["⏱ **Uhren**"]
+    for c in clocks:
+        head = "⌛" if c.full else "⏱"
+        line = f"{head} {clock_segments(c)} **{c.name}** (`{c.id}`) {c.filled}/{c.size}"
+        if c.full:
+            line += " — **VOLL**"
+        lines.append(line)
+    return "\n".join(lines)
+
+
 def world_state_summary_de(state: WorldState) -> str:
     """A compact, *structured* German block for the prompt (docs/conventions.md: 'state as structured data,
     don't boil it into prose'). Only non-empty sections appear. Empty state → ''."""
@@ -518,6 +659,8 @@ def world_state_summary_de(state: WorldState) -> str:
     open_quests = [q.title for q in state.quests if q.status == "open"]
     if open_quests:
         lines.append("Offene Aufträge: " + "; ".join(open_quests))
+    if state.clocks:  # ADR 047 — visible-to-all first cut: every clock rides in the prompt
+        lines.append("Uhren (Druck/Fortschritt): " + "; ".join(clock_line_de(c) for c in state.clocks))
     if not lines:
         return ""
     return "## Weltzustand (harte Fakten — verlass dich darauf, erfinde keine abweichenden Werte)\n" + "\n".join(lines)

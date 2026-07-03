@@ -29,6 +29,7 @@ from .voice.dicecog import DiceCog
 from .voice.dmcog import DMCog
 from .voice.scenecog import SceneCog
 from .voice.lorecog import LoreCog
+from .voice.clockcog import ClockCog
 
 log = logging.getLogger("dmbot")
 
@@ -74,6 +75,7 @@ class DMBot(commands.Bot):
         await self.add_cog(DMCog(self, runtime))
         await self.add_cog(SceneCog(self, runtime))
         await self.add_cog(LoreCog(self, runtime))
+        await self.add_cog(ClockCog(self, runtime))  # consequence clocks (ADR 047)
 
     async def on_ready(self) -> None:
         log.info("logged in as %s (id=%s)", self.user, self.user and self.user.id)

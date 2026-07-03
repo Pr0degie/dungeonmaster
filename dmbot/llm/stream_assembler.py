@@ -21,6 +21,7 @@ from .sanitize import (
     _trim_to_last_sentence,
 )
 from ..rules.marker import (
+    ClockTickRequest,
     ErledigtRequest,
     ManifestRequest,
     SceneRequest,
@@ -30,6 +31,7 @@ from ..rules.marker import (
     extract_manifests,
     extract_scenes,
     extract_tests,
+    extract_uhr,
 )
 from ..rules.profile import SystemProfile
 from ..tts.textsplit import split_completed
@@ -39,13 +41,16 @@ log = logging.getLogger(__name__)
 
 def finalize_answer(
     raw: str, labels: list[str], profile: SystemProfile | None
-) -> tuple[str, list[TestRequest], list[ManifestRequest], list[SceneRequest], list[ErledigtRequest]]:
+) -> tuple[
+    str, list[TestRequest], list[ManifestRequest], list[SceneRequest],
+    list[ErledigtRequest], list[ClockTickRequest],
+]:
     """The full non-streaming post-processing of a raw LLM answer → (clean spoken answer, parsed
     dice tests, parsed psychic Manifest requests, parsed scene-transition requests, parsed
-    scene-element flag requests). The single source of truth shared by the batch path
-    (:meth:`DMBrain._generate`) and the streaming assembler's :meth:`StreamAssembler.finish` — so
-    the two can never drift and the stored history is identical for the same raw text (the parity
-    guarantee, ADR 017)."""
+    scene-element flag requests, parsed clock-tick requests). The single source of truth shared by
+    the batch path (:meth:`DMBrain._generate`) and the streaming assembler's
+    :meth:`StreamAssembler.finish` — so the two can never drift and the stored history is identical
+    for the same raw text (the parity guarantee, ADR 017)."""
     answer = _sanitize(_cut_at_labels(raw, labels)) or _sanitize(raw)
     answer = _strip_leading_label(answer, labels)  # kill a leaked leading "Name:"/"DM:" label
     tests: list[TestRequest] = []
@@ -55,7 +60,8 @@ def finalize_answer(
         answer, manifests = extract_manifests(answer, profile)  # strip <<MANIFEST …>> markers (ADR 022)
     answer, scenes = extract_scenes(answer)  # strip <<ORT …>> scene markers (ADR 026); profile-free
     answer, erledigt = extract_erledigt(answer)  # strip <<ERLEDIGT …>> flag markers (ADR 043); profile-free
-    return _trim_to_last_sentence(answer), tests, manifests, scenes, erledigt
+    answer, uhr = extract_uhr(answer)  # strip <<UHR …>> clock-tick markers (ADR 047); profile-free
+    return _trim_to_last_sentence(answer), tests, manifests, scenes, erledigt, uhr
 
 
 # --- Streaming assembler (ADR 017) --------------------------------------------------------------
@@ -85,6 +91,7 @@ class StreamResult:
     manifests: list[ManifestRequest]
     scenes: list[SceneRequest]
     erledigt: list[ErledigtRequest]
+    uhr: list[ClockTickRequest]
 
 
 class StreamAssembler:
@@ -151,6 +158,7 @@ class StreamAssembler:
                 text, _ = extract_manifests(text, self._profile)  # strip complete <<MANIFEST …>> markers
             text, _ = extract_scenes(text)  # strip complete <<ORT …>> markers (never spoken, ADR 026)
             text, _ = extract_erledigt(text)  # strip complete <<ERLEDIGT …>> markers (ADR 043)
+            text, _ = extract_uhr(text)  # strip complete <<UHR …>> markers (ADR 047)
         text = _sanitize_leading(text)
         text = _strip_leading_label(text, self._labels)
         if not self._released:
@@ -163,7 +171,7 @@ class StreamAssembler:
     def finish(self) -> StreamResult:
         """Stream ended (or aborted): compute the canonical answer + tests and return whatever of
         it hasn't been spoken yet (the held-back tail / final sentence)."""
-        answer, tests, manifests, scenes, erledigt = finalize_answer(self._raw, self._labels, self._profile)
+        answer, tests, manifests, scenes, erledigt, uhr = finalize_answer(self._raw, self._labels, self._profile)
         sentences, tail = split_completed(answer)
         all_sentences = [s for s in (*sentences, tail) if s]
         if all_sentences[: len(self._emitted)] == self._emitted:
@@ -181,5 +189,5 @@ class StreamAssembler:
             remaining = all_sentences
         return StreamResult(
             remaining=remaining, answer=answer, tests=tests, manifests=manifests, scenes=scenes,
-            erledigt=erledigt,
+            erledigt=erledigt, uhr=uhr,
         )

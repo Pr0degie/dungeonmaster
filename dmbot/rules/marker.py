@@ -34,6 +34,7 @@ _MARKER_RE = re.compile(r"<<\s*TEST[\s:]*(.*?)>>", re.IGNORECASE | re.DOTALL)
 _MANIFEST_RE = re.compile(r"<<\s*MANIFEST[\s:]*(.*?)>>", re.IGNORECASE | re.DOTALL)
 _ORT_RE = re.compile(r"<<\s*ORT[\s:]*(.*?)>>", re.IGNORECASE | re.DOTALL)
 _ERLEDIGT_RE = re.compile(r"<<\s*ERLEDIGT[\s:]*(.*?)>>", re.IGNORECASE | re.DOTALL)
+_UHR_RE = re.compile(r"<<\s*UHR[\s:]*(.*?)>>", re.IGNORECASE | re.DOTALL)
 _FUER_RE = re.compile(r"\b(?:für|fuer|for)\b", re.IGNORECASE)
 _MOD_RE = re.compile(r"([+\-−]\s*\d+)")  # ASCII +/- and the unicode minus the LLM may emit
 _PUSH_RE = re.compile(r"\b(?:push|gepusht|pushen)\b", re.IGNORECASE)  # Pushing a Manifest Test
@@ -226,4 +227,32 @@ def extract_erledigt(text: str) -> tuple[str, list[ErledigtRequest]]:
         element_id = re.sub(r"\s{2,}", " ", m.group(1)).strip(" :,-_")
         requests.append(ErledigtRequest(element_id=element_id, raw=m.group(0), parsed=bool(element_id)))
     clean = _clean(_ERLEDIGT_RE.sub("", text))
+    return clean, requests
+
+
+@dataclass(frozen=True, slots=True)
+class ClockTickRequest:
+    """A parsed consequence-clock tick request from a DM turn (ADR 047).
+
+    Grammar: ``<<UHR <clock-id>>>``, e.g. ``<<UHR arbites>>`` — the model *requests* one tick on
+    a clock; code validates the id against ``WorldState.clocks``, clamps to +1 per clock per turn
+    and applies the tick (golden rule #3). Profile-free like :class:`SceneRequest`: clocks belong
+    to the session's world state, so validation happens in the delivery pipeline."""
+
+    clock_id: str
+    raw: str = ""          # the original marker text
+    parsed: bool = True    # False → empty/garbled marker; stripped but ignored
+
+
+def extract_uhr(text: str) -> tuple[str, list[ClockTickRequest]]:
+    """Strip every ``<<UHR …>>`` from ``text`` and return (clean narration, parsed requests).
+
+    Same glue tolerance as ``extract_erledigt`` (``<<UHRarbites>>``, ``<<UHR_alarm>>`` still
+    parse); the trailing strip means a clock id must not end in ``-``/``_`` — the slugified ids
+    (``slugify_clock_id``) never do."""
+    requests: list[ClockTickRequest] = []
+    for m in _UHR_RE.finditer(text):
+        clock_id = re.sub(r"\s{2,}", " ", m.group(1)).strip(" :,-_")
+        requests.append(ClockTickRequest(clock_id=clock_id, raw=m.group(0), parsed=bool(clock_id)))
+    clean = _clean(_UHR_RE.sub("", text))
     return clean, requests
