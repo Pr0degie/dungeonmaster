@@ -89,6 +89,25 @@ danach pasten (→ `/playtest-triage`).
       (🚫-Konsole nennt `opp-1`, nichts im Channel); nach `!erledigt opp-1` geht's.
 - [ ] **(e)** NSC auf 0 Wunden → Karte rendert `(tot)`, übersteht Neustart.
 
+## 6b. Konsistenz-Wächter (D92 / ADR 045) — **neues Gate**
+
+Setup: der tote NSC aus 6(e) reicht. Der Regenerate-Schutz greift nur im **Batch-Pfad** —
+für den Test kurz `!sprechmodus nahtlos` schalten (oder einen Würfel-Folge-Turn nutzen);
+im Default-`stream`-Modus loggt der Wächter nur (Trade-off, ADR 045).
+
+- [ ] Gespräch gezielt auf den Toten lenken („frag <Name>, was er gesehen hat") und ein
+      paar Turns provozieren: lässt der DM ihn sprechen, feuert in der Konsole
+      `[consistency] violated (dead:<Name>) — regenerating once` und die **gelieferte**
+      Antwort lässt ihn nicht mehr sprechen (bloße Erwähnung/Leichenfund ist okay).
+- [ ] Gegen-Check False Positives: normale Turns über den Toten reden (Erinnerungen,
+      „<Name> sagte damals …") → **kein** Regenerate (unnötige `[consistency]`-Zeilen =
+      Latenz-Fresser; dann Muster in `dmbot/llm/consistency.py` schärfen oder
+      `DM_CONSISTENCY_GUARD=0`).
+- [ ] Optional (szenenfremder NSC): einen registrierten NSC einer *anderen* Szene ins
+      Gespräch ziehen → gleiche Mechanik (`absent:<Name>`).
+- [ ] Im `stream`-Modus einmal die Log-only-Warnzeile sehen:
+      `[consistency] streamed answer violates … logged only`.
+
 ## 7. NPC-Gedächtnis (D91 / ADR 044) — **das neue Gate**
 
 - [ ] Einem NSC etwas Markantes erzählen — ideal: ihn **anlügen** (falsche Identität,
@@ -136,6 +155,6 @@ danach pasten (→ `/playtest-triage`).
 
 1. `logs/transcript.log` + `logs/debug.log` sichern und pasten → `/playtest-triage`.
 2. Ergebnisse in `progress.md` zurückschreiben: erfüllte Gates in `VERIFY EVIDENCE`
-   (Phase 9/10), D87/D91-Punkte im Last-session-Block, Tuning-Werte die geblieben sind
+   (Phase 9/10), D87/D91/D92-Punkte im Last-session-Block, Tuning-Werte die geblieben sind
    in `.env.example`-Kommentare.
 3. Diese Liste ausmisten: Erledigtes raus, Reste bleiben der nächste Run.
