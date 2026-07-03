@@ -835,7 +835,11 @@ when a second system is actually loaded:
 - **Per-marker pipeline grows linearly.** Each new director marker means a bespoke regex + dataclass
   in `marker.py`, a wider `finalize_answer` tuple, and a third/fourth parallel `_pending_*` dict in
   the orchestrator + a `take_pending_*`. One keyed marker structure (`{kind: [...]}`) would collapse
-  the triplication; do it before the next marker, not after.
+  the triplication; do it before the next marker, not after. _Stand D94: NICHT eingelöst — `<<UHR>>`
+  (ADR 047) ist der fünfte Marker auf demselben Muster (`finalize_answer` jetzt 6-Tupel, fünftes
+  `_pending_*`-Dict); der Seam-Preis war erneut rein mechanisch, aber er wächst. Die Konsolidierung
+  ist jetzt ein guter `/improve-architecture`-Kandidat MIT dm-eval als Regressions-Gate (ADR 046
+  existiert inzwischen genau dafür) — vor einem etwaigen sechsten Marker wirklich machen._
 - **RAG corpus catalog is IM-/OCR-specific in code.** `retrieve._SOURCES` (source names + German
   group labels) and `_is_junk_hit` (IM-PDF OCR-noise regexes) live in the retriever. A second ruleset
   needs them in data/profile + ingest-time denoise, not hardcoded.
