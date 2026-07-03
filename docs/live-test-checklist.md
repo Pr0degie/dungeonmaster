@@ -129,6 +129,27 @@ selben `DM_FLAG_CONFIRM`-Knopf wie die Element-Flags (Default: an).
       versehentlichen Voll-Tick → die Regie-Zeile erscheint NICHT.
 - [ ] Neustart-Check (mit §9 kombinierbar): Uhrenstand übersteht Bot-Neustart (`state.json`).
 
+## 6d. Ingame-Zeit & Fristen (D95 / ADR 048) — **neues Gate**
+
+Setup: nichts nötig — Zeit läuft mit und ohne Abenteuer. Confirm-Buttons hängen am selben
+`DM_FLAG_CONFIRM`-Knopf; Szenenwechsel-Kosten via `DM_SCENE_TIME_ADVANCE` (Default 30 min).
+
+- [ ] `!zeit` → `🕐 Tag 1, 08:00 (Morgen)`. `!frist neu "Treffen mit dem Informanten" +2h`
+      → Antwort nennt die id, das **Druck-Panel** zeigt 🕐-Zeitzeile + ⏳-Frist mit Restzeit.
+- [ ] Tagesphase bespielen: per `!zeit tag` oder `!zeit +14h` in den Abend/die Nacht springen
+      → beschreibt der DM die Szene phasengerecht (dunkel, Läden zu, Wirt weg)?
+- [ ] `<<ZEIT>>`-Marker provozieren: etwas Zeitiges tun („wir durchsuchen das Archiv gründlich",
+      „wir rasten") → `🕐 Zeitfortschritt vorgeschlagen`-Button erscheint, die gesprochene
+      Antwort enthält **kein** `<<`; nach Bestätigung zeigen Panel + `!zeit` den neuen Stand.
+- [ ] Szenenwechsel (`!ort` oder bestätigter `<<ORT>>`) schiebt +30 min (Panel/`!zeit`).
+- [ ] Clamp: schlägt der DM absurde Sprünge vor, wendet der Button max. **+12h** an
+      (Konsole: `🕐 ZEIT-Vorschlag … geklemmt`); Duplikate im selben Beitrag → nur EIN Button.
+- [ ] Frist-Ablauf: die Frist per `!zeit +3h` verstreichen lassen → der **nächste** DM-Turn
+      trägt `[Regie] Die Frist „…“ ist verstrichen …` und erzählt die Konsequenz als Ereignis;
+      `!fristen`/Panel zeigen **ABGELAUFEN** (genau EINMAL angemahnt) → danach `!frist weg`.
+- [ ] Neustart-Check (mit §9 kombinierbar): Zeitstand + Fristen (inkl. „schon angemahnt")
+      überstehen den Bot-Neustart (`state.json`).
+
 ## 7. NPC-Gedächtnis (D91 / ADR 044) — **das neue Gate**
 
 - [ ] Einem NSC etwas Markantes erzählen — ideal: ihn **anlügen** (falsche Identität,

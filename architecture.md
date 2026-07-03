@@ -285,7 +285,9 @@ stores:
   "npcs":   [ { "name": "...", "attitude": "hostile", "known_since": "..." } ],
   "quests": [ { "title": "...", "status": "open", "flags": {...} } ],
   "location": "...",
-  "time_ingame": "...",
+  "time_ingame": "Tag 2, 14:30",       // rendered mirror — the counter below is the model (ADR 048)
+  "time_minutes": 2310,                // minutes since day 1, 00:00; code-owned
+  "deadlines": [ { "id": "zug", "label": "Der Zug nach Hive Sibellus", "due_minutes": 3750 } ],
   "clocks": [ { "id": "arbites", "name": "Arbites-Ermittlung", "size": 6, "filled": 3 } ]
 }
 ```
@@ -304,6 +306,19 @@ after the recap and before the history.
 > it for now (deliberate first cut). `<<UHR>>` is exempt from the results-only marker suppression:
 > the post-roll consequence turn is the canonical tick moment.
 
+> **In-game time + deadlines (ADR 048).** Time is one code-owned int: `time_minutes` since
+> day 1, 00:00 (fresh campaigns start day 1, 08:00; pre-048 states migrate there with a log).
+> Everything else is derived rendering (`dmbot/memory/gametime.py`, pure): "Tag 2, 14:30" + a
+> day phase (Morgen 05–11, Tag 11–17, Abend 17–22, Nacht 22–05) the persona plays narratively.
+> The model *requests* an advance via `<<ZEIT +30m>>`/`<<ZEIT +4h>>` (units tolerant; **first
+> valid marker per turn only** — advances aren't idempotent — clamped to **+12h**, confirm
+> button under `DM_FLAG_CONFIRM`); humans are unclamped via `!zeit +6h` / `!zeit tag` (next
+> morning). A real scene move costs `DM_SCENE_TIME_ADVANCE` (default 30 min). **Deadlines** are
+> human-only (`!frist neu "<Label>" <+Dauer>` / `!frist weg` / `!fristen`), render with coarse
+> remaining time in the state summary ("noch ~1 Tag"), and on expiry queue the one-shot
+> `[Regie]` consequence directive (latched `notified` — fires exactly once), staying visible as
+> ABGELAUFEN until removed. Time + deadlines share the clocks' edit-in-place pressure panel.
+
 > **Sheet vs. state — the split (ADR 015).** The schema above is split across two files so the
 > hand-authored source stays pristine while code advances the live state:
 >
@@ -312,7 +327,8 @@ after the recap and before the history.
 >   never rewrites it.
 > - **`data/sessions/<channel>/state.json`** — the **code-owned mutable layer** (`dmbot/memory/state.py`):
 >   current `wounds`/`conditions`/`inventory` per character, the `npcs`, `quests`, `location`,
->   `time_ingame`, and the stored `recap`. **Seeded once** from the sheet on the first `!join`,
+>   `time_minutes`/`time_ingame`/`deadlines` (ADR 048), and the stored `recap`. **Seeded once**
+>   from the sheet on the first `!join`,
 >   then written by code on **every** change (atomic temp + `os.replace`) so an HP change survives
 >   a restart. Reset a session by deleting it. Per-channel and git-ignored (only the `_example`
 >   party is checked in).
@@ -326,7 +342,7 @@ after the recap and before the history.
 >   _Known limitation:_ `_last_turn` isn't restored, so `!redo` is unavailable for the restored last turn.
 >   **Doubles as the replay journal (ADR 046):** the turn records additionally carry the replay
 >   fields (structured `lines`/`results`/`notes`, the raw pre-sanitize LLM text, queued `markers`,
->   the router verdict, `state_before` + scene/flag/clock verdicts) plus a `{"kind": "session"}` header per
+>   the router verdict, `state_before` + scene/flag/clock/time verdicts) plus a `{"kind": "session"}` header per
 >   `!join` — all invisible to the crash restore. Trimmed copies become the golden transcripts
 >   `uv run dm-eval` replays as a refactor regression gate (`tests/golden/`).
 >
