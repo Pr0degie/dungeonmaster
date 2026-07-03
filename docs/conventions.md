@@ -79,8 +79,8 @@ Golden-Transcripts (`tests/golden/*.jsonl` — aufgezeichnete/synthetische Sessi
 erweiterten `history.jsonl`-Journal-Format) werden mit **gemocktem LLM** (Playback der
 aufgezeichneten Roh-Antworten) durch die Pipeline gespielt; verglichen werden pro Turn die
 deterministischen Entscheidungen — Turn-Komposition, Sanitizer-Antwort, geparste Marker,
-Roll-Router-Verdikt, Szenen-/Flag-Verdikte. **Regression, nicht Qualität.** Exit 0 grün /
-1 Abweichung / 2 unbrauchbares Transcript.
+Roll-Router-Verdikt, Szenen-/Flag-/Uhr-/Zeit-Verdikte (ADR 043/047/048). **Regression,
+nicht Qualität.** Exit 0 grün / 1 Abweichung / 2 unbrauchbares Transcript.
 
 - **Wann laufen lassen:** vor dem Merge/Push einer **Refactor-Runde**, die orchestrator /
   llm-Helfer / marker / roll_router / delivery-Verdikte anfasst — zusätzlich zur Suite (die

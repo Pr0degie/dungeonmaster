@@ -2,12 +2,13 @@
 
 Jede `.jsonl`-Datei hier ist eine aufgezeichnete (oder synthetische) Session im erweiterten
 `history.jsonl`-Journal-Format: ein `{"kind": "session", …}`-Header, danach pro DM-Turn ein
-Record mit den Replay-Feldern (`lines`/`results`/`raw`/`markers`/`router`/`state_before`/
-`scene_verdict`/`flag_verdicts`). `dm-eval` spielt die Turns mit **gemocktem LLM** (Playback
+Record mit den Replay-Feldern (`lines`/`results`/`notes`/`raw`/`markers`/`router`/
+`state_before`/`scene_verdict`/`flag_verdicts`/`uhr_verdicts`/`zeit_verdicts` — die letzten
+drei seit ADR 047/048). `dm-eval` spielt die Turns mit **gemocktem LLM** (Playback
 der `raw`-Antworten) durch die heutige Pipeline und difft Ist gegen Soll — Kategorien `turn`
 (Turn-Komposition), `answer` (Sanitizer), `marker` (Marker-Parsing + Suppression), `router`
-(Roll-Router-Entscheidung), `state` (Szenen-/Flag-Verdikte), `llm` (Call-Buchhaltung).
-**Regression, nicht Qualität** — Details in ADR 046.
+(Roll-Router-Entscheidung), `state` (Szenen-/Flag-/Uhr-/Zeit-Verdikte), `llm`
+(Call-Buchhaltung). **Regression, nicht Qualität** — Details in ADR 046.
 
 ## Bestand
 
