@@ -45,6 +45,24 @@ def test_load_missing_file_is_empty(tmp_path):
     assert history.load_recent(tmp_path / "nope.jsonl", 5) == []
 
 
+def test_replay_journal_records_are_invisible_to_the_crash_restore(tmp_path):
+    """ADR 046 backward compatibility: typed events (session header) and turn extras (raw,
+    markers, …) must not change what load_recent returns — the D41 restore contract holds."""
+    p = tmp_path / "history.jsonl"
+    history.append_event(p, {"kind": "session", "ts": "t0", "profile": "im"})
+    history.append_turn(
+        p, ts="t1", user_msg="Timo: a", answer="A1",
+        extra={"raw": "A1 <<TEST X>>", "lines": [["Timo", "a"]], "markers": {"tests": []}},
+    )
+    assert history.load_recent(p, 10) == [("Timo: a", "A1")]
+
+
+def test_append_turn_core_keys_win_over_extra(tmp_path):
+    p = tmp_path / "history.jsonl"
+    history.append_turn(p, ts="t1", user_msg="u", answer="a", extra={"answer": "gefälscht"})
+    assert history.load_recent(p, 10) == [("u", "a")]
+
+
 def test_rotate_renames_and_keeps_the_record(tmp_path):
     p = tmp_path / "history.jsonl"
     history.append_turn(p, ts="t1", user_msg="u1", answer="a1")

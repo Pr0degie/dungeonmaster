@@ -44,6 +44,17 @@ log = logging.getLogger(__name__)
 _INTRO_SENTENCE_PAUSE_S = 0.2
 
 
+def erledigt_verdict(req, *, valid: set[str], already: set[str], seen: set[str]) -> str:
+    """Pure accept/reject rule for one ``<<ERLEDIGT>>`` request (ADR 043): unparseable markers,
+    ids foreign to the current scene, duplicates within the turn and already-resolved elements
+    are ``"rejected"``, everything else ``"ok"``. The single source of truth shared by
+    :meth:`DeliveryPipeline._handle_erledigt` and the replay harness (dm-eval, ADR 046)."""
+    eid = req.element_id
+    if not req.parsed or eid not in valid or eid in seen or eid in already:
+        return "rejected"
+    return "ok"
+
+
 class DeliveryPipeline:
     """The answer->audio delivery pipeline (ADR 035). Owns TTS synth/speak, the batch + streaming
     delivery paths, the seamless (`nahtlos`) one-track speak, the `<<ORT>>` scene-marker drain, the
@@ -148,6 +159,21 @@ class DeliveryPipeline:
         text-only run has nothing to stream audio for, so it takes the byte-identical batch path."""
         return self._rt._streaming and self._rt._tts_enabled
 
+    def _replay_note(self, channel, key: str, value) -> None:
+        """Best-effort replay-journal note (ADR 046): a stub runtime without the recording
+        surface (tests) is a silent no-op — recording must never break a turn."""
+        note = getattr(self._rt, "replay_note", None)
+        if note is not None:
+            note(channel, key, value)
+
+    def _note_state_before(self, channel) -> None:
+        """Replay journal (ADR 046): snapshot the world state the marker handlers are about to
+        validate against — dm-eval re-runs the scene/flag verdicts on exactly this state."""
+        states = getattr(self._rt, "_state", None)
+        state = states.get(self._rt._brain_channel(channel)) if states else None
+        if state is not None:
+            self._replay_note(channel, "state_before", state.to_dict())
+
     async def _handle_scene(self, channel) -> None:
         """Apply the DM turn's ``<<ORT id>>`` scene marker (auto scene transition, ADR 026): validate
         the target against the adventure and — if it survives — post a confirm button. The move is
@@ -168,6 +194,10 @@ class DeliveryPipeline:
             state.scene_id, req.scene_id, self._rt._scene_mode,
             resolved_ids=state.resolved_ids(state.scene_id),  # gated exits, ADR 043
         )
+        self._replay_note(channel, "scene_verdict", {
+            "requested": req.scene_id, "accepted": target is not None,
+            "mode": self._rt._scene_mode,
+        })
         if target is None:  # no-op, unknown id, not a leads_to neighbour, or a locked gate
             log.info("🚫 Auto-Szenenwechsel '%s' abgelehnt (Modus '%s', aktuelle Szene '%s')",
                      req.scene_id, self._rt._scene_mode, state.scene_id)
@@ -228,14 +258,17 @@ class DeliveryPipeline:
         already = set(state.resolved_ids(scene.id))
         seen_this_turn: set[str] = set()
         applied_any = False
+        verdicts: list[dict] = []
         for req in reqs:
             eid = req.element_id
-            if not req.parsed or eid not in valid or eid in seen_this_turn or eid in already:
+            if erledigt_verdict(req, valid=valid, already=already, seen=seen_this_turn) == "rejected":
+                verdicts.append({"id": eid or req.raw, "verdict": "rejected"})
                 log.info("🚫 ERLEDIGT '%s' abgelehnt (Szene '%s')", eid or req.raw, scene.id)
                 continue
             seen_this_turn.add(eid)
             text = scene.element_text(eid) or eid
             if self._rt._flag_confirm:
+                verdicts.append({"id": eid, "verdict": "proposed"})
                 log.info("✅ Erledigt vorgeschlagen: %s (%s)", eid, scene.id)
                 await channel.send(
                     f"✅ Erledigt vorgeschlagen: **{text}** (`{eid}`). Abhaken?",
@@ -244,7 +277,9 @@ class DeliveryPipeline:
             else:
                 self._rt._set_scene_flag(state, eid, resolved=True)
                 applied_any = True
+                verdicts.append({"id": eid, "verdict": "applied"})
                 log.info("✅ erledigt (auto): %s — %s (Szene '%s')", eid, text, scene.id)
+        self._replay_note(channel, "flag_verdicts", verdicts)
         if applied_any:
             self._rt._persist_and_refresh(channel)
 
@@ -305,6 +340,7 @@ class DeliveryPipeline:
                 )
         else:
             log.info("(inhaltslose Antwort — nichts gepostet/gesprochen; nur ggf. Würfel)")
+        self._note_state_before(channel)  # replay journal (ADR 046): the verdict context
         dice_task = asyncio.create_task(self._rt.handle_dice(channel))
         scene_task = asyncio.create_task(self._handle_scene(channel))  # ADR 026: propose a scene move
         flag_task = asyncio.create_task(self._handle_erledigt(channel))  # ADR 043: element flags
@@ -514,6 +550,7 @@ class DeliveryPipeline:
                 # still posts its dice button below.
                 if has_speakable_content(answer):
                     await self._rt._send_with_retry(channel, answer)
+                self._note_state_before(channel)  # replay journal (ADR 046)
                 dice_task = asyncio.create_task(self._rt.handle_dice(channel))
                 scene_task = asyncio.create_task(self._handle_scene(channel))  # ADR 026
                 flag_task = asyncio.create_task(self._handle_erledigt(channel))  # ADR 043

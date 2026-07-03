@@ -15,6 +15,7 @@ import json
 import logging
 import threading
 from collections.abc import Awaitable, Callable
+from dataclasses import asdict
 
 from .llm.client import OllamaClient
 from .llm.persona import load_system_prompt
@@ -52,6 +53,23 @@ from .llm.intro_guard import INTRO_RETRY_NUDGE
 from .llm.stream_assembler import StreamAssembler, finalize_answer  # noqa: F401
 
 log = logging.getLogger(__name__)
+
+
+def _markers_dict(
+    tests: list[TestRequest], manifests: list[ManifestRequest],
+    scenes: list[SceneRequest], erledigt: list[ErledigtRequest], *, queued: bool,
+) -> dict:
+    """The turn's parsed marker requests as plain dicts for the replay journal (ADR 046).
+    ``queued=False`` (a results-only turn suppressed them) records empty lists — the
+    suppression itself is behaviour the replay must reproduce."""
+    if not queued:
+        return {"tests": [], "manifests": [], "scenes": [], "erledigt": []}
+    return {
+        "tests": [asdict(t) for t in tests],
+        "manifests": [asdict(m) for m in manifests],
+        "scenes": [asdict(s) for s in scenes],
+        "erledigt": [asdict(e) for e in erledigt],
+    }
 
 
 class DMBrain:
@@ -138,6 +156,17 @@ class DMBrain:
         # calls don't overwrite it. The cog reads it right after respond()/redo() for the [latency]
         # line. None until the first turn.
         self.last_llm_stats: dict | None = None
+        # Replay capture (ADR 046): per channel, the structured input of the turn in flight
+        # (player lines + drained dice-result lines, set by _prepare_turn/_prepare_opening) and
+        # the generation side (the kept answer's raw LLM text + the markers it queued). Drained
+        # into the history autosave by take_replay_turn; the eval harness (dm-eval) replays them.
+        self._replay_turn: dict[int, dict] = {}
+        self._replay_gen: dict[int, dict] = {}
+        # The roll router's last classify_test verdict: {"raw": <constrained-JSON text>,
+        # "decision": <TestRequest as dict> | None}. Stateless like the call itself — the dice
+        # cog copies it into the turn's replay notes right after classifying. None until then
+        # (and back to None when a classification fails).
+        self.last_router: dict | None = None
 
     @property
     def max_history_turns(self) -> int:
@@ -185,6 +214,10 @@ class DMBrain:
         # Remember the latest player action for the roll-detection router (ADR 014); None on a
         # results-only turn so the router doesn't re-fire on a stale action after a dice roll.
         self._last_action[channel_id] = lines[-1] if lines else None
+        # Replay capture (ADR 046): the structured turn input, post-cap — what dm-eval re-feeds.
+        self._replay_turn[channel_id] = {
+            "lines": [[n, t] for n, t in lines], "results": list(results),
+        }
 
         # Result lines (engine rolls) lead, then the player lines — both as context for this turn.
         parts = [f"[Würfel] {r}" for r in results]
@@ -337,6 +370,8 @@ class DMBrain:
         labels = list(dict.fromkeys(known + _ROLE_LABELS))
         self._last_turn[channel_id] = (director_msg, labels)
         history = self._history.setdefault(channel_id, [])
+        # Replay capture (ADR 046): an opening turn re-feeds its director_msg, not player lines.
+        self._replay_turn[channel_id] = {"lines": [], "results": [], "opening": True}
         return director_msg, labels, history
 
     async def respond_opening(self, channel_id: int, director_msg: str, num_predict: int | None = None,
@@ -438,6 +473,9 @@ class DMBrain:
         # the raw LLM output BEFORE marker-stripping, so we can see whether the model emitted a
         # <<TEST …>> marker at all (the prime suspect when the dice-marker flow doesn't fire).
         log.info("🪵 LLM roh: %s", raw.replace("\n", " ⏎ "))
+        # Replay capture (ADR 046): the raw text with markers intact. Each call overwrites, so
+        # after an echo-guard/consistency retry the KEPT answer's raw is what the autosave gets.
+        self._replay_gen[channel_id] = {"raw": raw}
         return finalize_answer(raw, labels, self._profile)
 
     @staticmethod
@@ -487,7 +525,8 @@ class DMBrain:
         # Suppress inline <<TEST>>/<<MANIFEST>>/<<ORT>> markers on a results-only (post-roll
         # consequence) turn — a consequence narration must not request a NEW roll or scene move or
         # the loop never ends (seen live); only queue them when this turn answered a player action.
-        if self._last_action.get(channel_id) is not None:
+        queued = self._last_action.get(channel_id) is not None
+        if queued:
             if tests:
                 self._pending_tests.setdefault(channel_id, []).extend(tests)
             if manifests:
@@ -496,6 +535,11 @@ class DMBrain:
                 self._pending_scenes.setdefault(channel_id, []).extend(scenes)
             if erledigt:
                 self._pending_erledigt.setdefault(channel_id, []).extend(erledigt)
+        # Replay capture (ADR 046): what this turn actually queued (empty when suppressed) —
+        # the marker Soll dm-eval compares against.
+        self._replay_gen.setdefault(channel_id, {})["markers"] = _markers_dict(
+            tests, manifests, scenes, erledigt, queued=queued,
+        )
         return answer
 
     async def respond_streaming(
@@ -587,6 +631,9 @@ class DMBrain:
             await agen.aclose()  # closes the httpx stream (the client-side stop)
         self.last_llm_stats = getattr(self._client, "last_stats", None)
         log.info("🪵 LLM roh (stream): %s", assembler.raw.replace("\n", " ⏎ "))
+        # Replay capture (ADR 046) — an echo-guard retry below overwrites this via _chat_once,
+        # so the kept answer's raw wins (batch-path parity).
+        self._replay_gen[channel_id] = {"raw": assembler.raw}
         result = assembler.finish()
         answer, tests, remaining = result.answer, result.tests, list(result.remaining)
         manifests = result.manifests
@@ -625,7 +672,8 @@ class DMBrain:
         # Suppress inline <<TEST>>/<<MANIFEST>>/<<ORT>> markers on a results-only (post-roll
         # consequence) turn — a consequence narration must not request a NEW roll or scene move or
         # the loop never ends (seen live); only queue them when this turn answered a player action.
-        if self._last_action.get(channel_id) is not None:
+        queued = self._last_action.get(channel_id) is not None
+        if queued:
             if tests:
                 self._pending_tests.setdefault(channel_id, []).extend(tests)
             if manifests:
@@ -634,6 +682,9 @@ class DMBrain:
                 self._pending_scenes.setdefault(channel_id, []).extend(scenes)
             if erledigt:
                 self._pending_erledigt.setdefault(channel_id, []).extend(erledigt)
+        self._replay_gen.setdefault(channel_id, {})["markers"] = _markers_dict(
+            tests, manifests, scenes, erledigt, queued=queued,
+        )
         stored = answer
         if errored and stored:
             stored = f"{stored} … [Antwort unterbrochen]"  # noted in history; never spoken
@@ -671,6 +722,17 @@ class DMBrain:
         roll-detection router (ADR 014) classifies this. None on a results-only turn."""
         return self._last_action.get(channel_id)
 
+    def take_replay_turn(self, channel_id: int) -> dict | None:
+        """Return and clear the last turn's replay-journal fields (ADR 046): the structured
+        input (``lines``/``results``/``opening``), the kept answer's ``raw`` LLM text and the
+        ``markers`` it queued. ``None`` when nothing was captured (e.g. a stubbed brain path).
+        The autosave merges this into the turn record; ``load_recent`` ignores the extras."""
+        turn = self._replay_turn.pop(channel_id, None)
+        gen = self._replay_gen.pop(channel_id, None)
+        if turn is None and gen is None:
+            return None
+        return {**(turn or {}), **(gen or {})}
+
     def last_user_msg(self, channel_id: int) -> str | None:
         """The user message of the most recent turn (for history autosave, D41), or None."""
         last = self._last_turn.get(channel_id)
@@ -701,6 +763,7 @@ class DMBrain:
         decides whether ``action`` needs a test and which skill/difficulty — instead of trusting the
         narration model's inline marker. ``skills`` constrains the choice to the acting character's
         sheet. Returns a TestRequest (target_name = ``character``) or None. Never raises."""
+        self.last_router = None  # replay capture (ADR 046): reset; set only on a clean verdict
         if self._profile is None or not action.strip():
             return None
         difficulties = list(self._profile.difficulty_ladder)
@@ -724,7 +787,9 @@ class DMBrain:
         except Exception:
             log.exception("roll-router classification failed")
             return None
-        return to_test_request(data, character=character)
+        req = to_test_request(data, character=character)
+        self.last_router = {"raw": raw, "decision": asdict(req) if req is not None else None}
+        return req
 
     def add_test_result(self, channel_id: int, line: str) -> None:
         """Buffer a rolled test result (a German summary line) to feed the next turn so the DM

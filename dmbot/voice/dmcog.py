@@ -52,11 +52,19 @@ class DMCog(commands.Cog):
             user_msg = self._rt._brain.last_user_msg(cid)
         if user_msg is None:
             return
+        # Replay journal (ADR 046): merge the brain's turn capture (lines/results/raw/markers)
+        # and the runtime notes (state_before, scene/flag verdicts, router) into the record.
+        # getattr-guarded so stubbed brains/runtimes in tests stay valid.
+        take_turn = getattr(self._rt._brain, "take_replay_turn", None)
+        extra = (take_turn(cid) if take_turn is not None else None) or {}
+        take_notes = getattr(self._rt, "take_replay_notes", None)
+        if take_notes is not None:
+            extra.update(take_notes(channel))
         try:
             await asyncio.to_thread(
                 history_store.append_turn, self._rt._history_path(cid),
                 ts=datetime.now().isoformat(timespec="seconds"),
-                user_msg=user_msg, answer=answer, redo=redo,
+                user_msg=user_msg, answer=answer, redo=redo, extra=extra or None,
             )
         except OSError:
             log.exception("could not autosave the turn history for channel %s", cid)

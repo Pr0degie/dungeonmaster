@@ -77,6 +77,13 @@ class DiceCog(commands.Cog):
         # governing characteristic (skill_value falls back to those).
         skills = list(char.skills) + [c for c in char.characteristics if c not in char.skills]
         req = await self._rt._brain.classify_test(action=text, character=char.name, skills=skills)
+        # Replay journal (ADR 046): the router's raw constrained-JSON verdict + parsed decision,
+        # so dm-eval can re-run the classification offline. None (a failed call) records nothing.
+        recorded = getattr(self._rt._brain, "last_router", None)
+        if recorded is not None:
+            self._rt.replay_note(channel, "router", {
+                "action": text, "character": char.name, "skills": skills, **recorded,
+            })
         if req is not None:
             log.info("🎲 router: '%s' → %s (%s)", text[:50], req.skill, req.difficulty or "Standard")
             await self._post_dice_button(channel, req)

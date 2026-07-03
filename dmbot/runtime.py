@@ -161,6 +161,10 @@ class SessionRuntime:
         # data/sessions/<id>/history.jsonl so a crash doesn't lose the evening's thread; restored on
         # !join, rotated on !leave. World state already persists separately (ADR 015).
         self._autosave = config.autosave
+        # Replay-journal notes for the turn in flight (ADR 046): per channel, facts the cogs and
+        # the delivery pipeline record (state_before, scene/flag verdicts, the router verdict);
+        # the autosave drains them into the turn record so dm-eval can replay the session.
+        self._replay_notes: dict[int, dict] = {}
         # Rolling auto-recap / context handoff (D56): when a turn's prompt nears the num_ctx cap (the
         # early signal before Ollama silently truncates the prompt HEAD — the persona + adventure), we
         # compact the running history into a cumulative recap and clear the in-memory history, so the
@@ -741,4 +745,38 @@ class SessionRuntime:
         # NPC memory (ADR 044): don't re-mine restored/pre-join history — extraction starts at
         # the join point (the previous session's tail was covered by its own wrap-up/scene exits).
         self._npc_mem_marks[cid] = self._brain.history_len(cid)
+        # Replay journal header (ADR 046): the session context dm-eval needs to rebuild the
+        # pipeline (profile, adventure, scene mode). One line per !join; load_recent skips it.
+        if self._autosave:
+            profile = getattr(self, "_profile", None)
+            adventure = getattr(self, "_adventure", None)
+            try:
+                history_store.append_event(self._history_path(cid), {
+                    "kind": "session",
+                    "ts": datetime.now().isoformat(timespec="seconds"),
+                    "profile": profile.name if profile else "",
+                    "adventure": adventure.id if adventure else "",
+                    "scene_mode": getattr(self, "_scene_mode", "verbunden"),
+                })
+            except OSError:
+                log.exception("could not write the session header for channel %s", cid)
         return char_fallback
+
+    def replay_note(self, channel, key: str, value) -> None:
+        """Record one replay-journal fact for the turn in flight (ADR 046) — the delivery
+        pipeline notes the pre-marker world state + scene/flag verdicts, the dice cog notes the
+        router verdict. Drained into the turn's autosave record by :meth:`take_replay_notes`.
+        getattr-guarded: recording must never break a turn on a partially-built runtime."""
+        if not getattr(self, "_autosave", False):
+            return
+        notes = getattr(self, "_replay_notes", None)
+        if notes is None:
+            notes = self._replay_notes = {}
+        notes.setdefault(self._brain_channel(channel), {})[key] = value
+
+    def take_replay_notes(self, channel) -> dict:
+        """Return and clear the turn's replay notes (ADR 046) — called by the autosave."""
+        notes = getattr(self, "_replay_notes", None)
+        if not notes:
+            return {}
+        return notes.pop(self._brain_channel(channel), {})

@@ -3,7 +3,8 @@
 ``DMBrain``'s history lives in memory; a crash loses the evening's conversational thread. World
 state already persists separately (ADR 015: ``state.json``, atomic, saved per change). This is the
 **third** session artifact: ``data/sessions/<channel_id>/history.jsonl`` — append-only, one JSON
-line per completed DM turn (``{ts, user_msg, answer, redo}``). It is code-owned like ``state.json``;
+line per completed DM turn (``{ts, user_msg, answer, redo}`` + optional replay fields, ADR 046)
+plus typed journal events (``{"kind": …}``). It is code-owned like ``state.json``;
 ``characters.json`` stays the read-only sheet, so the ADR 015 split is not blurred. Restored on
 ``!join`` (only into an empty history), rotated on ``!leave``.
 
@@ -20,19 +21,28 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 
-def append_turn(
-    path: Path, *, ts: str, user_msg: str, answer: str, redo: bool = False
-) -> None:
-    """Append one completed turn as a JSON line (creates the parent dir). Append-only — no atomic
-    rename needed; a torn final line is tolerated on load. ``redo=True`` marks a re-run so the
-    loader replaces the prior turn instead of stacking (mirrors :meth:`DMBrain.redo`)."""
+def append_event(path: Path, record: dict) -> None:
+    """Append one journal record as a JSON line (creates the parent dir). Append-only — no atomic
+    rename needed; a torn final line is tolerated on load. Besides the per-turn records this also
+    carries typed events (``{"kind": "session", …}``, ADR 046) — :func:`load_recent` skips those
+    (no ``user_msg``/``answer``), so old and new consumers coexist on one file."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    line = json.dumps(
-        {"ts": ts, "user_msg": user_msg, "answer": answer, "redo": redo}, ensure_ascii=False
-    )
     with path.open("a", encoding="utf-8") as fh:
-        fh.write(line + "\n")
+        fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def append_turn(
+    path: Path, *, ts: str, user_msg: str, answer: str, redo: bool = False,
+    extra: dict | None = None,
+) -> None:
+    """Append one completed turn as a JSON line. ``redo=True`` marks a re-run so the
+    loader replaces the prior turn instead of stacking (mirrors :meth:`DMBrain.redo`).
+    ``extra`` carries the optional replay fields (raw LLM text, parsed markers, router
+    verdict, … — ADR 046); the four core keys always win over a colliding extra."""
+    record = dict(extra or {})
+    record.update({"ts": ts, "user_msg": user_msg, "answer": answer, "redo": redo})
+    append_event(path, record)
 
 
 def load_recent(path: Path, max_turns: int) -> list[tuple[str, str]]:

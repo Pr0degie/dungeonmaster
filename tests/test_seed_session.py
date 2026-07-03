@@ -172,10 +172,15 @@ def test_autosave_on_calls_restore_history(monkeypatch) -> None:
     monkeypatch.setattr(
         runtime_mod.history_store, "load_recent", lambda path, n: sentinel_turns
     )
+    headers: list[dict] = []  # the replay-journal session header (ADR 046) — no disk in tests
+    monkeypatch.setattr(
+        runtime_mod.history_store, "append_event", lambda path, record: headers.append(record)
+    )
 
     rt.seed_session(voice, text)
 
     assert rt._brain.restore_calls == [(voice.id, sentinel_turns)]
+    assert [h["kind"] for h in headers] == ["session"]  # one header per !join (ADR 046)
 
 
 def test_autosave_off_skips_restore_history() -> None:
