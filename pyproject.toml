@@ -54,6 +54,8 @@ dependencies = [
 [project.scripts]
 # The sync fingerprint (D89) as a short command — same on both machines: `uv run dm-sync`.
 dm-sync = "dmbot.tools.sync_check:main"
+# The golden-transcript replay gate (ADR 046): regression check for the deterministic pipeline.
+dm-eval = "dmbot.tools.eval_replay:main"
 
 # Packaged (editable install of `dmbot`) solely so the [project.scripts] entry points exist;
 # still an application, not a published library.

@@ -1,0 +1,32 @@
+{
+  "id": "mini_adventure",
+  "title": "Mini-Abenteuer (Replay-Test-Fixture, ADR 046)",
+  "start_scene": "tor",
+  "summary_de": "Ein winziges synthetisches Abenteuer nur für das Replay-Harness — keine Buch-Inhalte.",
+  "scenes": [
+    {
+      "id": "tor",
+      "title_de": "Das Tor",
+      "part": 1,
+      "description_de": "Ein rostiges Tor in der Außenmauer; eine gelangweilte Wache lehnt daneben.",
+      "npcs_here": ["Wache"],
+      "opportunities_de": [{ "id": "opp-wache", "text_de": "Die Wache ablenken" }],
+      "secrets_de": [{ "id": "geh-tunnel", "text_de": "Ein Tunnel führt unter der Mauer hindurch" }],
+      "leads_to": ["halle", { "ziel": "krypta", "requires": "geh-tunnel" }]
+    },
+    {
+      "id": "halle",
+      "title_de": "Die Halle",
+      "part": 1,
+      "description_de": "Eine zugige Halle voller leerer Kisten.",
+      "leads_to": ["tor"]
+    },
+    {
+      "id": "krypta",
+      "title_de": "Die Krypta",
+      "part": 2,
+      "description_de": "Feuchte Stufen führen hinab ins Dunkel.",
+      "leads_to": ["tor"]
+    }
+  ]
+}
