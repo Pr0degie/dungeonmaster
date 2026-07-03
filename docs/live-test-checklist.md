@@ -108,6 +108,27 @@ im Default-`stream`-Modus loggt der Wächter nur (Trade-off, ADR 045).
 - [ ] Im `stream`-Modus einmal die Log-only-Warnzeile sehen:
       `[consistency] streamed answer violates … logged only`.
 
+## 6c. Consequence Clocks (D94 / ADR 047) — **neues Gate**
+
+Setup: nichts nötig — Uhren funktionieren mit und ohne Abenteuer. Confirm-Buttons hängen am
+selben `DM_FLAG_CONFIRM`-Knopf wie die Element-Flags (Default: an).
+
+- [ ] `!uhr neu "Arbites-Ermittlung" 6` → Antwort nennt die id (`arbites-ermittlung`),
+      das **Panel** erscheint im Textkanal (`⏱ ○○○○○○ …`).
+- [ ] Einen Tick provozieren: etwas Lautes/Riskantes tun oder eine Probe verhauen (die Uhr
+      steht als `[arbites-ermittlung] … 0/6` im Weltzustand-Prompt) → `⏱ Tick vorgeschlagen`-
+      Button erscheint, die gesprochene Antwort enthält **kein** `<<`; nach „Tick" zeigt das
+      Panel `◉○○○○○` — **dieselbe Nachricht editiert**, kein neues Panel.
+- [ ] Gegen-Check Misfires: tickt der DM in Beiträgen ohne echte Verschärfung (Small Talk)?
+      → Persona-Bullet in `prompts/dm_core_de.md` schärfen; Buttons einfach nicht klicken.
+- [ ] Clamp: schlägt der DM zweimal dieselbe Uhr in einem Beitrag vor, erscheint nur EIN
+      Button (Konsole: `🚫 UHR … abgelehnt`).
+- [ ] Voll-Mechanik: per `!uhr tick` auf voll ticken (Panel: `⌛ … — VOLL`) → der **nächste**
+      DM-Turn trägt `[Regie] Die Uhr „…“ ist voll …` und erzählt die Konsequenz als Ereignis
+      → danach `!uhr weg` (Panel räumt die Uhr ab). Kür: `!uhr zurück` direkt nach einem
+      versehentlichen Voll-Tick → die Regie-Zeile erscheint NICHT.
+- [ ] Neustart-Check (mit §9 kombinierbar): Uhrenstand übersteht Bot-Neustart (`state.json`).
+
 ## 7. NPC-Gedächtnis (D91 / ADR 044) — **das neue Gate**
 
 - [ ] Einem NSC etwas Markantes erzählen — ideal: ihn **anlügen** (falsche Identität,

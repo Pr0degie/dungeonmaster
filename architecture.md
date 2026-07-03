@@ -285,12 +285,24 @@ stores:
   "npcs":   [ { "name": "...", "attitude": "hostile", "known_since": "..." } ],
   "quests": [ { "title": "...", "status": "open", "flags": {...} } ],
   "location": "...",
-  "time_ingame": "..."
+  "time_ingame": "...",
+  "clocks": [ { "id": "arbites", "name": "Arbites-Ermittlung", "size": 6, "filled": 3 } ]
 }
 ```
 Advanced deterministically by code (e.g. HP after damage). Goes into the prompt as a compact,
 **structured** German block (`world_state_summary_de` — key:value lines, not prose; CLAUDE.md),
 after the recap and before the history.
+
+> **Consequence clocks (ADR 047).** Blades-style progress clocks give the world visible pressure.
+> Code-owned like every hard fact: humans create/remove them (`!uhr neu "<Name>" <4|6|8>`,
+> `!uhr tick/zurück/weg`, `!uhren`), the model only *requests* a tick via `<<UHR id>>` (validated,
+> clamped to **+1 per clock per turn**, confirm button under the same `DM_FLAG_CONFIRM` knob as
+> element flags; unknown ids are dropped, never guessed). Clocks render in an edit-in-place
+> Discord panel (◉◉◉○○○) and as a `Uhren:` line in the state summary. A **full** clock queues a
+> one-shot `[Regie]` directive into the next turn ("the consequence hits now") and stays visible
+> until `!uhr weg`. The schema's `visible` field is reserved for hidden GM clocks — the UI ignores
+> it for now (deliberate first cut). `<<UHR>>` is exempt from the results-only marker suppression:
+> the post-roll consequence turn is the canonical tick moment.
 
 > **Sheet vs. state — the split (ADR 015).** The schema above is split across two files so the
 > hand-authored source stays pristine while code advances the live state:
@@ -313,8 +325,8 @@ after the recap and before the history.
 >   facts). Code-owned like `state.json` — the read-only `characters.json` split is unchanged.
 >   _Known limitation:_ `_last_turn` isn't restored, so `!redo` is unavailable for the restored last turn.
 >   **Doubles as the replay journal (ADR 046):** the turn records additionally carry the replay
->   fields (structured `lines`/`results`, the raw pre-sanitize LLM text, queued `markers`, the
->   router verdict, `state_before` + scene/flag verdicts) plus a `{"kind": "session"}` header per
+>   fields (structured `lines`/`results`/`notes`, the raw pre-sanitize LLM text, queued `markers`,
+>   the router verdict, `state_before` + scene/flag/clock verdicts) plus a `{"kind": "session"}` header per
 >   `!join` — all invisible to the crash restore. Trimmed copies become the golden transcripts
 >   `uv run dm-eval` replays as a refactor regression gate (`tests/golden/`).
 >
