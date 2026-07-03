@@ -5,7 +5,7 @@ seine NSCs merken würde.
 
 Antworte AUSSCHLIESSLICH mit JSON in genau dieser Form (keine Erklärungen, kein Markdown):
 
-{"npcs": [{"name": "...", "memories": [{"about": ["party"], "gist": "...", "quote": "", "importance": 3}], "attitude_proposal": "", "revealed_lies": []}]}
+{"npcs": [{"name": "...", "memories": [{"about": ["party"], "gist": "...", "quote": "", "importance": 3}], "attitude_proposal": "", "revealed_lies": [], "agenda_step": ""}]}
 
 Regeln:
 
@@ -28,3 +28,10 @@ Regeln:
   Sonst leer lassen.
 - Notiere nur, was der NSC selbst mitbekommen hat. Erfinde nichts dazu und wiederhole keine
   Erinnerung, die bereits in seiner nummerierten Liste steht.
+- `agenda_step`: NUR für NSCs, bei denen ein `Ziel:` angegeben ist (auch wenn sie in der
+  Szene nicht aufgetreten sind): 1–2 kurze Sätze auf Deutsch — was hat dieser NSC **seit der
+  letzten Szene abseits der Bühne** für sein Ziel getan? Plausibel zur verstrichenen
+  Ingame-Zeit und zu seinen bisherigen Schritten: kleine, konkrete Bewegungen (jemanden
+  treffen, etwas verstecken, Wachen anheuern), keine Sprünge. Der Schritt darf keine
+  Spielfigur betreffen und keinen NSC töten oder wegzaubern. Für NSCs ohne `Ziel:` lässt du
+  das Feld leer.

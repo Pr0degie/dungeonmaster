@@ -21,7 +21,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
-from .state import ATTITUDE_SCALE, Combatant, NpcMemory, WorldState, step_attitude
+from .state import ATTITUDE_SCALE, AgendaStep, Combatant, NpcMemory, WorldState, step_attitude
 
 if TYPE_CHECKING:
     from ..llm.client import OllamaClient
@@ -37,6 +37,11 @@ GIST_MAX_CHARS = 200
 
 # Gossip (ADR 044): only direct memories at least this important spread through a faction.
 GOSSIP_MIN_IMPORTANCE = 4
+
+# Agenda (ADR 049): how many recent agenda_log steps ride in the extractor *input* (context for
+# a plausible next step) and in the *prompt block* of a present agenda NPC.
+AGENDA_INPUT_STEPS = 2
+AGENDA_RENDER_STEPS = 3
 
 # German labels for the prompt block (play language); stored tokens stay English (code).
 _ATTITUDE_DE = {
@@ -73,6 +78,7 @@ EXTRACT_SCHEMA: dict = {
                     },
                     "attitude_proposal": {"type": "string"},
                     "revealed_lies": {"type": "array", "items": {"type": "integer"}},
+                    "agenda_step": {"type": "string"},
                 },
                 "required": ["name"],
             },
@@ -112,17 +118,29 @@ def parse_extraction(raw: str) -> dict | None:
 
 
 def build_extract_user(
-    turns: list[dict[str, str]], npcs: list[Combatant], scene_id: str
+    turns: list[dict[str, str]], npcs: list[Combatant], scene_id: str,
+    now_ingame: str = "",
 ) -> str:
     """Render the elapsed scene for the extractor: the present NPCs (with attitude + their
     *numbered* existing memories, so ``revealed_lies`` can reference them and known facts
-    aren't re-recorded) followed by the transcript (labelled like the recap input)."""
+    aren't re-recorded) followed by the transcript (labelled like the recap input).
+
+    Agenda NPCs (ADR 049) additionally carry their goal + the last few agenda steps, and the
+    current in-game time rides along — so a proposed ``agenda_step`` stays plausible against
+    the elapsed time."""
     lines: list[str] = []
     if scene_id:
         lines.append(f"Szene: {scene_id}")
+    if now_ingame:
+        lines.append(f"Aktuelle Ingame-Zeit: {now_ingame}")
     lines.append("Anwesende NSCs:")
     for npc in npcs:
         lines.append(f"- {npc.name} (Haltung: {attitude_de(npc.attitude)})")
+        if npc.goal:
+            lines.append(f"  Ziel: {npc.goal}")
+            for step in npc.agenda_log[-AGENDA_INPUT_STEPS:]:
+                ts = f" ({step.ts_ingame})" if step.ts_ingame else ""
+                lines.append(f"  Bisheriger Schritt{ts}: {step.text}")
         for i, m in enumerate(npc.memories):
             quote = f" Zitat: „{m.quote}“" if m.quote else ""
             lie = " [als Lüge aufgeflogen]" if not m.believed else ""
@@ -172,6 +190,7 @@ def apply_extraction(
     *,
     scene_id: str,
     now: str = "",
+    now_ingame: str = "",
     statblock: "Callable[[str], AdventureNpc | None] | None" = None,
 ) -> list[tuple[Combatant, NpcMemory]]:
     """Apply one scene's extraction to the world state — all the *hard* effects happen here, in
@@ -185,6 +204,10 @@ def apply_extraction(
       approximate around auto-compaction — a duplicate window must not duplicate entries),
       gist-truncated, clamped to importance 1–5 and appended via the capped ``add_memory``.
     - **Attitude proposal** is clamped to ±1 step per scene by :func:`step_attitude`.
+    - **Agenda step** (ADR 049): at most **one** per NPC per extraction (duplicate payload
+      entries are dropped), only for a *living* NPC with a non-empty ``goal`` — a step for a
+      goalless NPC or a PC is discarded. Narrative-only: appended to the capped
+      ``agenda_log``, never a hard mutation.
 
     An NPC named by the extractor but not yet registered is added (statblock values when the
     adventure knows it, attitude ``neutral``) — memories need a place to live. A name matching
@@ -192,6 +215,7 @@ def apply_extraction(
     ``(npc, memory)`` pairs — the input :func:`propagate_gossip` consumes.
     """
     new_entries: list[tuple[Combatant, NpcMemory]] = []
+    agenda_stepped: set[int] = set()  # id(npc) → already got its one step this extraction
     for entry in payload.get("npcs", []):
         if not isinstance(entry, dict):
             continue
@@ -211,12 +235,16 @@ def apply_extraction(
                 armour=block.armour if block else 0,
                 attitude="neutral",
                 faction=block.faction if block else "",
+                goal=block.goal_de if block else "",
             )
             log.info("NPC-memory: registered '%s' (first memory)", npc.name)
-        elif not npc.faction and statblock is not None:
+        elif (not npc.faction or not npc.goal) and statblock is not None:
             block = statblock(name)
-            if block is not None and block.faction:
-                npc.faction = block.faction  # backfill authored faction onto older states
+            if block is not None:  # backfill authored faction/goal onto older states
+                if not npc.faction and block.faction:
+                    npc.faction = block.faction
+                if not npc.goal and block.goal_de:
+                    npc.goal = block.goal_de
 
         # 1) Lie flips (code, not LLM) — indexes refer to the pre-existing entries the extractor
         #    was shown, so they run before anything is appended.
@@ -278,6 +306,21 @@ def apply_extraction(
             if after != before:
                 log.info("NPC-memory: '%s' Haltung %s → %s (Vorschlag: %s)",
                          npc.name, before or "—", after, proposal)
+
+        # 4) Agenda step (ADR 049) — narrative log entry only, max one per NPC per extraction;
+        #    a step for a goalless or dead NPC is the extractor overreaching → discarded.
+        step_text = _truncate_gist(str(entry.get("agenda_step", "") or ""))
+        if step_text:
+            if not npc.goal:
+                log.info("NPC-memory: agenda step for '%s' without a goal — discarded", npc.name)
+            elif npc.wounds <= 0:
+                log.info("NPC-memory: agenda step for dead '%s' — discarded", npc.name)
+            elif id(npc) in agenda_stepped:
+                log.info("NPC-memory: duplicate agenda step for '%s' — discarded", npc.name)
+            else:
+                npc.add_agenda_step(AgendaStep(ts_ingame=now_ingame, text=step_text))
+                agenda_stepped.add(id(npc))
+                log.info("NPC-memory: '%s' Agenda-Schritt: %s", npc.name, step_text)
     return new_entries
 
 
@@ -333,13 +376,19 @@ def select_top_memories(npc: Combatant, top_k: int) -> list[NpcMemory]:
 def npc_memory_block_de(npcs: list[Combatant], *, top_k: int = 6) -> str:
     """The compact German prompt block: one ``[NPC-Gedächtnis: …]`` header per scene NPC with
     its top-K entries. Gossip renders as „Hörensagen“ (the DM keeps it vague), flipped lies as
-    „als Lüge aufgeflogen“. Gists are hard-truncated; NPCs without memories are skipped; no
-    NPC with memories → ''."""
+    „als Lüge aufgeflogen“. An agenda NPC (ADR 049) additionally carries its goal + the last
+    few offscreen steps (and renders even without memories). Gists are hard-truncated; NPCs
+    without memories or a goal are skipped; nothing to render → ''."""
     blocks: list[str] = []
     for npc in npcs:
-        if not npc.memories:
+        if not npc.memories and not npc.goal:
             continue
         lines = [f"[NPC-Gedächtnis: {npc.name} — Haltung: {attitude_de(npc.attitude)}]"]
+        if npc.goal:
+            lines.append(f"Ziel: {npc.goal}")
+            for step in npc.agenda_log[-AGENDA_RENDER_STEPS:]:
+                ts = f", {step.ts_ingame}" if step.ts_ingame else ""
+                lines.append(f"- (offscreen{ts}) {_truncate_gist(step.text)}")
         for m in select_top_memories(npc, top_k):
             if not m.believed:
                 tag = "(als Lüge aufgeflogen) "
@@ -356,7 +405,8 @@ def npc_memory_block_de(npcs: list[Combatant], *, top_k: int = 6) -> str:
         return ""
     return (
         "## NPC-Gedächtnis (was diese NSCs aus früheren Gesprächen wissen — nutze es im "
-        "Dialog; Hörensagen nur vage und aus zweiter Hand wiedergeben)\n" + "\n".join(blocks)
+        "Dialog; Hörensagen nur vage und aus zweiter Hand wiedergeben; offscreen-Schritte "
+        "sind, was der NSC zwischen den Szenen für sein Ziel getan hat)\n" + "\n".join(blocks)
     )
 
 
@@ -369,6 +419,7 @@ async def request_extraction(
     turns: list[dict[str, str]],
     npcs: list[Combatant],
     scene_id: str,
+    now_ingame: str = "",
     prompt_path: Path = _PROMPT_PATH,
 ) -> dict | None:
     """One structured-JSON extraction call for an elapsed scene (injected client, like the roll
@@ -376,7 +427,7 @@ async def request_extraction(
     with ONE retry; then skip + warn — never raises parse trouble at the caller (the scene
     change must not block). Transport errors do propagate; the runtime wrapper catches them."""
     system = prompt_path.read_text(encoding="utf-8").strip()
-    user = build_extract_user(turns, npcs, scene_id)
+    user = build_extract_user(turns, npcs, scene_id, now_ingame=now_ingame)
     for attempt in (1, 2):
         raw = await client.chat(
             system,

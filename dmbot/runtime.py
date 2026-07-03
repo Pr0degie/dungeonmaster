@@ -42,7 +42,7 @@ from .rules.profile import ProfileError, SystemProfile
 from .rules.characters import CharacterStore
 from .memory import history as history_store
 from .memory import npc_memory as npc_memory_mod
-from .memory.gametime import deadline_note_de
+from .memory.gametime import deadline_note_de, render_time_de
 from .memory.state import (
     Clock,
     Combatant,
@@ -767,8 +767,10 @@ class SessionRuntime:
             return 0
         self._npc_mem_running.add(cid)
         try:
+            now_ingame = render_time_de(state.time_minutes)
             payload = await npc_memory_mod.request_extraction(
-                self._brain.client, turns=turns, npcs=candidates, scene_id=scene_id
+                self._brain.client, turns=turns, npcs=candidates, scene_id=scene_id,
+                now_ingame=now_ingame,
             )
             # The window is consumed even when extraction failed (skip, don't re-mine it against
             # a different scene later); the gist-dedup in apply covers the overlap cases.
@@ -778,6 +780,7 @@ class SessionRuntime:
             new_entries = npc_memory_mod.apply_extraction(
                 state, payload, scene_id=scene_id,
                 now=datetime.now().isoformat(timespec="seconds"),
+                now_ingame=now_ingame,
                 statblock=self._adventure.npc if self._adventure is not None else None,
             )
             npc_memory_mod.propagate_gossip(state, new_entries)

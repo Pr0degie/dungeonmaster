@@ -163,6 +163,9 @@ class AdventureNpc:
     # Gossip group (ADR 044): NPCs sharing a non-empty faction hear each other's important
     # memories as hearsay. Authored data — optional, absent statblocks simply don't gossip.
     faction: str = ""
+    # Agenda goal (ADR 049): a non-empty goal makes this NPC an agenda NPC on registration —
+    # it pursues the goal offscreen. Authored data; keep it to the few NPCs that drive the plot.
+    goal_de: str = ""
 
     @classmethod
     def from_dict(cls, d: dict) -> "AdventureNpc":
@@ -178,6 +181,7 @@ class AdventureNpc:
             weapon=d.get("weapon"),
             damage=d.get("damage"),
             faction=str(d.get("faction", "") or ""),
+            goal_de=str(d.get("goal_de", "") or ""),
         )
 
 

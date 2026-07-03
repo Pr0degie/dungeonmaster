@@ -53,6 +53,34 @@ ATTITUDE_SCALE = ("hostile", "wary", "neutral", "friendly", "loyal")
 # Hard cap on stored memories per NPC (ADR 044) — keeps state.json and the prompt block bounded.
 NPC_MEMORY_CAP = 30
 
+# Hard cap on stored agenda steps per NPC (ADR 049) — a timeline, so plain FIFO: the newest 10
+# are the useful ones, older steps age out (no importance tiers like memories).
+AGENDA_LOG_CAP = 10
+
+
+@dataclass
+class AgendaStep:
+    """One offscreen move an agenda NPC made toward its goal (ADR 049) — narrative-layer prose
+    like :class:`NpcMemory`: the *text* is LLM-extracted, code stores/caps/serialises it, and no
+    hard field is ever derived from it (golden rule #3). ``ts_ingame`` is the rendered ADR-048
+    clock at extraction time ("Tag 2, 14:30") — display data, never parsed back."""
+
+    ts_ingame: str
+    text: str
+
+    def to_dict(self) -> dict:
+        d: dict = {"text": self.text}
+        if self.ts_ingame:
+            d["ts_ingame"] = self.ts_ingame
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "AgendaStep":
+        return cls(
+            ts_ingame=str(d.get("ts_ingame", "") or ""),
+            text=str(d.get("text", "") or ""),
+        )
+
 
 @dataclass
 class NpcMemory:
@@ -126,6 +154,12 @@ class Combatant:
     # (npcs.json statblock / manual), never LLM output; ``memories`` is the capped narrative layer.
     faction: str = ""
     memories: list[NpcMemory] = field(default_factory=list)
+    # NPC agenda (ADR 049): a non-empty ``goal`` marks this NPC as an agenda NPC — it pursues
+    # the goal offscreen, one extracted step per scene change. ``goal`` is human/authored data
+    # (``!agenda`` / npcs.json ``goal_de``), never LLM output; ``agenda_log`` is the capped
+    # narrative timeline of its offscreen moves.
+    goal: str = ""
+    agenda_log: list[AgendaStep] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         d: dict = {"name": self.name, "wounds": self.wounds, "max_wounds": self.max_wounds}
@@ -147,6 +181,10 @@ class Combatant:
             d["faction"] = self.faction
         if self.memories:
             d["memories"] = [m.to_dict() for m in self.memories]
+        if self.goal:
+            d["goal"] = self.goal
+        if self.agenda_log:
+            d["agenda_log"] = [s.to_dict() for s in self.agenda_log]
         return d
 
     @classmethod
@@ -166,6 +204,8 @@ class Combatant:
             sustained_powers=list(d.get("sustained_powers", []) or []),
             faction=str(d.get("faction", "") or ""),
             memories=[NpcMemory.from_dict(m) for m in d.get("memories", []) or []],
+            goal=str(d.get("goal", "") or ""),
+            agenda_log=[AgendaStep.from_dict(s) for s in d.get("agenda_log", []) or []],
         )
 
     def add_memory(self, memory: NpcMemory) -> None:
@@ -188,6 +228,13 @@ class Combatant:
             return
         victim = min(candidates, key=lambda i: (self.memories[i].importance, i))
         self.memories.pop(victim)
+
+    def add_agenda_step(self, step: AgendaStep) -> None:
+        """Append an offscreen agenda step (ADR 049), pruning past :data:`AGENDA_LOG_CAP`:
+        plain FIFO — the log is a timeline, the oldest step simply ages out."""
+        self.agenda_log.append(step)
+        while len(self.agenda_log) > AGENDA_LOG_CAP:
+            self.agenda_log.pop(0)
 
 
 def step_attitude(npc: Combatant, proposed: str) -> str:
@@ -619,6 +666,7 @@ class WorldState:
         armour: int = 0,
         attitude: str = "hostile",
         faction: str = "",
+        goal: str = "",
     ) -> Combatant:
         """Register an NPC (an enemy the party can damage) or update an existing one."""
         existing = next((n for n in self.npcs if n.name.lower() == name.strip().lower()), None)
@@ -633,6 +681,7 @@ class WorldState:
                 is_npc=True,
                 attitude=attitude,
                 faction=faction,
+                goal=goal,
             )
             self.npcs.append(npc)
             return npc
@@ -648,6 +697,8 @@ class WorldState:
             existing.attitude = attitude
         if faction:
             existing.faction = faction
+        if goal:
+            existing.goal = goal
         return existing
 
     # -- psyker / Warp Charge (ADR 022) ---------------------------------------------------
@@ -714,6 +765,15 @@ def _combatant_line_de(c: Combatant) -> str:
     if c.is_npc and c.attitude:
         head = f"{c.name} [{c.attitude}] {c.wounds}/{c.max_wounds}"
     return head + suffix
+
+
+def _agenda_line_de(n: Combatant) -> str:
+    """'Vex → will die Ware außer Reichweite schaffen (zuletzt: …)' — one compact line per
+    agenda NPC (ADR 049) for the world-state block."""
+    line = f"{n.name} → {n.goal}"
+    if n.agenda_log:
+        line += f" (zuletzt: {n.agenda_log[-1].text})"
+    return line
 
 
 def clock_segments(clock: Clock) -> str:
@@ -783,6 +843,15 @@ def world_state_summary_de(state: WorldState) -> str:
     living_npcs = [n for n in state.npcs if n.wounds > 0]
     if living_npcs:
         lines.append("NSCs in der Szene: " + "; ".join(_combatant_line_de(n) for n in living_npcs))
+    # Agenda NPCs (ADR 049): one compact line each, so offscreen movement is felt even when the
+    # NPC is elsewhere — the DM surfaces it as rumours and traces, never as hard facts.
+    agenda_npcs = [n for n in living_npcs if n.goal]
+    if agenda_npcs:
+        lines.append(
+            "Agenden (diese NSCs handeln offscreen weiter — deute ihre Bewegungen über "
+            "Gerüchte und Spuren an, wenn sie nicht anwesend sind): "
+            + "; ".join(_agenda_line_de(n) for n in agenda_npcs)
+        )
     open_quests = [q.title for q in state.quests if q.status == "open"]
     if open_quests:
         lines.append("Offene Aufträge: " + "; ".join(open_quests))
