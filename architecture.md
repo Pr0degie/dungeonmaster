@@ -195,6 +195,14 @@ httpx POST {wav_path} to Bot A /speak, sequentially  (layer-2 mute, if on, spans
 > to "first sentence". The stored history is byte-identical to the non-streaming path (one
 > `finalize_answer` chain shared by both). `DM_STREAMING=0` = the old single-WAV-per-turn path.
 
+> **Consistency guard (ADR 045, `DM_CONSISTENCY_GUARD=1`).** Before a batch-path answer reaches
+> TTS/post, deterministic code (`llm/consistency.py`, no LLM judge) checks it against the world
+> state: a dead or scene-absent registered NPC must not get speech attributed (mere mention is
+> fine — heuristics are deliberately conservative). On a violation the turn is regenerated **once**
+> with a concrete German correction; strictly fail-open (a still-violating retry is delivered +
+> warn log — the guard never blocks the session). On the streaming path the full text exists only
+> after the audio played, so the guard logs only there.
+
 ---
 
 ## 5. Feedback-loop protection (mandatory)

@@ -119,7 +119,7 @@ dmbot/          the DM bot
   voice/        recv, resample, VAD + the Discord cogs (voicecog / dicecog / dmcog + scenecog / lorecog, ADR 039) + delivery.py (the answer→audio turn-delivery pipeline, ADR 035)
   stt/          faster-whisper wrapper + segments.py (pure hallucination guard)
   tts/          piper + xtts (Coqui XTTS v2) wrappers
-  llm/          Ollama client, prompt building + orchestrator's extracted pure helpers (sanitize / echo_guard / director_msgs / stream_assembler, ADR 034; prompt_assembly = system-prompt order owner, ADR 038)
+  llm/          Ollama client, prompt building + orchestrator's extracted pure helpers (sanitize / echo_guard / director_msgs / stream_assembler, ADR 034; prompt_assembly = system-prompt order owner, ADR 038; consistency = deterministic pre-delivery guard, ADR 045)
   rag/          ingestion + retrieval + profile bootstrap
   memory/       JSON state + recaps
   rules/        engine.py (generic) + combat.py (attack/Warp resolution, ADR 037) + profile loader (+ tests)  ← deterministic core
