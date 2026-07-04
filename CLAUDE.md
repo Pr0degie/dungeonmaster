@@ -116,12 +116,12 @@ This is the **DMbot repo**. Bot A is a separate repo (the music bot) — not her
 ```
 dmbot/          the DM bot
   runtime.py    SessionRuntime — shared session state/services, injected into every cog (ADR 029)
-  voice/        recv, resample, VAD + the Discord cogs (voicecog / dicecog / dmcog + scenecog / lorecog / clockcog / timecog, ADR 039/047/048) + delivery.py (the answer→audio turn-delivery pipeline, ADR 035)
+  voice/        recv, resample, VAD + the Discord cogs (voicecog / dicecog / dmcog + scenecog / lorecog / clockcog / timecog / chekhovcog, ADR 039/047/048/050) + delivery.py (the answer→audio turn-delivery pipeline, ADR 035)
   stt/          faster-whisper wrapper + segments.py (pure hallucination guard)
   tts/          piper + xtts (Coqui XTTS v2) wrappers
   llm/          Ollama client, prompt building + orchestrator's extracted pure helpers (sanitize / echo_guard / director_msgs / stream_assembler, ADR 034; prompt_assembly = system-prompt order owner, ADR 038; consistency = deterministic pre-delivery guard, ADR 045)
   rag/          ingestion + retrieval + profile bootstrap
-  memory/       JSON state + recaps + gametime.py (pure in-game-time helpers, ADR 048)
+  memory/       JSON state + recaps + gametime.py (pure in-game-time helpers, ADR 048) + chekhov.py (loose-thread list, ADR 050)
   rules/        engine.py (generic) + combat.py (attack/Warp resolution, ADR 037) + profile loader (+ tests)  ← deterministic core
   discord_ui/   buttons, turn-order view
   tools/        dev CLIs via [project.scripts]: sync_check (`uv run dm-sync`, D89/D90) + eval_replay (`uv run dm-eval`, golden-transcript regression replay, ADR 046 — goldens in tests/golden/)

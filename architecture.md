@@ -399,8 +399,26 @@ block; *absent* ones get one line in the world-state block so the DM surfaces of
 movement as rumours and traces. `!agenden` lists goals + recent steps; the whole feature
 rides inside the ADR-044 extraction (`DM_NPC_MEMORY=0` disables it too).
 
+**e) Chekhov list (ADR 050) — loose threads + callbacks**
+Unresolved details of a session — mentioned objects, hints, open promises, unanswered
+questions (explicitly NOT active quests) — live as a code-managed thread list in
+`data/sessions/<channel>/chekhov.json` (`dmbot/memory/chekhov.py`; atomic writes like
+`state.json`): `Thread{id, detail, origin_scene, created_session, status, weight 1–3}`,
+capped at 20 open (overflow evicts the oldest lightest). Extracted at **wrap-up only**
+(threads are session-granularity) by the *same* ADR-044 extractor call — its input gains the
+open threads plus the session history before the scene window as a labelled threads-only
+context block, its output a `chekhov` section: up to 5 new details per session and ids of
+threads the session resolved (**recognised, not forced** — code flips the status; new details
+are deduped against all threads via normalised substring/word-overlap). The **top 3** open
+threads (weight, then *older first* — old threads make the best callbacks) ride in the
+world-state block as a small „Lose Fäden" offer the persona may pick up when it fits, never
+forced. Humans keep their hands on the list: `!fäden`, `!faden neu "<Detail>" [1-3]`,
+`!faden erledigt <id>`, `!faden weg <id>` (thin ChekhovCog). Rides inside the ADR-044
+extraction (`DM_NPC_MEMORY=0` disables it too).
+
 > Interplay: JSON = state (what *is*), recap = story (what *was*), NPC memories = what each
-> NPC believes happened, agendas = what important NPCs are *doing about it*.
+> NPC believes happened, agendas = what important NPCs are *doing about it*, the Chekhov
+> list = what the story still *owes* the table.
 
 ---
 
