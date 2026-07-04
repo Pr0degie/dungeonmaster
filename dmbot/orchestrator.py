@@ -117,26 +117,31 @@ class DMBrain:
         # these first N messages so that concurrent turn survives both the recap and the history
         # (Finding #4). Cleared once consumed; absent → clear_history falls back to a full wipe.
         self._compact_consumed: dict[int, int] = {}
+        # The keyed pending-marker store (ADR 051): one inner {channel: [requests]} dict per
+        # registry kind, drained by dicecog (tests/manifests) and the delivery pipeline (the
+        # rest). The legacy ``_pending_<kind>`` attributes stay as live ALIASES of the inner
+        # dicts — tests poke them directly, and they keep debugger views familiar.
+        self._pending: dict[str, dict[int, list]] = {}
         # Pending dice tests parsed from the last DM turn (per channel) — the cog drains these and
         # posts a dice button for each. Test results fed back in (engine roll → narrate consequence)
         # are buffered here and prepended to the next turn, exempt from the player-line cap.
-        self._pending_tests: dict[int, list[TestRequest]] = {}
+        self._pending["tests"] = self._pending_tests = {}
         # Pending psychic Manifest requests parsed from the last DM turn (ADR 022) — drained by the
         # cog exactly like dice tests, each posting a "manifest" button that rolls the Manifest Test.
-        self._pending_manifests: dict[int, list[ManifestRequest]] = {}
+        self._pending["manifests"] = self._pending_manifests = {}
         # Pending scene-transition requests parsed from the last DM turn (ADR 026) — drained by the
         # cog, which validates the target against the adventure and posts a confirm button.
-        self._pending_scenes: dict[int, list[SceneRequest]] = {}
+        self._pending["scenes"] = self._pending_scenes = {}
         # Pending scene-element flag requests (ADR 043) — drained by the delivery pipeline, which
         # validates each id against the current scene card and confirms/auto-applies the flag.
-        self._pending_erledigt: dict[int, list[ErledigtRequest]] = {}
+        self._pending["erledigt"] = self._pending_erledigt = {}
         # Pending clock-tick requests (ADR 047) — drained by the delivery pipeline, which
         # validates each id against WorldState.clocks, clamps to +1 per clock per turn and
         # confirms/auto-applies the tick.
-        self._pending_uhr: dict[int, list[ClockTickRequest]] = {}
+        self._pending["uhr"] = self._pending_uhr = {}
         # Pending time-advance requests (ADR 048) — drained by the delivery pipeline, which
         # honours only the first valid one per turn, clamps to +12h and confirms/auto-applies.
-        self._pending_zeit: dict[int, list[ZeitRequest]] = {}
+        self._pending["zeit"] = self._pending_zeit = {}
         # One-shot GM directives injected into the NEXT turn's user message as "[Regie] …" lines
         # (ADR 047: "clock X is full — the consequence hits now"). Code-queued only, drained by
         # _prepare_turn like dice results, exempt from the player-line cap.
@@ -312,12 +317,7 @@ class DMBrain:
             and history[-2]["role"] == "user"
         ):
             del history[-2:]  # drop the turn we're redoing so it isn't duplicated
-        self._pending_tests.pop(channel_id, None)  # the redo supersedes the old turn's test markers
-        self._pending_manifests.pop(channel_id, None)
-        self._pending_scenes.pop(channel_id, None)
-        self._pending_erledigt.pop(channel_id, None)
-        self._pending_uhr.pop(channel_id, None)
-        self._pending_zeit.pop(channel_id, None)
+        self._drop_pending(channel_id)  # the redo supersedes the old turn's marker requests
         await self._refresh_rag(channel_id, user_msg)
         answer = await self._generate(channel_id, user_msg, labels, history)
         if answer is None:
@@ -354,22 +354,13 @@ class DMBrain:
             return answer
         found = ",".join(f"{v.kind}:{v.npc}" for v in violations)
         log.warning("[consistency] violated (%s) — regenerating once", found)
-        snapshot = {
-            "tests": self._pending_tests.pop(channel_id, None),
-            "manifests": self._pending_manifests.pop(channel_id, None),
-            "scenes": self._pending_scenes.pop(channel_id, None),
-            "erledigt": self._pending_erledigt.pop(channel_id, None),
-            "uhr": self._pending_uhr.pop(channel_id, None),
-            "zeit": self._pending_zeit.pop(channel_id, None),
-        }
+        snapshot = {kind: pending.pop(channel_id, None) for kind, pending in self._pending.items()}
         nudged = f"{user_msg}\n{retry_nudge_de(violations)}"
         retry = await self._generate(channel_id, nudged, labels, history)
         if not retry:
-            for attr, key in ((self._pending_tests, "tests"), (self._pending_manifests, "manifests"),
-                              (self._pending_scenes, "scenes"), (self._pending_erledigt, "erledigt"),
-                              (self._pending_uhr, "uhr"), (self._pending_zeit, "zeit")):
-                if snapshot[key] is not None:
-                    attr[channel_id] = snapshot[key]
+            for kind, pending in self._pending.items():
+                if snapshot[kind] is not None:
+                    pending[channel_id] = snapshot[kind]
             log.warning("[consistency] retry came back empty — keeping the first answer (fail-open)")
             return answer
         try:
@@ -565,19 +556,10 @@ class DMBrain:
         post-roll consequence turn is the canonical tick/advance moment, and neither triggers a
         new roll/turn — no loop to guard."""
         queued = self._last_action.get(channel_id) is not None
-        if queued:
-            if markers["tests"]:
-                self._pending_tests.setdefault(channel_id, []).extend(markers["tests"])
-            if markers["manifests"]:
-                self._pending_manifests.setdefault(channel_id, []).extend(markers["manifests"])
-            if markers["scenes"]:
-                self._pending_scenes.setdefault(channel_id, []).extend(markers["scenes"])
-            if markers["erledigt"]:
-                self._pending_erledigt.setdefault(channel_id, []).extend(markers["erledigt"])
-        if markers["uhr"]:
-            self._pending_uhr.setdefault(channel_id, []).extend(markers["uhr"])
-        if markers["zeit"]:
-            self._pending_zeit.setdefault(channel_id, []).extend(markers["zeit"])
+        for spec in MARKER_SPECS:
+            reqs = markers[spec.kind]
+            if reqs and (queued or not spec.suppressible):
+                self._pending[spec.kind].setdefault(channel_id, []).extend(reqs)
         # Replay capture (ADR 046): what this turn actually queued (empty when suppressed) —
         # the marker Soll dm-eval compares against.
         self._replay_gen.setdefault(channel_id, {})["markers"] = _markers_dict(markers, queued=queued)
@@ -624,12 +606,7 @@ class DMBrain:
             and history[-2]["role"] == "user"
         ):
             del history[-2:]  # drop the turn we're redoing so it isn't duplicated
-        self._pending_tests.pop(channel_id, None)  # the redo supersedes the old turn's test markers
-        self._pending_manifests.pop(channel_id, None)
-        self._pending_scenes.pop(channel_id, None)
-        self._pending_erledigt.pop(channel_id, None)
-        self._pending_uhr.pop(channel_id, None)
-        self._pending_zeit.pop(channel_id, None)
+        self._drop_pending(channel_id)  # the redo supersedes the old turn's marker requests
         await self._refresh_rag(channel_id, user_msg)
         return await self._stream_and_store(
             channel_id, user_msg, labels, history, on_sentence, should_abort
@@ -722,36 +699,48 @@ class DMBrain:
         if len(history) > self._max_messages:  # keep the tail; recaps will cover the rest later
             del history[: len(history) - self._max_messages]
 
+    def take_pending(self, kind: str, channel_id: int) -> list:
+        """Return and clear the queued requests of one marker-registry kind (ADR 051). The
+        named ``take_pending_<kind>`` wrappers below stay the public surface — dicecog, the
+        delivery handlers (whose getattr-guards against stub brains are test-pinned) and
+        dm-eval call those."""
+        return self._pending[kind].pop(channel_id, [])
+
+    def _drop_pending(self, channel_id: int) -> None:
+        """Drop every queued marker request of the channel — a redo/reset supersedes them."""
+        for pending in self._pending.values():
+            pending.pop(channel_id, None)
+
     def take_pending_tests(self, channel_id: int) -> list[TestRequest]:
         """Return and clear the dice tests the last DM turn requested (cog posts the buttons)."""
-        return self._pending_tests.pop(channel_id, [])
+        return self.take_pending("tests", channel_id)
 
     def take_pending_manifests(self, channel_id: int) -> list[ManifestRequest]:
         """Return and clear the psychic Manifest requests the last DM turn made (ADR 022) — the
         cog posts a button for each that rolls the Manifest Test + bookkeeps Warp Charge."""
-        return self._pending_manifests.pop(channel_id, [])
+        return self.take_pending("manifests", channel_id)
 
     def take_pending_scenes(self, channel_id: int) -> list[SceneRequest]:
         """Return and clear the scene-transition requests the last DM turn made (ADR 026) — the cog
         validates the target against the adventure and posts a confirm button for the move."""
-        return self._pending_scenes.pop(channel_id, [])
+        return self.take_pending("scenes", channel_id)
 
     def take_pending_erledigt(self, channel_id: int) -> list[ErledigtRequest]:
         """Return and clear the scene-element flag requests the last DM turn made (ADR 043) — the
         delivery pipeline validates each id against the current scene card and confirms/applies."""
-        return self._pending_erledigt.pop(channel_id, [])
+        return self.take_pending("erledigt", channel_id)
 
     def take_pending_uhr(self, channel_id: int) -> list[ClockTickRequest]:
         """Return and clear the clock-tick requests the last DM turn made (ADR 047) — the delivery
         pipeline validates each id against ``WorldState.clocks``, clamps to +1 per clock per turn
         and confirms/applies the tick."""
-        return self._pending_uhr.pop(channel_id, [])
+        return self.take_pending("uhr", channel_id)
 
     def take_pending_zeit(self, channel_id: int) -> list[ZeitRequest]:
         """Return and clear the time-advance requests the last DM turn made (ADR 048) — the
         delivery pipeline honours only the first valid one, clamps to +12h per turn and
         confirms/applies the advance."""
-        return self._pending_zeit.pop(channel_id, [])
+        return self.take_pending("zeit", channel_id)
 
     def add_gm_note(self, channel_id: int, note: str) -> None:
         """Queue a one-shot GM directive for the NEXT turn's user message (``[Regie] …`` line,
@@ -1000,12 +989,7 @@ class DMBrain:
         self._history.pop(channel_id, None)
         self._last_turn.pop(channel_id, None)
         self._compact_consumed.pop(channel_id, None)
-        self._pending_tests.pop(channel_id, None)
-        self._pending_manifests.pop(channel_id, None)
-        self._pending_scenes.pop(channel_id, None)
-        self._pending_erledigt.pop(channel_id, None)
-        self._pending_uhr.pop(channel_id, None)
-        self._pending_zeit.pop(channel_id, None)
+        self._drop_pending(channel_id)
         self._gm_notes.pop(channel_id, None)
         self._test_results.pop(channel_id, None)
         self._last_action.pop(channel_id, None)
