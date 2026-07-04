@@ -27,7 +27,7 @@ from ..memory.state import WorldState
 from ..orchestrator import DMBrain
 from ..rag.adventure import Adventure
 from ..rules import profile as profile_mod
-from ..rules.marker import ClockTickRequest, ErledigtRequest, ZeitRequest
+from ..rules.marker import MARKER_SPECS, ClockTickRequest, ErledigtRequest, ZeitRequest
 from ..rules.profile import ProfileError
 from ..voice.delivery import erledigt_verdict, uhr_verdict, zeit_verdict
 
@@ -41,9 +41,10 @@ _CID = 1
 
 _LABEL_WIDTH = 10
 
-# The marker categories a turn records/queues, in report order (mirrors _markers_dict).
-# "uhr" (ADR 047) defaults to [] on both sides for pre-047 goldens — they keep replaying green.
-_MARKER_KEYS = ("tests", "manifests", "scenes", "erledigt", "uhr", "zeit")
+# The marker categories a turn records/queues, in report order — read from the registry
+# (ADR 051), whose order IS the journal key order. A kind newer than a golden defaults to []
+# on both sides, so older goldens keep replaying green (the ADR 047/048 precedent).
+_MARKER_KEYS = tuple(spec.kind for spec in MARKER_SPECS)
 
 
 class TranscriptError(Exception):
@@ -365,12 +366,7 @@ async def _replay_turn(
     # Markers: what today's parse queued vs the recording. Draining also resets the queues for
     # the next turn (results-only suppression recorded empty lists — compared all the same).
     replayed_markers = {
-        "tests": [asdict(r) for r in brain.take_pending_tests(_CID)],
-        "manifests": [asdict(r) for r in brain.take_pending_manifests(_CID)],
-        "scenes": [asdict(r) for r in brain.take_pending_scenes(_CID)],
-        "erledigt": [asdict(r) for r in brain.take_pending_erledigt(_CID)],
-        "uhr": [asdict(r) for r in brain.take_pending_uhr(_CID)],
-        "zeit": [asdict(r) for r in brain.take_pending_zeit(_CID)],
+        kind: [asdict(r) for r in brain.take_pending(kind, _CID)] for kind in _MARKER_KEYS
     }
     recorded_markers = turn.get("markers")
     if recorded_markers is None:

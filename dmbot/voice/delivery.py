@@ -516,11 +516,8 @@ class DeliveryPipeline:
             log.info("(inhaltslose Antwort — nichts gepostet/gesprochen; nur ggf. Würfel)")
         self._note_state_before(channel)  # replay journal (ADR 046): the verdict context
         dice_task = asyncio.create_task(self._rt.handle_dice(channel))
-        scene_task = asyncio.create_task(self._handle_scene(channel))  # ADR 026: propose a scene move
-        flag_task = asyncio.create_task(self._handle_erledigt(channel))  # ADR 043: element flags
-        uhr_task = asyncio.create_task(self._handle_uhr(channel))  # ADR 047: clock ticks
-        zeit_task = asyncio.create_task(self._handle_zeit(channel))  # ADR 048: time advance
-        # dice_task/scene_task must ALWAYS be awaited — even if _speak raises a bridge-side error.
+        marker_tasks = self._marker_proposal_tasks(channel)
+        # dice_task/marker tasks must ALWAYS be awaited — even if _speak raises a bridge-side error.
         # Otherwise the dice button is never posted and the orphaned tasks log "Task exception was
         # never retrieved". The finally awaits them (logging, not dropping, their own exceptions) and
         # lets a speak_task error propagate to the caller's handler afterwards.
@@ -531,8 +528,8 @@ class DeliveryPipeline:
             timing.log_line()
         finally:
             # The dice button must land before the mic button re-anchors at the bottom; likewise the
-            # scene-change proposal. await_dice_scene awaits all and logs (never drops) their errors.
-            await self._await_dice_scene(dice_task, scene_task, flag_task, uhr_task, zeit_task)
+            # marker proposals. _await_turn_tasks awaits all and logs (never drops) their errors.
+            await self._await_turn_tasks(dice_task, marker_tasks)
         await self._post_deliver(channel, answer, timing,
                                  saved_user_msg=saved_user_msg, redo=timing.kind == "redo")
 
@@ -554,20 +551,27 @@ class DeliveryPipeline:
                         "logged only (ADR 045)",
                         ",".join(f"{v.kind}:{v.npc}" for v in violations))
 
+    def _marker_proposal_tasks(self, channel) -> list[tuple[asyncio.Task, str]]:
+        """Spawn the per-marker proposal handlers as concurrent tasks (labelled for the error
+        log). One list, used by both delivery paths right after ``_note_state_before`` snapshots
+        the verdict context — a new marker's handler (its actual feature work, ADR 051) plugs in
+        here once instead of at two hand-copied dispatch sites."""
+        return [
+            (asyncio.create_task(self._handle_scene(channel)), "scene proposal"),    # ADR 026
+            (asyncio.create_task(self._handle_erledigt(channel)), "flag proposal"),  # ADR 043
+            (asyncio.create_task(self._handle_uhr(channel)), "clock tick"),          # ADR 047
+            (asyncio.create_task(self._handle_zeit(channel)), "time advance"),       # ADR 048
+        ]
+
     @staticmethod
-    async def _await_dice_scene(dice_task: asyncio.Task | None,
-                                scene_task: asyncio.Task | None,
-                                flag_task: asyncio.Task | None = None,
-                                uhr_task: asyncio.Task | None = None,
-                                zeit_task: asyncio.Task | None = None) -> None:
-        """Await the concurrent dice-button, scene-proposal, element-flag, clock-tick and
-        time-advance tasks, retrieving (and logging, never dropping) any exception each raised.
-        Used by both delivery paths so a failing task can't leave a 'Task exception was never
-        retrieved' warning. Order matters: dice first, then scene, then flags, then ticks, then
-        time, so all land before the mic button re-anchors at the bottom."""
-        for task, what in ((dice_task, "dice button"), (scene_task, "scene proposal"),
-                           (flag_task, "flag proposal"), (uhr_task, "clock tick"),
-                           (zeit_task, "time advance")):
+    async def _await_turn_tasks(dice_task: asyncio.Task | None,
+                                marker_tasks: list[tuple[asyncio.Task, str]]) -> None:
+        """Await the concurrent dice-button and marker-proposal tasks, retrieving (and logging,
+        never dropping) any exception each raised. Used by both delivery paths so a failing task
+        can't leave a 'Task exception was never retrieved' warning. Order matters: dice first,
+        then the proposals in spawn order, so all land before the mic button re-anchors at the
+        bottom."""
+        for task, what in ((dice_task, "dice button"), *marker_tasks):
             if task is None:
                 continue
             try:
@@ -706,10 +710,7 @@ class DeliveryPipeline:
         sw = asyncio.create_task(synth_worker())
         pw = asyncio.create_task(play_worker())
         dice_task: asyncio.Task | None = None
-        scene_task: asyncio.Task | None = None
-        flag_task: asyncio.Task | None = None
-        uhr_task: asyncio.Task | None = None
-        zeit_task: asyncio.Task | None = None
+        marker_tasks: list[tuple[asyncio.Task, str]] = []
         saved_user_msg: str | None = None
         try:
             try:
@@ -734,10 +735,7 @@ class DeliveryPipeline:
                     await self._rt._send_with_retry(channel, answer)
                 self._note_state_before(channel)  # replay journal (ADR 046)
                 dice_task = asyncio.create_task(self._rt.handle_dice(channel))
-                scene_task = asyncio.create_task(self._handle_scene(channel))  # ADR 026
-                flag_task = asyncio.create_task(self._handle_erledigt(channel))  # ADR 043
-                uhr_task = asyncio.create_task(self._handle_uhr(channel))  # ADR 047
-                zeit_task = asyncio.create_task(self._handle_zeit(channel))  # ADR 048
+                marker_tasks = self._marker_proposal_tasks(channel)
             # gather() re-raises the FIRST worker exception WITHOUT cancelling its siblings — so if
             # play_worker dies on a mid-stream bridge 5xx, synth_worker would hang forever on the
             # bounded wav_q.put and leak its temp WAV. Log a worker failure here; the finally then
@@ -770,7 +768,7 @@ class DeliveryPipeline:
         if holder["answer"] is not None:
             timing.end = time.monotonic()  # last /speak returned
             timing.log_line()
-            await self._await_dice_scene(dice_task, scene_task, flag_task, uhr_task, zeit_task)
+            await self._await_turn_tasks(dice_task, marker_tasks)
             await self._post_deliver(channel, holder["answer"], timing,
                                      saved_user_msg=saved_user_msg, redo=redo)
         return holder["answer"]
