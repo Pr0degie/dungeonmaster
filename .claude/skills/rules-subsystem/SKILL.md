@@ -20,10 +20,12 @@ them. A new subsystem follows the exact shape of psyker (ADR 022) and augmetics 
    `resolve_perils`, `resolve_phenomena`, helpers like `reverse_d100`. Keep them pure and
    fixed-seed-testable; read the profile block as data.
 3. **Roll vs passive.**
-   - Needs a roll → add an extractor + `Request` dataclass in `dmbot/rules/marker.py` and a
-     confirm button in the **Dice cog**, mirroring the `<<TEST>>` / `<<MANIFEST>>` flow
-     (marker → Request → button → engine rolls + bookkeeps → fed back to narrate). Reuse the
-     `<<…>>` delimiter so the existing strip/withhold-from-TTS guards apply for free.
+   - Needs a roll → add an extractor + `Request` dataclass in `dmbot/rules/marker.py` **plus a
+     row in its `MARKER_SPECS` registry** (ADR 051 — the row alone wires strip, streaming
+     withholding, pending queue, replay journal and dm-eval), and a confirm button in the
+     **Dice cog**, mirroring the `<<TEST>>` / `<<MANIFEST>>` flow (marker → Request → button →
+     engine rolls + bookkeeps → fed back to narrate). Reuse the `<<…>>` delimiter so the
+     existing strip/withhold-from-TTS guards apply for free.
    - Passive (no roll, e.g. augmetics) → **no marker**; apply the effect where it's consumed
      (e.g. soak / characteristic / skill bonus in attack/target resolution).
 4. **Stateful resource → code-owned.** If the subsystem tracks a mutable resource (Warp Charge
