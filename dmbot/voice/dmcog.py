@@ -410,10 +410,11 @@ class DMCog(commands.Cog):
         await ctx.send("📜 Ich fasse die Sitzung zusammen …")
         # NPC memory (ADR 044), catch-all for the last scene: the scene-change trigger never fires
         # for the scene the session ends in, so mine it here BEFORE the recap (awaited — wrap-up is
-        # not latency-critical, and the extractor is best-effort/no-raise by contract).
+        # not latency-critical, and the extractor is best-effort/no-raise by contract). The same
+        # call maintains the Chekhov list (ADR 050) — wrap-up only, threads are session-granularity.
         state = self._rt._state.get(cid)
         if state is not None:
-            await self._rt.extract_npc_memories(ctx.channel, state.scene_id)
+            await self._rt.extract_npc_memories(ctx.channel, state.scene_id, include_chekhov=True)
         try:
             # Cumulative, like the rolling auto-recap (D57): fold the recap already in the prompt into
             # the new one. The auto-recap may have cleared the running history mid-session, so the

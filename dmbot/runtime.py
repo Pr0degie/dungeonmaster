@@ -40,6 +40,7 @@ from .bridge import BridgeClient
 from .rules import profile as profile_mod
 from .rules.profile import ProfileError, SystemProfile
 from .rules.characters import CharacterStore
+from .memory import chekhov as chekhov_mod
 from .memory import history as history_store
 from .memory import npc_memory as npc_memory_mod
 from .memory.gametime import deadline_note_de, render_time_de
@@ -207,6 +208,9 @@ class SessionRuntime:
         self._consistency_guard = config.consistency_guard
         self._npc_mem_marks: dict[int, int] = {}
         self._npc_mem_running: set[int] = set()
+        # Chekhov list (ADR 050): per-channel unresolved threads, extracted at wrap-up inside
+        # the ADR-044 call, code-managed (cap/dedupe/status), lazily loaded from chekhov.json.
+        self._chekhov_lists: dict[int, chekhov_mod.ChekhovList] = {}
         # Rules engine (Phase 8): load the active system profile (data/systems/<system>.json). A
         # missing/broken profile must not down the bot — log loudly and run rules-less (no dice).
         self._profile: SystemProfile | None = None
@@ -475,6 +479,25 @@ class SessionRuntime:
         """Where this channel's append-only conversation autosave lives (D41)."""
         return _DATA_DIR / "sessions" / str(channel_id) / "history.jsonl"
 
+    def _chekhov_path(self, channel_id: int):
+        """Where this channel's Chekhov list lives (ADR 050), beside the other session files."""
+        return _DATA_DIR / "sessions" / str(channel_id) / "chekhov.json"
+
+    def chekhov_list(self, channel_id: int) -> chekhov_mod.ChekhovList:
+        """This channel's Chekhov list, lazily loaded (a missing/broken file is an empty list)."""
+        if channel_id not in self._chekhov_lists:
+            self._chekhov_lists[channel_id] = chekhov_mod.ChekhovList.load(
+                self._chekhov_path(channel_id)
+            )
+        return self._chekhov_lists[channel_id]
+
+    def save_chekhov(self, channel_id: int) -> None:
+        """Persist this channel's Chekhov list (atomic, like state.json); best-effort."""
+        try:
+            self.chekhov_list(channel_id).save(self._chekhov_path(channel_id))
+        except OSError:
+            log.exception("could not persist the chekhov list for channel %s", channel_id)
+
     def _load_or_seed_state(self, channel_id: int) -> WorldState:
         """Load the channel's saved state, or seed a fresh one from the sheet (ADR 004/015) on the
         first ever join. Either way it's the live mutable layer for this session."""
@@ -506,7 +529,8 @@ class SessionRuntime:
                 dead_npcs=[n.name for n in state.npcs if n.wounds <= 0],
             )
         summary = world_state_summary_de(state)
-        for block in (self._psyker_block(state), self._augmetic_block()):
+        chekhov_block = chekhov_mod.chekhov_block_de(self.chekhov_list(cid).top_open())
+        for block in (self._psyker_block(state), self._augmetic_block(), chekhov_block):
             if block:
                 summary = f"{summary}\n\n{block}" if summary else block
         npc_block = ""
@@ -736,11 +760,16 @@ class SessionRuntime:
         except RuntimeError:  # no running loop (sync/test context) — extraction is best-effort
             log.debug("NPC-memory: no running event loop — extraction skipped")
 
-    async def extract_npc_memories(self, channel, scene_id: str) -> int:
+    async def extract_npc_memories(self, channel, scene_id: str, *, include_chekhov: bool = False) -> int:
         """Mine the history since the last extraction for what ``scene_id``'s NPCs would remember
         and apply it (memories + clamped attitude drift + lie flips + faction gossip — all hard
         effects in code, golden rule #3). Best-effort end to end: any failure logs and returns 0,
-        never blocks the caller. Returns the number of new direct memories."""
+        never blocks the caller. Returns the number of new direct memories.
+
+        ``include_chekhov`` (the ``!wrap`` call, ADR 050): the same call additionally maintains
+        the Chekhov list — its input gains the open threads + the session history *before* the
+        scene window (threads are session-granularity; the window alone only covers the last
+        scene), and the ``chekhov`` output section is applied code-side (cap/dedupe/status)."""
         if not self._npc_memory:
             return 0
         cid = self._brain_channel(channel)
@@ -751,6 +780,13 @@ class SessionRuntime:
             return 0
         mark = min(self._npc_mem_marks.get(cid, 0), self._brain.history_len(cid))
         turns = self._brain.history_messages(cid, mark)
+        chekhov_section = ""
+        if include_chekhov:
+            earlier = self._brain.history_messages(cid, 0)[:mark]
+            if turns or earlier:  # anything at all this session the thread pass could mine
+                chekhov_section = chekhov_mod.build_chekhov_section(
+                    self.chekhov_list(cid).open_threads(), earlier
+                )
         # Candidates: every living registered NPC (incl. off-card !npc add spawns of this scene)
         # plus the departed scene card's npcs_here — the latter may be unregistered talk-only
         # NPCs; a dummy carrier lets the extractor name them, apply registers on first memory.
@@ -762,7 +798,7 @@ class SessionRuntime:
             for name in scene.npcs_here if scene else []:
                 if name.strip().lower() not in known:
                     candidates.append(Combatant(name=name.strip(), wounds=1, max_wounds=1, is_npc=True))
-        if not turns or not candidates:
+        if (not turns or not candidates) and not chekhov_section:
             self._npc_mem_marks[cid] = mark + len(turns)
             return 0
         self._npc_mem_running.add(cid)
@@ -770,7 +806,7 @@ class SessionRuntime:
             now_ingame = render_time_de(state.time_minutes)
             payload = await npc_memory_mod.request_extraction(
                 self._brain.client, turns=turns, npcs=candidates, scene_id=scene_id,
-                now_ingame=now_ingame,
+                now_ingame=now_ingame, chekhov_section=chekhov_section,
             )
             # The window is consumed even when extraction failed (skip, don't re-mine it against
             # a different scene later); the gist-dedup in apply covers the overlap cases.
@@ -784,6 +820,15 @@ class SessionRuntime:
                 statblock=self._adventure.npc if self._adventure is not None else None,
             )
             npc_memory_mod.propagate_gossip(state, new_entries)
+            if chekhov_section:
+                n_new, n_resolved = chekhov_mod.apply_chekhov(
+                    self.chekhov_list(cid), payload.get("chekhov"),
+                    origin_scene=scene_id,
+                    created_session=datetime.now().date().isoformat(),
+                )
+                if n_new or n_resolved:
+                    self.save_chekhov(cid)
+                    log.info("🧵 Chekhov-Liste: %d neue Fäden, %d aufgelöst", n_new, n_resolved)
             self._persist_and_refresh(channel)
             log.info("🧠 NPC-Gedächtnis: %d neue Erinnerungen (Szene '%s')", len(new_entries), scene_id or "—")
             return len(new_entries)

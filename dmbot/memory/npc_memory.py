@@ -15,12 +15,14 @@ Pure functions + one LLM-call wrapper with an injected OllamaClient (testable li
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
+from .chekhov import CHEKHOV_SCHEMA
 from .state import ATTITUDE_SCALE, AgendaStep, Combatant, NpcMemory, WorldState, step_attitude
 
 if TYPE_CHECKING:
@@ -86,6 +88,14 @@ EXTRACT_SCHEMA: dict = {
     },
     "required": ["npcs"],
 }
+
+# Wrap-up variant (ADR 050): the same call additionally maintains the Chekhov list — the
+# `chekhov` section is required so the model always answers the question (empty lists are fine).
+EXTRACT_SCHEMA_CHEKHOV: dict = copy.deepcopy(EXTRACT_SCHEMA)
+EXTRACT_SCHEMA_CHEKHOV["properties"]["chekhov"] = CHEKHOV_SCHEMA
+EXTRACT_SCHEMA_CHEKHOV["required"] = ["npcs", "chekhov"]
+
+_CHEKHOV_PROMPT_PATH = _PROMPT_PATH.parent / "chekhov_extract_de.md"
 
 
 def attitude_de(attitude: str) -> str:
@@ -420,20 +430,33 @@ async def request_extraction(
     npcs: list[Combatant],
     scene_id: str,
     now_ingame: str = "",
+    chekhov_section: str = "",
     prompt_path: Path = _PROMPT_PATH,
+    chekhov_prompt_path: Path = _CHEKHOV_PROMPT_PATH,
 ) -> dict | None:
     """One structured-JSON extraction call for an elapsed scene (injected client, like the roll
     router): low temperature, neutralised repeat penalty, schema-constrained. Tolerant parse
     with ONE retry; then skip + warn — never raises parse trouble at the caller (the scene
-    change must not block). Transport errors do propagate; the runtime wrapper catches them."""
+    change must not block). Transport errors do propagate; the runtime wrapper catches them.
+
+    A non-empty ``chekhov_section`` (the wrap-up call, ADR 050) switches to the extended
+    schema, appends the Chekhov rules to the system prompt and the section (open threads +
+    earlier-session context) to the user message — one call, never two."""
     system = prompt_path.read_text(encoding="utf-8").strip()
     user = build_extract_user(turns, npcs, scene_id, now_ingame=now_ingame)
+    schema = EXTRACT_SCHEMA
+    num_predict = 800
+    if chekhov_section:
+        system += "\n\n" + chekhov_prompt_path.read_text(encoding="utf-8").strip()
+        user += "\n" + chekhov_section
+        schema = EXTRACT_SCHEMA_CHEKHOV
+        num_predict = 1000  # headroom for the extra chekhov section in the answer
     for attempt in (1, 2):
         raw = await client.chat(
             system,
             [{"role": "user", "content": user}],
-            options={"temperature": 0.2, "num_predict": 800, "repeat_penalty": 1.0},
-            format=EXTRACT_SCHEMA,
+            options={"temperature": 0.2, "num_predict": num_predict, "repeat_penalty": 1.0},
+            format=schema,
         )
         payload = parse_extraction(raw)
         if payload is not None:

@@ -31,6 +31,7 @@ from .voice.scenecog import SceneCog
 from .voice.lorecog import LoreCog
 from .voice.clockcog import ClockCog
 from .voice.timecog import TimeCog
+from .voice.chekhovcog import ChekhovCog
 
 log = logging.getLogger("dmbot")
 
@@ -78,6 +79,7 @@ class DMBot(commands.Bot):
         await self.add_cog(LoreCog(self, runtime))
         await self.add_cog(ClockCog(self, runtime))  # consequence clocks (ADR 047)
         await self.add_cog(TimeCog(self, runtime))   # in-game time + deadlines (ADR 048)
+        await self.add_cog(ChekhovCog(self, runtime))  # loose threads / callbacks (ADR 050)
 
     async def on_ready(self) -> None:
         log.info("logged in as %s (id=%s)", self.user, self.user and self.user.id)
