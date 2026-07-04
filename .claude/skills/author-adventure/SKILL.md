@@ -70,7 +70,9 @@ compendium. Goal: a 50-page adventure costs an afternoon of *redigieren*, not da
 // npcs.json
 { "npcs": [ { "name": "…", "role_de": "…", "wounds": 10, "toughness_bonus": 3, "armour": 1,
               "roleplaying_de": "…", "attack_skill": "Nahkampf", "attack_value": 35,
-              "weapon": "Kettenmesser", "damage": "1d10+3" } ] }
+              "weapon": "Kettenmesser", "damage": "1d10+3",
+              "faction": "…",                 // optional: gossip group for NPC memory (ADR 044)
+              "goal_de": "…" } ] }            // optional: agenda goal, one sentence (ADR 049)
 ```
 
 Schema gotchas (from `adventure.py` / ADR 043):
@@ -144,6 +146,10 @@ by name and must never miss). Adventures often reference core-book NPC archetype
 instead of printing stats — draft plausible values and mark every such entry `GESCHÄTZT`
 on the checklist. Statblock names must match `npcs_here` spelling exactly (singular, no
 plural drift — the smoke test caught `Dregs` vs `Dreg`).
+Optional fields: `faction` (ADR 044) groups NPCs for memory gossip — set it where the book
+gives an affiliation (gang, cult, Ecclesiarchy). `goal_de` (ADR 049) makes the NPC an
+**agenda NPC** that acts offscreen between scenes — reserve it for the 2–5 NPCs that drive
+the plot (one German sentence, what they *want*), never for extras.
 
 ### 4. Summary pass
 `summary_de`: the ~300-token German GM digest of the whole arc — premise, the party's hook,
