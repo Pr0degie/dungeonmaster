@@ -23,12 +23,14 @@ from .llm.prompt_assembly import assemble_system_prompt
 from .llm.roll_router import classifier_schema, classifier_system, to_test_request
 from .memory.recap import RECAP_SYSTEM_DE, build_recap_user
 from .rules.marker import (
+    MARKER_SPECS,
     ClockTickRequest,
     ErledigtRequest,
     ManifestRequest,
     SceneRequest,
     TestRequest,
     ZeitRequest,
+    empty_markers,
 )
 from .rules.profile import SystemProfile
 from .tts.textsplit import has_speakable_content
@@ -57,34 +59,24 @@ from .llm.director_msgs import (  # noqa: F401
 )
 from .llm.consistency import Violation, retry_nudge_de
 from .llm.intro_guard import INTRO_RETRY_NUDGE
-from .llm.stream_assembler import StreamAssembler, finalize_answer  # noqa: F401
+from .llm.stream_assembler import StreamAssembler, finalize_answer, finalize_answer_markers  # noqa: F401
 
 log = logging.getLogger(__name__)
 
 
-def _markers_dict(
-    tests: list[TestRequest], manifests: list[ManifestRequest],
-    scenes: list[SceneRequest], erledigt: list[ErledigtRequest],
-    uhr: list[ClockTickRequest], zeit: list[ZeitRequest], *, queued: bool,
-) -> dict:
+def _markers_dict(markers: dict[str, list], *, queued: bool) -> dict:
     """The turn's parsed marker requests as plain dicts for the replay journal (ADR 046).
-    ``queued=False`` (a results-only turn suppressed them) records empty lists — the
-    suppression itself is behaviour the replay must reproduce. ``uhr`` and ``zeit`` are exempt
-    from that suppression (ADR 047/048: the post-roll consequence turn is the canonical
-    tick/advance moment), so they record what was parsed regardless."""
-    d: dict = (
-        {"tests": [], "manifests": [], "scenes": [], "erledigt": []}
-        if not queued
-        else {
-            "tests": [asdict(t) for t in tests],
-            "manifests": [asdict(m) for m in manifests],
-            "scenes": [asdict(s) for s in scenes],
-            "erledigt": [asdict(e) for e in erledigt],
-        }
-    )
-    d["uhr"] = [asdict(u) for u in uhr]
-    d["zeit"] = [asdict(z) for z in zeit]
-    return d
+    ``queued=False`` (a results-only turn suppressed them) records empty lists for the
+    suppressible kinds — the suppression itself is behaviour the replay must reproduce.
+    Non-suppressible kinds (``uhr``/``zeit``, ADR 047/048: the post-roll consequence turn is
+    the canonical tick/advance moment) record what was parsed regardless. Key order is the
+    registry order (ADR 051) — the journal bytes must not move."""
+    return {
+        spec.kind: (
+            [asdict(r) for r in markers[spec.kind]] if queued or not spec.suppressible else []
+        )
+        for spec in MARKER_SPECS
+    }
 
 
 class DMBrain:
@@ -495,14 +487,11 @@ class DMBrain:
         history_prefix: list[dict[str, str]],
         num_predict: int | None = None,
         temperature: float | None = None,
-    ) -> tuple[
-        str, list[TestRequest], list[ManifestRequest], list[SceneRequest],
-        list[ErledigtRequest], list[ClockTickRequest],
-    ]:
+    ) -> tuple[str, dict[str, list]]:
         """One non-streaming LLM call for ``user_msg`` on top of ``history_prefix`` → (sanitised
-        answer, parsed dice tests, parsed Manifest requests, parsed scene + flag + clock-tick
-        requests). The raw building block of :meth:`_generate` (which wraps the echo-guard retry
-        around it) and of the streaming path's echo retry."""
+        answer, ``{kind: parsed requests}`` keyed by the marker registry, ADR 051). The raw
+        building block of :meth:`_generate` (which wraps the echo-guard retry around it) and of
+        the streaming path's echo retry."""
         system, messages, options = self._build_request(channel_id, user_msg, labels, history_prefix, num_predict=num_predict, temperature=temperature)
         raw = await self._client.chat(system, messages, options=options)
         # narration call's token counts (for [latency]); getattr so a test double without the attr
@@ -515,7 +504,7 @@ class DMBrain:
         # Replay capture (ADR 046): the raw text with markers intact. Each call overwrites, so
         # after an echo-guard/consistency retry the KEPT answer's raw is what the autosave gets.
         self._replay_gen[channel_id] = {"raw": raw}
-        return finalize_answer(raw, labels, self._profile)
+        return finalize_answer_markers(raw, labels, self._profile)
 
     @staticmethod
     def _answer_problem(answer: str, user_msg: str, prev_answer: str) -> tuple[str, str] | None:
@@ -551,41 +540,47 @@ class DMBrain:
         the turn entirely (nothing spoken, nothing stored — degenerate turns in history
         self-reinforce, seen live 2026-06-12)."""
         prev = self._prev_answer(history_prefix)
-        answer, tests, manifests, scenes, erledigt, uhr, zeit = await self._chat_once(channel_id, user_msg, labels, history_prefix, num_predict=num_predict, temperature=temperature)
+        answer, markers = await self._chat_once(channel_id, user_msg, labels, history_prefix, num_predict=num_predict, temperature=temperature)
         problem = self._answer_problem(answer, user_msg, prev)
         if problem is not None:
             label, nudge = problem
             log.warning("echo guard: answer %s (%r) — retrying once", label, answer)
             nudged = f"{user_msg}\n{nudge}"
-            answer, tests, manifests, scenes, erledigt, uhr, zeit = await self._chat_once(channel_id, nudged, labels, history_prefix, num_predict=num_predict, temperature=temperature)
+            answer, markers = await self._chat_once(channel_id, nudged, labels, history_prefix, num_predict=num_predict, temperature=temperature)
             if self._answer_problem(answer, user_msg, prev) is not None:
                 log.warning("echo guard: the retry misfired again — suppressing the turn")
                 return None
-        # Suppress inline <<TEST>>/<<MANIFEST>>/<<ORT>> markers on a results-only (post-roll
-        # consequence) turn — a consequence narration must not request a NEW roll or scene move or
-        # the loop never ends (seen live); only queue them when this turn answered a player action.
-        # <<UHR>>/<<ZEIT>> are exempt (ADR 047/048): the post-roll consequence turn is the
-        # canonical tick/advance moment, and neither triggers a new roll/turn — no loop to guard.
+        self._queue_markers(channel_id, markers)
+        return answer
+
+    def _queue_markers(self, channel_id: int, markers: dict[str, list]) -> None:
+        """Queue the turn's parsed marker requests (ADR 051) under the results-only suppression
+        rule and record what was actually queued for the replay journal (ADR 046) — the one seam
+        shared by the batch path (:meth:`_generate`) and the streaming path.
+
+        Suppression: inline ``<<TEST>>``/``<<MANIFEST>>``/``<<ORT>>``/``<<ERLEDIGT>>`` markers on
+        a results-only (post-roll consequence) turn are dropped — a consequence narration must not
+        request a NEW roll or scene move or the loop never ends (seen live); they queue only when
+        the turn answered a player action. ``<<UHR>>``/``<<ZEIT>>`` are exempt (ADR 047/048): the
+        post-roll consequence turn is the canonical tick/advance moment, and neither triggers a
+        new roll/turn — no loop to guard."""
         queued = self._last_action.get(channel_id) is not None
         if queued:
-            if tests:
-                self._pending_tests.setdefault(channel_id, []).extend(tests)
-            if manifests:
-                self._pending_manifests.setdefault(channel_id, []).extend(manifests)
-            if scenes:
-                self._pending_scenes.setdefault(channel_id, []).extend(scenes)
-            if erledigt:
-                self._pending_erledigt.setdefault(channel_id, []).extend(erledigt)
-        if uhr:
-            self._pending_uhr.setdefault(channel_id, []).extend(uhr)
-        if zeit:
-            self._pending_zeit.setdefault(channel_id, []).extend(zeit)
+            if markers["tests"]:
+                self._pending_tests.setdefault(channel_id, []).extend(markers["tests"])
+            if markers["manifests"]:
+                self._pending_manifests.setdefault(channel_id, []).extend(markers["manifests"])
+            if markers["scenes"]:
+                self._pending_scenes.setdefault(channel_id, []).extend(markers["scenes"])
+            if markers["erledigt"]:
+                self._pending_erledigt.setdefault(channel_id, []).extend(markers["erledigt"])
+        if markers["uhr"]:
+            self._pending_uhr.setdefault(channel_id, []).extend(markers["uhr"])
+        if markers["zeit"]:
+            self._pending_zeit.setdefault(channel_id, []).extend(markers["zeit"])
         # Replay capture (ADR 046): what this turn actually queued (empty when suppressed) —
         # the marker Soll dm-eval compares against.
-        self._replay_gen.setdefault(channel_id, {})["markers"] = _markers_dict(
-            tests, manifests, scenes, erledigt, uhr, zeit, queued=queued,
-        )
-        return answer
+        self._replay_gen.setdefault(channel_id, {})["markers"] = _markers_dict(markers, queued=queued)
 
     async def respond_streaming(
         self,
@@ -682,12 +677,7 @@ class DMBrain:
         # so the kept answer's raw wins (batch-path parity).
         self._replay_gen[channel_id] = {"raw": assembler.raw}
         result = assembler.finish()
-        answer, tests, remaining = result.answer, result.tests, list(result.remaining)
-        manifests = result.manifests
-        scenes = result.scenes
-        erledigt = result.erledigt
-        uhr = result.uhr
-        zeit = result.zeit
+        answer, markers, remaining = result.answer, result.markers, list(result.remaining)
         suppressed = False
         # Echo guard (D43/ADR 018 + W4). Only when nothing was spoken yet — an echo/repetition is
         # held back by the assembler's last-sentence rule for short answers; a half-spoken turn is
@@ -699,13 +689,13 @@ class DMBrain:
             log.warning("echo guard (stream): answer %s (%r) — retrying once", label, answer)
             nudged = f"{user_msg}\n{nudge}"
             try:
-                answer, tests, manifests, scenes, erledigt, uhr, zeit = await self._chat_once(channel_id, nudged, labels, history, num_predict=num_predict, temperature=temperature)
+                answer, markers = await self._chat_once(channel_id, nudged, labels, history, num_predict=num_predict, temperature=temperature)
             except Exception:
                 log.exception("echo-guard retry failed — suppressing the turn")
-                answer, tests, manifests, scenes, erledigt, uhr, zeit = "", [], [], [], [], [], []
+                answer, markers = "", empty_markers()
             if self._answer_problem(answer, user_msg, prev) is not None:
                 log.warning("echo guard: the retry misfired again — suppressing the turn")
-                answer, tests, manifests, scenes, erledigt, uhr, zeit = "", [], [], [], [], [], []
+                answer, markers = "", empty_markers()
             suppressed = not answer
             remaining = [answer] if answer else []
         elif not errored and spoke_any and is_self_repetition(answer, prev):
@@ -718,28 +708,7 @@ class DMBrain:
                 break
             if has_speakable_content(sentence):
                 await on_sentence(sentence)
-        # Suppress inline <<TEST>>/<<MANIFEST>>/<<ORT>> markers on a results-only (post-roll
-        # consequence) turn — a consequence narration must not request a NEW roll or scene move or
-        # the loop never ends (seen live); only queue them when this turn answered a player action.
-        # <<UHR>>/<<ZEIT>> are exempt (ADR 047/048): the post-roll consequence turn is the
-        # canonical tick/advance moment, and neither triggers a new roll/turn — no loop to guard.
-        queued = self._last_action.get(channel_id) is not None
-        if queued:
-            if tests:
-                self._pending_tests.setdefault(channel_id, []).extend(tests)
-            if manifests:
-                self._pending_manifests.setdefault(channel_id, []).extend(manifests)
-            if scenes:
-                self._pending_scenes.setdefault(channel_id, []).extend(scenes)
-            if erledigt:
-                self._pending_erledigt.setdefault(channel_id, []).extend(erledigt)
-        if uhr:
-            self._pending_uhr.setdefault(channel_id, []).extend(uhr)
-        if zeit:
-            self._pending_zeit.setdefault(channel_id, []).extend(zeit)
-        self._replay_gen.setdefault(channel_id, {})["markers"] = _markers_dict(
-            tests, manifests, scenes, erledigt, uhr, zeit, queued=queued,
-        )
+        self._queue_markers(channel_id, markers)
         stored = answer
         if errored and stored:
             stored = f"{stored} … [Antwort unterbrochen]"  # noted in history; never spoken

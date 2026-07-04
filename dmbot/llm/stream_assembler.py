@@ -28,17 +28,26 @@ from ..rules.marker import (
     TestRequest,
     ZeitRequest,
     clean_narration,
-    extract_erledigt,
-    extract_manifests,
-    extract_scenes,
-    extract_tests,
-    extract_uhr,
-    extract_zeit,
+    extract_all,
 )
 from ..rules.profile import SystemProfile
 from ..tts.textsplit import split_completed
 
 log = logging.getLogger(__name__)
+
+
+def finalize_answer_markers(
+    raw: str, labels: list[str], profile: SystemProfile | None
+) -> tuple[str, dict[str, list]]:
+    """The full non-streaming post-processing of a raw LLM answer → (clean spoken answer,
+    ``{kind: parsed requests}`` keyed by the marker registry, ADR 051). The single source of
+    truth shared by the batch path (:meth:`DMBrain._generate`) and the streaming assembler's
+    :meth:`StreamAssembler.finish` — so the two can never drift and the stored history is
+    identical for the same raw text (the parity guarantee, ADR 017)."""
+    answer = _sanitize(_cut_at_labels(raw, labels)) or _sanitize(raw)
+    answer = _strip_leading_label(answer, labels)  # kill a leaked leading "Name:"/"DM:" label
+    answer, markers = extract_all(answer, profile)  # strip every <<…>> marker in registry order
+    return _trim_to_last_sentence(answer), markers
 
 
 def finalize_answer(
@@ -47,24 +56,11 @@ def finalize_answer(
     str, list[TestRequest], list[ManifestRequest], list[SceneRequest],
     list[ErledigtRequest], list[ClockTickRequest], list[ZeitRequest],
 ]:
-    """The full non-streaming post-processing of a raw LLM answer → (clean spoken answer, parsed
-    dice tests, parsed psychic Manifest requests, parsed scene-transition requests, parsed
-    scene-element flag requests, parsed clock-tick requests, parsed time-advance requests). The
-    single source of truth shared by the batch path (:meth:`DMBrain._generate`) and the streaming
-    assembler's :meth:`StreamAssembler.finish` — so the two can never drift and the stored history
-    is identical for the same raw text (the parity guarantee, ADR 017)."""
-    answer = _sanitize(_cut_at_labels(raw, labels)) or _sanitize(raw)
-    answer = _strip_leading_label(answer, labels)  # kill a leaked leading "Name:"/"DM:" label
-    tests: list[TestRequest] = []
-    manifests: list[ManifestRequest] = []
-    if profile is not None:
-        answer, tests = extract_tests(answer, profile)  # strip <<TEST …>> markers, collect requests
-        answer, manifests = extract_manifests(answer, profile)  # strip <<MANIFEST …>> markers (ADR 022)
-    answer, scenes = extract_scenes(answer)  # strip <<ORT …>> scene markers (ADR 026); profile-free
-    answer, erledigt = extract_erledigt(answer)  # strip <<ERLEDIGT …>> flag markers (ADR 043); profile-free
-    answer, uhr = extract_uhr(answer)  # strip <<UHR …>> clock-tick markers (ADR 047); profile-free
-    answer, zeit = extract_zeit(answer)  # strip <<ZEIT …>> time markers (ADR 048); profile-free
-    return _trim_to_last_sentence(answer), tests, manifests, scenes, erledigt, uhr, zeit
+    """Tuple view of :func:`finalize_answer_markers` — the historical public shape (answer,
+    tests, manifests, scenes, erledigt, uhr, zeit), kept for existing callers and tests
+    (ADR 051). The tuple order is the registry order."""
+    answer, markers = finalize_answer_markers(raw, labels, profile)
+    return (answer, *markers.values())
 
 
 # --- Streaming assembler (ADR 017) --------------------------------------------------------------
@@ -86,16 +82,23 @@ def _open_marker_index(text: str) -> int | None:
 @dataclass
 class StreamResult:
     """Outcome of :meth:`StreamAssembler.finish`: sentences not yet spoken, the canonical stored
-    answer (history parity), and the dice tests parsed from the whole turn."""
+    answer (history parity), and the marker requests parsed from the whole turn, keyed by the
+    registry ``kind`` (ADR 051). Per-kind attribute access (``result.tests``, ``result.zeit`` …)
+    is kept as a dynamic view into ``markers`` for existing callers and tests."""
 
     remaining: list[str]
     answer: str
-    tests: list[TestRequest]
-    manifests: list[ManifestRequest]
-    scenes: list[SceneRequest]
-    erledigt: list[ErledigtRequest]
-    uhr: list[ClockTickRequest]
-    zeit: list[ZeitRequest]
+    markers: dict[str, list]
+
+    def __getattr__(self, name: str) -> list:
+        # Back-compat accessors (ADR 051): result.<kind> reads markers[<kind>]. Only reached
+        # when normal attribute lookup fails, so the real fields stay untouched.
+        if name == "markers":  # not set yet (mid-unpickle) — must not recurse into itself
+            raise AttributeError(name)
+        try:
+            return self.markers[name]
+        except KeyError:
+            raise AttributeError(name) from None
 
 
 class StreamAssembler:
@@ -157,13 +160,9 @@ class StreamAssembler:
             idx = _open_marker_index(text)
             if idx is not None:
                 text = text[:idx]  # withhold from an unmatched "<<" (a marker may span deltas)
-            if self._profile is not None:
-                text, _ = extract_tests(text, self._profile)  # strip complete <<TEST …>> markers
-                text, _ = extract_manifests(text, self._profile)  # strip complete <<MANIFEST …>> markers
-            text, _ = extract_scenes(text)  # strip complete <<ORT …>> markers (never spoken, ADR 026)
-            text, _ = extract_erledigt(text)  # strip complete <<ERLEDIGT …>> markers (ADR 043)
-            text, _ = extract_uhr(text)  # strip complete <<UHR …>> markers (ADR 047)
-            text, _ = extract_zeit(text)  # strip complete <<ZEIT …>> markers (ADR 048)
+            # Strip every complete <<…>> marker (never spoken) in registry order (ADR 051);
+            # the parsed requests are recomputed canonically in finish(), so discard them here.
+            text, _ = extract_all(text, self._profile)
         text = _sanitize_leading(text)
         text = _strip_leading_label(text, self._labels)
         if not self._released:
@@ -174,9 +173,9 @@ class StreamAssembler:
         return text
 
     def finish(self) -> StreamResult:
-        """Stream ended (or aborted): compute the canonical answer + tests and return whatever of
-        it hasn't been spoken yet (the held-back tail / final sentence)."""
-        answer, tests, manifests, scenes, erledigt, uhr, zeit = finalize_answer(self._raw, self._labels, self._profile)
+        """Stream ended (or aborted): compute the canonical answer + marker requests and return
+        whatever of it hasn't been spoken yet (the held-back tail / final sentence)."""
+        answer, markers = finalize_answer_markers(self._raw, self._labels, self._profile)
         sentences, tail = split_completed(answer)
         all_sentences = [s for s in (*sentences, tail) if s]
         if all_sentences[: len(self._emitted)] == self._emitted:
@@ -192,7 +191,4 @@ class StreamAssembler:
                 len(self._emitted),
             )
             remaining = all_sentences
-        return StreamResult(
-            remaining=remaining, answer=answer, tests=tests, manifests=manifests, scenes=scenes,
-            erledigt=erledigt, uhr=uhr, zeit=zeit,
-        )
+        return StreamResult(remaining=remaining, answer=answer, markers=markers)
