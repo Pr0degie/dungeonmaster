@@ -352,7 +352,7 @@ D68 globaler Sprech-Modus, D67 Shutdown-Leave-Limit u. a.): siehe **[docs/progre
 > **Drehbuch für den Live-Run:** alle offenen Gates unten sind als abhakbare Checkliste in
 > **[docs/live-test-checklist.md](docs/live-test-checklist.md)** ausformuliert (Session-Reihenfolge:
 > Vorbereitung → Tempo → Intro → Gespräch → Würfel → Scene Cards → Konsistenz-Wächter →
-> **Uhren** → **Zeit & Fristen** → NPC-Gedächtnis → **NPC-Agenden** → RAG → Neustart-Gate → Nachbereitung). Nach dem Run:
+> **Uhren** → **Zeit & Fristen** → NPC-Gedächtnis → **NPC-Agenden** → **Lose Fäden (Hälfte 1, §7c)** → RAG → Neustart-Gate → Nachbereitung; Chekhov-Hälfte 2 = Folge-Session). Nach dem Run:
 > Ergebnisse hierher zurückschreiben, Liste ausmisten.
 
 **0. Vorab (D89 ✅ / D90):** Die 20 fehlenden `.env`-Keys sind nachgezogen (`dm-sync` meldet 38/38, 2026-07-02). Vor dem nächsten Timo-Sync auf beiden Maschinen `uv run dm-sync` (Timo vorher einmal `git pull` + `uv sync`), Blöcke diffen (SETUP.md §„Staying in sync").

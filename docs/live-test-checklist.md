@@ -1,7 +1,9 @@
 # Live-Test-Checkliste — der eine Run mit den Freunden
 
 Alle offenen **Live-Gates** (Code fertig + Suite grün, aber am Tisch unbestätigt), als
-Ablauf für EINE Session in circlejerk sortiert. Stand: 2026-07-03 (nach D96 / ADR 049).
+Ablauf für EINE Session in circlejerk sortiert. Stand: 2026-07-04 (nach D97 / ADR 050).
+Ausnahme: das Chekhov-Gate (§7c) braucht **zwei** Sessions — Hälfte 1 in diesem Run,
+Hälfte 2 im nächsten.
 Hake ab, was klappt; was nicht klappt, **nicht live debuggen** — notieren, Log sichern,
 danach pasten (→ `/playtest-triage`).
 
@@ -187,6 +189,35 @@ Setup: nichts nötig — Zeit läuft mit und ohne Abenteuer. Confirm-Buttons hä
       `prompts/npc_memory_extract_de.md` nachschärfen; `!agenda <NSC> weg` oder
       `DM_NPC_MEMORY=0` schaltet ab.
 
+## 7c. Chekhov-Liste / lose Fäden (D97 / ADR 050) — **neues Gate, über ZWEI Sessions**
+
+Setup: nichts nötig — die Extraktion reitet im `!wrap`-Call (`DM_NPC_MEMORY=0` schaltet
+auch sie ab). **Hälfte 1 = dieser Run, Hälfte 2 = der nächste.**
+
+**Hälfte 1 (diese Session):**
+- [ ] Im Spiel beiläufig ein markantes Detail etablieren, das NICHT Quest ist (ein
+      erwähntes Objekt, eine Andeutung, ein offenes Versprechen) — und es danach bewusst
+      liegen lassen. *(Abkürzung/Doppel-Check: eins per Hand seeden —
+      `!faden neu "Die Münze aus der Bar" 2` → Antwort nennt die id.)*
+- [ ] Beim `!wrap` am Ende: Konsole zeigt `🧵 Chekhov-Liste: N neue Fäden, M aufgelöst`;
+      `!fäden` listet die extrahierten Fäden — ist das fallengelassene Detail dabei
+      (1 Satz, plausibles Gewicht)?
+- [ ] Gegen-Check Qualität: stehen **Quests/Aufträge** oder Banalitäten in der Liste?
+      → `prompts/chekhov_extract_de.md` nachschärfen; `!faden weg <id>` räumt auf.
+- [ ] **Fenster-Check:** stammt das Detail aus einer *frühen* Szene (vor dem letzten
+      Szenenwechsel) und taucht trotzdem auf? (Der Wrap-up-Call bekommt den früheren
+      Verlauf als eigenen Kontextblock — genau das prüft dieser Punkt.)
+
+**Hälfte 2 (nächste Session):**
+- [ ] `!join` → der „Lose Fäden"-Block reitet im Weltzustand (Top 3, unsichtbar für die
+      Spieler). Spielt der DM das Detail **bei passender Gelegenheit** zurück — als
+      Wiedererkennen, nicht als Fremdkörper?
+- [ ] Gegen-Check: zwängt er Callbacks in jede Antwort? → Persona-Bullet in
+      `prompts/dm_core_de.md` („nicht erzwingen") nachschärfen.
+- [ ] **Kür — Auflösung:** den Faden im Spiel auflösen (Frage beantwortet, Objekt erklärt)
+      → das nächste `!wrap` markiert ihn `resolved` (`!fäden` zeigt ihn unter „Aufgelöst",
+      er verlässt den Prompt-Block); `!faden erledigt <id>` ist der manuelle Weg.
+
 ## 8. Regelfragen / RAG (Phase-10-Gate, Hälfte 1)
 
 - [ ] Regelfrage per Stimme („Was passiert bei einem kritischen Erfolg?") → Antwort aus dem
@@ -202,7 +233,8 @@ Setup: nichts nötig — Zeit läuft mit und ohne Abenteuer. Confirm-Buttons hä
       `!npcmem`-Einträge sind noch da.
 - [ ] Recap erscheint beim nächsten `!join` im Prompt (DM knüpft an, statt neu zu starten).
 - [ ] `!wrap up` am Ende: Recap wird erzeugt + gespeichert (und triggert nebenbei die
-      NPC-Gedächtnis-Extraktion der letzten Szene — Konsole zeigt die 🧠-Zeile).
+      NPC-Gedächtnis-Extraktion der letzten Szene **+ die Chekhov-Extraktion, §7c** —
+      Konsole zeigt die 🧠- und ggf. die 🧵-Zeile).
 
 ## 10. Nebenbei / wenn Zeit ist
 
@@ -214,6 +246,6 @@ Setup: nichts nötig — Zeit läuft mit und ohne Abenteuer. Confirm-Buttons hä
 
 1. `logs/transcript.log` + `logs/debug.log` sichern und pasten → `/playtest-triage`.
 2. Ergebnisse in `progress.md` zurückschreiben: erfüllte Gates in `VERIFY EVIDENCE`
-   (Phase 9/10), D87/D91/D92-Punkte im Last-session-Block, Tuning-Werte die geblieben sind
-   in `.env.example`-Kommentare.
+   (Phase 9/10), D87/D91–D97-Punkte im Last-session-Block, Tuning-Werte die geblieben sind
+   in `.env.example`-Kommentare. (Chekhov-Hälfte 2 bleibt offen bis zum Folge-Run.)
 3. Diese Liste ausmisten: Erledigtes raus, Reste bleiben der nächste Run.

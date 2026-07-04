@@ -56,6 +56,9 @@ here is its contract, which DMbot calls:
 - JSON world state per voice channel in `data/sessions/`. Schema in `architecture.md` §7.
 - Advancement is **deterministic in code** (e.g. HP after damage), never from LLM free text.
 - Recaps: the LLM summarizes, code stores & re-injects at the front next time.
+- Narrative layers follow the same split: NPC memories/agenda steps (ADR 044/049, in
+  `state.json`) and the Chekhov thread list (ADR 050, `chekhov.json`) are LLM prose, but
+  code owns every cap, dedupe, clamp and status transition — never read them as hard facts.
 
 ## RAG (`dmbot/rag/`)
 
