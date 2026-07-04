@@ -59,7 +59,7 @@ _GAP = "  "
 
 def _short_name(name: str) -> str:
     """Trim the noisy ``dmbot.`` package prefix from a logger name so it costs fewer tokens when a
-    log is pasted (``dmbot.voice.commands`` → ``voice.commands``). Third-party names (httpx,
+    log is pasted (``dmbot.voice.delivery`` → ``voice.delivery``). Third-party names (httpx,
     faster_whisper, discord.*) are left intact — there the full path tells you who logged it."""
     return name[len("dmbot.") :] if name.startswith("dmbot.") else name
 

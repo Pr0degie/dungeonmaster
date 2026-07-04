@@ -1122,6 +1122,73 @@ in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 
 ---
 
+## Current focus (Verlauf)
+
+_Aus `progress.md` rotiert (2026-07-04, D98): die Vorsessions-„Current focus“-Blöcke D75–D81 (verbatim)._
+
+**`/improve-architecture`-Runde 3 (2026-06-16, D81 → ADR 039): Szenen + `!lore` aus `DMCog` in eigene dünne Sub-Cogs (`scenecog.py`/`lorecog.py`) ausgelagert — der zurückgestellte ADR-035-Folgeschritt. `dmcog.py` 662→502; Suite 369 grün (359 + 10 neue Sub-Cog-Tests), 0 Test-Änderungen, byte-identische Bodies.** Der offene ADR-035-Fork ist entschieden: **Sub-Cog statt Mixin** (umgeht die `CogMeta`-Sammel-Frage), **zwei** Cogs statt einem `AdventureCog` (kein geteilter State). Die eine Cross-Cog-Kante (`!lore tts` → `delivery._speak`) läuft über einen neuen `runtime.speak`-Hook (ADR 029). Gewählt aus dem `/improve-architecture`-Befund (Workflow: 3 Finder + adversariale Verify, 13 Kandidaten → 7 überlebt); Tobis Ziel: ein Agent soll nur laden, was seine Aufgabe braucht. Von Hand gebaut (kleiner, klarer Schnitt). Damit ist das ADR-035-Deferred-Umbrella für `DMCog` abgeschlossen.
+
+**Deepening-Runde 2 aus `/improve-architecture` (2026-06-16, D80 → ADR 038): Kandidaten #4 + #5 + #6 umgesetzt, verhaltensneutral. Suite 359 grün (343 + 16 neue Tests), 0 Test-Änderungen, Commits auf `main`.** #5: den System-Prompt-Join aus `orchestrator._build_request` in die reine, reihenfolge-explizite `llm/prompt_assembly.py::assemble_system_prompt` gezogen — **nur den Join**, die `.get()`-Cache-Reads bleiben in `_build_request` (cache-vs-pull-Timing unangetastet). #4: die `!join`-Seed-Sequenz in `runtime.seed_session(voice_channel, text_channel)` gebündelt (Voice-Receive + Ansagen bleiben im Cog). #6: der 4× byte-identische „Panel löschen"-Block in `runtime.clear_panel(attr)` (Pause-Panel-edit-in-place unangetastet). Per Workflow: sequenzielles Implement (geteilte Dateien) + 3 parallele adversariale Verifier. Damit ist der `/improve-architecture`-Strang (#1–#6) abgeschlossen.
+
+**Deepening-Runde aus `/improve-architecture` (2026-06-16, D79 → ADR 037): Kandidaten #1 + #2 umgesetzt, verhaltensneutral. Suite 343 grün (324 + 7 + 12), 0 Test-Änderungen, 3 Commits auf `main`.** #1: die schon extrahierte reine `stt/segments.py::confident_text` (Whisper-Halluzinations-Guard) in `transcriber.py` verdrahtet (Inline-Duplikat + tote Konstanten raus) + `tests/test_segments.py`. #2: Attack-Soak-Arithmetik + Warp-Containment→Perils-Kette aus `dicecog.py` ins neue reine `dmbot/rules/combat.py` gezogen (kein Discord, keine WorldState-Mutation, RNG injiziert) — Schnitt **vor** der Mutation (keine Wunden-Clamp-Duplikation), der Cog delegiert + behält `state.apply_damage`/`reset_warp_charge` + das schon reine `describe_damage_de`. Reiner Testbarkeits-Gewinn am deterministischen Kern (Würfel = Code). Gebaut per 2-Agenten-Workflow (parallel implement + adversarial verify).
+
+**Skill-Tooling-Runde (2026-06-15, D78): 4 Claude-Code-Skills nach `.claude/skills/` — `/tdd` (eigen) + `/grill-me`·`/improve-architecture`·`/to-prd` (aus `mattpocock/skills` adaptiert). Kein Bot-Code, Suite unberührt (324 grün), 5 Commits auf `main`.** Nebenstrang (Dev-Tooling); die eigentliche Projekt-Priorität bleibt das `!intro`-Live-Gate (siehe „Next concrete step").
+
+**Dev-Gates-Runde gelandet (2026-06-15, D77): Lint im Test-Hook, blockierender git pre-commit, Review/Simplify-Trigger-Checkliste. Suite 324 grün, 4 Commits gepusht.**
+Entscheidung aus „auto-`/code-review` vor jedem Commit?": **nein** — billige + deterministische Gates automatisch (0 Tokens: `ruff --select F` im Stop-Hook **und** neuem blockierenden `tools/hooks/pre-commit` via `core.hooksPath`), teure LLM-Reviews (`/code-review`, `/simplify`) nach Urteil, als Checkliste in `docs/conventions.md` verankert (`/simplify` nie automatisch — schreibt Code, D72). Der Lint-Gate fand + entfernte sofort 2 tote Importe in `orchestrator.py` (D70-Rückstände).
+
+**Review-Runde nach Fan-out-`/code-review` der Tagescommits gelandet (2026-06-15, D76): 14 Findings → 3 bestätigt / 11 entwarnt, Suite 324 grün, 2 Commits gepusht.**
+Fan-out-Review (21 Agenten, jedes Finding adversarial gegengeprüft) über `7b5af54..HEAD` — **kein Refactor-Regress (D70–D75) überlebte die Gegenprüfung**, Golden-Rules-Querschnitt sauber. Gefixt: **`disconnect_voice`** gab durch einen toten `TimeoutError`-Zweig immer `True` (die „abandoned at shutdown"-Warnung feuerte nie, weil das echte discord.py den Bound-Cancel schluckt) → deterministisch via `asyncio.wait` neu, Test auf den echten swallow-and-cleanup-Kontrakt umgestellt (`2b608e7`); **`tests/test_delivery.py`** neu — nagelt die ungetestete `puffer`-State-Machine in `_deliver_streaming` fest inkl. early-abort Temp-WAV-Cleanup (`5499066`). Die 11 entwarnten Nits bewusst gelassen (intentional/unerreichbar/„so geboren"). _Bugfixes, kein Trade-off → kein ADR._
+
+**`setup.ps1` kümmert sich jetzt um ALLES + alles dauerhaft im PATH (2026-06-14, D75 → ADR 036): parse-OK, Suite 319 grün (nur Skripte/Doku).**
+Tobis Wunsch: Setup soll wirklich alles erledigen — herunterladen, installieren, **uv + python dauerhaft im PATH**, startklar,
+idempotent; beim Kollegen hakten zusätzlich **winget** und die **Skriptausführungs-Richtlinie**. Umgesetzt: neuer `Add-ToUserPath`
+(schreibt den persistenten User-PATH, append-only/dedup) für uv-Bin (`~/.local/bin`) + Ollama-Dir; `uv python install 3.12
+**--default**` → globales `python`-Shim; **Ollama voll automatisch** (robustes winget → offizieller Installer-Fallback → PATH →
+Modelle); **Bug-Fix `ollama pull bge-m3`** statt veraltetem `nomic-embed-text`; **Prefetch standardmäßig an** (`-SkipPrefetch`);
+Kopf-Härtung (TLS 1.2, ExecutionPolicy RemoteSigned, `Unblock-File`) + neuer **`setup.bat`** Ein-Klick-Starter (`-ExecutionPolicy
+Bypass`). Den vollen Installer **bewusst nicht** auf Tobis Hauptmaschine laufen lassen (persistente PATH-/Policy-/`--default`-
+Änderungen) — `Add-ToUserPath`-Dedup + `uv python find` read-only verifiziert. _Live offen: einmal `setup.bat` beim Kollegen
+auf frischer Maschine per Doppelklick gegenchecken (der ursprüngliche Schmerzpunkt)._
+
+---
+
+## Next concrete step (Verlauf)
+
+_Aus `progress.md` rotiert (2026-07-04, D98): die erledigten „Next concrete step“-Einträge des D60–D63-Verlaufs (verbatim)._
+
+**Kontext-Split erledigt (2026-06-14, D63 → ADR 032):** Live-Docs verschlankt, Historie/Detail in `docs/`; nichts
+Code-/Bot-seitig offen, Rotations-Regel aktiv. Der eigentliche nächste Schritt bleibt das `!intro`-Live-Gate unten.
+
+**`!intro`-Eröffnungs-Monolog: ERLEDIGT (2026-06-14, D62 → ADR 031).** Suite 300 grün; nichts Code-seitig
+offen. **Live-Gate** (im selben circlejerk-Run mit abprüfen): `!join` → `!intro` → der DM spricht **einen**
+zusammenhängenden Monolog, der **Ort** (Hive Rokarth / Welt Voll), **Auftrag** (Halikarn/Gratis) und das
+**Hergekommensein** nennt **und jede Figur namentlich** mit einem passenden persönlichen Moment einbindet;
+**keine** Würfel-Aufforderung; **keine** wörtlich vorgelesenen privaten Ziele/Arc. Gegen-Check: `!start` ist
+weiterhin das kurze 2–4-Sätze-Briefing. Bei nemo-Abschweifen/Auslassen einer Figur: `DM_INTRO_NUM_PREDICT`
+senken oder (Fallback) auf die verworfene Multi-Beat-Sequenz umstellen (ADR 031 Alternatives).
+_Der **2000-Zeichen-Crash** des ersten Kollegen-Runs ist gefixt (D64) — `!intro` postet jetzt mehrteilig; das
+Live-Gate ist nur noch eine **Inhalts-/Qualitäts**-Prüfung, kein Crash-Test mehr._
+
+**Code-Review-Korrektheitsrunde: ERLEDIGT (2026-06-13, D61 → ADR 030).** Suite 293 grün; nichts
+Code-seitig offen. Im Live-Run **gezielt mitprüfen**, was die Fixes berühren: (1) ein Psyker mit
+hoher Psi-Meisterschaft / niedriger Disziplin manifestiert über Schwelle → Perils erupten jetzt
+*häufiger* (Containment gegen Disziplin); (2) verklebte `<<ORT…>>`/`<<MANIFEST…>>` werden nicht mehr
+vorgelesen; (3) der Würfel-Button erscheint auch wenn die Sprachausgabe mal hakt. Die Altitude-Punkte
+sind bewusst aufgeschoben (s. Open questions).
+
+**Cog-Split-Refactor: ERLEDIGT (2026-06-13, D60 → ADR 029).** Code-complete, Suite 263 grün;
+abzunehmen mit einem **Smoke-Test** (`!join` → sprechen → `!dm` → Würfel-Button → `!leave`) — kein
+eigenes Live-Gate. Die Live-Prioritäten unten (Playtest-Fixes + Phase-9/10-Gates) sind unberührt.
+
+**Schritt 0 — neue Party: ERLEDIGT (2026-06-13).** Die drei neuen Charaktere (Fridolin / Gellicus /
+Rektalus) sind gebaut, validiert, zur `data/sessions/1343673766487654464/characters.json` + Aliases
+gemergt und **committet** (allowlisted → läuft beim Kollegen); kein `state.json` → erster `!join`
+seedet frisch; die alten Party-Bögen sind archiviert, neue Bögen gefüllt. **→ Der Blocker für den
+Gate-Run ist weg.** _(Sezgin könnte Rektalus' Werte noch finalisieren, sonst startklar.)_
+
+---
+
 ## Phase status — abgeschlossene Phasen (volle Details)
 
 ### ✅ Phase 0 — Foundation & setup
@@ -1332,6 +1399,26 @@ in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 ---
 
 ## Open questions (erledigt/archiviert)
+
+**Aus der Cleanup-Runde rotiert (2026-07-04, D98):**
+- ✅ **Kosmetik (D60/ADR 029) geputzt (D98).** Ursprünglicher Eintrag: „ein Docstring-Beispiel in
+  `dmbot/logsetup.py` (`_short_name`) nennt noch das gelöschte `dmbot.voice.commands` als Beispiel;
+  und verschobene Log-Calls tragen ihren neuen Modulnamen in der opt-in `debug.log`-`%(name)s`-Spalte
+  + WARNING-Konsolenzeilen (`runtime`/`voice.dmcog` statt `voice.commands`). Bewusst nicht angefasst
+  (außerhalb des Refactor-Scopes); Log-Messages + Green-Chat/Transcript-Format unverändert. Bei
+  Gelegenheit putzen." — Das Docstring-Beispiel heißt jetzt `voice.delivery`; die neuen Modulnamen in
+  der `%(name)s`-Spalte sind kein Mangel, sondern der korrekte Stand nach dem Cog-Split.
+- ✅ **Per-marker pipeline grows linearly (D61/ADR 030 Altitude-Debt) — eingelöst (D98 → ADR 051).**
+  Ursprünglicher Eintrag: „Each new director marker means a bespoke regex + dataclass in `marker.py`,
+  a wider `finalize_answer` tuple, and a third/fourth parallel `_pending_*` dict in the orchestrator
+  + a `take_pending_*`. One keyed marker structure (`{kind: [...]}`) would collapse the triplication;
+  do it before the next marker, not after. _Stand D94: NICHT eingelöst — `<<UHR>>` (ADR 047) ist der
+  fünfte Marker auf demselben Muster (`finalize_answer` jetzt 6-Tupel, fünftes `_pending_*`-Dict);
+  der Seam-Preis war erneut rein mechanisch, aber er wächst. Die Konsolidierung ist jetzt ein guter
+  `/improve-architecture`-Kandidat MIT dm-eval als Regressions-Gate (ADR 046 existiert inzwischen
+  genau dafür) — vor einem etwaigen sechsten Marker wirklich machen._" — Umgesetzt als deklarative
+  `MarkerSpec`-Registry + generische Strip/Queue/Pending-Naht, marker-weise migriert (ORT zuletzt),
+  Suite/ruff/dm-eval nach jedem Schritt grün (ADR 051).
 
 **From the Phase-7 playtests (2026-06-06):**
 - ✅ **(gemma3) Taste test done (2026-06-08).** gemma3:12b narrates cleaner than nemo (no

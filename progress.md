@@ -26,34 +26,9 @@ met and the proof is recorded here.
 
 **Stateful Scene Cards gebaut (2026-07-02, D87 → ADR 043). Suite 444 grün (+49), ruff sauber, committet + gepusht auf `main`.** Die Szenenkarte spiegelt jetzt den Weltzustand: Element-Flags (`<<ERLEDIGT id>>`-Marker mit Confirm-Button/`DM_FLAG_CONFIRM`, manuell `!erledigt`/`!offen`) verschieben erledigte Gelegenheiten nach „Bereits geschehen" und enthüllte Geheimnisse nach „Bekannt"; tote NSCs rendern `(tot)`; `leads_to` kann per `{"ziel","requires"}` gegatet werden (verborgen + abgelehnt bis freigeschaltet). Alles code-owned (`WorldState.scene_flags`, golden rule #3), Schema abwärtskompatibel (Chemical Burn unverändert). **Offen/live:** das Live-Test-Skript (siehe Next step) — hängt sich an den ohnehin offenen Spielbarkeits-Live-Run. Davor/danach unverändert offen: der Tuning-Live-Run unten.
 
-**Spielbarkeits-Tuning-Runde (2026-06-18, D85+D86 → ADR 042 + ADR 041 Addendum 2). Suite 395 grün (+16), Commit `e961b75` auf `main`, live-unverified.** Bootstrap (Phase 10 Hälfte 2) **zurückgestellt** auf Tobis Ansage „das Modell läuft noch nicht so richtig, dass man wirklich spielen kann" — Fokus ist jetzt Spielbarkeit, Modell bleibt nemo („am Drumherum drehen"). Drei Fronten: **Antwortqualität** → `repeat_penalty`/`repeat_last_n` als OllamaClient-Instanz-Defaults (1.1/256, `DM_REPEAT_PENALTY`/`DM_REPEAT_LAST_N`, live-tunebar), reiten auf jedem Call; der **Roll-Router** neutralisiert sie explizit (1.0) → Würfel-Routing bleibt deterministisch (ADR 042, vom adversarialen Verify gefunden). **!intro** → pures `intro_guard.is_weak_intro` (zu kurz **oder** Figur ungenannt, Genitiv-`s`-tolerant) + Einmal-Retry in `respond_opening` (Batch-Pfad), nur die bessere Antwort in die History (ADR 041 Add. 2). **Tempo** → GPU-Offload (Workstream A) ist Tobis **Live-Schritt**: lokale `.env` `OLLAMA_HOST` auf die Offload-Box + `TTS_DEVICE=cuda` (XTTS frei → ~3× schneller, Lücken weg); `.env.example` dokumentiert das bereits als Soll. **Offen/live:** der eine geplante Live-Run (s. Next step) — verifiziert Tempo (first_audio/tts fallen), Intro-Qualität, weniger Wiederholung, und nebenbei Phase-10-Gate-Hälfte 1 (Regelfrage aus RAG). _(Hinweis: die älteren „Current focus"-Blöcke unten [D75–D81] sind Vorsessions-Verlauf — eigener Archiv-Aufräum-Pass weiterhin offen.)_
+**Spielbarkeits-Tuning-Runde (2026-06-18, D85+D86 → ADR 042 + ADR 041 Addendum 2). Suite 395 grün (+16), Commit `e961b75` auf `main`, live-unverified.** Bootstrap (Phase 10 Hälfte 2) **zurückgestellt** auf Tobis Ansage „das Modell läuft noch nicht so richtig, dass man wirklich spielen kann" — Fokus ist jetzt Spielbarkeit, Modell bleibt nemo („am Drumherum drehen"). Drei Fronten: **Antwortqualität** → `repeat_penalty`/`repeat_last_n` als OllamaClient-Instanz-Defaults (1.1/256, `DM_REPEAT_PENALTY`/`DM_REPEAT_LAST_N`, live-tunebar), reiten auf jedem Call; der **Roll-Router** neutralisiert sie explizit (1.0) → Würfel-Routing bleibt deterministisch (ADR 042, vom adversarialen Verify gefunden). **!intro** → pures `intro_guard.is_weak_intro` (zu kurz **oder** Figur ungenannt, Genitiv-`s`-tolerant) + Einmal-Retry in `respond_opening` (Batch-Pfad), nur die bessere Antwort in die History (ADR 041 Add. 2). **Tempo** → GPU-Offload (Workstream A) ist Tobis **Live-Schritt**: lokale `.env` `OLLAMA_HOST` auf die Offload-Box + `TTS_DEVICE=cuda` (XTTS frei → ~3× schneller, Lücken weg); `.env.example` dokumentiert das bereits als Soll. **Offen/live:** der eine geplante Live-Run (s. Next step) — verifiziert Tempo (first_audio/tts fallen), Intro-Qualität, weniger Wiederholung, und nebenbei Phase-10-Gate-Hälfte 1 (Regelfrage aus RAG).
 
-**Playtest-Fix-Runde (2026-06-16): drei Fixes aus Tobis Live-Sessions auf `main` (`e36bad7`), live-unverified.** Default-Party lädt jetzt **channel-unabhängig** (committete `data/sessions/_default/characters.json`, vor `_example` geladen — D82 → ADR 040), also Fridolin & Co. in jedem Voice-Channel + beim Kollegen. `!intro` gegen **Modell-Varianz** gehärtet: feste, niedrigere `!intro`-Temperatur (`DM_INTRO_TEMPERATURE`) + Director-Brief (D83), und der Meta-Auftakt („Als Spielleitung beginne ich…") + `"…"`-Umschlag **deterministisch** im Sanitizer gestrippt + Default-Temp auf **0.7** (D84 → ADR 041 + Addendum). Suite **379 grün**. **Offen/live:** klingt `!intro` jetzt zuverlässig wie der gelobte 14.06.-Lauf? Kollege testet `e36bad7`; ggf. `DM_INTRO_TEMPERATURE` Richtung 0.8 oder Brief-Wortlaut. Projekt sonst: Phase-9/10-Live-Gates (siehe Phasen-Status). _(Hinweis: die älteren „Current focus"-Blöcke unten [D75–D81] sind Vorsessions-Verlauf — gehören eigentlich ins Archiv; eigener Aufräum-Pass offen.)_
-
-**`/improve-architecture`-Runde 3 (2026-06-16, D81 → ADR 039): Szenen + `!lore` aus `DMCog` in eigene dünne Sub-Cogs (`scenecog.py`/`lorecog.py`) ausgelagert — der zurückgestellte ADR-035-Folgeschritt. `dmcog.py` 662→502; Suite 369 grün (359 + 10 neue Sub-Cog-Tests), 0 Test-Änderungen, byte-identische Bodies.** Der offene ADR-035-Fork ist entschieden: **Sub-Cog statt Mixin** (umgeht die `CogMeta`-Sammel-Frage), **zwei** Cogs statt einem `AdventureCog` (kein geteilter State). Die eine Cross-Cog-Kante (`!lore tts` → `delivery._speak`) läuft über einen neuen `runtime.speak`-Hook (ADR 029). Gewählt aus dem `/improve-architecture`-Befund (Workflow: 3 Finder + adversariale Verify, 13 Kandidaten → 7 überlebt); Tobis Ziel: ein Agent soll nur laden, was seine Aufgabe braucht. Von Hand gebaut (kleiner, klarer Schnitt). Damit ist das ADR-035-Deferred-Umbrella für `DMCog` abgeschlossen.
-
-**Deepening-Runde 2 aus `/improve-architecture` (2026-06-16, D80 → ADR 038): Kandidaten #4 + #5 + #6 umgesetzt, verhaltensneutral. Suite 359 grün (343 + 16 neue Tests), 0 Test-Änderungen, Commits auf `main`.** #5: den System-Prompt-Join aus `orchestrator._build_request` in die reine, reihenfolge-explizite `llm/prompt_assembly.py::assemble_system_prompt` gezogen — **nur den Join**, die `.get()`-Cache-Reads bleiben in `_build_request` (cache-vs-pull-Timing unangetastet). #4: die `!join`-Seed-Sequenz in `runtime.seed_session(voice_channel, text_channel)` gebündelt (Voice-Receive + Ansagen bleiben im Cog). #6: der 4× byte-identische „Panel löschen"-Block in `runtime.clear_panel(attr)` (Pause-Panel-edit-in-place unangetastet). Per Workflow: sequenzielles Implement (geteilte Dateien) + 3 parallele adversariale Verifier. Damit ist der `/improve-architecture`-Strang (#1–#6) abgeschlossen.
-
-**Deepening-Runde aus `/improve-architecture` (2026-06-16, D79 → ADR 037): Kandidaten #1 + #2 umgesetzt, verhaltensneutral. Suite 343 grün (324 + 7 + 12), 0 Test-Änderungen, 3 Commits auf `main`.** #1: die schon extrahierte reine `stt/segments.py::confident_text` (Whisper-Halluzinations-Guard) in `transcriber.py` verdrahtet (Inline-Duplikat + tote Konstanten raus) + `tests/test_segments.py`. #2: Attack-Soak-Arithmetik + Warp-Containment→Perils-Kette aus `dicecog.py` ins neue reine `dmbot/rules/combat.py` gezogen (kein Discord, keine WorldState-Mutation, RNG injiziert) — Schnitt **vor** der Mutation (keine Wunden-Clamp-Duplikation), der Cog delegiert + behält `state.apply_damage`/`reset_warp_charge` + das schon reine `describe_damage_de`. Reiner Testbarkeits-Gewinn am deterministischen Kern (Würfel = Code). Gebaut per 2-Agenten-Workflow (parallel implement + adversarial verify).
-
-**Skill-Tooling-Runde (2026-06-15, D78): 4 Claude-Code-Skills nach `.claude/skills/` — `/tdd` (eigen) + `/grill-me`·`/improve-architecture`·`/to-prd` (aus `mattpocock/skills` adaptiert). Kein Bot-Code, Suite unberührt (324 grün), 5 Commits auf `main`.** Nebenstrang (Dev-Tooling); die eigentliche Projekt-Priorität bleibt das `!intro`-Live-Gate (siehe „Next concrete step").
-
-**Dev-Gates-Runde gelandet (2026-06-15, D77): Lint im Test-Hook, blockierender git pre-commit, Review/Simplify-Trigger-Checkliste. Suite 324 grün, 4 Commits gepusht.**
-Entscheidung aus „auto-`/code-review` vor jedem Commit?": **nein** — billige + deterministische Gates automatisch (0 Tokens: `ruff --select F` im Stop-Hook **und** neuem blockierenden `tools/hooks/pre-commit` via `core.hooksPath`), teure LLM-Reviews (`/code-review`, `/simplify`) nach Urteil, als Checkliste in `docs/conventions.md` verankert (`/simplify` nie automatisch — schreibt Code, D72). Der Lint-Gate fand + entfernte sofort 2 tote Importe in `orchestrator.py` (D70-Rückstände).
-
-**Review-Runde nach Fan-out-`/code-review` der Tagescommits gelandet (2026-06-15, D76): 14 Findings → 3 bestätigt / 11 entwarnt, Suite 324 grün, 2 Commits gepusht.**
-Fan-out-Review (21 Agenten, jedes Finding adversarial gegengeprüft) über `7b5af54..HEAD` — **kein Refactor-Regress (D70–D75) überlebte die Gegenprüfung**, Golden-Rules-Querschnitt sauber. Gefixt: **`disconnect_voice`** gab durch einen toten `TimeoutError`-Zweig immer `True` (die „abandoned at shutdown"-Warnung feuerte nie, weil das echte discord.py den Bound-Cancel schluckt) → deterministisch via `asyncio.wait` neu, Test auf den echten swallow-and-cleanup-Kontrakt umgestellt (`2b608e7`); **`tests/test_delivery.py`** neu — nagelt die ungetestete `puffer`-State-Machine in `_deliver_streaming` fest inkl. early-abort Temp-WAV-Cleanup (`5499066`). Die 11 entwarnten Nits bewusst gelassen (intentional/unerreichbar/„so geboren"). _Bugfixes, kein Trade-off → kein ADR._
-
-**`setup.ps1` kümmert sich jetzt um ALLES + alles dauerhaft im PATH (2026-06-14, D75 → ADR 036): parse-OK, Suite 319 grün (nur Skripte/Doku).**
-Tobis Wunsch: Setup soll wirklich alles erledigen — herunterladen, installieren, **uv + python dauerhaft im PATH**, startklar,
-idempotent; beim Kollegen hakten zusätzlich **winget** und die **Skriptausführungs-Richtlinie**. Umgesetzt: neuer `Add-ToUserPath`
-(schreibt den persistenten User-PATH, append-only/dedup) für uv-Bin (`~/.local/bin`) + Ollama-Dir; `uv python install 3.12
-**--default**` → globales `python`-Shim; **Ollama voll automatisch** (robustes winget → offizieller Installer-Fallback → PATH →
-Modelle); **Bug-Fix `ollama pull bge-m3`** statt veraltetem `nomic-embed-text`; **Prefetch standardmäßig an** (`-SkipPrefetch`);
-Kopf-Härtung (TLS 1.2, ExecutionPolicy RemoteSigned, `Unblock-File`) + neuer **`setup.bat`** Ein-Klick-Starter (`-ExecutionPolicy
-Bypass`). Den vollen Installer **bewusst nicht** auf Tobis Hauptmaschine laufen lassen (persistente PATH-/Policy-/`--default`-
-Änderungen) — `Add-ToUserPath`-Dedup + `uv python find` read-only verifiziert. _Live offen: einmal `setup.bat` beim Kollegen
-auf frischer Maschine per Doppelklick gegenchecken (der ursprüngliche Schmerzpunkt)._
+**Playtest-Fix-Runde (2026-06-16): drei Fixes aus Tobis Live-Sessions auf `main` (`e36bad7`), live-unverified.** Default-Party lädt jetzt **channel-unabhängig** (committete `data/sessions/_default/characters.json`, vor `_example` geladen — D82 → ADR 040), also Fridolin & Co. in jedem Voice-Channel + beim Kollegen. `!intro` gegen **Modell-Varianz** gehärtet: feste, niedrigere `!intro`-Temperatur (`DM_INTRO_TEMPERATURE`) + Director-Brief (D83), und der Meta-Auftakt („Als Spielleitung beginne ich…") + `"…"`-Umschlag **deterministisch** im Sanitizer gestrippt + Default-Temp auf **0.7** (D84 → ADR 041 + Addendum). Suite **379 grün**. **Offen/live:** klingt `!intro` jetzt zuverlässig wie der gelobte 14.06.-Lauf? Kollege testet `e36bad7`; ggf. `DM_INTRO_TEMPERATURE` Richtung 0.8 oder Brief-Wortlaut. Projekt sonst: Phase-9/10-Live-Gates (siehe Phasen-Status).
 
 **`dmcog.py` halbiert: Delivery-Pipeline nach `dmbot/voice/delivery.py` ausgelagert (2026-06-14, D74 → ADR 035): Suite 319 grün, 0 Test-Änderungen.**
 Der eigentliche Hebel (Tobis Wahl „b"): die größte Datei nach dem Cog-Split. Die Antwort→Audio-Maschinerie (TTS-Speak,
@@ -374,38 +349,6 @@ D68 globaler Sprech-Modus, D67 Shutdown-Leave-Limit u. a.): siehe **[docs/progre
 **2. Die offenen Phase-9/10-Live-Gates abhaken (Code ist da, nur Live-Abnahme fehlt):**
 - **Phase 9:** eine HP-Änderung übersteht einen echten Neustart + der Recap erscheint beim nächsten `!join` (in-prompt).
 - **Phase 10:** eine konkrete **Regelfrage** wird korrekt aus dem Regelbuch-RAG beantwortet. Danach das **einzige noch zu bauende** Feature: **Profil-Bootstrap (§9)** — der DM schlägt aus dem Regelbuch ein System-Profil vor → Tobi bestätigt → speichern.
-
-_(Die älteren „Next concrete step"-Einträge unten [D61–D74] sind erledigter Verlauf — Aufräum-Pass offen, wie beim Current-focus-Hinweis.)_
-
-**Kontext-Split erledigt (2026-06-14, D63 → ADR 032):** Live-Docs verschlankt, Historie/Detail in `docs/`; nichts
-Code-/Bot-seitig offen, Rotations-Regel aktiv. Der eigentliche nächste Schritt bleibt das `!intro`-Live-Gate unten.
-
-**`!intro`-Eröffnungs-Monolog: ERLEDIGT (2026-06-14, D62 → ADR 031).** Suite 300 grün; nichts Code-seitig
-offen. **Live-Gate** (im selben circlejerk-Run mit abprüfen): `!join` → `!intro` → der DM spricht **einen**
-zusammenhängenden Monolog, der **Ort** (Hive Rokarth / Welt Voll), **Auftrag** (Halikarn/Gratis) und das
-**Hergekommensein** nennt **und jede Figur namentlich** mit einem passenden persönlichen Moment einbindet;
-**keine** Würfel-Aufforderung; **keine** wörtlich vorgelesenen privaten Ziele/Arc. Gegen-Check: `!start` ist
-weiterhin das kurze 2–4-Sätze-Briefing. Bei nemo-Abschweifen/Auslassen einer Figur: `DM_INTRO_NUM_PREDICT`
-senken oder (Fallback) auf die verworfene Multi-Beat-Sequenz umstellen (ADR 031 Alternatives).
-_Der **2000-Zeichen-Crash** des ersten Kollegen-Runs ist gefixt (D64) — `!intro` postet jetzt mehrteilig; das
-Live-Gate ist nur noch eine **Inhalts-/Qualitäts**-Prüfung, kein Crash-Test mehr._
-
-**Code-Review-Korrektheitsrunde: ERLEDIGT (2026-06-13, D61 → ADR 030).** Suite 293 grün; nichts
-Code-seitig offen. Im Live-Run **gezielt mitprüfen**, was die Fixes berühren: (1) ein Psyker mit
-hoher Psi-Meisterschaft / niedriger Disziplin manifestiert über Schwelle → Perils erupten jetzt
-*häufiger* (Containment gegen Disziplin); (2) verklebte `<<ORT…>>`/`<<MANIFEST…>>` werden nicht mehr
-vorgelesen; (3) der Würfel-Button erscheint auch wenn die Sprachausgabe mal hakt. Die Altitude-Punkte
-sind bewusst aufgeschoben (s. Open questions).
-
-**Cog-Split-Refactor: ERLEDIGT (2026-06-13, D60 → ADR 029).** Code-complete, Suite 263 grün;
-abzunehmen mit einem **Smoke-Test** (`!join` → sprechen → `!dm` → Würfel-Button → `!leave`) — kein
-eigenes Live-Gate. Die Live-Prioritäten unten (Playtest-Fixes + Phase-9/10-Gates) sind unberührt.
-
-**Schritt 0 — neue Party: ERLEDIGT (2026-06-13).** Die drei neuen Charaktere (Fridolin / Gellicus /
-Rektalus) sind gebaut, validiert, zur `data/sessions/1343673766487654464/characters.json` + Aliases
-gemergt und **committet** (allowlisted → läuft beim Kollegen); kein `state.json` → erster `!join`
-seedet frisch; die alten Party-Bögen sind archiviert, neue Bögen gefüllt. **→ Der Blocker für den
-Gate-Run ist weg.** _(Sezgin könnte Rektalus' Werte noch finalisieren, sonst startklar.)_
 
 **Zusätzlich diese Session live zu verifizieren** (alle code-complete, unverifiziert) — fällt im
 selben circlejerk-Run mit ab:
@@ -826,11 +769,8 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
   a German weapon glossary under `data/rules_de/` (same pattern as `conditions.md`) is the likely fix.
 
 **From the cog-split refactor (2026-06-13, D60 / ADR 029):**
-- **Kosmetik, kein Verhaltens-Change:** ein Docstring-Beispiel in `dmbot/logsetup.py` (`_short_name`)
-  nennt noch das gelöschte `dmbot.voice.commands` als Beispiel; und verschobene Log-Calls tragen ihren
-  neuen Modulnamen in der opt-in `debug.log`-`%(name)s`-Spalte + WARNING-Konsolenzeilen
-  (`runtime`/`voice.dmcog` statt `voice.commands`). Bewusst nicht angefasst (außerhalb des
-  Refactor-Scopes); Log-Messages + Green-Chat/Transcript-Format unverändert. Bei Gelegenheit putzen.
+- ✅ **Kosmetik geputzt (2026-07-04, D98):** das `_short_name`-Docstring-Beispiel in
+  `dmbot/logsetup.py` nennt jetzt ein existierendes Modul (`voice.delivery`); Details im Archiv.
 - **Smoke-Test offen:** der Schnitt ist test-grün (263), aber live nur per Smoke-Test abzunehmen
   (`!join`→sprechen→`!dm`→Würfel→`!leave`) — siehe „Next concrete step".
 
@@ -844,14 +784,9 @@ when a second system is actually loaded:
   Fumble×2, Push+1d10) and `reverse_d100` + the `advantage` digit-reversal bake IM's p.163/p.189 rules
   into the generic engine. Move the charge-gain + advantage model into the profile alongside the
   resolution/degrees rules that are already data.
-- **Per-marker pipeline grows linearly.** Each new director marker means a bespoke regex + dataclass
-  in `marker.py`, a wider `finalize_answer` tuple, and a third/fourth parallel `_pending_*` dict in
-  the orchestrator + a `take_pending_*`. One keyed marker structure (`{kind: [...]}`) would collapse
-  the triplication; do it before the next marker, not after. _Stand D94: NICHT eingelöst — `<<UHR>>`
-  (ADR 047) ist der fünfte Marker auf demselben Muster (`finalize_answer` jetzt 6-Tupel, fünftes
-  `_pending_*`-Dict); der Seam-Preis war erneut rein mechanisch, aber er wächst. Die Konsolidierung
-  ist jetzt ein guter `/improve-architecture`-Kandidat MIT dm-eval als Regressions-Gate (ADR 046
-  existiert inzwischen genau dafür) — vor einem etwaigen sechsten Marker wirklich machen._
+- ✅ **Per-marker pipeline grows linearly — EINGELÖST (2026-07-04, D98 → ADR 051):** deklarative
+  `MarkerSpec`-Registry + eine generische Strip/Queue/Pending-Naht (keyed Store, `take_pending(kind)`),
+  verhaltensneutral, marker-weise migriert mit dm-eval als Gate. Voller Alt-Text im Archiv.
 - **RAG corpus catalog is IM-/OCR-specific in code.** `retrieve._SOURCES` (source names + German
   group labels) and `_is_junk_hit` (IM-PDF OCR-noise regexes) live in the retriever. A second ruleset
   needs them in data/profile + ingest-time denoise, not hardcoded.
