@@ -18,6 +18,7 @@ fallback). Pure + profile-driven, unit-tested without Discord.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 
 # Duration grammar shared with the !zeit/!frist commands (ADR 048). gametime is pure and
@@ -290,3 +291,58 @@ def extract_zeit(text: str) -> tuple[str, list[ZeitRequest]]:
         requests.append(ZeitRequest(minutes=minutes, raw=m.group(0), parsed=minutes is not None))
     clean = _clean(_ZEIT_RE.sub("", text))
     return clean, requests
+
+
+# --- Declarative marker registry (ADR 051) ------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class MarkerSpec:
+    """One row of the marker registry (ADR 051): what the *mechanical* pipeline seams — strip,
+    streaming view, pending queue, replay journal — need to know about a marker. Behavioural
+    specifics (validation, confirm views, per-turn clamps) deliberately stay in the per-marker
+    handlers and verdict functions (ADR 051 #5), not here.
+
+    Table order is load-bearing: :data:`MARKER_SPECS` order is the extraction order AND the
+    ``markers.<kind>`` key order in the ``history.jsonl`` replay journal (ADR 046) — do not
+    re-sort."""
+
+    kind: str      # journal key + ``_pending_<kind>``/``take_pending_<kind>`` suffix
+    keyword: str   # the ``<<KEYWORD …>>`` grammar word (documentation; the extractor owns matching)
+    # Normalised call shape ``(text, profile) -> (clean, requests)``; profile-free extractors
+    # simply ignore the second argument.
+    extract: Callable[[str, SystemProfile | None], tuple[str, list]]
+    needs_profile: bool = False  # TEST/MANIFEST parse against the profile — skipped without one
+    # False → exempt from the results-only marker suppression (ADR 047 #7 / ADR 048 #6): the
+    # post-roll consequence turn is the canonical tick/advance moment and neither can loop.
+    suppressible: bool = True
+
+
+MARKER_SPECS: tuple[MarkerSpec, ...] = (
+    MarkerSpec("tests", "TEST", extract_tests, needs_profile=True),
+    MarkerSpec("manifests", "MANIFEST", extract_manifests, needs_profile=True),
+    MarkerSpec("scenes", "ORT", lambda text, profile: extract_scenes(text)),
+    MarkerSpec("erledigt", "ERLEDIGT", lambda text, profile: extract_erledigt(text)),
+    MarkerSpec("uhr", "UHR", lambda text, profile: extract_uhr(text), suppressible=False),
+    MarkerSpec("zeit", "ZEIT", lambda text, profile: extract_zeit(text), suppressible=False),
+)
+
+
+def empty_markers() -> dict[str, list]:
+    """A ``{kind: []}`` skeleton in canonical order — the shape :func:`extract_all` returns."""
+    return {spec.kind: [] for spec in MARKER_SPECS}
+
+
+def extract_all(text: str, profile: SystemProfile | None) -> tuple[str, dict[str, list]]:
+    """Strip every marker in registry order and return (clean narration, ``{kind: requests}``).
+
+    Chains the exact same per-marker extractors in the exact order the pre-051 hand-written
+    sequence used, so the narration is byte-identical to calling them one after another. A
+    profile-needing extractor is skipped without an active profile — its markers then survive
+    in the text and its kind records ``[]``, exactly the historical profile-guard behaviour."""
+    requests = empty_markers()
+    for spec in MARKER_SPECS:
+        if spec.needs_profile and profile is None:
+            continue
+        text, requests[spec.kind] = spec.extract(text, profile)
+    return text, requests
