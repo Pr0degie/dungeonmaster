@@ -8,10 +8,11 @@ mechanics (a per-system profile). Everything runs **locally** — no cloud, no A
 First campaign: **Warhammer 40,000 / Imperium Maledictum** in Dan Abnett's *Eisenhorn*
 grimdark tone — but that's just the first profile + tone overlay, not baked into the DM.
 
-> **Status:** **playable + dice-enabled** (Phases 0–8 done, live-validated 2026-06-08). You speak,
-> the DM answers aloud, and skill checks roll on a button. Persistent memory (Phase 9) and RAG
-> (Phase 10) are next. See [`progress.md`](progress.md) for the live status and
-> [`roadmap.md`](roadmap.md) for the plan.
+> **Status:** **playable end-to-end** — voice, dice, persistent memory (Phase 9) and
+> adventure/rulebook RAG (Phase 10) are all in. You speak, the DM answers aloud in character,
+> follows authored scene cards, rolls skill checks on a button, and the world survives restarts.
+> Current work is tuning at the live table. See [`progress.md`](progress.md) for the live status
+> and [`roadmap.md`](roadmap.md) for the plan.
 
 ## How it works
 
@@ -38,6 +39,26 @@ You speak ─► DMbot receives per-user audio (discord-ext-voice-recv, DAVE/E2E
 
 **Signature principle:** *dice = code, narration = LLM.* Dice rolls and their resolution are
 computed by a deterministic engine from the active system profile — never the language model.
+
+## What the DM keeps track of
+
+The same principle runs a set of session tools around the pipeline — the LLM *proposes*, code
+validates and applies (full design in [`architecture.md`](architecture.md)):
+
+- **NPC memory** — NPCs remember what was discussed with them (including lies they believed),
+  extracted once per scene change and injected when they're back on stage.
+- **NPC agendas** — important NPCs pursue their goal *between* scenes, so the smuggler you
+  betrayed isn't sitting quietly in his bar next visit.
+- **Consistency guard** — a deterministic pre-delivery check: dead or absent NPCs get no spoken
+  lines; a violation triggers one regeneration with a concrete correction.
+- **Consequence clocks** — visible Blades-style progress clocks („Arbites-Ermittlung 3/6") the
+  DM can tick; a full clock injects its consequence into the next turn.
+- **In-game time & deadlines** — a code-owned clock with day phases; deadlines expire on
+  schedule and fire their consequence exactly once.
+- **Chekhov list** — loose threads (a mentioned coin, a hint, an open promise) are collected at
+  session wrap-up and offered back to the DM as callbacks.
+- **Replay regression** — recorded sessions replay through the deterministic pipeline with the
+  LLM mocked (`uv run dm-eval`), gating every refactor.
 
 ## Quick start
 
