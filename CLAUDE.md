@@ -9,21 +9,25 @@ survive context clears and model switches, state lives on disk:
 
 **At the start of every session, read in this order:**
 1. This file (`CLAUDE.md`) — conventions
-2. `progress.md` — where we are, what's next
+2. ONLY the `## State header` at the top of `progress.md` (until the State header exists —
+   it's created in a follow-up round — read `## Current focus` instead)
 3. The highest-numbered file in `docs/decisions/` — the most recent decision
-   (if any; otherwise the decision log in `progress.md`)
 
 Then state in two or three sentences: where we are, what we're about to do. Don't touch
-files until that handshake is done.
+files until that handshake is done. Full `progress.md`, the decision log, and older ADRs
+are on-demand reads when the task touches them. When you have enough to act, act — don't
+re-derive established facts or re-litigate decided ADRs.
 
-**At a phase transition, additionally:**
-- Read the ADR(s) that govern the new phase **before** implementing it. The decision log in
-  `progress.md` links every decision to its ADR, and the **phase → ADR map** there shows
-  which ADRs apply to which phase. This is how the older ADRs (001–004) get used — not just
-  the newest one.
-- Look at the model/effort table in `roadmap.md` and remind Tobi in the handshake of the
-  level recommended for this phase (`/model` + `/effort`) before starting. The running
-  instance cannot switch its own model — Tobi sets that on the dial.
+**Before touching a subsystem or starting a phase:** the decision log and the
+**phase → ADR map** in `progress.md` remain the routing mechanism — consult them to find
+the governing ADR(s) and read those **before** implementing. On-demand, but mandatory for
+that case. This is how the older ADRs (001–004) get used — not just the newest one.
+
+**WIP limit: max 3 open live gates.** A round that would open a FOURTH doesn't start — the
+next session is a live-verification session; say so in the handshake and propose the
+shortest script to close the oldest gates. Exempt: rounds that open no new live gate (dev
+tooling, refactors covered by suite + dm-eval). Tobi can explicitly override
+("WIP-Override") when a live session isn't schedulable — note the override in the wrap-up.
 
 **Other documents — read on demand, NOT every session:**
 
@@ -38,6 +42,26 @@ files until that handshake is done.
 
 Eagerly loading everything fills the context window before useful work starts. Be selective.
 
+**While working:**
+- Ground every done-claim in a tool result from this session (pytest, ruff, dm-eval exit
+  code). Anything not live-verified is labeled live-unverified.
+- Before committing a round that touches orchestrator / llm helpers / marker / roll_router /
+  delivery verdicts: dispatch a fresh-context verifier subagent that reads only the diff,
+  the governing ADR, and the golden rules. Resolve or explicitly defer each finding before
+  commit. Skip it when a /code-review round over the same commits is planned — one review
+  layer, not two.
+- Delegate independent subtasks to parallel subagents (progress rotation, doc-drift sweeps,
+  golden regeneration, the verify above). ADR write-ups stay in the main thread.
+- Effort is the primary dial (Fable 5): default high; xhigh for unknowns, integration
+  debugging, subtle async/state bugs, and persona prose; medium for clearly specified
+  deterministic modules and doc sweeps; step down only after seeing quality hold. The
+  per-phase model table in `roadmap.md` is retired — don't remind Tobi of per-phase
+  recommendations.
+- When Tobi describes a problem or thinks out loud, the deliverable is your assessment —
+  report and stop; don't build until asked. Pause only for: destructive actions, real
+  scope changes, a live gate only a human can run, or a design fork worth an ADR — then
+  ask and end the turn instead of ending on a promise.
+
 **At the end of every working session (before context clear or model switch), without
 being asked:**
 1. Update `progress.md`:
@@ -46,13 +70,23 @@ being asked:**
    - `## Next concrete step` — the specific next action, not a vague goal
    - `## Open questions` — anything that came up but isn't actionable yet
    - Fill the `VERIFY EVIDENCE` field of the affected phase when a gate was met
-   - **Keep it lean (rotation):** when you prepend a new `## Last session` entry, move the
-     *previous* one to `docs/progress-archive.md` (`## Last session (Verlauf)`) — keep only the
-     newest 1–2 live. Rotate ✅-resolved `## Open questions` and just-completed phases (full
-     `VERIFY EVIDENCE`) there too, leaving a one-line summary live. `## Decision log` and the
-     `### Phase → ADR map` stay fully live.
+   - **Keep it lean (rotation + caps, enforced every wrap-up, not "eventually"):** when you
+     prepend a new `## Last session` entry, move the *previous* one to
+     `docs/progress-archive.md` (`## Last session (Verlauf)`) — keep only the newest 1–2
+     live. Rotate ✅-resolved `## Open questions` and just-completed phases (full
+     `VERIFY EVIDENCE`) there too, leaving a one-line summary live. Caps: State header max
+     25 lines; `## Current focus` max 2 blocks live (rotate in the same edit that adds a
+     new one); decision-log rows max 2 lines ("what + one-clause why + → ADR NNN" — the
+     rationale lives in the ADR; rows without an ADR are exempt); `progress.md` over 400
+     lines → rotate rotatable content (archived history, old Current-focus blocks) before
+     committing — the exempt no-ADR decision-log rows don't count against this. `## Decision
+     log` and the `### Phase → ADR map` stay fully live.
 2. On a non-trivial decision (real trade-off, alternatives weighed), create the
    next-numbered ADR in `docs/decisions/` (format in the README there).
+
+Current-focus blocks and wrap-up messages are for a fresh reader: one plain sentence on
+what changed and why it matters for play, then evidence, then at most five lines of
+mechanism — the rest goes in the ADR. No arrow chains, no hyphen-stacked compounds.
 
 If the user types `wrap up` or `update progress`, that is the explicit trigger for the
 end-of-session step. If a session ends without an explicit hint: do it anyway — silence

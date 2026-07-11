@@ -325,6 +325,9 @@ Delivery-Pipeline-Auslagerung, D73 `_TurnTiming`-Auslagerung, D70–D72 `orchest
 D68 globaler Sprech-Modus, D67 Shutdown-Leave-Limit u. a.): siehe **[docs/progress-archive.md](docs/progress-archive.md)**._
 
 ## Next concrete step
+
+**Doc diet round — State header + Current-focus rotation + decision-log slimming** (Workflow-Migration Runde 2/5; der Live-Run-Fahrplan unten bleibt danach die Projekt-Prio).
+
 > **Drehbuch für den Live-Run:** alle offenen Gates unten sind als abhakbare Checkliste in
 > **[docs/live-test-checklist.md](docs/live-test-checklist.md)** ausformuliert (Session-Reihenfolge:
 > Vorbereitung → Tempo → Intro → Gespräch → Würfel → Scene Cards → Konsistenz-Wächter →

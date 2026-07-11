@@ -27,6 +27,8 @@ sessions — after a model switch, re-run `/effort`.
 - **Step down only after measuring.** Drop to medium/low only once you have *seen* the quality holds for the task.
 - **Creative & subtle up, mechanical down.** Persona prose and tricky concurrency benefit from Opus/xhigh; clearly specified, deterministic modules run cheaply on Sonnet/medium.
 
+> RETIRED (see CLAUDE.md workflow adjustments — effort-first rules). Table removal pending a planned cleanup round; do not follow or update it.
+
 | Phase | Nature of the work | Model | Effort |
 |---|---|---|---|
 | 0 — Setup | install, config, smoke test | Sonnet 4.6 | medium |
