@@ -10,7 +10,7 @@ The rule was restated independently twice, a month apart: the model A/B against 
 deferred until after the gate session ("sonst zwei Variablen gleichzeitig"), and the
 live model comparison must not start before the tuning live-run is through — otherwise it
 compares an untuned setup. The stacked-gates discipline (all open gates in ONE scripted
-run, fixed order, `docs/live-test-checklist.md`) is the same economics applied to
+run, fixed order, `docs/live-run-script.md`) is the same economics applied to
 verification.
 
 ## The correction

@@ -11,14 +11,14 @@ is on-demand._
 - **Phase:** 9 (Memory) + 10 (Adventure/RAG) code-complete, live gates pending; Phasen 0–8
   live-validated. Phase 10b (profile bootstrap) deliberately deferred until play runs smoothly.
 - **Project priority:** the ONE tuning + scene-cards live run — script in
-  [docs/live-test-checklist.md](docs/live-test-checklist.md), plan under `## Next concrete step`.
+  [docs/live-run-script.md](docs/live-run-script.md) (gate register, pre-flight, act
+  order, exact proof log lines per gate).
 - **Newest round:** D98 → ADR 051 (marker pipeline consolidated onto the declarative
   `MarkerSpec` registry, 2026-07-04) — suite 689 green, `dm-eval` exit 0, no new live gate.
-  2026-07-11: doc-diet round + lessons layer bootstrap (workflow migration rounds 2–3/5) +
-  roadmap-table replacement & conservative skill de-prescription sweep (round 4/5) — all
-  doc/skill-only.
-- **Next concrete step:** Live-gate triage round → docs/live-run-script.md
-  (workflow migration round 5/5).
+  2026-07-11: workflow-migration rounds 2–5/5 complete (doc diet, lessons layer, skill
+  sweep, live-gate triage → docs/live-run-script.md) — all doc/skill-only.
+- **Next concrete step:** Run docs/live-run-script.md live (one evening + a short
+  follow-up session for Chekhov half 2).
 - **Open live gates (8, all stacked into the one live run):** NPC memory (D91), consistency
   guard (D92), clocks (D94), in-game time/deadlines (D95), NPC agendas (D96), Chekhov threads
   (D97 — needs a 2nd session) + Phase 9 (HP survives restart, recap) and Phase 10 half 1
@@ -31,17 +31,18 @@ is on-demand._
 **Chekhov-Liste gebaut (2026-07-04, D97 → ADR 050). Suite 683 grün (+24), ruff-F sauber, `dm-eval` Exit 0 gegen die alten Goldens, live-unverified.** Menschliche GMs merken sich lose Fäden und spielen sie später zurück („die Münze aus Session 1? *Die* Münze.") — der Bot hat dafür jetzt eine **code-verwaltete Chekhov-Liste**: `data/sessions/<id>/chekhov.json` (atomar wie `state.json`; neues pures `dmbot/memory/chekhov.py`) mit `Thread{id (t1, t2 …), detail, origin_scene, created_session, status open|resolved, weight 1–3}`, Cap **20 offene** (Überlauf: der älteste mit dem niedrigsten vorhandenen Gewicht fliegt), Aufgelöste bleiben als Historie (gedeckelt 20). **Extraktion nur beim Wrap-up** (Fäden sind Session-Granularität, keine Szenen-Extraktion): der EINE ADR-044-Extraktor-Call bekommt bei `!wrap` eine `chekhov`-Sektion (Schema-Variante + `prompts/chekhov_extract_de.md` als System-Zusatz) — max. **5 neue** unaufgelöste Details pro Session (erwähnte Objekte, Andeutungen, offene Versprechen, unbeantwortete Fragen; KEINE aktiven Quests) + IDs in dieser Session **aufgelöster** Fäden. Code klemmt alles: Dedupe per normalisiertem Substring-/Wortmengen-Vergleich gegen ALLE Fäden (ein aufgelöster kommt nicht wieder), Auflösung wird **erkannt, nicht erzwungen** (LLM nennt IDs, Code flippt den Status; unbekannte IDs verworfen + Log). **Fenster-Problem gelöst:** der Wrap-up-Call sieht nur die letzte Szene (das Extraktions-Fenster) — der Chekhov-Input trägt deshalb zusätzlich den früheren Sitzungsverlauf als klar markierten „nur für Fäden"-Kontextblock + die offenen Fäden nummeriert; das NSC-Gedächtnis bleibt per Prompt-Anweisung aufs Szenen-Fenster gebunden (Überreichweite fangen Gist-Dedupe/±1-Clamp — Trade-off im ADR). **Injektion bewusst klein:** die Top 3 offenen (Gewicht, dann **älter zuerst** — alte Fäden sind die besten Callbacks) als „Lose Fäden (… nicht erzwingen)"-Block am Weltzustand + Persona-Absatz (einen aufgreifen, wenn er sich natürlich fügt; Liste nie wörtlich erwähnen). Commands im neuen dünnen **ChekhovCog** (TimeCog-Muster): `!fäden`, `!faden neu "<Detail>" [1-3]` (Mensch-Autorität + macht das Live-Gate ohne Voll-Extraktion testbar), `!faden erledigt <id>`, `!faden weg <id>`. Kill-Switch geerbt (`DM_NPC_MEMORY=0` schaltet die Extraktion ab; kein neuer Env-Knopf). **Live-Gate offen** (s. Next step, braucht ZWEI Sessions): in Session 1 ein Detail fallen lassen → `!wrap` → spielt Session 2 es zurück? Projekt-Prio unverändert: der Tuning+Scene-Cards-Live-Run.
 
 ## Last session
+
+**Live-Gate-Triage: `docs/live-run-script.md` (2026-07-11, Workflow-Migration Runde 5/5 — die letzte). Doc-only, KEIN neues Live-Gate — der nächste Schritt ist der Spieltisch, keine Build-Runde.**
+Alle 8 offenen Gates + Tuning-/Sekundär-Checks aus progress.md, Archiv und der alten Checkliste sind in EIN Abend-Drehbuch + kurze Folge-Session gemerged: Gate-Register nach Setup-Kosten (G1–G9), Pre-Flight, 11 Akte, exakte Beweis-Logzeilen pro Gate — per Code-Sweep (Explore-Subagent über Cogs/Delivery/Runtime) verifiziert statt aus der Doku zitiert.
+- **Checklisten-Korrekturen aus dem Sweep:** der Psioniker der aktuellen Party ist **Fridolin**, nicht Rektalus; es gibt kein `!pause`-Command (Pause = Esc/⏸-Button); die Gated-Exit-Ablehnung heißt `🚫 Ausgang '…' → '…' verriegelt — Bedingung '…' nicht erledigt`; der Augmetik-Check (D52) ruht, bis ein Implantat-Charakter in der Party ist.
+- **Pre-Flight vorgezogen:** `.env` um die 4 fehlenden Gate-Kill-Switches ergänzt (`DM_CONSISTENCY_GUARD`, `DM_NPC_MEMORY`, `DM_NPC_MEMORY_TOP_K`, `DM_SCENE_TIME_ADVANCE`) — `uv run dm-sync` meldet wieder 42/42; das Soll-Bild steht im Skript. Für die Gossip-Kür fehlt noch der `faction`-Seed in `npcs.json` (kein NSC trägt eine — Pre-Flight #5, Tobi am Abend).
+- **Doku-Konsolidierung:** `live-test-checklist.md` → Redirect-Stub; der gemergte Gate-Fahrplan aus `## Next concrete step` verbatim ins Archiv; Lesson-Verweis (`one-variable-per-live-run`) + die in Runde 4 offen gelassene tdd-Zeile im Skills-Index nachgezogen.
+
 **Roadmap-Tabellen-Ersatz + Skill-Sweep (2026-07-11, Workflow-Migration Runde 4/5). Doc/Skill-only, KEIN neues Live-Gate.**
 Für den Spieltisch ändert sich nichts — die Runde entfernt totes Gewicht aus den Doks: die phasenindexierte Modell-Tabelle in `roadmap.md` (samt RETIRED-Marker) ist durch einen 9-Zeilen-Effort-first-Block (Fable 5) ersetzt; der stale Tabellen-Verweis in `CLAUDE.md` ist raus.
 - **Skill-Sweep (konservativ, De-Präskription):** Golden-Rules-Nacherzählungen → Pointer auf CLAUDE.md (playtest-triage, grill-me, improve-architecture), Prior-Model-Framing gestrichen (grill-me, tdd), Rotations-Mechanik-Duplikat → session-ritual-Pointer (playtest-triage), tote „until the State header exists"-Klammer im session-ritual-Handshake gelöscht. Alle Gates, Confirm-Stops (Scene-Cut, TDD-red-first, Character-Merge) und Gotchas unangetastet.
 - **Unverändert (alles KEEP-Kategorie):** author-adventure, character-build, rag-ingest, rules-subsystem, to-prd. Diffstat: roadmap −29, playtest-triage −7, grill-me −5, improve-architecture −3, session-ritual −3, tdd −1, CLAUDE.md −2 Zeilen netto.
 - **Offen für Runde 5:** die tdd-Zeile im `.claude/skills/README.md`-Index trägt noch Prior-Model-Framing (bewusst nicht angefasst — der Index lädt nicht in den Arbeitskontext).
-
-**Lessons-Memory-Runde: `docs/lessons/` angelegt (2026-07-11, Workflow-Migration Runde 3/5). Doc-only, KEIN neues Live-Gate.**
-Für den Spieltisch ändert sich nichts — die Runde verhindert, dass teuer gelernte Korrekturen jede Session neu entdeckt werden: **16 Lessons + README-Index** als neue Memory-Schicht (ADRs halten Entscheidungen; Lessons halten wiederkehrende Korrekturen und bestätigte Vorgehensweisen — z. B. „deterministic guards over persona hopes", das Request/Validate-Feature-Template, die zwei stillen Budgets ctx/chars).
-- **Mining:** 3 parallele Subagents über `docs/progress-archive.md`, ADRs 001–051 und Decision-Log/Open-Questions; Kandidaten gegen CLAUDE.md-Gotchas/`docs/conventions.md`/Skills dedupliziert — bereits Abgedecktes verworfen („inspect a real chunk", Resample-Klasse, Plot-State-nicht-in-RAG, XTTS-Trade-off), Überschneidendes gemerged (16 Files aus ~20 Kandidaten).
-- **Verdrahtung CLAUDE.md:** Session-Start-Schritt 4 = Lessons-README skimmen (Einzel-Lessons on-demand, neue Tabellenzeile); neues „While working"-Bullet: Korrekturen sofort als Lesson erfassen (bestehende updaten statt duplizieren, widerlegte löschen, nichts doppeln was CLAUDE.md/conventions/ADR schon hält); Repo-Layout-Zeile; tote „until the State header exists"-Klammer entfernt.
-- **Offen für Runde 4:** der `session-ritual`-Skill spiegelt noch die alte 3-Schritt-Leseordnung (bewusst nicht angefasst — der Skill-Redundanz-Sweep ist die nächste Runde).
 
 _Ältere `## Last session`-Einträge (Doc-Diet-Runde 2026-07-11 [State header + Rotation + Decision-Log-Diät], D98 Marker-Registry-Konsolidierung [`MarkerSpec`-Tabelle + eine generische Naht, marker-weise migriert → ADR 051], D97 Chekhov-Liste [Fäden-Schema + Wrap-up-Extraktion + Top-3-Injektion + ChekhovCog → ADR 050], D96 NPC-Agenden [`goal` + `agenda_log` + Extraktor-Erweiterung → ADR 049], D95 Ingame-Zeit [Minuten-Zähler + `<<ZEIT>>`-Marker + Fristen + Druck-Panel → ADR 048], D94 Consequence Clocks [`<<UHR id>>`-Marker + ClockCog + Druck-Panel + Voll-Uhr-`[Regie]`-Note → ADR 047], D93 Replay-Eval-Harness [Replay-Journal + `uv run dm-eval`, 6 Diff-Kategorien, synthetische Goldens → ADR 046], D92 Konsistenz-Wächter [deterministischer Pre-Delivery-Check, Regenerate-once, fail-open → ADR 045], D91 NPC-Gedächtnis [NpcMemory-Schema + Extraktor + Lügen-Flip/Gossip + Prompt-Block → ADR 044], D90 `dm-sync`-Entry-Point [Package-Move + hatchling, byte-identischer `[sync]`-Block], D89 Sync-Check-Fingerprint-Tool [`[sync]`-Block, Ingest-Stempel, SETUP.md-Sync-Sektion], D88 `/author-adventure`-Authoring-Skill [5-Pass-Workflow + `validate.py`, Dry-Run-Abnahme gegen Chemical Burn], D87 Stateful Scene Cards [`<<ERLEDIGT>>`-Flags, tote NSCs, gated Exits → ADR 043], D85+D86 Spielbarkeits-Tuning [repeat_penalty + Roll-Router-Carve-out, `intro_guard`-Retry], D84 `!intro`-Meta-Auftakt-Strip + Temp 0.7, D83 `!intro`-Temperatur + Direktive, D82 Default-Party-Fix, D81 Scene-/Lore-Sub-Cogs, D80 Deepening #4–#6 [prompt_assembly/seed_session/clear_panel], D79 Deepening #1+#2 [`combat.py`-Auslagerung + `segments.py`-Verdrahtung], D78 Skill-Tooling-Runde [4 Claude-Code-Skills: /tdd, /grill-me, /improve-architecture, /to-prd], D77 Dev-Gates [Lint-Stop-Hook + blockierender git-pre-commit + Review/Simplify-Checkliste], D76 `disconnect_voice`-Kontrakt + neuer Delivery-Test, D75 One-Shot-Setup, D74
 Delivery-Pipeline-Auslagerung, D73 `_TurnTiming`-Auslagerung, D70–D72 `orchestrator`-E1–E4-Verschlankung, D69 `puffer`-Modus,
@@ -49,139 +50,26 @@ D68 globaler Sprech-Modus, D67 Shutdown-Leave-Limit u. a.): siehe **[docs/progre
 
 ## Next concrete step
 
-**Live-gate triage round → docs/live-run-script.md** (Workflow-Migration Runde 5/5, die letzte; der Live-Run-Fahrplan unten bleibt die Projekt-Prio).
+**Run [`docs/live-run-script.md`](docs/live-run-script.md) live.** Alle 8 offenen Gates
+(G1–G9) plus Tuning- und Sekundär-Checks sind dort in EIN Abend-Drehbuch + kurze
+Folge-Session gemerged: Gate-Register nach Setup-Kosten, Pre-Flight (inkl. `dm-sync`-
+Soll-Bild, Kill-Switch- und Command-Spickzettel), 11 Akte mit exakten Beweis-Logzeilen
+pro Gate; Chekhov (G9) = Session-1-Saat / Session-2-Ernte. `docs/live-test-checklist.md`
+ist darin aufgegangen (Redirect-Stub); der frühere Gate-Fahrplan dieses Abschnitts liegt
+verbatim im Archiv (`## Next concrete step (Verlauf)`).
 
-> **Drehbuch für den Live-Run:** alle offenen Gates unten sind als abhakbare Checkliste in
-> **[docs/live-test-checklist.md](docs/live-test-checklist.md)** ausformuliert (Session-Reihenfolge:
-> Vorbereitung → Tempo → Intro → Gespräch → Würfel → Scene Cards → Konsistenz-Wächter →
-> **Uhren** → **Zeit & Fristen** → NPC-Gedächtnis → **NPC-Agenden** → **Lose Fäden (Hälfte 1, §7c)** → RAG → Neustart-Gate → Nachbereitung; Chekhov-Hälfte 2 = Folge-Session). Nach dem Run:
-> Ergebnisse hierher zurückschreiben, Liste ausmisten.
-
-**0. Vorab (D89 ✅ / D90):** Die 20 fehlenden `.env`-Keys sind nachgezogen (`dm-sync` meldet 38/38, 2026-07-02). Vor dem nächsten Timo-Sync auf beiden Maschinen `uv run dm-sync` (Timo vorher einmal `git pull` + `uv sync`), Blöcke diffen (SETUP.md §„Staying in sync").
-
-**1. Der EINE Live-Run der Spielbarkeits-Tuning-Runde (Top-Prio, Tobi nächste Session — pullt `f44cba8` + Neustart).** Zwei Teile in einem Run:
-- **Workstream A (Tempo/GPU-Offload) zuerst, reine `.env`:** `OLLAMA_HOST` auf die Offload-Box + `TTS_DEVICE=cuda` setzen → `nvidia-smi` (kein OOM, XTTS-cuda + Whisper passen auf die freie 4070) → `[latency]`-Zeile vorher/nachher (`first_audio`/`tts` fallen klar, Sprech-Lücken weg). Wenn schnell genug: Default-Lieferart Richtung `nahtlos` live abwägen; dann **ADR-002-Addendum + `architecture.md` §3** nachziehen.
-- **Dann `!intro test` + ein paar Spieler-Turns + eine Regelfrage:** Intro zuverlässig **ein** Monolog mit **jeder Figur** (C1-Retry greift bei zu kurz/Figur fehlt, D86), **weniger Wiederholung/Generik** (B1 repeat_penalty, D85). Tuning live: `DM_REPEAT_PENALTY` (1.0 = aus, höher = strenger), `DM_INTRO_TEMPERATURE` (0.8 mehr Flair / 0.3 ruhiger). Schließt nebenbei **Phase-10-Gate-Hälfte 1** (Regelfrage aus RAG) + die offenen D82–D84-Intro-Punkte ab.
-- **Neu dazu (D91, im selben Run abprüfbar) — das NPC-Gedächtnis-Gate:** eine Szene spielen und einem NSC etwas Markantes erzählen (ideal: ihn **anlügen**, z. B. eine falsche Identität behaupten) → Szene wechseln (`!ort` oder bestätigter `<<ORT>>`-Button; Konsole zeigt `🧠 NPC-Gedächtnis: N neue Erinnerungen`) → `!npcmem <Name>` zeigt den Eintrag (Lüge mit Zitat, `believed` noch true) → **zurückkommen** und prüfen, ob der DM sich im Dialog erinnert (der `[NPC-Gedächtnis: …]`-Block reitet im Prompt). Kür: die Lüge im Spiel auffliegen lassen → nächster Szenenwechsel → `!npcmem` zeigt „LÜGE aufgeflogen" + Wichtigkeit-5-Eintrag, Haltung eine Stufe Richtung hostile. Feature ist **live-unverified** bis dahin; Fehlverhalten (Small Talk als Wichtigkeit 5, erfundene Erinnerungen) → `prompts/npc_memory_extract_de.md` nachschärfen oder `DM_NPC_MEMORY=0`.
-- **Neu dazu (D92, im selben Run abprüfbar) — das Konsistenz-Wächter-Gate (Checkliste §6b):** einen NSC auf 0 Wunden bringen (oder das tote-NSC-Setup aus dem D87-Skript nutzen), dann das Gespräch gezielt auf ihn lenken („frag Grendel, was er gesehen hat") → im Batch-Pfad (`!sprechmodus nahtlos` oder ein Würfel-Folge-Turn) sollte bei einem Verstoß die `[consistency] violated … regenerating once`-Zeile feuern und die gelieferte Antwort den Toten **nicht** sprechen lassen; im Default-`stream`-Modus stattdessen die Log-only-Warnzeile beobachten (Trade-off, ADR 045). Fehlverhalten (False Positives → unnötige Regenerationen) → Verbliste/Muster in `dmbot/llm/consistency.py` schärfen oder `DM_CONSISTENCY_GUARD=0`.
-- **Neu dazu (D87, im selben Run abprüfbar):** Stateful-Scene-Cards-Live-Skript — (a) `!ort` zeigt die Element-IDs (⬜); (b) eine Gelegenheit im Spiel abschließen → `<<ERLEDIGT>>`-Button erscheint, Antwort enthält kein `<<`, nach „Abhaken" zeigt `!ort` ✅ und der nächste Prompt-Dump „Bereits geschehen:"; (c) `!offen`/`!erledigt` togglen ohne Button; (d) einen `leads_to`-Eintrag testweise auf `{"ziel": …, "requires": "opp-1"}` setzen → Ziel fehlt in „Mögliche nächste Orte", Auto-`<<ORT>>` dorthin wird abgelehnt (🚫-Konsolen-Zeile nennt `opp-1`, nichts im Channel), nach `!erledigt opp-1` geht's; (e) NSC auf 0 Wunden → Karte rendert `(tot)`, übersteht Neustart. (Stand ist committet + gepusht — nur pullen + Neustart.)
-- **Neu dazu (D94, im selben Run abprüfbar) — das Consequence-Clocks-Gate:** vor oder während der Session eine Uhr anlegen (`!uhr neu "Arbites-Ermittlung" 6` — Panel erscheint mit ◉/○-Segmenten), dann den DM einen Tick provozieren (etwas Lautes/Riskantes tun oder eine Probe verhauen — die Uhr steht als `[arbites-ermittlung] … 0/6` im Weltzustand-Prompt) → ein `⏱ Tick vorgeschlagen`-Button erscheint (Antwort enthält kein `<<`), nach Bestätigung zeigt das **Panel** den neuen Stand (edit-in-place, keine neue Nachricht). Kür: per `!uhr tick` bis auf voll ticken → nächster DM-Turn trägt die `[Regie] Die Uhr „…“ ist voll`-Zeile und der DM erzählt die Konsequenz; danach `!uhr weg`. Fehlverhalten (Marker feuert nie / bei jedem Beitrag) → Persona-Bullet in `prompts/dm_core_de.md` nachschärfen; Misfires bleiben dank Confirm-Button folgenlos.
-- **Neu dazu (D95, im selben Run abprüfbar) — das Ingame-Zeit-Gate:** `!zeit` zeigt „Tag 1, 08:00 (Morgen)"; eine kurze Frist setzen (`!frist neu "Treffen mit dem Informanten" +2h` — Druck-Panel zeigt 🕐-Zeit + ⏳-Frist), dann spielen: (a) der DM webt die **Tagesphase** in Beschreibungen ein (abends/nachts andere Stadt); (b) bei spürbar vergehender Zeit (Durchsuchung, Fußmarsch, Rast) erscheint ein `🕐 Zeitfortschritt vorgeschlagen`-Button (Antwort enthält kein `<<`), nach Bestätigung zeigen Panel + `!zeit` den neuen Stand; (c) ein Szenenwechsel schiebt +30 min (Konsole/Panel); (d) die Frist per `!zeit +3h` **verstreichen lassen** → nächster DM-Turn trägt `[Regie] Die Frist „…“ ist verstrichen` und der DM spielt die Konsequenz ein; `!fristen` zeigt ABGELAUFEN bis `!frist weg`. Fehlverhalten (Marker feuert nie / ständig / absurde Sprünge) → Persona-Absatz nachschärfen; Misfires bleiben dank Confirm-Button + 12h-Clamp folgenlos.
-- **Neu dazu (D96, im selben Run abprüfbar) — das NPC-Agenden-Gate:** einem markanten NSC ein Ziel geben (`!agenda <NSC> "will die Ware aus der Stadt schaffen"` — `!agenden` zeigt es), dann **zwei Szenen spielen** (jeder Szenenwechsel triggert die 🧠-Extraktion, die jetzt auch den Agenda-Schritt vorschlägt) → `!agenden` zeigt nach jedem Wechsel den neuen offscreen-Schritt (mit Ingame-Zeitstempel) und die Frage ist: **hat sich seine Lage glaubwürdig bewegt** (kleine konkrete Schritte, plausibel zur verstrichenen Zeit — keine Festungsbauten über Nacht)? Dann zurück zum NSC: der DM spielt die veränderte Lage (Block trägt Ziel + Schritte); während er woanders ist, sollten Gerüchte/Spuren auftauchen (Weltzustand-Zeile). Fehlverhalten (absurde Sprünge, Schritte für ziellose NSCs im Text, tote Planer) → `prompts/npc_memory_extract_de.md`-Agenda-Regel nachschärfen; `!agenda <NSC> weg` oder `DM_NPC_MEMORY=0` schaltet ab.
-- **Neu dazu (D97, braucht ZWEI Sessions) — das Chekhov-Gate:** in Session 1 beiläufig ein markantes Detail etablieren (oder direkt seeden: `!faden neu "Die Münze aus der Bar" 2`), am Ende `!wrap` — Konsole zeigt `🧵 Chekhov-Liste: N neue Fäden, M aufgelöst`, `!fäden` zeigt die Liste. In Session 2 prüfen: spielt der DM das Detail bei passender Gelegenheit zurück (der Top-3-Block „Lose Fäden" reitet im Weltzustand) — und zwängt er es NICHT in jede Antwort? Kür: den Faden im Spiel auflösen → das nächste `!wrap` markiert ihn `resolved` (`!fäden`). Fehlverhalten (Quest-Duplikate, Banalitäten als Faden, Dauer-Callbacks) → `prompts/chekhov_extract_de.md` bzw. den Persona-Bullet nachschärfen; `!faden weg <id>` räumt auf.
-- **Neu dazu (D93, Nachbereitung des Runs):** aus dem rotierten Journal der Session ein **frisches Live-Golden** ziehen (`tests/golden/README.md`: kopieren → auf eine Handvoll Turns kürzen → `uv run dm-eval <datei>` muss sofort Exit 0 sein). Referenziert es Chemical Burn, bleibt es lokal (data/adventures/ ist git-ignored) — trotzdem wertvoll als Regressions-Gate auf Tobis Maschine. Ab dann: `uv run dm-eval` vor jedem Refactor-Merge (conventions.md §Testing).
-- Danach: Log pasten → Playtest-Triage-Iteration. **Bootstrap bleibt zurückgestellt**, bis das Spielen rund läuft.
-- **Parat, wenn Abenteuer #2 dran ist (D88):** `/author-adventure <md> <id>` — erst „The Blazing Seraph" per `/rag-ingest`-Konverter nach `data/pdfs/md/`, dann der Skill (stoppt zur Szenenschnitt-Freigabe). Drafts landen im untracked `data/adventures/<id>/` — Buch-Derivate bleiben lokal, nur der Skill ist committet.
-
-**2. Die offenen Phase-9/10-Live-Gates abhaken (Code ist da, nur Live-Abnahme fehlt):**
-- **Phase 9:** eine HP-Änderung übersteht einen echten Neustart + der Recap erscheint beim nächsten `!join` (in-prompt).
-- **Phase 10:** eine konkrete **Regelfrage** wird korrekt aus dem Regelbuch-RAG beantwortet. Danach das **einzige noch zu bauende** Feature: **Profil-Bootstrap (§9)** — der DM schlägt aus dem Regelbuch ein System-Profil vor → Tobi bestätigt → speichern.
-
-**Zusätzlich diese Session live zu verifizieren** (alle code-complete, unverifiziert) — fällt im
-selben circlejerk-Run mit ab:
-- **Schneller Start** (ADR 024): Konsole erreicht zügig „logged in"; `!join` zeigt ggf. ⏳/⚠-TTS-Hinweis; erster Satz wird gesprochen.
-- **`!lore tts`**-Reader: Block-Text im Chat + ⏭/🔊/⏹; **Doppel-Beleg** in `debug.log` (eine `🔊 TTS … speaking` + ein `/speak` pro Block ⇒ Doppeln liegt an **Bot A**).
-- **Conditions/`!rules`**: „Was bewirkt Blutend/Betäubt?" → korrekte deutsche Antwort (neue `conditions`-Quelle); Inquisitions-Fragen treffen player_guide/gm_guide.
-- **Wiederholung**: verweist der DM auf Etabliertes knapp, statt es neu auszuerzählen?
-- **Auto-Szenenwechsel** (ADR 026): die Gruppe betritt einen verbundenen Ort → DM beendet den Zug mit `<<ORT …>>` (**nicht** gesprochen), ein **„Wechseln"-Knopf** erscheint, Klick verschiebt den Pointer wie `!ort`; eine erfundene/Nicht-Nachbar-ID im `verbunden`-Modus wird ignoriert+geloggt. `!ortmodus frei` testen, dann zurück. `scene_id` überlebt Neustart.
-
-**ONE live session in circlejerk covers everything (Tobi).** Before it: **review the compendium**
-(`data/adventures/chemical_burn/adventure.json` + `npcs.json` — spot-check scene cards for tone
-and the never-say secrets). Then `!j` **in circlejerk** and check in this order:
-1. **Join line-up:** party named (**die drei neuen Charaktere** — a ⚠ warning = wrong channel,
-   stop) + `📖 Abenteuer: Chemical Burn — Szene: Der Auftrag`.
-2. **Phase 10 gate half 1:** ask a rule question by voice („Was passiert bei einem kritischen
-   Erfolg?") → answer grounded in the book (a `📚 Regelwerk:` line appears in `debug.log`).
-3. **Plot coherence (D44):** the DM opens with Halikarns Auftrag, not improv; `!ort mud_gate` →
-   the narration moves to the harbour; a part-1 „wer steckt dahinter?" stays unspoiled.
-4. **D43 checks:** post-roll turn narrates the consequence (no parroted player line — watch for
-   `echo guard` WARNINGs); attack → **combat-skill** button (router decides); `history.jsonl`
-   pairs correct when 🎲 is clicked mid-speech.
-5. **Phase 9 gate:** `!npc add Kultist` (statblock auto-fills now) → attack → `💥 …` → **restart**
-   → `!j` → wounds unchanged; recap flow as before.
-6. **W4/W5:** ask „Warum sind wir hier?" twice — expect an answer, not a re-description (watch
-   for the self-repetition WARNING). Then fill the Phase-9 + Phase-10(half) VERIFY EVIDENCE.
-7. **Lore (D46):** eine Rokarth-Frage („Wem gehört diese Stadt eigentlich?") → Antwort mit
-   Setting-Färbung (`📚`-Logzeile zeigt `setting:`); „wer steckt hinter Gratis?" bleibt vage.
-8. **Lore (D48/ADR 021):** eine Chaos-Frage („Was weiß man über die Chaosgötter?") → grimdark
-   Antwort mit Kompendiums-Färbung (`📚`-Logzeile zeigt `lore_chaos:`); eine Imperiums-Frage
-   („Was ist das Astronomican?") zeigt `lore_imperium:`.
-9. **`!lore` (D49):** `!lore` blättert (◀/▶), `!lore wer ist der Imperator?` antwortet als
-   Embed (Retrieval offline schon verifiziert — hier nur checken, dass Embed + Buttons im
-   echten Discord rendern).
-10. **Psyker (D51/ADR 022):** with a psyker in the party (the example **Mortn**, or a new build
-    with a `psyker: true` + `known_powers` + a `Psi-Meisterschaft` skill), have them wield a power
-    by voice → a `🌀 Manifestation angefordert` button appears; click it → a `🌀 … Warp X/4` line,
-    and the DM narrates the effect. Push a power a few times to drive Warp Charge over the threshold
-    → a `🜏 Perils of the Warp` line fires and Warp resets; the value survives a restart. First do
-    the **Player's Guide RAG ingest** (command in Current focus) so a psyker rule question
-    („Was sind Perils of the Warp?") retrieves the book.
-11. **Augmetik + Erstellung (D52/ADR 023):** ein Charakter mit Implantat (Beispiel: Vask
-    „Augmetischer Arm", Mortn „Augur-Array"). Greif Vask an → Soak +1 (1 Wunde weniger); ein
-    Wahrnehmungs-Wurf für Mortn liegt +5 höher. Im Weltzustand erscheint der
-    `## Augmetik/Implantate`-Block. Erstellung: `docs/how-to-create-a-character.html` öffnen →
-    Implantate/Psioniker wählen → JSON enthält `augmetics`/`known_powers`;
-    `tools/fill_character_sheet.py` → Psi-Tabelle, Warp-Schwelle und Augmetik-Spalte sind im PDF gefüllt.
-Watch `ctx=` in the `[latency]` lines — the adventure block adds ~1k tokens; the D36 warning
-fires above 85% of 8192. Dial: **Opus 4.8 / xhigh** (roadmap recommends opusplan/high for
-Phase 10 planning; the building is done — the run is verification).
-
-**✅ Prerequisite resolved (2026-06-10) — party registered + session reset.** The
-`circlejerk` channel (`1343673766487654464`) now has a hand-authored
-`data/sessions/<id>/characters.json` with three deliberately-different IM builds (so rolls aren't
-raw any more): **Garran Vex** (Pr0degie/Tobi — Nahkampf bruiser, Kettenschwert 1d10+5, Tgh 52),
-**Eli Castor** (Timo — Fernkampf, Lasgewehr 1d10+4), **Magos Yann** (Sezgin/SezBoss69 — tech/skill,
-„Schockstab" not in the weapons table → tests the `default_damage` 1d10 fallback, starting condition
-„Benommen"), with aliases mapping each Discord name → character. The old `state.json` + `history.jsonl`
-+ `recap.md` (seeded from the example party, test-run garbage, bar recap) were **deleted**, so the
-next `!join` re-seeds the world state fresh from the new sheet. (Channel files are git-ignored —
-session-local.)
-
-**Secondary live checks (same session, when convenient — older landed-but-unproven work):**
-- **D42 re-confirm:** no empty/marker-only turn read aloud (no 15-s lone quote), **no dice loop**.
-- **Crash recovery (D41):** kill the bot hard (not `!leave`) → `!j` → `restored N conversation
-  turns`; a clean `!leave` → next `!j` is fresh.
-- **Router timing (D40):** the 🎲 appears **while the DM still speaks**; exactly one per action.
-- **first_audio contrast** + `!redo` + pause/Esc mid-stream: one turn with `DM_STREAMING=0`.
-- **Shutdown (D47 + D67):** Ctrl+C twice during a streamed turn → exit is prompt (no multi-second hang)
-  and prints `[i/n] … ✓` per stage + a summary that names the dropped synth. **D67:** the
-  „Voice-Channel verlassen" stage now finishes in ≤ ~2 s (no more up-to-30 s confirmation hang); a
-  `voice confirm wait abandoned` warning is fine (the channel is already left).
-- **Vor der Session:** `docs/how-to-play.html` an Timo & Sezgin verteilen (deutsches
-  Regel-Primer, 2026-06-12 erstellt) — spart die Regelerklärung am Tisch.
-
-**Watch (persona/adherence, not gate blockers):** the **meta-ramble** („Als Spielleitung beschreibe
-ich nicht direkt die Szene…") — nemo's ceiling, report if frequent; and whether XTTS still reads any
-*real* punctuation aloud (the lone-quote bug is fixed; `. , ! ?` are kept on purpose for intonation).
-
-**Exact test sequence (durable copy of the chat checklist — `DM_LOG_FILE=1` + `DM_TRANSCRIPT_FILE=1`
-are already on in `.env`):**
-1. _Auto-combat:_ `!j` → `!npc add Kultist 10 3` (10 Wunden, ToughnessBonus 3; optional armour as a
-   4th arg) → `!test Nahkampf für Timo` (or a voice "ich greife den Kultisten an" → router posts the
-   button) → click 🎲 → on success, pick **Kultist** in the target dropdown → expect a `💥 … = N Wunden
-   → Kultist M/10` line. Confirm it fires **only** on Nahkampf/Fernkampf + only on success.
-2. _Gate 1 (HP survives restart):_ check `data/sessions/<id>/state.json` shows the reduced wounds;
-   `!npc list`; try `!damage Kultist 5` / `!heal Kultist 3` (0 → "kampfunfähig"). **Restart the bot** →
-   `!j` → wounds still reduced.
-3. _Gate 2 (recap):_ play a few turns → `!wrap up` (or `!wrapup`) → German "Was bisher geschah" posted +
-   stored (`state.json` recap + `data/sessions/<id>/recap.md`). **Restart** → `!j` → "📜 Was bisher
-   geschah" shown and the DM continues from it.
-4. _Watch & report (paste `debug.log` + `transcript.log`):_ damage numbers sane? target dropdown listing
-   fellow PCs annoying or fine? does the DM honour the injected world-state HP without inventing values?
-   recap quality (German, factual, length)? any `ERROR` lines?
-5. _Latency / streaming (D35 + ADR 017):_ every DM turn logs `[latency] turn=… [stream] stt=…
-   trigger→llm_done=… ctx=…/8192 gen=… chars=… first_audio=…ms tts=… bridge_wait=… total=…`. Paste a
-   few — the **before/after** is `first_audio` (streamed) vs `trigger→llm_done + tts` (the old
-   pre-audio gap). Toggle `DM_STREAMING=0` for one turn to see the old single-WAV line for contrast.
-6. _Crash recovery (D41):_ play a few turns → **kill the bot** (not `!leave`) → `!j` → expect
-   `restored N conversation turns`. Then a clean `!leave` → next `!j` is fresh and the old log is at
-   `data/sessions/<id>/history.<ts>.jsonl`.
-- Run the unit suite with **`uv run --with pytest python -m pytest -q`** (pytest isn't in the default
-  venv — see [[run-tests-command]] memory). Currently **177/177** green.
-
-_Resolved this session (no longer open):_ the **gemma3 vs nemo** taste test (gemma3 didn't fix the
-marker problem; nemo kept for tone — the fix was the **roll-detection router**, ADR 014); **two-stage
-Ctrl+C** shutdown (done); the **auto-test** (router, live-validated).
+**Nach dem Run (die Session nach dem Spielen):**
+- Ergebnisse hierher zurückschreiben: Phase-9/10-`VERIFY EVIDENCE`, die D87/D91–D97-Befunde
+  in den Last-session-Block, gebliebene Tuning-Werte als `.env.example`-Kommentare.
+  Chekhov (G9) bleibt offen bis nach Session 2.
+- Frisches Live-Golden ziehen (D93): Journal der Session → auf eine Handvoll Turns kürzen →
+  `uv run dm-eval <datei>` Exit 0 (`tests/golden/README.md`). Ab dann: `dm-eval` vor jedem
+  Refactor-Merge.
+- Logs pasten → `/playtest-triage`-Iteration. **Bootstrap (Phase 10b) bleibt
+  zurückgestellt**, bis das Spielen rund läuft.
+- **Parat, wenn Abenteuer #2 dran ist (D88):** `/author-adventure <md> <id>` — erst „The
+  Blazing Seraph" per `/rag-ingest`-Konverter nach `data/pdfs/md/`, dann der Skill (stoppt
+  zur Szenenschnitt-Freigabe). Drafts bleiben untracked (Buch-Derivate).
 
 _Carry-overs & future directions (Stand 2026-06-12 abends):_
 1. **Modell-Test (Timo):** Mistral Small (o.ä.) auf Timos Box / der 5080 via Tailscale —
