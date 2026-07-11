@@ -58,6 +58,8 @@ class Config:
     npc_memory: bool
     npc_memory_top_k: int
     consistency_guard: bool
+    debug_overlay: bool
+    debug_channel_id: int
     speech_mode: str
     speech_punct: str
     speech_prebuffer: int
@@ -238,6 +240,15 @@ class Config:
             # strictly fail-open. ON by default; DM_CONSISTENCY_GUARD=0 disables it.
             consistency_guard=os.environ.get("DM_CONSISTENCY_GUARD", "1").strip().lower()
             in ("1", "true", "yes", "on"),
+            # 🧪 Debug overlay (ADR 052): when the loaded adventure ships a testplan.json sidecar,
+            # every scene change posts/edits one compact OOC line (gates under test + hint) —
+            # deterministic Discord output only, zero LLM calls, zero prompt bytes. Dormant
+            # without the sidecar; DM_DEBUG_OVERLAY=0 disables it entirely.
+            debug_overlay=os.environ.get("DM_DEBUG_OVERLAY", "1").strip().lower()
+            in ("1", "true", "yes", "on"),
+            # Optional channel id for the overlay, to keep OOC test chatter out of the game
+            # channel; 0/unset = the game channel. An unresolvable id logs once and falls back.
+            debug_channel_id=int(os.environ.get("DM_DEBUG_CHANNEL", "0") or "0"),
             # Spoken-delivery mode (ADR 033), applied to EVERY turn, also switchable live via
             # !sprechmodus. Two orthogonal axes:
             #  - DM_SPEECH_MODE: "stream" (sentence-by-sentence, fast start, small gaps) |

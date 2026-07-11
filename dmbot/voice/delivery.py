@@ -254,6 +254,7 @@ class DeliveryPipeline:
             if old_scene and old_scene != moved.id:
                 # a *real* move: default travel time passes (ADR 048 #10)
                 await self._rt.advance_scene_time(channel)
+            await self._rt.update_debug_overlay()  # 🧪 debug overlay — dormant without a plan (ADR 052)
             await interaction.edit_original_response(
                 content=f"📖 Szene gewechselt: **{moved.title_de}** (Teil {moved.part})."
             )

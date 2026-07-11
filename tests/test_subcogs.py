@@ -84,6 +84,9 @@ def test_ort_moves_pointer_via_code_not_llm() -> None:
         flags["time_advanced"] = True
         return 30
 
+    async def _overlay():
+        flags["overlay"] = True
+
     rt = types.SimpleNamespace(
         _adventure=types.SimpleNamespace(),
         _brain_channel=lambda ch: 7,
@@ -92,12 +95,14 @@ def test_ort_moves_pointer_via_code_not_llm() -> None:
         _persist_and_refresh=lambda ch: flags.__setitem__("persisted", True),
         schedule_npc_memory_extraction=lambda ch, sid: flags.__setitem__("mined", sid),
         advance_scene_time=_advance_scene_time,
+        update_debug_overlay=_overlay,
     )
     ctx = _Ctx()
     asyncio.run(SceneCog.ort.callback(_scene_cog(rt), ctx, "s2"))
     assert flags.get("persisted") is True
     assert flags.get("mined") == "s1"  # the DEPARTED scene is mined for NPC memories (ADR 044)
     assert flags.get("time_advanced") is True  # a REAL move lets travel time pass (ADR 048 #10)
+    assert flags.get("overlay") is True  # 🧪 debug overlay refreshed after the move (ADR 052)
     assert any("Szene gewechselt" in m and "Die Brücke" in m for m in ctx.sent)
 
 

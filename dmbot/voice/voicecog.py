@@ -203,6 +203,10 @@ class VoiceCog(commands.Cog):
             "joined voice '%s' (id=%s) and started VAD pipeline (16k mono + silero, push_to_talk=%s)",
             channel.name, channel.id, self._rt._push_to_talk,
         )
+        # 🧪 debug overlay (ADR 052): a loaded session may already sit in a scene — show its
+        # gates right away, BEFORE the bottom-pinned panels (turn order / mic) are posted.
+        # Dormant without a plan sidecar.
+        await self._rt.update_debug_overlay()
         if self._rt._push_to_talk:
             close = (
                 "wenn ihr fertig seid – **dann antwortet die Spielleitung automatisch** (kein `!dm` nötig)"
@@ -340,7 +344,8 @@ class VoiceCog(commands.Cog):
         if self._anim_task is not None and not self._anim_task.done():
             self._anim_task.cancel()
         self._rt._text_channel = None
-        for msg_attr in ("_mic_message", "_turn_message", "_pause_message", "_clock_panel"):
+        for msg_attr in ("_mic_message", "_turn_message", "_pause_message", "_clock_panel",
+                         "_debug_panel"):
             await self._rt.clear_panel(msg_attr)
         await ctx.send("Voice-Channel verlassen.")
 

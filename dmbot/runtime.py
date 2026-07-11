@@ -54,6 +54,7 @@ from .memory.state import (
 )
 from .rag.adventure import Adventure, Scene
 from .rag.retrieve import RulebookRetriever
+from .rag.testplan import Testplan, overlay_line_de
 
 # Re-export shim (ADR 034): the per-turn latency record + its ctx-budget threshold moved to
 # dmbot/turn_timing.py for context-leanness; keep importing them from here so the cog/dice/tests'
@@ -238,6 +239,18 @@ class SessionRuntime:
                 log.info("loaded adventure %r (%d scenes, %d NPC statblocks)",
                          self._adventure.title or config.adventure,
                          len(self._adventure.scene_overview()), self._adventure.npc_count())
+        # 🧪 Debug overlay (ADR 052): the testplan.json sidecar is loaded HERE, next to but never
+        # into the Adventure — no prompt/persona/RAG path can reach it (LLM-invisibility, pinned
+        # by tests). No sidecar → dormant; DM_DEBUG_OVERLAY=0 → not even loaded.
+        self._testplan: Testplan | None = None
+        if self._adventure is not None and config.debug_overlay:
+            self._testplan = Testplan.load(_DATA_DIR / "adventures" / config.adventure)
+            if self._testplan is not None:
+                log.info("🧪 loaded testplan.json (%d scenes) — debug overlay active",
+                         len(self._testplan))
+        self._debug_panel: discord.Message | None = None
+        self._debug_channel_id = config.debug_channel_id
+        self._debug_channel_warned = False
         # Memory (Phase 9): the mutable world state per channel — current wounds/conditions, NPCs,
         # quests, location, recap. Loaded/seeded on !join (data/sessions/<id>/state.json), advanced
         # deterministically by code (golden rule #3), persisted on every change so HP survives a
@@ -688,6 +701,50 @@ class SessionRuntime:
             self._clock_panel = await self._text_channel.send(content)
         except discord.HTTPException:
             log.warning("could not post the clock panel", exc_info=True)
+
+    # ----- 🧪 Debug overlay (ADR 052) ---------------------------------------------------------
+
+    def _debug_overlay_channel(self):
+        """The overlay's target: the DM_DEBUG_CHANNEL channel when set and resolvable (one
+        loud line + game-channel fallback otherwise), else the session's text channel."""
+        if self._debug_channel_id:
+            guild = getattr(self._text_channel, "guild", None)
+            ch = guild.get_channel(self._debug_channel_id) if guild is not None else None
+            if ch is not None:
+                return ch
+            if not self._debug_channel_warned:
+                log.warning("🧪 DM_DEBUG_CHANNEL=%s not resolvable — overlay falls back to "
+                            "the game channel", self._debug_channel_id)
+                self._debug_channel_warned = True
+        return self._text_channel
+
+    async def update_debug_overlay(self) -> None:
+        """(Re)render the 🧪 testplan overlay for the current scene (ADR 052) — edit-in-place
+        (the clock-panel pattern), called by every scene-change path. Fully dormant without a
+        loaded testplan; zero LLM calls, zero prompt bytes — the DM never learns a test run is
+        happening. Best-effort: a send/edit failure logs, never breaks a turn."""
+        plan = getattr(self, "_testplan", None)  # getattr: stub runtimes stay dormant
+        if plan is None:
+            return
+        state = self._state.get(self._active_vc_id) if self._active_vc_id is not None else None
+        if state is None or not state.scene_id:
+            return
+        channel = self._debug_overlay_channel()
+        if channel is None:
+            return
+        scene = self._adventure.get_scene(state.scene_id) if self._adventure else None
+        content = overlay_line_de(state.scene_id, scene.title_de if scene else "",
+                                  plan.entry_for(state.scene_id))
+        if self._debug_panel is not None:
+            try:
+                await self._debug_panel.edit(content=content)
+                return
+            except discord.HTTPException:
+                self._debug_panel = None  # message gone — fall through and re-post
+        try:
+            self._debug_panel = await channel.send(content)
+        except discord.HTTPException:
+            log.warning("could not post the debug overlay", exc_info=True)
 
     # ----- In-game time + deadlines (ADR 048) -----------------------------------------------
 

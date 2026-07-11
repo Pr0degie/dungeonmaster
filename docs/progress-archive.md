@@ -9,6 +9,14 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+_Aus `progress.md` rotiert (2026-07-11, D99 Debug-Overlay-Runde):_
+
+**Roadmap-Tabellen-Ersatz + Skill-Sweep (2026-07-11, Workflow-Migration Runde 4/5). Doc/Skill-only, KEIN neues Live-Gate.**
+Für den Spieltisch ändert sich nichts — die Runde entfernt totes Gewicht aus den Doks: die phasenindexierte Modell-Tabelle in `roadmap.md` (samt RETIRED-Marker) ist durch einen 9-Zeilen-Effort-first-Block (Fable 5) ersetzt; der stale Tabellen-Verweis in `CLAUDE.md` ist raus.
+- **Skill-Sweep (konservativ, De-Präskription):** Golden-Rules-Nacherzählungen → Pointer auf CLAUDE.md (playtest-triage, grill-me, improve-architecture), Prior-Model-Framing gestrichen (grill-me, tdd), Rotations-Mechanik-Duplikat → session-ritual-Pointer (playtest-triage), tote „until the State header exists"-Klammer im session-ritual-Handshake gelöscht. Alle Gates, Confirm-Stops (Scene-Cut, TDD-red-first, Character-Merge) und Gotchas unangetastet.
+- **Unverändert (alles KEEP-Kategorie):** author-adventure, character-build, rag-ingest, rules-subsystem, to-prd. Diffstat: roadmap −29, playtest-triage −7, grill-me −5, improve-architecture −3, session-ritual −3, tdd −1, CLAUDE.md −2 Zeilen netto.
+- **Offen für Runde 5:** die tdd-Zeile im `.claude/skills/README.md`-Index trägt noch Prior-Model-Framing (bewusst nicht angefasst — der Index lädt nicht in den Arbeitskontext).
+
 _Aus `progress.md` rotiert (2026-07-11, Live-Gate-Triage-Runde 5/5):_
 
 **Lessons-Memory-Runde: `docs/lessons/` angelegt (2026-07-11, Workflow-Migration Runde 3/5). Doc-only, KEIN neues Live-Gate.**
@@ -1168,6 +1176,11 @@ in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 ---
 
 ## Current focus (Verlauf)
+
+
+_Aus `progress.md` rotiert (2026-07-11, D99 Debug-Overlay-Runde):_
+
+**Chekhov-Liste gebaut (2026-07-04, D97 → ADR 050). Suite 683 grün (+24), ruff-F sauber, `dm-eval` Exit 0 gegen die alten Goldens, live-unverified.** Menschliche GMs merken sich lose Fäden und spielen sie später zurück („die Münze aus Session 1? *Die* Münze.") — der Bot hat dafür jetzt eine **code-verwaltete Chekhov-Liste**: `data/sessions/<id>/chekhov.json` (atomar wie `state.json`; neues pures `dmbot/memory/chekhov.py`) mit `Thread{id (t1, t2 …), detail, origin_scene, created_session, status open|resolved, weight 1–3}`, Cap **20 offene** (Überlauf: der älteste mit dem niedrigsten vorhandenen Gewicht fliegt), Aufgelöste bleiben als Historie (gedeckelt 20). **Extraktion nur beim Wrap-up** (Fäden sind Session-Granularität, keine Szenen-Extraktion): der EINE ADR-044-Extraktor-Call bekommt bei `!wrap` eine `chekhov`-Sektion (Schema-Variante + `prompts/chekhov_extract_de.md` als System-Zusatz) — max. **5 neue** unaufgelöste Details pro Session (erwähnte Objekte, Andeutungen, offene Versprechen, unbeantwortete Fragen; KEINE aktiven Quests) + IDs in dieser Session **aufgelöster** Fäden. Code klemmt alles: Dedupe per normalisiertem Substring-/Wortmengen-Vergleich gegen ALLE Fäden (ein aufgelöster kommt nicht wieder), Auflösung wird **erkannt, nicht erzwungen** (LLM nennt IDs, Code flippt den Status; unbekannte IDs verworfen + Log). **Fenster-Problem gelöst:** der Wrap-up-Call sieht nur die letzte Szene (das Extraktions-Fenster) — der Chekhov-Input trägt deshalb zusätzlich den früheren Sitzungsverlauf als klar markierten „nur für Fäden"-Kontextblock + die offenen Fäden nummeriert; das NSC-Gedächtnis bleibt per Prompt-Anweisung aufs Szenen-Fenster gebunden (Überreichweite fangen Gist-Dedupe/±1-Clamp — Trade-off im ADR). **Injektion bewusst klein:** die Top 3 offenen (Gewicht, dann **älter zuerst** — alte Fäden sind die besten Callbacks) als „Lose Fäden (… nicht erzwingen)"-Block am Weltzustand + Persona-Absatz (einen aufgreifen, wenn er sich natürlich fügt; Liste nie wörtlich erwähnen). Commands im neuen dünnen **ChekhovCog** (TimeCog-Muster): `!fäden`, `!faden neu "<Detail>" [1-3]` (Mensch-Autorität + macht das Live-Gate ohne Voll-Extraktion testbar), `!faden erledigt <id>`, `!faden weg <id>`. Kill-Switch geerbt (`DM_NPC_MEMORY=0` schaltet die Extraktion ab; kein neuer Env-Knopf). **Live-Gate offen** (s. Next step, braucht ZWEI Sessions): in Session 1 ein Detail fallen lassen → `!wrap` → spielt Session 2 es zurück? Projekt-Prio unverändert: der Tuning+Scene-Cards-Live-Run.
 
 _Aus `progress.md` rotiert (2026-07-11, Doc-Diet-Runde): die „Current focus“-Blöcke D82–D96 (verbatim; D97/D98 bleiben live)._
 

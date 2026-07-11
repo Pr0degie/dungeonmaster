@@ -192,6 +192,7 @@ class DMCog(commands.Cog):
             moved = self._rt._set_scene(self._rt._state[cid], self._rt._adventure.start_scene)
             if moved is not None:
                 self._rt._persist_and_refresh(ctx.channel)
+                await self._rt.update_debug_overlay()  # 🧪 debug overlay (ADR 052)
         director_msg = build_opening_director_msg()
         guild_id = ctx.guild.id if ctx.guild else None
         timing = self._delivery._begin_turn(cid)
@@ -319,6 +320,7 @@ class DMCog(commands.Cog):
             moved = self._rt._set_scene(self._rt._state[cid], self._rt._adventure.start_scene)
             if moved is not None:
                 self._rt._persist_and_refresh(ctx.channel)
+                await self._rt.update_debug_overlay()  # 🧪 debug overlay (ADR 052)
         roster = self._rt._characters.intro_roster_de() if self._rt._characters else ""
         director_msg = build_intro_director_msg(roster)
         np = self._rt._intro_num_predict
