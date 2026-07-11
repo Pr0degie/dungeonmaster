@@ -5,6 +5,11 @@ Stand: 2026-07-11 (nach D98 / ADR 051; Workflow-Migration Runde 5/5). **Ersetzt
 Sekundär-Prüfungen aus `progress.md` sind hier in EIN geordnetes Drehbuch gemerged.
 Log-Zeilen sind exakt aus dem Code zitiert und damit direkt in `logs/debug.log` greppbar.
 
+> **Wiederverwendbare Alternative:** die Debug-Kampagne „Die Mitternachtsfracht“
+> (`DM_ADVENTURE=debug-kampagne`, lokal) triggert alle Gates natürlich im Spiel —
+> Drehbuch + Debrief-Greps in [debug-campaign-runbook.md](debug-campaign-runbook.md).
+> Dieses Skript bleibt der One-Shot-Plan für den aktuellen Backlog.
+
 **Spielregeln für den Abend:**
 
 - **Nicht live debuggen.** Was nicht klappt: notieren, weiterspielen, Logs sichern,

@@ -13,11 +13,13 @@ is on-demand._
 - **Project priority:** the ONE tuning + scene-cards live run — script in
   [docs/live-run-script.md](docs/live-run-script.md) (gate register, pre-flight, act
   order, exact proof log lines per gate).
-- **Newest round:** D99 → ADR 052 (deterministic 🧪 debug overlay from a `testplan.json`
-  sidecar, LLM-invisible by construction, 2026-07-11) — suite 707 green, ruff-F clean,
-  `dm-eval` exit 0. Dev tooling, no new live gate (WIP-exempt).
-- **Next concrete step:** Author the debug campaign (content round — fills the
-  testplan.json contract of ADR 052), then run docs/live-run-script.md live.
+- **Newest round:** Content-Runde → Debug-Kampagne „Die Mitternachtsfracht“
+  (`data/adventures/debug-kampagne/`, lokal/git-ignored; füllt den `testplan.json`-Vertrag
+  aus ADR 052, 2026-07-11) — Validator OK, Gates G1–G9 abgedeckt; committet nur
+  Runbook + Skript-Notiz. Kein neues Live-Gate (Test-Vehikel).
+- **Next concrete step:** Die Debug-Kampagne live spielen
+  ([docs/debug-campaign-runbook.md](docs/debug-campaign-runbook.md)) oder das
+  One-Shot-Skript ([docs/live-run-script.md](docs/live-run-script.md)) — Tobis Wahl.
 - **Open live gates (8, all stacked into the one live run):** NPC memory (D91), consistency
   guard (D92), clocks (D94), in-game time/deadlines (D95), NPC agendas (D96), Chekhov threads
   (D97 — needs a 2nd session) + Phase 9 (HP survives restart, recap) and Phase 10 half 1
@@ -25,37 +27,38 @@ is on-demand._
   gate must wait for the live run; doc/tooling rounds are exempt.
 
 ## Current focus
+**Debug-Kampagne „Die Mitternachtsfracht“ authored (2026-07-11, Content-Runde — füllt den `testplan.json`-Vertrag aus ADR 052). Skill-Validator gegen den echten Loader: `RESULT: OK` (0 Errors/Warnings, Statblocks 8/8), `Testplan.load` OK, Gate-Abdeckung G1–G9 vollständig, Fertigkeiten/Schwierigkeiten gegen Profil-`difficulty_ladder` + Party-Vokabular verifiziert. KEIN neues Live-Gate — das ist das Test-Vehikel für die 8 offenen.** Ein Original-Abenteuer (kein Buchmaterial), ein Abend, 6 Szenen (`zollhaus → schrein → pfandhalle → lagerhaus → siedehaus → pier_neun`), 8 NSC-Statblocks — jedes Gate hat einen natürlichen Story-Trigger: G4-Gate `lagerhaus → pier_neun requires 'verladebrief'` fest im File; 4× `faction: kettenbund`, sodass die G5-Lüge an Bree Marlok per Gossip bei Dockmeister Kessel ankommt; Kessel mit `goal_de` (G7, über mehrere Szenenwechsel beobachtbar); Lastenservitor Ohm-3 stirbt im Lagerhaus-Kampf und das Finale erwähnt Servitoren (G6-Versuchung); zwei Chekhov-Saaten (glattgeschliffene Münze, Fenks Hymne) mit verdrahteter Ernte in `pier_neun` (G9); Psi-Nachbild für Fridolin (G1); Sirenen-Frist + Kettenbund-Wachsamkeit als organische G2/G3-Anker; Kampf so bemessen, dass Wunden fallen, aber niemand stirbt (G8). Spieler-Text rein in-fiction — Gate-Hinweise NUR über die LLM-unsichtbare `testplan.json` (ADR 052). Kampagne lokal (`data/**` git-ignored; Timos Maschine braucht eine Handkopie, `dm-sync` zeigt die shas); committet sind `docs/debug-campaign-runbook.md` (Szenen→Beweis-Tabelle mit wörtlichen Logzeilen, Debrief-in-5-Minuten-Greps, Reset-Notiz) + eine Verweis-Zeile im Live-Run-Skript.
+
 **🧪 Debug-Overlay für Test-Runs gebaut (2026-07-11, D99 → ADR 052). Suite 707 grün (+18 Tests inkl. Invisibility-Pin), ruff-F sauber, `dm-eval` Exit 0 gegen unveränderte Goldens. Dev-Tooling, KEIN neues Live-Gate — die Live-Verifikation fällt als Nebeneffekt der Debug-Kampagne ab, für die das Overlay existiert.** Liefert ein Abenteuer eine `testplan.json` neben der `adventure.json` (`{"scenes": {"<id>": {"gates": [...], "hint_de": "…"}}}`), postet jeder Szenenwechsel EINE kompakte 🧪-OOC-Zeile (Szene, Gates unter Test, Ein-Zeilen-Hinweis) — edit-in-place nach dem Uhr-Panel-Muster (ADR 047), aufgefrischt von `!ort`, bestätigtem `<<ORT>>`, dem `!start`/`!intro`-Seed und `!join`; `!leave` räumt das Panel ab. **Kern-Invariante: LLM-Unsichtbarkeit by construction** — die Sidecar wird in der Runtime NEBEN, nie IN das Adventure geladen (neues pures `dmbot/rag/testplan.py`); ein Source-Inspection-Test pinnt, dass in `dmbot/` außer runtime/config kein Modul sie auch nur erwähnt (fängt auch `_testplan`-Attributzugriffe). Null LLM-Calls, null Prompt-Bytes; fail-open (keine Sidecar → schlafend, kaputte → EINE laute Logzeile), Kill-Switch `DM_DEBUG_OVERLAY=0`, optional `DM_DEBUG_CHANNEL` (unauflösbar → einmal warnen + Spielkanal). Projekt-Prio unverändert: der Tuning+Scene-Cards-Live-Run — als Nächstes die Debug-Kampagne, die den Vertrag füllt.
 
-**Cleanup-Runde: Marker-Pipeline konsolidiert + Doku-Sweep (2026-07-04, D98 → ADR 051). Suite 689 grün (+6 Registry-Tests, 0 Änderungen an bestehenden Tests), ruff-F sauber, `dm-eval` Exit 0 gegen die unveränderten Goldens — nach jedem Migrationsschritt. Verhaltensneutral, KEIN neues Live-Gate.** Das selbst notierte D94-Debt ist eingelöst, **bevor** ein sechster Marker kommt: die fünfmal handkopierte Marker-Naht (TEST/MANIFEST/ORT/ERLEDIGT/UHR/ZEIT — je eigene Regex+Dataclass+`_pending_*`-Dict, `finalize_answer` als 7-Tupel) läuft jetzt über eine **deklarative `MarkerSpec`-Registry** (`dmbot/rules/marker.py`; Tabellen-Reihenfolge = Extraktions- UND Journal-Key-Reihenfolge) + EINE generische Naht: `extract_all` (kettet die bestehenden Extraktoren byte-identisch), `finalize_answer_markers → (answer, {kind: requests})` (das 7-Tupel bleibt als test-gepinnte View), keyed Pending-Store im Brain (Queue/Redo/Reset/Consistency-Snapshot als Loops, Suppression aus `spec.suppressible`; `take_pending_<kind>`-Wrapper + Alias-Attribute halten die öffentliche Surface), labelled Task-Liste statt zwei kopierter Dispatch-Blöcke in der Delivery, dm-eval liest Keys+Drain aus der Registry. Die per-Marker-**Eigenheiten sind unangetastet** (ZEIT first-valid+12h-Clamp, UHR +1/Uhr/Turn, UHR/ZEIT suppressions-exempt, Confirm-Views unter `DM_FLAG_CONFIRM`, verklebte Marker strippen weiter); Handler-Bodies + pure Verdicts bewusst NICHT generalisiert (ADR 051 #5 — das ist das Feature, nicht die Naht). Migration marker-weise (ORT zuletzt), Journal byte-kompatibel. **Teil B:** README auf den echten Stand (Memory/RAG gelandet + Session-Tools-Liste), progress-Rotation (D75–D81-Focus-Blöcke + D60–D63-Next-step-Verlauf ins Archiv), `logsetup`-Docstring-Kosmetik, Open-questions ausgeräumt. Ein sechster Marker kostet jetzt: Dataclass + Extraktor + eine Registry-Zeile + sein eigentliches Feature. Projekt-Prio unverändert: der Tuning+Scene-Cards-Live-Run.
+_Ältere Current-focus-Blöcke (D98 Marker-Registry u. a.): siehe [docs/progress-archive.md](docs/progress-archive.md), `## Current focus (Verlauf)`._
 
 
 ## Last session
+
+**Content-Runde: Debug-Kampagne „Die Mitternachtsfracht“ (2026-07-11) — füllt den `testplan.json`-Vertrag aus ADR 052. KEIN neues Live-Gate (Test-Vehikel für die bestehenden 8).**
+`data/adventures/debug-kampagne/` (lokal, git-ignored): `adventure.json` (6 Szenen, ein Abend, Original-Content — kein Buchmaterial), `npcs.json` (8 Statblocks, 4× `faction: kettenbund`, Kessel mit `goal_de`), `testplan.json` (jede Szene → Gates + Ein-Zeilen-Hinweis fürs 🧪-Overlay). Alle G1–G9 mit eingebauten natürlichen Triggern — Design-Details im Current-focus-Block, Tisch-Referenz im Runbook.
+- **Evidenz:** `validate.py` (echter `Adventure.load`): `loaded: Die Mitternachtsfracht — 6 scenes, 8 statblocks, start='zollhaus'` / `RESULT: OK` (0 Errors/Warnings), Gate `lagerhaus -> pier_neun requires 'verladebrief'` erkannt; `Testplan.load` OK (6 Szenen), Gate-Abdeckung G1:1 G2:2 G3:3 G4:1 G5:2 G6:2 G7:3 G8:2 G9:3; alle `Fertigkeit (Schwierigkeit)`-Tokens gegen Profil-`difficulty_ladder` + Party-Skill-Union verifiziert.
+- **Committet (nur getrackte Dateien):** `docs/debug-campaign-runbook.md` + Verweis-Zeile im Live-Run-Skript. Die Kampagne selbst bleibt lokal (`data/**`-Ignore, wie chemical_burn) — für Timos Maschine manuell mitkopieren.
 
 **🧪 Debug-Overlay-Runde (2026-07-11, D99 → ADR 052). Dev-Tooling, KEIN neues Live-Gate (WIP-exempt — die Live-Verifikation reitet auf der Debug-Kampagne, für die das Overlay existiert).**
 TDD (rot zuerst): neues pures `dmbot/rag/testplan.py` (Sidecar-Loader, fail-open, `overlay_line_de`), `SessionRuntime.update_debug_overlay()` im Uhr-Panel-Muster (edit-in-place), Call-Sites `!ort` / `<<ORT>>`-Confirm / `!start`+`!intro`-Seed / `!join`, `!leave` räumt das Panel ab; Config-Knöpfe `DM_DEBUG_OVERLAY` + `DM_DEBUG_CHANNEL` (+ `.env.example` für die dm-sync-Deckung).
 - **Verifier-Subagent (fresh context; Diff + ADR 026/047 + Golden Rules): kein Blocker.** Übernommen: stärkerer Invisibility-Pin (in `dmbot/` dürfen nur runtime/config die Sidecar überhaupt erwähnen — fängt auch `_testplan`-Attributzugriffe, nicht nur Imports) + das `!join`-Overlay vor die Bottom-Panels (Mic-Button bleibt unten). Bewusst gelassen: das Doppel-Post-Race der zwei Szenen-Pfade (byte-identisch mit dem akzeptierten Uhr-Panel-Race, ADR 047).
 - Evidenz: Suite **707 grün** (+18 Tests; 1 bestehender `!ort`-Test um den Overlay-Pin erweitert), ruff-F sauber, `dm-eval` Exit 0 gegen unveränderte Goldens.
 
-**Live-Gate-Triage: `docs/live-run-script.md` (2026-07-11, Workflow-Migration Runde 5/5 — die letzte). Doc-only, KEIN neues Live-Gate — der nächste Schritt ist der Spieltisch, keine Build-Runde.**
-Alle 8 offenen Gates + Tuning-/Sekundär-Checks aus progress.md, Archiv und der alten Checkliste sind in EIN Abend-Drehbuch + kurze Folge-Session gemerged: Gate-Register nach Setup-Kosten (G1–G9), Pre-Flight, 11 Akte, exakte Beweis-Logzeilen pro Gate — per Code-Sweep (Explore-Subagent über Cogs/Delivery/Runtime) verifiziert statt aus der Doku zitiert.
-- **Checklisten-Korrekturen aus dem Sweep:** der Psioniker der aktuellen Party ist **Fridolin**, nicht Rektalus; es gibt kein `!pause`-Command (Pause = Esc/⏸-Button); die Gated-Exit-Ablehnung heißt `🚫 Ausgang '…' → '…' verriegelt — Bedingung '…' nicht erledigt`; der Augmetik-Check (D52) ruht, bis ein Implantat-Charakter in der Party ist.
-- **Pre-Flight vorgezogen:** `.env` um die 4 fehlenden Gate-Kill-Switches ergänzt (`DM_CONSISTENCY_GUARD`, `DM_NPC_MEMORY`, `DM_NPC_MEMORY_TOP_K`, `DM_SCENE_TIME_ADVANCE`) — `uv run dm-sync` meldet wieder 42/42; das Soll-Bild steht im Skript. Für die Gossip-Kür fehlt noch der `faction`-Seed in `npcs.json` (kein NSC trägt eine — Pre-Flight #5, Tobi am Abend).
-- **Doku-Konsolidierung:** `live-test-checklist.md` → Redirect-Stub; der gemergte Gate-Fahrplan aus `## Next concrete step` verbatim ins Archiv; Lesson-Verweis (`one-variable-per-live-run`) + die in Runde 4 offen gelassene tdd-Zeile im Skills-Index nachgezogen.
-
-_Ältere `## Last session`-Einträge (Workflow-Migration Runde 4/5 2026-07-11 [roadmap-Modell-Tabelle → Effort-first-Block + konservativer Skill-Sweep], Doc-Diet-Runde 2026-07-11 [State header + Rotation + Decision-Log-Diät], D98 Marker-Registry-Konsolidierung [`MarkerSpec`-Tabelle + eine generische Naht, marker-weise migriert → ADR 051], D97 Chekhov-Liste [Fäden-Schema + Wrap-up-Extraktion + Top-3-Injektion + ChekhovCog → ADR 050], D96 NPC-Agenden [`goal` + `agenda_log` + Extraktor-Erweiterung → ADR 049], D95 Ingame-Zeit [Minuten-Zähler + `<<ZEIT>>`-Marker + Fristen + Druck-Panel → ADR 048], D94 Consequence Clocks [`<<UHR id>>`-Marker + ClockCog + Druck-Panel + Voll-Uhr-`[Regie]`-Note → ADR 047], D93 Replay-Eval-Harness [Replay-Journal + `uv run dm-eval`, 6 Diff-Kategorien, synthetische Goldens → ADR 046], D92 Konsistenz-Wächter [deterministischer Pre-Delivery-Check, Regenerate-once, fail-open → ADR 045], D91 NPC-Gedächtnis [NpcMemory-Schema + Extraktor + Lügen-Flip/Gossip + Prompt-Block → ADR 044], D90 `dm-sync`-Entry-Point [Package-Move + hatchling, byte-identischer `[sync]`-Block], D89 Sync-Check-Fingerprint-Tool [`[sync]`-Block, Ingest-Stempel, SETUP.md-Sync-Sektion], D88 `/author-adventure`-Authoring-Skill [5-Pass-Workflow + `validate.py`, Dry-Run-Abnahme gegen Chemical Burn], D87 Stateful Scene Cards [`<<ERLEDIGT>>`-Flags, tote NSCs, gated Exits → ADR 043], D85+D86 Spielbarkeits-Tuning [repeat_penalty + Roll-Router-Carve-out, `intro_guard`-Retry], D84 `!intro`-Meta-Auftakt-Strip + Temp 0.7, D83 `!intro`-Temperatur + Direktive, D82 Default-Party-Fix, D81 Scene-/Lore-Sub-Cogs, D80 Deepening #4–#6 [prompt_assembly/seed_session/clear_panel], D79 Deepening #1+#2 [`combat.py`-Auslagerung + `segments.py`-Verdrahtung], D78 Skill-Tooling-Runde [4 Claude-Code-Skills: /tdd, /grill-me, /improve-architecture, /to-prd], D77 Dev-Gates [Lint-Stop-Hook + blockierender git-pre-commit + Review/Simplify-Checkliste], D76 `disconnect_voice`-Kontrakt + neuer Delivery-Test, D75 One-Shot-Setup, D74
+_Ältere `## Last session`-Einträge (Live-Gate-Triage 2026-07-11 [alle 8 Gates + Tuning-Checks in EIN Abend-Drehbuch gemerged, `docs/live-run-script.md`; Checklisten-Korrekturen per Code-Sweep], Workflow-Migration Runde 4/5 2026-07-11 [roadmap-Modell-Tabelle → Effort-first-Block + konservativer Skill-Sweep], Doc-Diet-Runde 2026-07-11 [State header + Rotation + Decision-Log-Diät], D98 Marker-Registry-Konsolidierung [`MarkerSpec`-Tabelle + eine generische Naht, marker-weise migriert → ADR 051], D97 Chekhov-Liste [Fäden-Schema + Wrap-up-Extraktion + Top-3-Injektion + ChekhovCog → ADR 050], D96 NPC-Agenden [`goal` + `agenda_log` + Extraktor-Erweiterung → ADR 049], D95 Ingame-Zeit [Minuten-Zähler + `<<ZEIT>>`-Marker + Fristen + Druck-Panel → ADR 048], D94 Consequence Clocks [`<<UHR id>>`-Marker + ClockCog + Druck-Panel + Voll-Uhr-`[Regie]`-Note → ADR 047], D93 Replay-Eval-Harness [Replay-Journal + `uv run dm-eval`, 6 Diff-Kategorien, synthetische Goldens → ADR 046], D92 Konsistenz-Wächter [deterministischer Pre-Delivery-Check, Regenerate-once, fail-open → ADR 045], D91 NPC-Gedächtnis [NpcMemory-Schema + Extraktor + Lügen-Flip/Gossip + Prompt-Block → ADR 044], D90 `dm-sync`-Entry-Point [Package-Move + hatchling, byte-identischer `[sync]`-Block], D89 Sync-Check-Fingerprint-Tool [`[sync]`-Block, Ingest-Stempel, SETUP.md-Sync-Sektion], D88 `/author-adventure`-Authoring-Skill [5-Pass-Workflow + `validate.py`, Dry-Run-Abnahme gegen Chemical Burn], D87 Stateful Scene Cards [`<<ERLEDIGT>>`-Flags, tote NSCs, gated Exits → ADR 043], D85+D86 Spielbarkeits-Tuning [repeat_penalty + Roll-Router-Carve-out, `intro_guard`-Retry], D84 `!intro`-Meta-Auftakt-Strip + Temp 0.7, D83 `!intro`-Temperatur + Direktive, D82 Default-Party-Fix, D81 Scene-/Lore-Sub-Cogs, D80 Deepening #4–#6 [prompt_assembly/seed_session/clear_panel], D79 Deepening #1+#2 [`combat.py`-Auslagerung + `segments.py`-Verdrahtung], D78 Skill-Tooling-Runde [4 Claude-Code-Skills: /tdd, /grill-me, /improve-architecture, /to-prd], D77 Dev-Gates [Lint-Stop-Hook + blockierender git-pre-commit + Review/Simplify-Checkliste], D76 `disconnect_voice`-Kontrakt + neuer Delivery-Test, D75 One-Shot-Setup, D74
 Delivery-Pipeline-Auslagerung, D73 `_TurnTiming`-Auslagerung, D70–D72 `orchestrator`-E1–E4-Verschlankung, D69 `puffer`-Modus,
 D68 globaler Sprech-Modus, D67 Shutdown-Leave-Limit u. a.): siehe **[docs/progress-archive.md](docs/progress-archive.md)**._
 
 ## Next concrete step
 
-**Author the debug campaign (Content-Runde — füllt den `testplan.json`-Vertrag aus ADR 052).**
-Ein kleines Debug-Abenteuer (oder eine Debug-Variante von Chemical Burn), dessen Szenen die
-offenen Gates G1–G9 aus dem Live-Run-Skript gezielt provozieren, plus die zugehörige
-`testplan.json` (pro Szene `gates` + `hint_de`). Das 🧪-Overlay führt die Tester dann Szene
-für Szene durchs Gate-Register — ohne dass der DM je davon erfährt.
+**Die Debug-Kampagne live spielen ([`docs/debug-campaign-runbook.md`](docs/debug-campaign-runbook.md))
+oder das One-Shot-Skript — Tobis Wahl.** Beide schließen dieselben 8 Gates: die Kampagne
+(„Die Mitternachtsfracht“, `DM_ADVENTURE=debug-kampagne`, kein Pre-Flight-Edit nötig) führt
+per 🧪-Overlay Szene für Szene durch die Gates und bleibt für Regression-Play-Runs
+wiederverwendbar; das Skript ist der einmalige, geordnete Abend über Chemical Burn.
 
-**Danach: Run [`docs/live-run-script.md`](docs/live-run-script.md) live.** Alle 8 offenen Gates
+**Alternative: Run [`docs/live-run-script.md`](docs/live-run-script.md) live.** Alle 8 offenen Gates
 (G1–G9) plus Tuning- und Sekundär-Checks sind dort in EIN Abend-Drehbuch + kurze
 Folge-Session gemerged: Gate-Register nach Setup-Kosten, Pre-Flight (inkl. `dm-sync`-
 Soll-Bild, Kill-Switch- und Command-Spickzettel), 11 Akte mit exakten Beweis-Logzeilen
@@ -393,22 +396,10 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 - **Smoke-Test offen:** der Schnitt ist test-grün (263), aber live nur per Smoke-Test abzunehmen
   (`!join`→sprechen→`!dm`→Würfel→`!leave`) — siehe „Next concrete step".
 
-**Deferred altitude debt from the code-review round (2026-06-13, D61 / ADR 030):**
-These are the review's *altitude* findings — real, but the **system-agnostic generalisation** they
-ask for is postponed to the **second-profile / Phase-10b** point (ADR 005's profile bootstrap). There
-is no second system yet to generalise against, the changes are large + behaviour-risky, and the
-project's stance (D1) is "IM is the first profile; generalise when the second arrives". Revisit each
-when a second system is actually loaded:
-- **Engine hardcodes IM arithmetic.** `engine.warp_charge_gain` (Success=Warp-Rating, Critical−WB,
-  Fumble×2, Push+1d10) and `reverse_d100` + the `advantage` digit-reversal bake IM's p.163/p.189 rules
-  into the generic engine. Move the charge-gain + advantage model into the profile alongside the
-  resolution/degrees rules that are already data.
-- ✅ **Per-marker pipeline grows linearly — EINGELÖST (2026-07-04, D98 → ADR 051):** deklarative
-  `MarkerSpec`-Registry + eine generische Strip/Queue/Pending-Naht (keyed Store, `take_pending(kind)`),
-  verhaltensneutral, marker-weise migriert mit dm-eval als Gate. Voller Alt-Text im Archiv.
-- **RAG corpus catalog is IM-/OCR-specific in code.** `retrieve._SOURCES` (source names + German
-  group labels) and `_is_junk_hit` (IM-PDF OCR-noise regexes) live in the retriever. A second ruleset
-  needs them in data/profile + ingest-time denoise, not hardcoded.
+**Deferred altitude debt (2026-06-13, D61 / ADR 030) — geparkt bis Phase 10b (zweites System):**
+- Engine-IM-Arithmetik (`warp_charge_gain`, `reverse_d100`/advantage) und der IM-/OCR-spezifische
+  RAG-Katalog (`retrieve._SOURCES`, `_is_junk_hit`) wandern dann in Profil/Daten; die Marker-Naht
+  ist ✅ eingelöst (D98 → ADR 051). Volltext im Archiv.
 
 **From the lore work (2026-06-13):**
 - **`!lore`-Antworten zu Rokarth sind englisch** — die `setting`-Quelle ist der englische
@@ -417,47 +408,17 @@ when a second system is actually loaded:
   Rokarth-Sektion im Kompendium oder `setting` aus den `!lore`-Quellen nehmen. Erst mal
   beobachten, ob es die Runde stört.
 
-**From the Phase-7 playtests (2026-06-06) — carry into Phase 8 / quality work:**
-- **Latency grows with context** as history accumulates; the 20-turn cap helps but recaps (Phase 9)
-  are the real fix. **Now observable (D35/D36):** the per-turn `[latency]` line shows
-  `ctx=<prompt>/8192 gen=<eval>`, and a WARNING fires once the prompt passes ~85% of `num_ctx` — so
-  the cap-creep is no longer silent. Capture the live baseline before the streaming work; don't raise
-  `num_ctx` (KV-cache VRAM) — trim history/recap/state if the warning shows.
+**Phase-7-Playtests (2026-06-06):** Latenz wächst mit dem Kontext — `[latency]`-Zeile (`ctx=…`)
+und die 85-%-Warnung beobachten; Auto-Recap ist der Fix, die Baseline nimmt der Live-Run.
+Volltext im Archiv.
 
-**Loose ends / housekeeping (from the Phase 3 session):**
-- **Intermittent voice-connect `TimeoutError` on `!join`** (seen once, ~18:45): the discord.py
-  voice handshake occasionally times out; the command errored but a retry joined fine. Benign
-  so far — watch it; if it recurs, look at the connect timeout / a clean error message in
-  `voice/commands.py` rather than the raw traceback.
-- Logging now also writes `logs/dmbot.log` (UTF-8, gitignored) — handy for inspecting a run
-  after the window closes.
-- Continuous silence injection runs silero on every silent user ~50×/s (cheap, ~1–2 %/core
-  each); fine for a small table, revisit only if many idle users ever cost CPU.
+**Loose ends (Phase 3):** `!join`-Voice-`TimeoutError` einmal gesehen (Retry half — nur beobachten);
+Silero läuft auf Stille bei ~1–2 %/Core (fein für einen kleinen Tisch). Volltext im Archiv.
 
-**From the streaming/robustness session (2026-06-10) — open, carry forward:**
-- **Pending live validation (Tobi tests 2026-06-11).** What's already confirmed live: streaming
-  (`first_audio≈3.2s`) + the Phase-9 recap. Still open: HP-survives-restart (+ auto-combat),
-  re-confirm the D42 tuning (no empty read-aloud, no dice loop), crash-restore (D41), router timing
-  (D40), first_audio before/after. The prioritised checklist + exact sequence live in **`## Next
-  concrete step`**.
-- **Open persona/adherence — meta-ramble (nemo's ceiling).** On one live turn the model broke the
-  fiction mid-narration („Nein, tut mir leid, ich habe mich versprochen. Als Spielleitung beschreibe
-  ich nicht direkt die Szene. Ich reagiere lediglich auf das, was die Spielenden tun…") and it got
-  spoken. Not the leading-preamble shape `_strip_meta_preamble` catches, and a generic mid-text
-  meta-stripper risks false positives. Left as a persona/tone-LoRA item; watch frequency.
-- **Caveat — `[latency] gen=` can be stale on a *client-side* stop-label abort (streaming).** When a
-  mid-text speaker label trips `StreamAssembler.stopped` and the brain aborts the httpx stream, the
-  Ollama `done` object (which carries `eval_count`) never arrives, so `last_stats` — hence the
-  `[latency]` line's `gen=`/`ctx=` — holds the **previous** turn's numbers. In practice Ollama's
-  server-side `options.stop` (the `\n<label>:` sequences) usually stops generation first **with** a
-  `done` object, so this rarely shows; the client-side cut is only the safety net. Not worth fixing
-  now — but if a `gen=` ever looks implausibly carried-over after a truncated turn, this is why.
-  (Stored history is unaffected — `finalize_answer` recomputes from the accumulated raw either way.)
-- **first_audio reliability depends on XTTS-on-GPU latency per sentence.** Streaming spreads synthesis
-  over sentences, so per-sentence synth must keep up with playback or gaps appear between sentences.
-  Watch the live `tts=` (now summed) vs `wav=`; if synth lags, the `wav_q` (maxsize=1) backpressure
-  just means the table hears a short gap — acceptable, but a signal that XTTS is the next bottleneck
-  (→ Part-2 streaming-TTS, the deeper W2 latency lever).
+**Streaming/Robustheit (2026-06-10):** die damalige Live-Checkliste ist im Live-Run-Skript
+aufgegangen; als Watch-Items bleiben Meta-Ramble (nemos Ceiling) und first_audio/`tts=`-Lücken
+(XTTS-Tempo) — beide stehen dort unter „Nebenbei“. Der `gen=`-stale-Caveat nach einem
+Stop-Abbruch ist im Skript (Akt 1) notiert; Volltext im Archiv.
 
 ---
 

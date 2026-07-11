@@ -9,6 +9,14 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+_Aus `progress.md` rotiert (2026-07-11, Content-Runde Debug-Kampagne):_
+
+**Live-Gate-Triage: `docs/live-run-script.md` (2026-07-11, Workflow-Migration Runde 5/5 — die letzte). Doc-only, KEIN neues Live-Gate — der nächste Schritt ist der Spieltisch, keine Build-Runde.**
+Alle 8 offenen Gates + Tuning-/Sekundär-Checks aus progress.md, Archiv und der alten Checkliste sind in EIN Abend-Drehbuch + kurze Folge-Session gemerged: Gate-Register nach Setup-Kosten (G1–G9), Pre-Flight, 11 Akte, exakte Beweis-Logzeilen pro Gate — per Code-Sweep (Explore-Subagent über Cogs/Delivery/Runtime) verifiziert statt aus der Doku zitiert.
+- **Checklisten-Korrekturen aus dem Sweep:** der Psioniker der aktuellen Party ist **Fridolin**, nicht Rektalus; es gibt kein `!pause`-Command (Pause = Esc/⏸-Button); die Gated-Exit-Ablehnung heißt `🚫 Ausgang '…' → '…' verriegelt — Bedingung '…' nicht erledigt`; der Augmetik-Check (D52) ruht, bis ein Implantat-Charakter in der Party ist.
+- **Pre-Flight vorgezogen:** `.env` um die 4 fehlenden Gate-Kill-Switches ergänzt (`DM_CONSISTENCY_GUARD`, `DM_NPC_MEMORY`, `DM_NPC_MEMORY_TOP_K`, `DM_SCENE_TIME_ADVANCE`) — `uv run dm-sync` meldet wieder 42/42; das Soll-Bild steht im Skript. Für die Gossip-Kür fehlt noch der `faction`-Seed in `npcs.json` (kein NSC trägt eine — Pre-Flight #5, Tobi am Abend).
+- **Doku-Konsolidierung:** `live-test-checklist.md` → Redirect-Stub; der gemergte Gate-Fahrplan aus `## Next concrete step` verbatim ins Archiv; Lesson-Verweis (`one-variable-per-live-run`) + die in Runde 4 offen gelassene tdd-Zeile im Skills-Index nachgezogen.
+
 _Aus `progress.md` rotiert (2026-07-11, D99 Debug-Overlay-Runde):_
 
 **Roadmap-Tabellen-Ersatz + Skill-Sweep (2026-07-11, Workflow-Migration Runde 4/5). Doc/Skill-only, KEIN neues Live-Gate.**
@@ -1177,6 +1185,9 @@ in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 
 ## Current focus (Verlauf)
 
+_Aus `progress.md` rotiert (2026-07-11, Content-Runde Debug-Kampagne):_
+
+**Cleanup-Runde: Marker-Pipeline konsolidiert + Doku-Sweep (2026-07-04, D98 → ADR 051). Suite 689 grün (+6 Registry-Tests, 0 Änderungen an bestehenden Tests), ruff-F sauber, `dm-eval` Exit 0 gegen die unveränderten Goldens — nach jedem Migrationsschritt. Verhaltensneutral, KEIN neues Live-Gate.** Das selbst notierte D94-Debt ist eingelöst, **bevor** ein sechster Marker kommt: die fünfmal handkopierte Marker-Naht (TEST/MANIFEST/ORT/ERLEDIGT/UHR/ZEIT — je eigene Regex+Dataclass+`_pending_*`-Dict, `finalize_answer` als 7-Tupel) läuft jetzt über eine **deklarative `MarkerSpec`-Registry** (`dmbot/rules/marker.py`; Tabellen-Reihenfolge = Extraktions- UND Journal-Key-Reihenfolge) + EINE generische Naht: `extract_all` (kettet die bestehenden Extraktoren byte-identisch), `finalize_answer_markers → (answer, {kind: requests})` (das 7-Tupel bleibt als test-gepinnte View), keyed Pending-Store im Brain (Queue/Redo/Reset/Consistency-Snapshot als Loops, Suppression aus `spec.suppressible`; `take_pending_<kind>`-Wrapper + Alias-Attribute halten die öffentliche Surface), labelled Task-Liste statt zwei kopierter Dispatch-Blöcke in der Delivery, dm-eval liest Keys+Drain aus der Registry. Die per-Marker-**Eigenheiten sind unangetastet** (ZEIT first-valid+12h-Clamp, UHR +1/Uhr/Turn, UHR/ZEIT suppressions-exempt, Confirm-Views unter `DM_FLAG_CONFIRM`, verklebte Marker strippen weiter); Handler-Bodies + pure Verdicts bewusst NICHT generalisiert (ADR 051 #5 — das ist das Feature, nicht die Naht). Migration marker-weise (ORT zuletzt), Journal byte-kompatibel. **Teil B:** README auf den echten Stand (Memory/RAG gelandet + Session-Tools-Liste), progress-Rotation (D75–D81-Focus-Blöcke + D60–D63-Next-step-Verlauf ins Archiv), `logsetup`-Docstring-Kosmetik, Open-questions ausgeräumt. Ein sechster Marker kostet jetzt: Dataclass + Extraktor + eine Registry-Zeile + sein eigentliches Feature. Projekt-Prio unverändert: der Tuning+Scene-Cards-Live-Run.
 
 _Aus `progress.md` rotiert (2026-07-11, D99 Debug-Overlay-Runde):_
 
@@ -1902,6 +1913,61 @@ Gate-Run ist weg.** _(Sezgin könnte Rektalus' Werte noch finalisieren, sonst st
   gehört (Rotation wurde übersprungen). Ein dedizierter Lean-Pass steht aus — bei Gelegenheit,
   kein Bot-Risiko. — Erledigt durch die D98-Teil-B-Rotation + die Doc-Diet-Runde (State header,
   Current-focus-Rotation auf 2 Blöcke, Decision-Log-Diät mit ADR-Addenda).
+
+**Aus der Content-Runde Debug-Kampagne rotiert (2026-07-11) — vier alte Prose-Blöcke, je eine
+Ein-Zeilen-Summary bleibt live (Volltexte hier verbatim):**
+
+- **Deferred altitude debt from the code-review round (2026-06-13, D61 / ADR 030):**
+  These are the review's *altitude* findings — real, but the **system-agnostic generalisation** they
+  ask for is postponed to the **second-profile / Phase-10b** point (ADR 005's profile bootstrap). There
+  is no second system yet to generalise against, the changes are large + behaviour-risky, and the
+  project's stance (D1) is "IM is the first profile; generalise when the second arrives". Revisit each
+  when a second system is actually loaded:
+  - **Engine hardcodes IM arithmetic.** `engine.warp_charge_gain` (Success=Warp-Rating, Critical−WB,
+    Fumble×2, Push+1d10) and `reverse_d100` + the `advantage` digit-reversal bake IM's p.163/p.189 rules
+    into the generic engine. Move the charge-gain + advantage model into the profile alongside the
+    resolution/degrees rules that are already data.
+  - **RAG corpus catalog is IM-/OCR-specific in code.** `retrieve._SOURCES` (source names + German
+    group labels) and `_is_junk_hit` (IM-PDF OCR-noise regexes) live in the retriever. A second ruleset
+    needs them in data/profile + ingest-time denoise, not hardcoded.
+- **From the Phase-7 playtests (2026-06-06) — carry into Phase 8 / quality work:**
+  **Latency grows with context** as history accumulates; the 20-turn cap helps but recaps (Phase 9)
+  are the real fix. **Now observable (D35/D36):** the per-turn `[latency]` line shows
+  `ctx=<prompt>/8192 gen=<eval>`, and a WARNING fires once the prompt passes ~85% of `num_ctx` — so
+  the cap-creep is no longer silent. Capture the live baseline before the streaming work; don't raise
+  `num_ctx` (KV-cache VRAM) — trim history/recap/state if the warning shows.
+- **Loose ends / housekeeping (from the Phase 3 session):**
+  - **Intermittent voice-connect `TimeoutError` on `!join`** (seen once, ~18:45): the discord.py
+    voice handshake occasionally times out; the command errored but a retry joined fine. Benign
+    so far — watch it; if it recurs, look at the connect timeout / a clean error message in
+    `voice/commands.py` rather than the raw traceback.
+  - Logging now also writes `logs/dmbot.log` (UTF-8, gitignored) — handy for inspecting a run
+    after the window closes.
+  - Continuous silence injection runs silero on every silent user ~50×/s (cheap, ~1–2 %/core
+    each); fine for a small table, revisit only if many idle users ever cost CPU.
+- **From the streaming/robustness session (2026-06-10) — open, carry forward:**
+  - **Pending live validation (Tobi tests 2026-06-11).** What's already confirmed live: streaming
+    (`first_audio≈3.2s`) + the Phase-9 recap. Still open: HP-survives-restart (+ auto-combat),
+    re-confirm the D42 tuning (no empty read-aloud, no dice loop), crash-restore (D41), router timing
+    (D40), first_audio before/after. (2026-07-11: alles ins Live-Run-Skript gemerged.)
+  - **Open persona/adherence — meta-ramble (nemo's ceiling).** On one live turn the model broke the
+    fiction mid-narration („Nein, tut mir leid, ich habe mich versprochen. Als Spielleitung beschreibe
+    ich nicht direkt die Szene. Ich reagiere lediglich auf das, was die Spielenden tun…") and it got
+    spoken. Not the leading-preamble shape `_strip_meta_preamble` catches, and a generic mid-text
+    meta-stripper risks false positives. Left as a persona/tone-LoRA item; watch frequency.
+  - **Caveat — `[latency] gen=` can be stale on a *client-side* stop-label abort (streaming).** When a
+    mid-text speaker label trips `StreamAssembler.stopped` and the brain aborts the httpx stream, the
+    Ollama `done` object (which carries `eval_count`) never arrives, so `last_stats` — hence the
+    `[latency]` line's `gen=`/`ctx=` — holds the **previous** turn's numbers. In practice Ollama's
+    server-side `options.stop` (the `\n<label>:` sequences) usually stops generation first **with** a
+    `done` object, so this rarely shows; the client-side cut is only the safety net. Not worth fixing
+    now — but if a `gen=` ever looks implausibly carried-over after a truncated turn, this is why.
+    (Stored history is unaffected — `finalize_answer` recomputes from the accumulated raw either way.)
+  - **first_audio reliability depends on XTTS-on-GPU latency per sentence.** Streaming spreads synthesis
+    over sentences, so per-sentence synth must keep up with playback or gaps appear between sentences.
+    Watch the live `tts=` (now summed) vs `wav=`; if synth lags, the `wav_q` (maxsize=1) backpressure
+    just means the table hears a short gap — acceptable, but a signal that XTTS is the next bottleneck
+    (→ Part-2 streaming-TTS, the deeper W2 latency lever).
 
 **Aus der Cleanup-Runde rotiert (2026-07-04, D98):**
 - ✅ **Kosmetik (D60/ADR 029) geputzt (D98).** Ursprünglicher Eintrag: „ein Docstring-Beispiel in
