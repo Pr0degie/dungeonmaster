@@ -84,3 +84,12 @@ LLM ever writing state.
 - **Live-unverified:** whether nemo emits `<<ERLEDIGT>>` reliably (and not for merely-discussed
   things) is a model-behaviour claim — confirm at the table; `DM_FLAG_CONFIRM=1` keeps misfires
   harmless meanwhile.
+
+## Addendum — detail preserved from decision log D87 (2026-07-11)
+
+- **Forced seam cost (declared in the approved plan):** `finalize_answer` widened from a 4-tuple to
+  a **5-tuple** → **3 mechanical unpack widenings** in existing tests, **zero assertion changes**.
+- **Test delta:** **+49 tests**; suite **444 green** at commit time.
+- **Implementation notes:** `scene_flags` is the **first dict-typed field** on `WorldState`; the
+  streaming partial-withholding rides on the shared `<<` delimiter; the pending `<<ERLEDIGT>>` queue
+  is drained as a **third delivery task** in the pipeline (alongside the existing drains).

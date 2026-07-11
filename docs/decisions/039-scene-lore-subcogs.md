@@ -85,3 +85,9 @@ new sub-cog tests), **0** existing-test edits, ruff clean.
   same note as ADR 029/034/035).
 - **Done:** this completes the ADR-035 deferred-split umbrella for DMCog. (`dicecog.py` at 557 lines
   is the next-largest cog, but has no analogous clean command-cluster to peel off — out of scope.)
+
+## Addendum — detail preserved from decision log D81 (2026-07-11)
+
+- **How the candidate was surfaced and chosen:** via a `/improve-architecture` workflow — **3 finder
+  subagents** plus a **3-lens adversarial verify**; of **13 candidates, 7 survived** the verify, and
+  this "dmcog-Paket" was one of them.

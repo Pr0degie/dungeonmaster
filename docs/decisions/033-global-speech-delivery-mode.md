@@ -82,3 +82,18 @@ it only delays the gaps — synth still falls behind — but it starts far soone
 inter-sentence bridge gap remains (each sentence is its own `/speak`); truly gapless still needs
 `nahtlos` (or a GPU). So `puffer` is the tunable compromise; the full fix for gapless-everywhere
 remains the GPU offload (ADR 002).
+
+## Addendum — detail preserved from decision log D68 (2026-07-11)
+
+- The six turn-dispatch sites that read the mode instead of hardcoding the path are `!dm`, `!redo`,
+  `!start`, `!intro`, `_auto_dm_turn` and `_run_and_deliver`.
+- The knobs are wired `Config.speech_mode`/`Config.speech_punct` → `runtime._speech_mode`/
+  `runtime._speech_punct`, exposed via the two runtime helpers.
+- The generalised `_speak_seamless(text, …, transform=…)` (formerly `_intro_speak_seamless`) is
+  reused by `_deliver_answer` (nahtlos) and by `!intro test`.
+- +6 tests; suite **316 green**.
+
+## Addendum — detail preserved from decision log D69 (2026-07-11)
+
+- The prebuffer depth is exposed via a new `runtime.prebuffer_count()` helper.
+- +3 tests; suite **319 green**.

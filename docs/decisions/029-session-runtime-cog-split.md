@@ -74,3 +74,10 @@ invoked only after `!join`, so registration order doesn't matter.
   column and in WARNING console lines (e.g. `runtime`/`voice.dmcog` instead of `voice.commands`). The log
   *messages* and the green-chat/transcript formatting are unchanged (the filters key on message content +
   the `dmbot` prefix, not the exact module — verified).
+
+## Addendum — detail preserved from decision log D60 (2026-07-11)
+
+- `commands.py` was deleted outright; no shim was left at the old path.
+- The moved-not-rewritten claim was verified mechanically: per-agent AST diffs and reverse-rename
+  diffs plus a streaming-pipeline spot-check confirmed byte-identical method bodies — the only
+  textual changes are the `self._X` → `self._rt._X` attribute renames and the hook calls.

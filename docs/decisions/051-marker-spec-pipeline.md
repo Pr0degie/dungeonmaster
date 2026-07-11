@@ -119,3 +119,12 @@ The per-marker *behaviours* are features, not accidents, and must survive exactl
 - **Behaviour-neutral, verified:** suite green (unchanged assertions), `ruff --select F`
   clean, `uv run dm-eval` exit 0 against the pre-refactor goldens after every step and at the
   end. **No new live gate** — nothing player-visible changed.
+
+## Addendum — detail preserved from decision log D98 (2026-07-11)
+
+- Both delivery paths dispatch the proposal handlers via one labelled
+  `_marker_proposal_tasks` list.
+- `StreamResult`'s back-compat marker access is implemented via `__getattr__` over the keyed
+  dict.
+- Test evidence from the round: suite **689 green** (+6 registry tests, 0 changes to existing
+  tests).

@@ -62,3 +62,17 @@ import surface stable).
 - **Deferred (next rounds):** the `dmcog.py` splits (lore → its own cog after moving
   `_speak`/`_synthesize` to the runtime; a scene mixin) which need a new mixin idiom and their own
   ADR — out of scope here, which is only "extract the self-contained, state-free units."
+
+## Addendum — detail preserved from decision log D73 (2026-07-11)
+
+Continuation of the same extraction pattern applied to `runtime.py` (no new ADR): the per-turn
+latency record `_TurnTiming` and its `_CTX_WARN_FRACTION` threshold moved into a new
+`dmbot/turn_timing.py` — a self-contained, state-free logging helper (threads `time.monotonic`
+timestamps, emits the one `[latency]` line and the `[ctx]` budget warning; no `SessionRuntime`
+state). `runtime.py` re-imports both (`# noqa: F401`) so `from ..runtime import _TurnTiming`
+(cog/dice/`test_autorecap`/`test_context_budget`) keeps working; the now-unused
+`from dataclasses import dataclass` was dropped from `runtime`. `runtime.py` 610 → **516** lines.
+Byte-exact body copy, **0 test edits**, ruff clean, suite **319 green**. Sole non-byte effect: the
+`[latency]`/`[ctx]` lines now log under logger name `dmbot.turn_timing` instead of `dmbot.runtime`
+(message text and the `[latency]` prefix unchanged; the console INFO format drops the name anyway,
+and no test asserts it).

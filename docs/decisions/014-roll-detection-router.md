@@ -60,3 +60,9 @@ router is skipped for that turn). Gated by `DM_ROLL_ROUTER` (off by default) for
   simultaneous actions are a future extension.
 - Revisits ADR 004: the marker is now a fallback, not the mechanism. Verified: pure helpers unit-tested,
   full path smoke-tested against Ollama (nemo) end-to-end. Live A/B pending (`DM_ROLL_ROUTER=1`).
+
+## Addendum — detail preserved from decision log D29 (2026-07-11)
+
+The live A/B has since been completed: the router was **validated live on 2026-06-08** and is now
+**ON by default** — `DM_ROLL_ROUTER` defaults to enabled, `DM_ROLL_ROUTER=0` disables it. This
+supersedes the "off by default" gating stated in the Decision section above.

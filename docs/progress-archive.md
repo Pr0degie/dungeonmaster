@@ -9,6 +9,16 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+_Aus `progress.md` rotiert (2026-07-11, Doc-Diet-Runde):_
+
+**Chekhov-Liste: lose Fäden + Callbacks (2026-07-04, D97 → ADR 050). Suite 683 grün (+24), ruff-F sauber, `dm-eval` Exit 0, live-unverified.**
+Ziel: unaufgelöste Details einer Session überleben und kommen später als Callback zurück — das LLM schreibt die Prosa, Code verwaltet die Liste (Cap/Dedupe/Status/Verdrängung; das Recap-/ADR-044-Narrativ-Muster, golden rule #3 dem Geist nach).
+- **Schema + Persistenz (`dmbot/memory/chekhov.py`, pure — kein Discord/LLM/Runtime):** `ChekhovThread{id (sequenziell t1, t2 …), detail (1 Satz, 200-Zeichen-Trunkierung), origin_scene, created_session (ISO-Datum), status open|resolved, weight 1–3}` in `ChekhovList` → `data/sessions/<id>/chekhov.json` (atomar, temp + `os.replace` wie `state.json`; fehlende/kaputte Datei = leere Liste, blockiert nie). Cap 20 offene (Verdrängung: ältester mit dem niedrigsten vorhandenen Gewicht), Aufgelöste FIFO-gedeckelt auf 20. Dedupe `is_similar` (normalisiert: Substring ODER Wort-Jaccard ≥ 0.6) gegen ALLE Fäden — ein aufgelöster kommt nicht als „neu" zurück.
+- **Extraktion (nur `!wrap`, ein Call):** `request_extraction` bekommt optional `chekhov_section` → Schema-Variante `EXTRACT_SCHEMA_CHEKHOV` (`chekhov: {new: [{detail, weight}], resolved: [ids]}`, required), System-Zusatz `prompts/chekhov_extract_de.md`, `num_predict` 800→1000. **Fenster-Fix:** `extract_npc_memories(include_chekhov=True)` baut die Sektion aus offenen Fäden (nummeriert, für Auflösungs-Erkennung) + dem Verlauf VOR dem Extraktions-Fenster als markiertem „nur für Fäden — keine NSC-Erinnerungen"-Block (der Wrap-up-Call sähe sonst nur die letzte Szene; NSC-Semantik bleibt fensterbezogen, Überreichweite fangen Gist-Dedupe/±1-Clamp). `apply_chekhov` defensiv (kaputte Payload = No-op): erst `resolved` flippen (unbekannte ID → Log), dann max. 5 neue durch den dedupenden, gedeckelten `add_thread`. Early-Return angepasst: Chekhov extrahiert auch ohne Szenen-Fenster/NSC-Kandidaten, solange die Session Verlauf hat.
+- **Injektion:** `chekhov_block_de(top_open(3))` (Gewicht absteigend, dann älter zuerst; `(wichtig)` bei Gewicht 3, keine IDs im Prompt) reitet als „## Lose Fäden (… nicht erzwingen)" am Weltzustand-Block (`_persist_and_refresh`, neben Psyker/Augmetik); Persona-Bullet in `prompts/dm_core_de.md` (EINEN aufgreifen wenn er sich natürlich fügt, kein Fremdkörper, Liste nie wörtlich erwähnen).
+- **Commands (neuer dünner `dmbot/voice/chekhovcog.py`, TimeCog-Muster):** `!fäden`/`!faeden` (offen + aufgelöst, mit IDs/Gewicht/seit), `!faden neu "<Detail>" [1-3]` (Mensch-Autorität; macht das Zwei-Session-Gate ohne Voll-Extraktion testbar), `!faden erledigt <id>`, `!faden weg <id>` — sofort angewendet, persistiert + Prompt-Refresh. Runtime: `chekhov_list(cid)` lazy-load + `save_chekhov(cid)`.
+- **Tests (+24: `tests/test_chekhov.py` 18 + `tests/test_chekhov_commands.py` 6):** Roundtrip + atomar (kein `.tmp`-Rest), kaputte Datei, Weight/Status-Clamp, Cap-Verdrängung (weight-1 + Fallback niedrigstes Gewicht), Resolved-FIFO, Dedupe (Substring/Wortmengen, offen UND aufgelöst), Resolve-Übergang (case-tolerant, idempotent), Top-3-Ordnung, Apply (resolve-dann-add, 5er-Cap, Garbage-Payloads, Dedupe), Sektion-Builder, Prompt-Block, Schema/Prompt-Switch im Call, Command-Pfade. **Scope-Grenzen (ADR 050):** keine Extraktion pro Szene, kein Zwangs-Verweben in jede Antwort, keine Quest-Duplikate.
+
 **NPC-Agenden: `goal` + `agenda_log` + Extraktor-Erweiterung (2026-07-03, D96 → ADR 049). Suite 659 grün (+24), ruff-F sauber, `dm-eval` Exit 0, live-unverified.**
 Ziel: die Welt lebt offscreen — wichtige NSCs verfolgen ein Ziel zwischen den Szenen, ohne Welt-Simulator, ohne zweiten LLM-Call, ohne harte Mutationen aus LLM-Prosa (golden rule #3).
 - **Schema (`dmbot/memory/state.py`):** `AgendaStep{ts_ingame, text}` (omit-when-empty) + am `Combatant` `goal: str` und `agenda_log` mit `add_agenda_step` (**FIFO-Cap 10** — Timeline, kein Wichtigkeits-Pruning wie bei memories); `add_or_update_npc(goal=…)`. Alte `state.json` lädt unverändert. `AdventureNpc.goal_de` (Autorendaten, optional) wird wie `faction` bei `!npc add` UND bei Extraktor-Registrierung kopiert + auf Alt-States nachgezogen.
@@ -1133,6 +1143,32 @@ in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 
 ## Current focus (Verlauf)
 
+_Aus `progress.md` rotiert (2026-07-11, Doc-Diet-Runde): die „Current focus“-Blöcke D82–D96 (verbatim; D97/D98 bleiben live)._
+
+**NPC-Agenden gebaut (2026-07-03, D96 → ADR 049). Suite 659 grün (+24), ruff-F sauber, `dm-eval` Exit 0 gegen die alten Goldens, live-unverified.** Wichtige NSCs verfolgen ihr Ziel jetzt **zwischen den Szenen** (der Schmuggler, den ihr verpfiffen habt, sitzt beim nächsten Besuch nicht mehr brav in seiner Bar): ein nicht-leeres `goal` am NSC macht ihn zum **Agenda-NSC** — gesetzt nur von Menschen (`!agenda <NSC> "<Ziel>"` / `weg`, `!agenden` listet; DiceCog neben `!npcmem`) oder autorenseitig (`goal_de` in `npcs.json`, wird wie `faction` bei Registrierung kopiert + auf Alt-States nachgezogen), nie vom LLM. Gedacht sind **2–5** (kein Welt-Simulator; Command warnt ab dem 6.). Der **eine** ADR-044-Extraktor-Call pro Szenenwechsel (kein zweiter — Latenz) darf pro Agenda-NSC einen `agenda_step` vorschlagen (1–2 Sätze: was hat er offscreen für sein Ziel getan — Input des Calls trägt jetzt Ziel + letzte 2 Schritte + die ADR-048-Ingame-Zeit, damit der Schritt zur verstrichenen Zeit plausibel bleibt); Code klemmt hart: **max. 1 Schritt pro NSC pro Szenenwechsel** (Duplikat-Einträge verworfen), nur lebende NSCs mit Ziel (PCs/tote/ziellose → verworfen + Log), Text auf den Gist-Cap gestutzt. Schritte sind **rein narrativ** — `agenda_log` (`AgendaStep{ts_ingame, text}`, FIFO-Cap 10, Ältestes fliegt), harte Mutationen (NSC-Tod, Ortswechsel) bleiben Code/Tobi. Injektion zweiseitig: **anwesender** Agenda-NSC trägt `Ziel:` + letzte 3 offscreen-Schritte in seinem `[NPC-Gedächtnis]`-Block (rendert jetzt auch ohne Erinnerungen); **abwesende** bekommen je eine Zeile im Weltzustand-Block („Agenden … deute Bewegungen über Gerüchte und Spuren an"). Kill-Switch geerbt: alles reitet in der ADR-044-Extraktion (`DM_NPC_MEMORY=0` = aus; kein neuer Env-Knopf). **Live-Gate offen** (s. Next step): einem NSC ein Ziel geben → zwei Szenen spielen → hat sich seine Lage glaubwürdig bewegt? Projekt-Prio unverändert: der Tuning+Scene-Cards-Live-Run.
+
+**Ingame-Zeit gebaut (2026-07-03, D95 → ADR 048). Suite 635 grün (+62), ruff-F sauber, `dm-eval` Exit 0 gegen die alten Goldens, live-unverified.** `WorldState.time_ingame` (toter Freitext-String) ist jetzt ein Werkzeug: **ein code-owned Minuten-Zähler** `time_minutes` (seit Tag 1, 00:00; Start/Migration alter States: Tag 1, 08:00 + Log) ist das Modell, alles andere abgeleitetes Rendering (pure `dmbot/memory/gametime.py`: „Tag 2, 14:30" + Tagesphase Morgen/Tag/Abend/Nacht); der String bleibt als gerenderter Spiegel. Das LLM **schlägt Zeitfortschritt vor** per neuem Marker `<<ZEIT +30m>>`/`<<ZEIT +4h>>` (Einheiten tolerant; exakt das ADR-043/047-Muster an jeder Naht, Confirm-Button `ZeitView` unter `DM_FLAG_CONFIRM`), Code klemmt: **nur der erste valide Marker pro Turn** (Fortschritt ist nicht idempotent — Duplikate würden doppelt schieben) und **max +12h** (pure `zeit_verdict`, geteilt mit dm-eval); rückwärts/unlesbar → verworfen. Mensch ist ungeklemmt: `!zeit +6h` / `!zeit tag` (nächster Morgen 08:00); Szenenwechsel kostet default **+30 min** (`DM_SCENE_TIME_ADVANCE`, nur bei echtem Move — nicht beim Start-Seed). **Fristen** (`!frist neu "<Label>" <+Dauer>` / `weg` / `!fristen`, nur Menschen — ADR-047-Argument) reiten mit grober Restzeit im Weltzustand-Prompt („noch ~1 Tag"); läuft eine ab, injiziert Code **einmalig** die `[Regie]`-Konsequenz-Notiz (geliebtes Volle-Uhr-Muster, `notified` gelatcht + persistiert) und die Frist bleibt ABGELAUFEN sichtbar bis `!frist weg`. Anzeige: das Uhren-Panel ist jetzt das **Druck-Panel** (Zeit-Header + Fristen + Uhren, edit-in-place, kein neues Panel). Neuer dünner **TimeCog**; `<<ZEIT>>` ist wie `<<UHR>>` von der Results-only-Suppression ausgenommen. Journal/dm-eval kompatibel erweitert (`markers.zeit`, `zeit_verdicts` — alte Goldens replayen grün). **Live-Gate offen** (s. Next step): Frist setzen → verstreichen lassen → DM spielt die Konsequenz; Tagesphase im Erzählton. Projekt-Prio unverändert: der Tuning+Scene-Cards-Live-Run.
+
+**Consequence Clocks gebaut (2026-07-03, D94 → ADR 047). Suite 573 grün (+38), ruff-F sauber, `dm-eval` Exit 0 gegen die alten Goldens, live-unverified.** Code-owned Fortschrittsuhren à la Blades in the Dark geben der Welt Druck („Arbites-Ermittlung 3/6"): `WorldState.clocks` (Schema abwärtskompatibel, `visible`-Feld für verdeckte Uhren reserviert — UI ignoriert es bewusst), Uhren **nur von Menschen** angelegt (`!uhr neu "<Name>" <4|6|8>` / `tick` / `zurück` / `weg` / `!uhren`, neuer dünner **ClockCog** im ADR-039-Stil). Das LLM **schlägt Ticks vor** per neuem Marker `<<UHR id>>` (exakt das ADR-043-Muster: Grammatik/Strip/Streaming-Withholding/Pending-Queue/Confirm-Button `ClockView` unter demselben `DM_FLAG_CONFIRM`-Knopf), Code validiert + klemmt hart auf **+1 Tick pro Uhr pro Turn** (pure `uhr_verdict`, geteilt mit dm-eval); unbekannte id → verworfen + Log. **Bewusste Abweichung:** `<<UHR>>` ist von der Results-only-Suppression ausgenommen — der Konsequenz-Turn nach einem Fehlschlag ist DER Tick-Moment, und ein Tick kann keine Schleife erzeugen (ADR 047). **Volle Uhr:** Code reiht eine One-Shot-Regie-Notiz ein → nächster Turn trägt `[Regie] Die Uhr „X“ ist voll — die Konsequenz tritt JETZT ein` (`!uhr zurück` von voll zieht eine noch nicht gefeuerte Notiz zurück); die Uhr bleibt VOLL sichtbar bis `!uhr weg`. Sichtbar für alle: edit-in-place-Panel (◉◉◉○○○, Pause-Panel-Muster) + `Uhren:`-Zeile im Weltzustand + Persona-Absatz (wann ein Tick angemessen ist). Replay-Journal kompatibel erweitert (`markers.uhr`, `notes`, `uhr_verdicts` — alte Goldens replayen grün). **Live-Gate offen** (s. Next step): Uhr anlegen → DM einen Tick provozieren → Panel prüfen. Projekt-Prio unverändert: der Tuning+Scene-Cards-Live-Run.
+
+**Replay-Eval-Harness gebaut (2026-07-03, D93 → ADR 046, Dev-Tooling). Suite 535 grün (+19), ruff-F sauber, `uv run dm-eval` Exit 0 gegen die eingecheckten Goldens.** Aufgezeichnete Sessions werden zu **Golden-Transcripts**: das `history.jsonl`-Autosave ist abwärtskompatibel zum **Replay-Journal** erweitert (Session-Header pro `!join`; pro Turn zusätzlich `lines`/`results`, die **rohe** LLM-Antwort mit Markern, die gequeueten Marker, das Router-Verdikt samt Roh-JSON, `state_before` + Szenen-/Flag-Verdikte — `load_recent`/Crash-Restore ignorieren alles davon). Neues Tool **`dmbot/tools/eval_replay.py`** (`uv run dm-eval`, `[project.scripts]` wie dm-sync/D90) spielt die Turns mit **gemocktem LLM** (Playback der Roh-Antworten) durch den echten Orchestrator und difft pro Turn: Kategorien `turn`/`answer`/`marker`/`router`/`state`/`llm`, eine `[eval] DIFF`-Zeile pro Abweichung, Exit 0/1/2 → taugt als Gate vor Refactor-Merges. **Regression, nicht Qualität** (der Live-Modellvergleich Nemo vs. Mistral Small ist die explizite Folge-Runde auf genau diesem Harness). Bewusst NICHT verglichen: Timing/Audio, Prompt-Inhalte, numerische State-Mutationen (Würfel-RNG/Wunden — Verdikte statt Snapshots, ADR 046). `tests/golden/`: 2 synthetische, committbare Goldens (Würfel-Loop + Szenen/Flags gegen ein Mini-Fixture-Abenteuer) über den echten Capture-Pfad generiert (`generate_synthetic.py` = Bless-Schritt) + README (wie man aus einer Live-Session ein frisches Golden zieht). Projekt-Prio unverändert: der Tuning+Scene-Cards-Live-Run — der nebenbei das erste echte Live-Golden liefert.
+
+**Konsistenz-Wächter gebaut (2026-07-03, D92 → ADR 045). Suite 516 grün (+30), ruff-F sauber, committet auf `main`, live-unverified.** Vor der Auslieferung einer DM-Antwort prüft jetzt **deterministischer Code** (kein LLM-Judge, `dmbot/llm/consistency.py`) gegen den WorldState: ein **toter** NSC (Karte rendert `(tot)`) oder ein **szenenfremder** registrierter NSC (nicht in `npcs_here`) darf keine wörtliche Rede zugeschrieben bekommen. Heuristiken bewusst konservativ (nur Präsens-Sprechverben, Zitat-Spannen gestrippt, „ein Kultist ruft" zählt nicht, mehrdeutige Namens-Tokens fliegen raus — im Zweifel NICHT anschlagen, jeder False Positive kostet eine Regeneration). Bei Verstoß **einmal** regenerieren mit konkretem deutschen KORREKTUR-Hinweis; besteht auch der Retry nicht → trotzdem ausliefern + Warn-Log (fail-open, blockiert nie). **Trade-off (im ADR festgehalten):** der Streaming-Pfad kennt den Volltext erst, wenn das Audio schon läuft — dort loggt der Wächter nur; der Regenerate-Schutz greift auf dem Batch-Pfad (`nahtlos`, Würfel-Folge-Turns). `DM_CONSISTENCY_GUARD=0` = aus. **Live-Gate offen** (Checkliste §6b): toten NSC provozieren → `[consistency]`-Regenerate feuert, Retry sauber. Projekt-Prio unverändert: der Tuning+Scene-Cards-Live-Run.
+
+**NPC-Gedächtnis gebaut (2026-07-03, D91 → ADR 044). Suite 486 grün (+27), ruff-F sauber, committet auf `main`, live-unverified.** NPCs erinnern jetzt, was mit ihnen besprochen wurde: pro NSC eine gedeckelte `memories`-Liste in `state.json` (Gist + wörtliches Schlüsselzitat bei Versprechen/Lüge/Drohung, `believed`-Flag für Spieler-Lügen), extrahiert durch **einen** LLM-Call pro Szenenwechsel (`!ort` / bestätigter `<<ORT>>`) + `!wrap` als Catch-all — nie pro Turn. Golden Rule #3 überall: der Extraktor schlägt nur vor, Code klemmt die Haltung auf ±1 Stufe/Szene (`hostile→wary→neutral→friendly→loyal`), kippt aufgeflogene Lügen (believed=False + Wichtigkeit-5-Eintrag + eine Stufe Richtung hostile) und verteilt Wichtigkeit-≥4-Neuigkeiten deterministisch als Hörensagen an gleiche-`faction`-NSCs. Top-K pro Szenen-NSC im Prompt (`DM_NPC_MEMORY_TOP_K`, Lügen immer dabei), `DM_NPC_MEMORY=0` = aus, `!npcmem` = Debug-View. **Live-Gate offen** (s. Next step): NSC anlügen → Szene wechseln → zurück → erinnert er sich? Projekt-Prio davor unverändert: der Tuning+Scene-Cards-Live-Run.
+
+**`uv run dm-sync` als Entry Point (2026-07-02, D90, Dev-Tooling — committet + gepusht auf `main`).** Das D89-Tool ist von `tools/sync_check.py` nach **`dmbot/tools/sync_check.py`** gezogen (Package-Modul, `sys.path`-Hack weg) und läuft jetzt als `uv run dm-sync` (`[project.scripts]`). Dafür ist das Projekt jetzt **packaged** (hatchling, editable install von `dmbot` — nur damit der Script-Entry existiert; weiterhin Anwendung, keine Library). Output byte-identisch zum D89-Format (Kontrakt), Doku-Zeiger (SETUP.md/conventions.md) + Tests umgebogen, kein Shim am alten Pfad. Suite 459 grün. **Timo braucht einmal `git pull` + `uv sync`**, bevor `dm-sync` bei ihm existiert. Nebenbefund: Tobis `.env` ist inzwischen **38/38** — der D89-Befund (20 fehlende Keys) ist abgearbeitet. Projekt-Prio unverändert: der Tuning+Scene-Cards-Live-Run.
+
+**Sync-Check-Tool gebaut (2026-07-02, D89, Dev-Tooling — committet auf `main`).** Neues Standalone-`tools/sync_check.py`: ein kompakter `[sync]`-Fingerprint-Block (Repo-Commit, Abenteuer-Dateien sha+mtime+Kennzahl über den echten Loader, rag.db Größe/Embedder/Chunks-pro-Source/Ingest-Datum, .env-Key-Abgleich gegen `.env.example` ohne Werte, geänderte data-Seeds) — beide Maschinen lassen es laufen und diffen die Blöcke; die abweichende Zeile ist das, was zu schicken/neu zu bauen ist. `dmbot/rag/ingest.py` stempelt jetzt `ingested:<source>` in die Meta-Tabelle (alte DBs tolerant „unbekannt"). SETUP.md-Sektion „Staying in sync (second machine)". Suite 459 grün (+15). **Erster echter Befund:** Tobis lokale `.env` hängt 20 Keys hinter dem Template — vor dem Tuning-Live-Run nachziehen (s. Next step). Projekt-Prio unverändert: der Tuning+Scene-Cards-Live-Run.
+
+**Authoring-Skill `/author-adventure` gebaut + Smoke-Test bestanden (2026-07-02, D88, Dev-Tooling — committet auf `main`; nur der Skill selbst, keine Buch-Derivate).** Neuer Claude-Code-Skill (`.claude/skills/author-adventure/` = SKILL.md + `validate.py`, D78-Infrastruktur): 5-Pass-Workflow (Struktur-Pass **mit Stopp zur Szenenschnitt-Freigabe** → Karten → NSCs → Summary → Spoiler-Selbstcheck + Loader-Validierung + Review-Checkliste), damit Abenteuer #2 („The Blazing Seraph", 49 S.) einen Redigier-Nachmittag kostet statt Tage. Dry-Run gegen das Chemical-Burn-md → 14-Szenen-Draft, Loader-valide (inkl. ADR-043-Gates), dann Diff gegen das handgebaute Kompendium: 4 echte Konventions-Lücken gefunden und in den Skill zurückgebaut (Auftakt-Szene als `start_scene`; `leads_to` dramaturgisch-sparsam statt Orts-Mesh; Summary enthält die WAHRHEIT mit Geheim-Rahmung; Statblock für **jeden** `npcs_here`-Namen). Wegwerf-Draft gelöscht. Projekt-Prio unverändert: der Tuning+Scene-Cards-Live-Run (s. Next step).
+
+**Stateful Scene Cards gebaut (2026-07-02, D87 → ADR 043). Suite 444 grün (+49), ruff sauber, committet + gepusht auf `main`.** Die Szenenkarte spiegelt jetzt den Weltzustand: Element-Flags (`<<ERLEDIGT id>>`-Marker mit Confirm-Button/`DM_FLAG_CONFIRM`, manuell `!erledigt`/`!offen`) verschieben erledigte Gelegenheiten nach „Bereits geschehen" und enthüllte Geheimnisse nach „Bekannt"; tote NSCs rendern `(tot)`; `leads_to` kann per `{"ziel","requires"}` gegatet werden (verborgen + abgelehnt bis freigeschaltet). Alles code-owned (`WorldState.scene_flags`, golden rule #3), Schema abwärtskompatibel (Chemical Burn unverändert). **Offen/live:** das Live-Test-Skript (siehe Next step) — hängt sich an den ohnehin offenen Spielbarkeits-Live-Run. Davor/danach unverändert offen: der Tuning-Live-Run unten.
+
+**Spielbarkeits-Tuning-Runde (2026-06-18, D85+D86 → ADR 042 + ADR 041 Addendum 2). Suite 395 grün (+16), Commit `e961b75` auf `main`, live-unverified.** Bootstrap (Phase 10 Hälfte 2) **zurückgestellt** auf Tobis Ansage „das Modell läuft noch nicht so richtig, dass man wirklich spielen kann" — Fokus ist jetzt Spielbarkeit, Modell bleibt nemo („am Drumherum drehen"). Drei Fronten: **Antwortqualität** → `repeat_penalty`/`repeat_last_n` als OllamaClient-Instanz-Defaults (1.1/256, `DM_REPEAT_PENALTY`/`DM_REPEAT_LAST_N`, live-tunebar), reiten auf jedem Call; der **Roll-Router** neutralisiert sie explizit (1.0) → Würfel-Routing bleibt deterministisch (ADR 042, vom adversarialen Verify gefunden). **!intro** → pures `intro_guard.is_weak_intro` (zu kurz **oder** Figur ungenannt, Genitiv-`s`-tolerant) + Einmal-Retry in `respond_opening` (Batch-Pfad), nur die bessere Antwort in die History (ADR 041 Add. 2). **Tempo** → GPU-Offload (Workstream A) ist Tobis **Live-Schritt**: lokale `.env` `OLLAMA_HOST` auf die Offload-Box + `TTS_DEVICE=cuda` (XTTS frei → ~3× schneller, Lücken weg); `.env.example` dokumentiert das bereits als Soll. **Offen/live:** der eine geplante Live-Run (s. Next step) — verifiziert Tempo (first_audio/tts fallen), Intro-Qualität, weniger Wiederholung, und nebenbei Phase-10-Gate-Hälfte 1 (Regelfrage aus RAG).
+
+**Playtest-Fix-Runde (2026-06-16): drei Fixes aus Tobis Live-Sessions auf `main` (`e36bad7`), live-unverified.** Default-Party lädt jetzt **channel-unabhängig** (committete `data/sessions/_default/characters.json`, vor `_example` geladen — D82 → ADR 040), also Fridolin & Co. in jedem Voice-Channel + beim Kollegen. `!intro` gegen **Modell-Varianz** gehärtet: feste, niedrigere `!intro`-Temperatur (`DM_INTRO_TEMPERATURE`) + Director-Brief (D83), und der Meta-Auftakt („Als Spielleitung beginne ich…") + `"…"`-Umschlag **deterministisch** im Sanitizer gestrippt + Default-Temp auf **0.7** (D84 → ADR 041 + Addendum). Suite **379 grün**. **Offen/live:** klingt `!intro` jetzt zuverlässig wie der gelobte 14.06.-Lauf? Kollege testet `e36bad7`; ggf. `DM_INTRO_TEMPERATURE` Richtung 0.8 oder Brief-Wortlaut. Projekt sonst: Phase-9/10-Live-Gates (siehe Phasen-Status).
+
 _Aus `progress.md` rotiert (2026-07-04, D98): die Vorsessions-„Current focus“-Blöcke D75–D81 (verbatim)._
 
 **`/improve-architecture`-Runde 3 (2026-06-16, D81 → ADR 039): Szenen + `!lore` aus `DMCog` in eigene dünne Sub-Cogs (`scenecog.py`/`lorecog.py`) ausgelagert — der zurückgestellte ADR-035-Folgeschritt. `dmcog.py` 662→502; Suite 369 grün (359 + 10 neue Sub-Cog-Tests), 0 Test-Änderungen, byte-identische Bodies.** Der offene ADR-035-Fork ist entschieden: **Sub-Cog statt Mixin** (umgeht die `CogMeta`-Sammel-Frage), **zwei** Cogs statt einem `AdventureCog` (kein geteilter State). Die eine Cross-Cog-Kante (`!lore tts` → `delivery._speak`) läuft über einen neuen `runtime.speak`-Hook (ADR 029). Gewählt aus dem `/improve-architecture`-Befund (Workflow: 3 Finder + adversariale Verify, 13 Kandidaten → 7 überlebt); Tobis Ziel: ein Agent soll nur laden, was seine Aufgabe braucht. Von Hand gebaut (kleiner, klarer Schnitt). Damit ist das ADR-035-Deferred-Umbrella für `DMCog` abgeschlossen.
@@ -1159,6 +1195,280 @@ Kopf-Härtung (TLS 1.2, ExecutionPolicy RemoteSigned, `Unblock-File`) + neuer **
 Bypass`). Den vollen Installer **bewusst nicht** auf Tobis Hauptmaschine laufen lassen (persistente PATH-/Policy-/`--default`-
 Änderungen) — `Add-ToUserPath`-Dedup + `uv python find` read-only verifiziert. _Live offen: einmal `setup.bat` beim Kollegen
 auf frischer Maschine per Doppelklick gegenchecken (der ursprüngliche Schmerzpunkt)._
+
+_Aus `progress.md` rotiert (2026-07-11, Doc-Diet-Runde): die älteren „Current focus“-Blöcke (D74 und früher, zurück bis Phase 9; verbatim)._
+
+**`dmcog.py` halbiert: Delivery-Pipeline nach `dmbot/voice/delivery.py` ausgelagert (2026-06-14, D74 → ADR 035): Suite 319 grün, 0 Test-Änderungen.**
+Der eigentliche Hebel (Tobis Wahl „b"): die größte Datei nach dem Cog-Split. Die Antwort→Audio-Maschinerie (TTS-Speak,
+Batch- + Streaming-Lieferung, `<<ORT>>`-Marker-Drain, `[latency]`-Zeile, die beiden Turn-Hooks) ist in eine neue Klasse
+**`DeliveryPipeline`** gezogen — **Komposition statt Vererbung**: `DMCog` hält `self._delivery = DeliveryPipeline(runtime,
+post_deliver=self._post_deliver)` und ruft hinein. **Verschoben byte-identisch** (29 835 Zeichen char-exakt gegen `HEAD`
+geprüft, kein Abtippen — Slice-Skript). **Auf dem Cog geblieben:** der End-of-Turn-Tail (`_post_deliver`/`_autosave_turn`/
+`_maybe_compact`/`_persist_recap` — Recap/Session-Belang **mit Tests**), als **eine** `post_deliver`-Callback injiziert →
+sauberer Schnitt **und 0 Test-Änderungen**. `dmcog.py` 1188→**662**, `delivery.py` 575. Ruff sauber. _Nicht-Byte-Effekt:
+die verschobenen `log.*`-Zeilen tragen jetzt `voice.delivery` in der `%(name)s`-Spalte (Nachrichten/Formatierung gleich)._
+_Aufgeschoben (eigene Runde unter ADR 035): die **Szenen**-Commands (`!ort`/`!szenen`/`!ortmodus`) + **`!lore`** → Mixin/
+Sub-Cog (das sind Commands → `CogMeta`-Frage, nicht diese Kompositions-Verschiebung)._
+
+**`runtime.py` weiter verschlankt: `_TurnTiming` nach `dmbot/turn_timing.py` ausgelagert (2026-06-14, D73 → ADR 034): Suite 319 grün.**
+Nächster gescouteter Kontext-Lean-Kandidat (#1) aus der D70/D71-Liste, gleiche Mechanik (Tobis Linie: nur **in sich
+geschlossene, zustandslose** Einheiten auslagern, Funktionalität unverändert). Der per-Turn-Latenz-Record `_TurnTiming` +
+die Konstante `_CTX_WARN_FRACTION` (threadet `time.monotonic`-Stempel, emittiert die `[latency]`-Zeile + `[ctx]`-Warnung —
+kein `SessionRuntime`-State) → neues **`dmbot/turn_timing.py`**; **Re-Export-Shim** in `runtime` (`# noqa: F401`) hält
+`from ..runtime import _TurnTiming` (Cog/Dice/`test_autorecap`/`test_context_budget`) stabil, ungenutztes
+`from dataclasses import dataclass` aus `runtime` entfernt. `runtime.py` 610→**516**. Byte-exakte Körper-Kopie,
+**0 Test-Änderungen**, ruff sauber. _Einziger Nicht-Byte-Effekt: die `[latency]`/`[ctx]`-Zeilen loggen jetzt unter
+Logger-Name `dmbot.turn_timing` statt `dmbot.runtime` (Nachrichtentext + `[latency]`-Prefix unverändert; Konsole-INFO
+zeigt den Logger-Namen ohnehin nicht, kein Test prüft ihn)._
+
+**`dmcog.py`: doppelten End-of-Turn-Tail in `_post_deliver` vereinheitlicht (2026-06-14, D72): Suite 319 grün.**
+Reine DRY-Politur (kein ADR): Batch- und Streaming-Lieferpfad teilten die identische Abschluss-Sequenz (autosave →
+mic-reanchor → Auto-Recap) → ein Helfer `_post_deliver`, von beiden nach ihrem **pro-Pfad** belassenen
+`timing.end`/`log_line`/`_await_dice_scene`-Schritt aufgerufen. **Verhaltens- und geschwindigkeitsidentisch** (gleiche
+Aufrufe/Reihenfolge/Args, läuft off-hot-path); die bewusst unterschiedliche `finally`-Platzierung von Dice/Scene (D40/D43)
+**nicht** zusammengeführt — von Hand statt `/simplify` frei laufen zu lassen. _Datei bleibt groß; echtes Schrumpfen = späterer Cog-Split._
+
+**`orchestrator.py` weiter verschlankt: Streaming-Assembler + `finalize_answer` ausgelagert (2026-06-14, D71 → ADR 034 E4): Suite 319 grün.**
+Letzter sauber **abgekapselter** Block (Tobis Vorgabe: nur in sich geschlossene Methoden auslagern, damit sie nicht
+mitgeladen werden, wenn ein Agent woanders arbeitet — Funktionalität unverändert). Neu: **`dmbot/llm/stream_assembler.py`**
+(`StreamAssembler` + die geteilte `finalize_answer`-Naht, ADR-017-Parität; pure, kein `DMBrain`-State). Re-Export-Shim
+hält Tests/`DMBrain` stabil; jetzt-ungenutzte Marker-/`dataclass`-/`split_completed`-Importe in `orchestrator` getrimmt.
+`orchestrator.py` 933→**783** (gesamt 1175→783 über E1–E4). Byte-exakt verschoben, **0 Test-Änderungen**, Suite **319 grün**.
+_`DMBrain`-Körper bleibt ganz (geteilter State). `dmcog.py`-Splits (Mixin/Runtime-Move) sind kein „abgekapselte Methode" → bleiben offen._
+
+**`orchestrator.py` verschlankt: reine Helfer nach `dmbot/llm/*` ausgelagert (2026-06-14, D70 → ADR 034): Suite 319 grün.**
+Kontext-Effizienz für künftige Agenten (Tobis Vorgabe: große Funktionen sinnvoll auslagern, **Funktionalität unverändert**).
+Fan-out-Analyse ergab: `orchestrator.py` ist zweigeteilt — oben reine, zustandslose Helfer, unten die zustandsbehaftete
+`DMBrain`. Das obere Band (E1–E3) in drei Module gezogen: **`llm/sanitize.py`** (Sprech-Säuberer, am häufigsten editiert),
+**`llm/echo_guard.py`** (Echo/Selbstwiederholung, ADR 018/W4), **`llm/director_msgs.py`** (`!start`/`!intro`-Regie, ADR 031).
+`orchestrator.py` 1175→933. **Re-Export-Shims** halten den Import-Surface stabil (Tests/`DMBrain`/Cog unverändert) →
+verhaltensidentisch, **0 Test-Änderungen**, byte-exakt per Slice-Skript verschoben. `DMBrain`-Körper bleibt ganz.
+_Aufgeschoben: E4 (`StreamAssembler`+`finalize_answer`) und die `dmcog.py`-Splits (Lore-Cog nach `_speak`→Runtime, Scene-Mixin)._
+
+**Dritter Lieferart-Modus `puffer` (Head-Start-Puffer) ergänzt (2026-06-14, D69 → ADR 033 Addendum): Suite 319 grün.**
+Tobis Idee: erst ein paar Sätze vorsynthetisieren, dann Satz 1 abspielen, Rest parallel weiter. Umgesetzt als
+**dritte Lieferart** zwischen `stream` und `nahtlos`: `play_worker` sammelt `DM_SPEECH_PREBUFFER` (Default 3) WAVs vor
+der ersten Wiedergabe (cushion gegen CPU-Synthese-Rückstand → Lücken später). `!sprechmodus puffer [zahl]` setzt Modus
++ Tiefe live. **Auf CPU:** kurze Turns ~lückenlos bei kleiner Startverzögerung; langes Intro startet viel früher als
+`nahtlos`, bekommt aber später trotzdem Lücken (Synthese fällt zurück) — voll lückenlos überall bleibt GPU-Sache (ADR 002).
+Live noch zu hören (nach dem Gate).
+
+**Globaler Sprech-Modus (Lieferart × Intonation) für ALLE Turns (2026-06-14, D68 → ADR 033): Suite 316 grün.**
+Tobi will sich auf **eine** Wiedergabe-Art für alle gesprochenen Texte festlegen (besser, ohne Anfälle) und vorher
+A/B-testen. Zwei orthogonale Achsen, global + laufzeit-umschaltbar via **`!sprechmodus`**: **Lieferart** `stream`
+(gestreamt, schneller Start, Mini-Lücken) vs `nahtlos` (eine durchgehende Spur, lückenlos, wartet auf Vollsynthese);
+**Intonation** `flach` (alle Satzzeichen raus, kein Gibberish, flacher) vs `intoniert` (`.,!?` für Betonung behalten,
+Gibberish-Risiko). `DM_SPEECH_MODE`/`DM_SPEECH_PUNCT` (Default `stream`+`flach`), Helfer auf der Runtime, Dispatch an
+allen 6 Turn-Stellen liest global; `!intro test` bleibt fixer nahtlos+flach-Vergleichsanker. **Auf CPU**: `nahtlos`
+wartet pro Turn auf die Synthese — flüssig erst auf GPU (LLM-Auslagerung, ADR 002, separat). Live A/B noch offen.
+
+**Shutdown-Hänger „Voice-Channel verlassen" beschränkt (2026-06-14, D67 → ADR 020 Addendum): Suite 311 grün.**
+Die Leave-Stufe hing wieder bis zu ~30 s, obwohl der Bot sofort sichtbar geht — Ursache war discord.py selbst:
+`VoiceClient.disconnect(force=True)` macht den echten Leave zuerst, **wartet danach** aber bis zu
+`VoiceClient.timeout`=30 s auf die Gateway-Bestätigung (`voice_state.py`, `wait=True` hartkodiert) — beim Beenden
+wertlos. Neuer Helfer `dmbot/shutdown.py::disconnect_voice` beschränkt diesen Wait per `asyncio.wait_for`
+(`VOICE_DISCONNECT_TIMEOUT`=2.0 s); `DMBot.close()` nutzt ihn + loggt eine Warnung bei Abbruch. Recv-Reader nicht
+schuld (Daemon-Thread). `!leave` bewusst unangetastet. +2 Tests. _Live: zweimal Strg+C → Leave-Stufe ≤ ~2 s._
+
+**`!intro` jetzt zweimodus + CPU-Ursache von „lädt ewigkeiten" gefunden (2026-06-14, D66 → ADR 031 Addendum): Suite 309 grün.**
+Live-Log zeigte: **XTTS läuft auf CPU** (`.env TTS_DEVICE=cpu`, bewusst — 4070-VRAM voll mit nemo+Whisper, GPU-XTTS
+crasht den Prozess + killt STT, ADR 002) → CPU-Synthese < Echtzeit, und das lückenlose `!intro test` wartet auf die
+volle ~3,7-min-Synthese (`first_audio=378s`). Tobi wählte **Schnellstart mit Mini-Lücken**: plain `!intro` streamt jetzt
+punktfrei (neuer `speech_transform` durch `_deliver_streaming`/`_deliver_answer`/`_speak`), spricht nach dem 1. Satz los
+— Lücken bleiben (CPU-Synth kommt nicht hinterher). `!intro test` bleibt die lückenlose Variante. Live noch zu hören.
+_Größerer Hebel offen: LLM auf 5080 auslagern (`OLLAMA_HOST`/Tailscale → `TTS_DEVICE=cuda`, ADR 002) oder Monolog kürzen._
+
+**`!intro test` klingt jetzt wie EIN durchgehender Text (2026-06-14, D65 → ADR 031 Addendum): Suite 309 grün.**
+Kollegen-Feedback: `!intro test` korrekt ausgesprochen, aber zäh — die Synthese jedes Satzes lag als Totstille
+zwischen den Chunks (serielles `_speak` pro Satz). Tobis Ziel: gechunkt synthetisieren (kein Gibberish), aber
+**lückenlos** abspielen. Umbau in `_deliver_intro_chunked`: jeder Satz wird einzeln (punktfrei) synthetisiert, die
+WAVs via neuem `wavio.concat_wavs` mit 0,2s-Satzpause zu **einer** Spur gefügt und in **einem** Bridge-Call gespielt
+→ durchgehend, natürlich getaktet. **Bewusster Trade-off:** erster Ton kommt erst nach Vollsynthese (XTTS ~0,5×
+Echtzeit) — Preis für Lückenlosigkeit; schneller Start gäbe zwangsläufig Lücken (Streaming-Pfad). Live noch zu hören.
+
+**`!intro`-Crash (Discord 2000-Zeichen-Limit) gefixt (2026-06-14, D64): Suite 306 grün, committet+gepusht (`1d48b18`).**
+Kollegen-Run warf bei `!intro test` HTTP 400 / 50035 („Must be 2000 or fewer in length"). `SessionRuntime._send_with_retry`
+zerlegt langen `content` jetzt zentral in ≤2000-Zeichen-Nachrichten (verbatim, neuer `split_for_discord`); deckt Batch/
+Streaming/`!intro test` ab. Das `!intro`-Live-Gate unten ist damit vom Crash entkoppelt — bleibt aber inhaltlich offen.
+
+**Kontext-Kosten gesenkt: Live-Docs verschlankt, Historie/Detail nach `docs/` ausgelagert (2026-06-14, D63 → ADR 032).**
+`progress.md` 1637→678, `CLAUDE.md` 226→153: `## Last session`-Historie/Done-Phasen/erledigte Open Questions →
+**`docs/progress-archive.md`**; Modul-Konventionen/Testing/Runtime/Troubleshooting/Style → **`docs/conventions.md`**
+(beide on-demand, in Tabelle + README verdrahtet). Neue **Rotations-Regel** hält die Live-Dateien schlank; nichts
+gelöscht (verbatim, 3 read-only Audits grün, Suite **302**). 9 Code-Kommentar-Zeiger auf verschobene Anker umgebogen.
+_Effekt: ~17K Tokens/Session + ~1.5K/Turn. Commit `fa6c96d`._
+
+**`!intro`-Eröffnungs-Monolog gelandet (2026-06-14, D62 → ADR 031): Suite 300 grün, live-unverified.**
+Neuer `!intro`-Befehl (Aliase `!einleitung`/`!eroeffnung`) für Chemical Burn: **ein langer Eröffnungs-
+Monolog**, der Ort/Ankunft/Auftrag etabliert **und jede Spielfigur mit voller Tiefe einbezieht** (Konzept/
+Herkunft/Ziele/Verbindungen/Arc aus den Sheets). Gebaut durch **Wiederverwenden + Parametrisieren** des
+`!start`-Pfads (nicht duplizieren, ADR 030): neues `CharacterStore.intro_roster_de()` + `build_intro_director_msg`
+(Roster reitet in der Director-User-Message → ADR-019-Reihenfolge unangetastet) + durchgereichter
+`num_predict`-Override (`DM_INTRO_NUM_PREDICT`, Default 800). `!start` bleibt das kurze Briefing. Szenen-Pointer
+deterministisch (golden rule #3), Würfel unterdrückt, Stream+Batch. +7 Tests. _Live-Gate offen: `!intro` spricht
+einen Monolog, der Ort/Auftrag/Ankunft nennt und jede Figur namentlich einbindet — kein Würfel, keine wörtlich
+vorgelesenen privaten Ziele._
+
+**Code-Review-Korrektheitsrunde gelandet (2026-06-13, D61 → ADR 030): Suite 293 grün, live-unverified.**
+`/code-review` über die Tagescommits (`5d672b6~1..HEAD`) — der Cog-Split selbst sauber, **9 verifizierte
+Bugs in der Feature-Arbeit** gefixt (funktionserhaltend): Warp-Containment würfelt jetzt gegen **Disziplin
+(Psi)** statt Psi-Meisterschaft (IM p.163, der ungenutzte `psyker_purge_skill()` ist verdrahtet); ein
+Party-Psyker außerhalb des Encounters verliert die **Warp-Aufladung** nicht mehr still (einmalige Warnung);
+der **Würfel-Button** geht bei Sprach-Fehler nicht mehr verloren; **Auto-Recap** löscht keinen Turn mehr,
+der während des `summarize`-await dazukommt; **verklebte Marker** (`<<ORT1>>`) werden gestrippt statt
+vorgelesen; `resolve_test` schluckt keine echten Fehler mehr (golden rule #2); Streaming räumt verwaiste
+Tasks/WAVs auf; **Layer-2-Mute ist ein Tiefenzähler** (Pause/Resume während der Wiedergabe unmutet nicht
+mehr); Soak ist whitespace-robust. Plus Aufräumen (geteilte Helfer, toter Code weg, thread-lokale RAG-DB).
+**Die Altitude-Punkte (system-agnostische Generalisierung von Engine/Marker/RAG-Quellen) sind bewusst auf
+den Zweitsystem-/Phase-10b-Punkt aufgeschoben** (noch kein zweites System; ADR 005). _Nächstes Live-Gate
+prüft das mit den unteren Prioritäten mit._
+
+**Cog-Split-Refactor gelandet (2026-06-13, D60 → ADR 029): code-complete, Suite 263 grün.** Die
+2300-Zeilen-`VoiceReceiveCog` ist in ein injiziertes `SessionRuntime` (`dmbot/runtime.py`) +
+VoiceCog/DiceCog/DMCog zerlegt — rein strukturell, Verhalten exakt unverändert; `commands.py`
+gelöscht, Cross-Cog-Fluss über fünf Runtime-Hooks (kein `bot.get_cog`). Kein eigenes Live-Gate:
+ein Smoke-Test (`!join`→sprechen→`!dm`→Würfel-Button→`!leave`) deckt es ab; die Live-Prioritäten
+unten (Playtest-Fixes) bleiben unverändert.
+
+**Erste Live-Runde gespielt (2026-06-13) → Playtest-Fix-Runde gelandet (D57–D59, ADR 027/028),
+live-unverified.** Hauptbefund: die Klage „geht null auf die Story ein" war eine **stille
+`num_ctx`-Trunkierung** (8192 hartkodiert → Persona+Abenteuer fielen mitten in der Session aus dem
+Prompt). Gefixt: `num_ctx` konfigurierbar+hoch (`OLLAMA_NUM_CTX=24576`, 4080) + rollierender
+Auto-Recap, neuer `!start`-Eröffnungs-Command, Persona-Steuerung (Story/Spotlight/NSC-Initiative),
+RAG entrauscht. Suite 262 grün. Details unter „Last session". _Nächstes Live-Gate prüft genau das._
+
+**Phase 10a — the adventure is in the DM (D44/D45 → ADR 019): code-complete, live-unverified.**
+The "perfect gamemaster" discussion (Tobi + Timos architecture critique) concluded that the
+loudest failure — *the DM improvises from nothing* — needed Phase 10 pulled forward as a
+**3-stage hybrid**, not pure vector RAG: (1) a German **adventure summary** always in the prompt,
+(2) a deterministic **scene tracker** (Chemical Burn hand-authored into 15 German scene cards +
+24 NPC statblocks under `data/adventures/chemical_burn/` — local-only, public repo; pointer =
+`WorldState.scene_id`, moved via `!ort`/`!szenen`, statblocks via `!npc add`), and (3)
+**rulebook-only RAG** (`sqlite-vec` + **bge-m3** — nomic failed German→English retrieval —
+threshold-gated `## Regelwerk` block; store built offline, 1505 chunks, verified: "kritischer
+Erfolg"/"Schwierigkeit" hit the right sections, table talk stays silent). Plus the **W4
+self-repetition guard** (fuzzy match against the DM's own previous answer, retry-then-suppress).
+Suite **191/191**. `DM_ADVENTURE=chemical_burn` is set in `.env`. _Open in Phase 10: the profile
+bootstrap (gate half 2, ADR 005); the lore corpus is now covered for the needed factions —
+**D48/ADR 021** curated German Imperium+Chaos compendium (`data/lore/`, sources `lore_imperium`/
+`lore_chaos`), offline-verified; only D28's broad wiki corpus stays a later option._ **Both live
+gates are now stacked: Phase 9 (HP survives restart) AND Phase 10 half 1 (rule question from the
+book) — one circlejerk session can cover both.**
+
+**Psyker / Warp subsystem (D51 → ADR 022, 2026-06-13): code-complete, live-unverified.** Tobi
+wanted psykers **voll regeltreu** (not narrative-only) and pointed at the Inquisition Player's
+Guide. Built as a **profile-driven** subsystem (engine stays system-agnostic, ADR 005): the IM data
+— power catalog (Warp Rating + Difficulty per power), Warp-Threshold formula (= Willpower Bonus),
+and the d100 Perils-of-the-Warp + Psychic Phenomena tables — lives in a new `psyker` block in
+`data/systems/imperium_maledictum.json`; the engine gains pure functions `resolve_manifest`
+(Manifest Test via `resolve_test`, Warp Charge per p.163 incl. Critical/Fumble/**Push**=Advantage),
+`resolve_perils`/`resolve_phenomena` (banded d100), and `reverse_d100` + an `advantage` kwarg for
+IM's reverse-the-digits Advantage (p.189). New `<<MANIFEST power [für name] [push]>>` marker mirrors
+the `<<TEST>>` flow (marker → `ManifestRequest` → cog button → engine rolls + bookkeeps → fed back
+to narrate). Warp Charge is a code-owned mutable resource on `Combatant` (persisted, shown in the
+state summary). Catalog = all Core minor powers + core Biomancy + representative Player's Guide
+Inquisition powers; full per-power prose comes from RAG (golden rule #7). The example psyker is
+**Mortn** (Psi-Meisterschaft 45, Wil 48 → Schwelle 4). **Suite 220/220** (29 new fixed-seed psyker
+tests, `tests/test_psyker.py`). _Timing simplification: the end-of-turn containment Test is resolved
+at the end of the manifesting action (the conversational loop has no hard round boundary) — see ADR
+022. Open: the Psychic Phenomena table has OCR-merged band boundaries to verify against the book;
+`Psi-Meisterschaft`/`Disziplin (Psi)` skill names to confirm against the German edition._
+
+**Inquisition guides embedded into the RAG (2026-06-13, follow-up to D51).** Both Inquisition
+books are now in `rag.db` (bge-m3): the **Player's Guide** whole (`player_guide`, 502 chunks →
+`## Regelwerk`) and the **GM-Guide spoiler-trimmed** (`gm_guide`, 226 chunks → `## Weltwissen`,
+only p4–61/74–83/172–174 = Ordos/Philosophien, Lex Imperialis, Signs of Chaos/Xenos, Rosetten,
+Radical Methods, Bestiarium). **Deliberately out** (same discipline as the Setting Guide's p1–57):
+the *Heresies Macharia* campaign (p84–121), Sector-Threat villains, Open Case Files, the Inquisitor
+patron sheets incl. **Halikarn** (p62–73), and the index (p175). Both sources wired into
+`dmbot/rag/retrieve.py` `_SOURCES`. Verified: psyker/Monodominant/Forbidden-Knowledge questions hit
+the new sources; spoiler probes ("Heresies Macharia", "Halikarn's secret") return nothing usable
+(secret pages aren't in the DB; generic hits sit >0.45, gated out). Store now **2469 chunks**; suite
+**230 green**. The generated `…GM-Guide.md` + `rag.db` stay git-ignored (bought-book derivatives)._
+
+**TTS-Kauderwelsch gefixt (D53 → ADR 016 Nachtrag, 2026-06-13): code-complete, live-unverified.**
+Live-Klage: beim Vorlesen Kauderwelsch v. a. an Satzzeichen, nicht im Transkript. Aktive Engine ist
+XTTS (`.env TTS_ENGINE=xtts`); `normalize_for_tts` war eine **Blocklist** und ließ Emojis (🎲🌀🜏💥),
+Pfeile/Bullets/`·` und exotische Leerzeichen durch, und leere/nur-Satzzeichen-Chunks erreichten die
+Synthese ungefiltert. Fix in `dmbot/tts/`: `normalize_for_tts` ist jetzt eine **Whitelist** (NFKC,
+Striche/`…`→Pause, dann nur Buchstaben/Ziffern/Whitespace + `. , ! ? ; : -`), und `chunk_text` +
+beide `synthesize` haben einen **Pro-Chunk-Sprechbarkeits-Guard** (kurze Stille statt Junk an die
+Engine). +6 Tests (233 grün). _Offen: live by ear prüfen; bei Restproblemen XTTS `repetition_penalty`/
+`enable_text_splitting=False` nachziehen (in ADR 016 vermerkt)._
+
+**Augmetik/Implantate + Psyker-Erstellungs-Backfill (D52 → ADR 023, 2026-06-13): code-complete,
+live-unverified.** Implantate nachgezogen, im selben profil-getriebenen Muster wie Psyker (ADR 022)
+— aber **passiv, kein Wurf** (kein Marker/Button). Neuer `augmetics`-Block im IM-Profil (Katalog:
+Core-Augmetika S.152-154 + Inquisition-PG S.94-96, mit Körperzone/Verfügbarkeit/Kosten/`effects`;
+weiches Limit = Zähigkeits-Bonus). `effects.type` `armour` → addiert zur PC-Soak in
+`_apply_attack_damage`; `characteristic` (z. B. Augur-Array +5 Per) → addiert in `resolve_target`,
+gematcht über Merkmalsname **oder** optionale `skills`-Liste am Effekt (Augur→Wahrnehmung);
+`skill_sl`/`special` (Auspex, Mechadendrite, Kampfdrüse …) bleiben narrativ (Prompt-Block + RAG).
+Helfer `augmetic_armour`/`augmetic_bonus` in `characters.py`; `_augmetic_block` im State-Summary;
+Persona-Hinweis in `dm_core_de.md`. **Erstellungs-Backfill (dieselben Dateien, die für Psyker noch
+fehlten):** `docs/how-to-create-a-character.html` bekam eine Augmetik-Checkbox-Liste (weicher
+Zähigkeits-Limit-Hinweis) + eine Psioniker-Sektion (Disziplinen + Kräfte) → JSON-Block-Felder
+(Katalognamen hartkodiert = müssen zum Profil passen); `tools/fill_character_sheet.py` füllt jetzt
+die schon vorhandene (aber leere) Psi-Tabelle aus `known_powers` × Profil-Katalog + Warp-Schwelle =
+WillkürB, und rendert Augmetika in die mittlere Ausrüstungsspalte (kein eigenes Bogenfeld). Beispiel:
+Vask hat „Augmetischer Arm", Mortn „Augur-Array". **Suite 230/230** (+10 Augmetik-Tests,
+`tests/test_augmetics.py`). _Offen: Katalognamen HTML↔Profil synchron halten; deutsche
+Fertigkeits-/Merkmalsnamen gegen die deutsche Edition prüfen._
+
+**Visible, fast shutdown (D47 → ADR 020, 2026-06-13): code-complete, live-unverified.** Tobi: "der
+Bot geht nur sehr schwer aus und das dauert sehr lange" + wanted to see what/how many things shut
+down. Two causes, two fixes. **(1) The slow exit** was TTS synth on `asyncio.to_thread` — asyncio's
+default executor threads are **non-daemon**, so the interpreter joined an in-flight multi-second GPU
+XTTS synth at exit (dead wait — the WAV is moot when quitting). New `dmbot/shutdown.py`
+`to_daemon_thread()` runs synth on an abandonable daemon thread; both `_speak` and the streaming
+`synth_worker` use it. **(2) No feedback:** the second Ctrl+C painted a bare `Shutting down...` dots
+line. New `ShutdownProgress` prints `[i/n] label` per teardown stage (animated, then ✓ + duration);
+`DMBot.close()` declares the count up front (voice disconnects + each cog's `TEARDOWN_STEPS` + the
+Discord close) and wraps each stage, `VoiceReceiveCog.cog_unload` reports its four closes
+(STT/LLM/RAG/bridge), and a final summary names any dropped synth. Two-stage Ctrl+C unchanged. Suite
+**181/181** (count includes the adventure/RAG tests landed between sessions). _Verify live: Ctrl+C
+twice during a streamed turn → prompt exit + the `[i/n]` lines._
+
+**Post-roll robustness round (D43 → ADR 018) after the 2026-06-12 echo collapse: code-complete,
+live-unverified — the Phase-9 gate is STILL pending (the gate attempt ran in the wrong channel).**
+Tobi's session "fühlt sich nicht mehr wie ein Gamemaster an" diagnosed from `debug.log` +
+`history.jsonl` as a failure chain, not model regression: wrong channel → silent example-party
+fallback (Mortn/Seskin instead of the registered party); the unreliable inline marker won the
+dedupe and requested **Heimlichkeit for an attack**; the bare `[Würfel]` feedback line made nemo
+**predict the next player line** instead of narrating — the label-strip turned that into a
+clean-looking echo that was spoken, stored, and self-reinforced (three turns of "Ich greife den
+Kultisten an."). Fixes landed (all deterministic): **echo guard** (retry once with nudge, then
+suppress + keep the pair out of history), **roll-feedback directive** on results-only turns,
+**router-wins dedupe** (flips D40's marker-wins), **autosave race fix** (snapshot `user_msg` at
+generation end), `!join` **party announcement + example-fallback warning**, `chat_stream` read
+timeout 300 s (the cold-start ReadTimeout), and the **ADR 016 length squeeze rolled back**
+(160→220, "zwei bis vier Sätze" — streaming removed the latency justification). Suite **157/157**.
+
+**Cross-cutting latency/robustness work (ADR 017 streaming + D40 router timing + D41 autosave):
+live-confirmed in part.** Streaming works (`first_audio≈3.2s`, 2026-06-10) and the **Phase-9 recap
+auto-loaded on `!join` + a strong `!wrap up`** (memory narrative half effectively confirmed); D42
+fixed marker-only turns + the dice loop. _Still to prove live:_ the **HP-survives-restart** half of
+the Phase-9 gate, the D43 fixes above, the router-button-during-speech feel, the crash-restore, and
+the open meta-ramble (persona/adherence).
+
+**Phase 9 — memory: code-complete, live gate still pending — plus a playtest-tuning round
+(2026-06-10) that is itself live-unverified.** Three live logs drove fixes for the DM **puppeting
+the whole party**, **runaway turn length (= the latency)**, and **XTTS reading punctuation aloud**
+(→ **ADR 016**). Every log was *pre-change*, so the next Discord run is the first proof of both the
+tuning **and** the Phase-9 memory gate.
+
+**Phase 9 — memory — code-complete (2026-06-09); live gate pending.** Phases 0–8 are live-validated
+⭐. Phase 9 (JSON world state + recaps) is now **built and unit-proven (102/102)**; what's left is the
+**live Discord gate** Tobi must run: an HP change survives a restart, and the next session opens with
+a correct recap. Design (D32/D33 → **ADR 015**): a **split** — `characters.json` stays the read-only
+sheet, a new code-owned `data/sessions/<id>/state.json` holds the mutable layer (wounds/conditions/
+inventory, NPCs, quests, location, recap), seeded once from the sheet and saved atomically on every
+change. **Auto-combat damage** is wired: a successful attack rolls weapon damage and applies
+**weapon + SL − soak** (TB + armour) to a target (auto if one candidate, else a dropdown; `!npc add`
+registers enemies; `!damage`/`!heal` are GM overrides). The recap is generated by `!wrap up`
+(`DMBrain.summarize`), stored in `state.json` (+ `recap.md`), and re-injected on `!join` with a compact
+world-state block (CLAUDE.md prompt order). **Model: mistral-nemo.** Recommended dial for the live
+gate / any follow-up: **Opus 4.8 / xhigh**.
 
 ---
 
@@ -1408,6 +1718,14 @@ Gate-Run ist weg.** _(Sezgin könnte Rektalus' Werte noch finalisieren, sonst st
 ---
 
 ## Open questions (erledigt/archiviert)
+
+**Aus der Doc-Diet-Runde rotiert (2026-07-11):**
+- ✅ **Aufräum-Pass `progress.md` — erledigt (2026-07-04 D98 Teil B + 2026-07-11 Doc-Diet-Runde).**
+  Ursprünglicher Eintrag (aus der D82–D84-Runde): „Current focus“ (D75–D81) + „Next concrete step“
+  (D61–D74) haben Vorsessions-Verlauf angesammelt, der eigentlich ins `docs/progress-archive.md`
+  gehört (Rotation wurde übersprungen). Ein dedizierter Lean-Pass steht aus — bei Gelegenheit,
+  kein Bot-Risiko. — Erledigt durch die D98-Teil-B-Rotation + die Doc-Diet-Runde (State header,
+  Current-focus-Rotation auf 2 Blöcke, Decision-Log-Diät mit ADR-Addenda).
 
 **Aus der Cleanup-Runde rotiert (2026-07-04, D98):**
 - ✅ **Kosmetik (D60/ADR 029) geputzt (D98).** Ursprünglicher Eintrag: „ein Docstring-Beispiel in

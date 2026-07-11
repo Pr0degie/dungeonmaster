@@ -47,3 +47,8 @@ over time instead of re-bloating.
   the default. `## Decision log` and `### Phase → ADR map` are explicitly exempt (stay fully live).
 - **Binds later work:** future per-module convention edits land in `docs/conventions.md`, not
   `CLAUDE.md`; code-comment doc-anchors that cited moved sections now point at `docs/conventions.md`.
+
+## Addendum — detail preserved from decision log D63 (2026-07-11)
+
+The code-comment doc-anchor repoint covered **9** anchors (all now pointing at
+`docs/conventions.md`).

@@ -49,3 +49,9 @@ by the adversarial verify pass and is pinned by `test_roll_router_call_disables_
   rules answer ever needs exact faithfulness, add the same per-call `repeat_penalty=1.0` override.
 - **Live-unverified:** the quality win is a model-behaviour claim; confirm at the table and tune
   `DM_REPEAT_PENALTY` / `DM_REPEAT_LAST_N` if nemo still loops or, conversely, sounds stilted.
+
+## Addendum — detail preserved from decision log D85 (2026-07-11)
+
+- **Test delta:** the round added **+5 tests** in `tests/test_sampling.py` (besides the router
+  regression test `test_roll_router_call_disables_repeat_penalty` named above); suite **395 green**
+  at commit time.

@@ -71,3 +71,10 @@ is fed back so the DM narrates. Warp Charge is a **code-owned mutable resource**
   profile but not yet wired into the combat engine. The Inquisition Player's Guide is extracted to
   Markdown but **not yet embedded** into the rules RAG (Ollama was down) — run the ingest command in
   progress.md when Ollama is up so the DM retrieves the full Inquisition catalog.
+
+## Addendum — detail preserved from decision log D51 (2026-07-11)
+
+- Concrete profile values: **Warp Threshold = Willpower Bonus**; each catalog power carries its
+  **Warp Rating + Difficulty**. The subsystem implements IM **ch. VI**.
+- IM's reverse-the-digits Advantage (served by `reverse_d100` + the `advantage` kwarg on the
+  roll-under resolver) is per rulebook **p.189**.

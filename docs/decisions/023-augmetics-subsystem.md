@@ -73,3 +73,8 @@ In the same pass, **backfill the creation pipeline** for both augmetics and psyk
   Situational augmetic effects rely on the DM applying them. The standard sheet has no augmetics
   box, so implants print in the equipment column. German skill names (`Psi-Meisterschaft`, the
   augmetics' `skills` lists) must match the sheet's skill keys — verify against the German edition.
+
+## Addendum — detail preserved from decision log D52 (2026-07-11)
+
+- The narrative `skill_sl`/`special` effects reach the DM via the prompt block built by
+  **`_augmetic_block`** (state-summary/persona surface), with full prose from the rulebook RAG.

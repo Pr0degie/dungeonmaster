@@ -60,3 +60,7 @@ Two coordinated changes, gated to be reversible:
   Large num_ctx costs KV-cache VRAM (XTTS + Whisper share the GPU) — lower `OLLAMA_NUM_CTX` if OOM.
 - **Binds:** future prompt-budget work should treat compaction as the overflow valve and keep the
   ADR-019 prompt order intact (compaction changes the recap's *content*, never its slot).
+
+## Addendum — detail preserved from decision log D57 (2026-07-11)
+
+- Landed with **+18 tests (suite 262 green)**.

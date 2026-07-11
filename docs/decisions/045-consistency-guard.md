@@ -119,3 +119,7 @@ Constraints:
 - **Live-unverified:** whether nemo actually produces these violations at a catchable rate —
   gate: provoke a dead NPC into "speaking" live (kill an NPC, steer the conversation at them),
   watch the `[consistency]` regenerate fire and the retry come out clean.
+
+## Addendum — detail preserved from decision log D92 (2026-07-11)
+
+- Test evidence from the round: suite **516 green** (+30 new tests).

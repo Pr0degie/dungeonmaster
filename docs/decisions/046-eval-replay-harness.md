@@ -124,3 +124,14 @@ Constraints:
   arithmetic, warp bookkeeping) are *not* covered here — they stay unit-test territory.
 - **Bound for later work:** goldens are a contract. A wanted behaviour change now has an
   explicit extra step (re-record/bless the goldens) — that friction is the point.
+
+## Addendum — detail preserved from decision log D93 (2026-07-11)
+
+- The playback mock is the `PlaybackClient` class in `dmbot/tools/eval_replay.py` (recorded
+  raw responses consumed in call order).
+- As part of this round the Erledigt flag rule moved into the pure `delivery.erledigt_verdict`
+  — one source for the cog and the harness.
+- Initial golden stock: **2 synthetic goldens** in `tests/golden/`, generated through the real
+  capture path; `generate_synthetic.py` is the bless step.
+- Deviations report as one `[eval] DIFF` line each.
+- Test evidence from the round: suite **535 green** (+19 new tests).

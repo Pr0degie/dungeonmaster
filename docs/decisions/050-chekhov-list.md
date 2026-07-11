@@ -105,3 +105,9 @@ the core use case.
 - **Live-unverified:** whether nemo extracts *callback-worthy* details (and recognises
   resolutions) is a model-behaviour claim — the gate spans two sessions: drop a detail in
   session 1, wrap, check session 2 offers it back.
+
+## Addendum — detail preserved from decision log D97 (2026-07-11)
+
+- The extractor's `num_predict` was raised **800 → 1000** for the added chekhov schema section.
+- Dedupe threshold: normalised substring match or word-Jaccard **≥ 0.6**.
+- Test evidence from the round: suite **683 green** (+24 new tests).

@@ -112,3 +112,9 @@ play decisions hang off.
 - **Live-unverified:** whether nemo extracts useful memories/lies (and doesn't flag
   small talk as importance 5) is a model-behaviour claim — the gate is a live run: lie to
   an NPC, change scene, come back, check the DM remembers and the attitude drifted.
+
+## Addendum — detail preserved from decision log D91 (2026-07-11)
+
+- Test evidence from the round: suite **486 green** (+27 new tests).
+- Prompt-injection detail: lies are always included in the top-K memory block (the
+  believed-false-first ranking guarantees it within the cap).

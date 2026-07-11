@@ -92,3 +92,9 @@ budgets **one** LLM call per scene change — a second agenda call is off the ta
   goal, play two scenes, check its situation moved believably) is the real test.
 - **Bound for later work:** faction agendas, hard availability/relocation from steps,
   agenda-aware scene seeding — all explicitly deferred.
+
+## Addendum — detail preserved from decision log D96 (2026-07-11)
+
+- `goal_de` is not only copied at registration but also **backfilled** onto
+  already-registered NPCs, like `faction`.
+- Test evidence from the round: suite **659 green** (+24, `tests/test_agenda.py`).

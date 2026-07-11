@@ -76,3 +76,14 @@ _Companion mechanical change this round (no ADR — it only finishes an already-
 candidate #1 wired the pre-existing pure `stt/segments.py::confident_text` (Whisper hallucination
 guard) into `transcriber.py`, dropping the inline duplicate + dead constants, and added
 `tests/test_segments.py` (the boundary `==0.7`/`==-1.0` are kept — strict `>`/`<`)._
+
+## Addendum — detail preserved from decision log D79 (2026-07-11)
+
+- **Candidate #1 specifics (the D-entry with no own ADR):** the dead constants removed from
+  `transcriber.py` alongside the inline duplicate were **`_NO_SPEECH_MAX`** and **`_LOGPROB_MIN`** —
+  their thresholds live only in the pure `stt/segments.py::confident_text` now.
+- **Candidate selection:** Tobi picked #1 + #2 from the `/improve-architecture` candidate set;
+  **#3 (turn-order) was rejected** ("verworfen"), **#4/#5/#6 were parked** (later executed as D80 /
+  ADR 038).
+- **Build workflow:** implemented via a 2-agent workflow — parallel implementation plus an
+  adversarial verify pass.

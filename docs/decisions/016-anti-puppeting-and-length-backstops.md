@@ -142,3 +142,9 @@ to both `tts_to_file` calls):
 - **Live-unverified** (audio can't be unit-tested): suite stays green (246) and the kwarg plumbing is
   confirmed by API inspection, but whether the babble is gone is Tobi's ear on the next session.
   If it persists: lower `temperature` (config 0.75) is the next lever.
+
+## Addendum — detail preserved from decision log D53 (2026-07-11)
+
+Context detail from the decision-log row not recorded above: the active TTS engine at the time was
+XTTS, selected via `.env TTS_ENGINE=xtts` — it was this engine that vocalised the leaked Unicode
+symbols. The D53 round added +6 tests (suite 227 → 233).

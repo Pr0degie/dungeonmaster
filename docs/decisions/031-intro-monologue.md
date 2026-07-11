@@ -143,3 +143,12 @@ Two follow-ups after a colleague ran `!intro test` live:
   inter-sentence gaps (synth can't keep up). **`!intro test`** stays the gapless one-track variant.
   The two are kept as the modes to choose between; the default-path behaviour of all other turns is
   byte-identical (the transform applies only when set).
+
+## Addendum — detail preserved from decision log D65 (2026-07-11)
+
+The D65 gapless one-track change landed with +3 tests; suite **309 green**.
+
+## Addendum — detail preserved from decision log D66 (2026-07-11)
+
+The D66 fast-streamed-`!intro` round kept the suite at **309 green**; it reuses the existing
+streaming pipeline (no new delivery path was added).

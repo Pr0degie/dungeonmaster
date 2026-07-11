@@ -94,3 +94,9 @@ and logs a `voice confirm wait abandoned` warning on timeout. Safe because the n
 *our* synth threads. Here the blocking `await` lives **inside** discord.py's own coroutine — we have
 no daemon lever — so a bounded `wait_for` is the correct (and only clean public-API) tool, and it
 truncates nothing real (the leave already happened).
+
+## Addendum — detail preserved from decision log D67 (2026-07-11)
+
+Scope detail from the decision-log row not recorded above: `!leave` was deliberately left as-is
+(unbounded) — mid-session the disconnect confirmation wait is meaningful, guarding a real
+disconnect→reconnect race; only the exit path (`DMBot.close()`) uses the bounded `disconnect_voice`.

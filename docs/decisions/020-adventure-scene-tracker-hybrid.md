@@ -103,3 +103,13 @@ documented; the content lives only on the play machine.
 - **To verify live:** `!join` announces adventure + scene; a rule question is answered from the
   book (gate half 1); `!ort` changes what the DM narrates; a part-1 "wer steckt dahinter?" stays
   unspoiled; the W4 case ("Warum sind wir hier?") gets an answer, not a re-description.
+
+## Addendum — detail preserved from decision log D44 (2026-07-11)
+
+- The active adventure is selected via the **`DM_ADVENTURE`** env var.
+- First authored compendium: **Chemical Burn** — **15 scene cards, 24 NPC statblocks**.
+
+## Addendum — detail preserved from decision log D45 (2026-07-11)
+
+- The `is_self_repetition` retry nudge wording is **"beantworte die Frage direkt"** (corrective
+  nudge on the single retry, before the turn is suppressed).

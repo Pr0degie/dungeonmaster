@@ -138,3 +138,10 @@ time follows the same groove.
   would need them profile-driven — accepted until a second system actually wants it.
 - **Bound for later work:** calendar/imperial dating rendering, NPC agendas / hard
   availability from the phase, travel-time tables — all explicitly deferred.
+
+## Addendum — detail preserved from decision log D95 (2026-07-11)
+
+- Live gate for this round: set a deadline, let it lapse, watch the DM play the consequence.
+- Replay compatibility verified in the round: old goldens replayed green after the journal
+  extension.
+- Test evidence from the round: suite **635 green** (+62 new tests).

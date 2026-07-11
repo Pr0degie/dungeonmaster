@@ -65,3 +65,16 @@ _Companion D80 moves this round (D-entries, no ADR): **#4** `runtime.seed_sessio
 seed sequence — party/turn-order/state/scene-pointer/crash-recovery; voice-receive wiring +
 announcements stay in the cog) and **#6** `runtime.clear_panel` (the delete-previous-pinned-panel block,
 byte-identical in four places, into one helper; the pause panel's deliberate edit-in-place stays)._
+
+## Addendum — detail preserved from decision log D80 (2026-07-11)
+
+- **#4 signature/scope:** `runtime.seed_session(voice_channel, text_channel)` bundles the ~33-line
+  `!join` seed sequence — party / turn-order / state / scene-pointer / the **D41** crash-recovery
+  step.
+- **#6 signature:** `runtime.clear_panel(attr)`.
+- **Test delta:** the round added **+16 tests** (suite 359 green, 0 existing-test edits, ruff clean —
+  as recorded above).
+- **Build workflow:** sequential implementation (the three moves share files) plus **3 parallel
+  adversarial verify agents**.
+- **Strand status:** this round finished the `/improve-architecture` strand #1–#6 (#3 rejected;
+  #1/#2 = ADR 037, this ADR = #5, #4/#6 = D-entries).

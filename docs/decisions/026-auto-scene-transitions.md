@@ -82,3 +82,12 @@ request** — not by free LLM text.
 - **To verify live:** the party enters a connected location, the DM ends the turn with `<<ORT …>>`
   (not spoken), a confirm button appears, and confirming moves the pointer exactly as `!ort` would; an
   invented or non-neighbour id in `verbunden` mode is ignored and logged, not moved.
+
+## Addendum — detail preserved from decision log D56 (2026-07-11)
+
+- Marker extraction is the deliberately **profile-free `extract_scenes`** — scene ids belong to the
+  adventure, not the rules profile (unlike `<<TEST>>`/`<<MANIFEST>>`).
+- Plumbing names: `finalize_answer` now returns a **4-tuple** (scene requests added); pending
+  requests queue in **`_pending_scenes`**, only under the `_last_action` post-roll guard.
+- The `verbunden`-mode neighbour check is the pure **`Adventure.resolve_move`**.
+- Landed with **+12 tests (suite 246 green)**; live-unverified at decision time.

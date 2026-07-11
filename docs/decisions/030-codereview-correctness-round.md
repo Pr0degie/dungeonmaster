@@ -112,3 +112,18 @@ regex passes when the buffer holds no marker).
   and all prompt/persona text were not touched; the `marker.py` `profile` param was **not** removed
   (a test outside the owning fileset calls `extract_manifests(..., profile)` — a cross-file break was
   not worth a cosmetic cleanup).
+
+## Addendum — detail preserved from decision log D61 (2026-07-11)
+
+Fix mechanisms not spelled out above (the Decision section details only the four trade-off fixes):
+
+- **#3:** batch delivery (`_deliver_answer`) now awaits the dice/scene tasks in a `finally`, so the
+  🎲 button still posts when the speak task raises.
+- **#4:** `clear_history` clears only the prefix `summarize` actually consumed (tracked as
+  `_compact_consumed`), so a turn appended during the LLM await survives in history and recap.
+- **#5:** the marker regexes replaced `\b` with `[\s:]*`, so glued markers (`<<ORT1>>`,
+  `<<ORTmud_gate>>`, `<<MANIFESTSmite>>`) strip and fire instead of being read aloud.
+- **#7:** the streaming path cancels orphaned prod/synth/play tasks and drains queued WAVs on a
+  mid-stream bridge failure.
+- **#9:** soak lookup routes through `skill_value` (strips whitespace, case-insensitive), so a
+  sheet key like `"Tgh "` no longer yields 0 soak.

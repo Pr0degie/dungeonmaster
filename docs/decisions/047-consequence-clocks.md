@@ -92,3 +92,17 @@ harmless. Clocks follow that groove instead of inventing a new one.
   replayed by yesterday's code (forward-compat only — same as every ADR-046 extension).
 - **Bound for later work:** hidden clocks (UI honours `visible=False`), adventure-authored
   clock definitions, chained clocks — all explicitly deferred, schema-ready where cheap.
+
+## Addendum — detail preserved from decision log D94 (2026-07-11)
+
+- Seam detail: `<<UHR>>` mirrors `<<ERLEDIGT>>` also at strip-before-TTS, streaming
+  withholding of partial markers, the per-channel pending queue, and the delivery drain
+  (added as a fourth proposal task in the delivery paths).
+- Prompt surface: a `Uhren:` line in the state summary plus a persona bullet (when to tick,
+  marker syntax).
+- Replay compatibility verified in the round: old goldens replayed green (`dm-eval` exit 0)
+  after the journal extension.
+- Test evidence from the round: suite **573 green** (+38: schema/slug/GM-notes, marker,
+  delivery/clamp/panel, commands).
+- Live gate (open at the time of writing): create a clock, provoke the DM into a tick, watch
+  the panel update — see the live-test checklist.
