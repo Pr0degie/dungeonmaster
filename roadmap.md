@@ -14,41 +14,15 @@ lowest risk first.)
 
 ---
 
-## Claude model & effort per phase (for Claude Code)
+## Claude effort (for Claude Code)
 
-Control in Claude Code: `/model` selects the model, `/effort` the effort.
-Effort levels: **low · medium · high · xhigh · max**. Opus 4.8 starts at **high**; for
-coding Anthropic recommends setting **xhigh** explicitly. Effort persists across
-sessions — after a model switch, re-run `/effort`.
+Effort-first (Fable 5): effort is the primary dial, set via `/effort` (persists across
+sessions). The old per-phase model table is retired — the project is past those phases.
 
-**Rules of thumb:**
-- **Tuning effort is often better than switching models.** Turn the dial first, then think about the model.
-- **The `opusplan` alias** is the convenient default for this project: Opus plans (architecture, reasoning), Sonnet executes (code) — good price/quality for build work.
-- **Step down only after measuring.** Drop to medium/low only once you have *seen* the quality holds for the task.
-- **Creative & subtle up, mechanical down.** Persona prose and tricky concurrency benefit from Opus/xhigh; clearly specified, deterministic modules run cheaply on Sonnet/medium.
-
-> RETIRED (see CLAUDE.md workflow adjustments — effort-first rules). Table removal pending a planned cleanup round; do not follow or update it.
-
-| Phase | Nature of the work | Model | Effort |
-|---|---|---|---|
-| 0 — Setup | install, config, smoke test | Sonnet 4.6 | medium |
-| 1 — Bridge `/speak` | small, clearly specified endpoint | Sonnet 4.6 / `opusplan` | medium |
-| 2 — Voice receive | **research part** (`discord-ext-voice-recv`), unknowns, debugging | **Opus 4.8** | **xhigh** |
-| 3 — VAD | library integration, moderate | `opusplan` | high |
-| 4 — STT | integration + CUDA/cuDNN pitfalls | Sonnet 4.6 → Opus on CUDA trouble | medium → xhigh |
-| 5 — LLM wiring | orchestration (`opusplan`) … | `opusplan` | high |
-| 5 — Persona + tone overlay | … the GM core + the **campaign tone prose** (Eisenhorn) is creative work | **Opus 4.8** | high/xhigh |
-| 6 — Full loop ⭐ | end-to-end integration + latency debugging | **Opus 4.8** | **xhigh** |
-| 7 — Turn-taking/feedback | subtle async/state logic, quiet bugs | **Opus 4.8** | **xhigh** |
-| 8 — Dice engine + IM profile | generic engine, deterministic, profile as data, with tests | Sonnet 4.6 | medium |
-| 8 — Marker flow + buttons | parser + orchestrator integration, nuanced | `opusplan` / Opus 4.8 | xhigh |
-| 9 — Memory | state logic, well specified after the ADRs | `opusplan` | high |
-| 10 — RAG + profile bootstrap | retrieval integration + LLM proposes a structured profile from the rulebook | `opusplan` | high |
-| Part 2 — GUI/finetuning | big architecture/strategy decisions | **Opus 4.8** | xhigh (max for finetuning strategy) |
-
-> When in doubt: `opusplan` at high is a solid general-purpose default for this repo.
-> The bold rows are where Opus 4.8 + xhigh pays off most clearly (unknowns, integration,
-> quiet bugs) — do not skimp on effort there.
+- Default **high**.
+- **xhigh** for unknowns, integration debugging, subtle async/state bugs, and persona prose.
+- **medium** for clearly specified deterministic modules and doc sweeps.
+- Step down only after seeing quality hold.
 
 ---
 

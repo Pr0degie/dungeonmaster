@@ -6,8 +6,7 @@ description: Use when changing the deterministic core (dmbot/rules/, engine.py, 
 # Test-driven a change to the deterministic core
 
 Golden rule #2 (dice = code, deterministic) makes the engine the ideal TDD target: pure
-functions, fixed-seed, exact outcomes. This skill enforces the order Claude does *not* follow
-by default — it writes implementation first and rewrites tests to pass. Here the test leads.
+functions, fixed-seed, exact outcomes. Here the test leads: red first, always.
 
 **Scope:** `dmbot/rules/` (engine, marker, profile loader) and any new pure helper with a
 checkable result. *Not* for LLM-shaped work (persona, prompts, recaps), RAG, or Discord glue —

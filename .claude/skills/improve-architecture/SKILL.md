@@ -81,7 +81,6 @@ Either way, two side effects are **mandatory** — they outlast this session:
   ephemeral ("not worth it now") and self-evident ones.
 
 ## Respect the invariants
-Deepening must not cross a golden rule: dice = code (#2), the JSON-vs-recap memory split (#3),
-feedback protection (#4), two-bot isolation (#5), system-agnostic-from-PDFs (#7). A refactor
-that would merge the bridge into DMbot logic, or move dice resolution toward the LLM, is wrong
-by construction — don't propose it.
+Deepening must not cross a golden rule (#2–#5, #7 — `CLAUDE.md`). A refactor that would merge
+the bridge into DMbot logic, or move dice resolution toward the LLM, is wrong by construction
+— don't propose it.

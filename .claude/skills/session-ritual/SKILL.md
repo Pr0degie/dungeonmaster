@@ -11,10 +11,9 @@ the one canonical procedure; it formalizes the prose in `CLAUDE.md`.
 ## Start handshake
 
 1. Read in order: `CLAUDE.md` (conventions) → ONLY the `## State header` at the top of
-   `progress.md` (until the State header exists — it's created in a follow-up round — read
-   `## Current focus` instead) → the **highest-numbered** file in `docs/decisions/` (most
-   recent decision). Full `progress.md`, the decision log, and older ADRs are on-demand
-   reads when the task touches them.
+   `progress.md` → the **highest-numbered** file in `docs/decisions/` (most recent decision).
+   Full `progress.md`, the decision log, and older ADRs are on-demand reads when the task
+   touches them.
 2. State in 2–3 sentences: where we are, what we're about to do. **Don't touch files until
    this handshake is done.** If the WIP limit (max 3 open live gates, see wrap-up below)
    makes this a live-verification session, say so here.

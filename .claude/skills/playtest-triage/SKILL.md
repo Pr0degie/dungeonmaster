@@ -11,13 +11,8 @@ model got worse".
 
 ## Golden rules that bind this work
 
-- **#2** — dice rolling *and* resolution are code (`dmbot/rules/engine.py` + the active
-  profile), never the LLM. A fix that lets the model invent results is wrong.
-- **#3** — hard world state (HP, inventory, flags) is advanced by code, never written from
-  LLM free text.
-- **#4** — Bot A's user-ID filter in the sink stays. Never weaken feedback protection "for
-  debugging".
-- **#8** — anything the DM says stays German; code/logs/commits stay English.
+Golden rules #2 (dice = code), #3 (hard state = code), #4 (feedback protection stays), and
+#8 (German play language) bind every fix — full text in `CLAUDE.md`.
 
 ## Procedure
 
@@ -40,11 +35,9 @@ model got worse".
    new deterministic logic.
 5. **Commit per round** with a scoped imperative message
    (e.g. `dmbot(memory): cumulative auto-recap so wrap-up can't drop the session start`).
-6. **Record the round** (end-of-session ritual): update `progress.md` `## Last session` and
-   `## Current focus`, and **rotate** the previous `## Last session` entry to
-   `docs/progress-archive.md` so the live file stays lean (per `session-ritual`); write the
-   next-numbered ADR if a real trade-off was weighed. Mark the result **live-unverified** — the
-   next real session is the gate. Name the concrete thing the next round should confirm.
+6. **Record the round** per the `session-ritual` wrap-up (progress update + rotation; ADR if
+   a real trade-off was weighed). Mark the result **live-unverified** — the next real session
+   is the gate. Name the concrete thing the next round should confirm.
 
 ## Notes
 

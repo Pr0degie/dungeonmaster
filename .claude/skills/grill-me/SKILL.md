@@ -5,8 +5,7 @@ description: Interview Tobi relentlessly about a plan or design decision until r
 
 # Grill the plan before any code
 
-Claude's default failure mode is charging ahead on wrong assumptions. This skill flips it:
-resolve the decision tree *with Tobi* first, then build. Use it before a non-trivial design
+Resolve the decision tree *with Tobi* first, then build. Use it before a non-trivial design
 choice — the kind that would otherwise become an ADR.
 
 ## How to grill
@@ -26,10 +25,8 @@ choice — the kind that would otherwise become an ADR.
 
 ## Respect the golden rules while grilling
 
-Surface tensions with the project's invariants as forks, don't silently assume them:
-dice = code / narration = LLM (#2), the JSON-vs-recap memory split (#3), feedback protection
-(#4), two-bot isolation (#5), system-agnostic-from-PDFs (#7). If a plan would cross one, that's
-a question, not a given.
+Surface tensions with the golden rules (#2–#5, #7 — `CLAUDE.md`) as forks, don't silently
+assume them. If a plan would cross one, that's a question, not a given.
 
 ## Close-out
 

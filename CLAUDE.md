@@ -56,9 +56,7 @@ Eagerly loading everything fills the context window before useful work starts. B
   golden regeneration, the verify above). ADR write-ups stay in the main thread.
 - Effort is the primary dial (Fable 5): default high; xhigh for unknowns, integration
   debugging, subtle async/state bugs, and persona prose; medium for clearly specified
-  deterministic modules and doc sweeps; step down only after seeing quality hold. The
-  per-phase model table in `roadmap.md` is retired — don't remind Tobi of per-phase
-  recommendations.
+  deterministic modules and doc sweeps; step down only after seeing quality hold.
 - When Tobi describes a problem or thinks out loud, the deliverable is your assessment —
   report and stop; don't build until asked. Pause only for: destructive actions, real
   scope changes, a live gate only a human can run, or a design fork worth an ADR — then
