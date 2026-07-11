@@ -9,9 +9,10 @@ survive context clears and model switches, state lives on disk:
 
 **At the start of every session, read in this order:**
 1. This file (`CLAUDE.md`) — conventions
-2. ONLY the `## State header` at the top of `progress.md` (until the State header exists —
-   it's created in a follow-up round — read `## Current focus` instead)
+2. ONLY the `## State header` at the top of `progress.md`
 3. The highest-numbered file in `docs/decisions/` — the most recent decision
+4. `docs/lessons/README.md` — skim the one-line lesson summaries; open a full lesson only
+   when its summary touches the task
 
 Then state in two or three sentences: where we are, what we're about to do. Don't touch
 files until that handshake is done. Full `progress.md`, the decision log, and older ADRs
@@ -39,6 +40,7 @@ tooling, refactors covered by suite + dm-eval). Tobi can explicitly override
 | Older ADRs in `docs/decisions/` | When working in the area they cover. Don't guess which — the decision log + phase→ADR map in `progress.md` tell you which ADR governs the current decision/phase (e.g. ADR 003 before touching turn-taking, ADR 005 before the dice engine). |
 | `docs/conventions.md` | When working in a module (rules/memory/rag/tts/voice) or on testing/runtime/troubleshooting/commit-style details. Holds the per-module how-tos moved out of this file. |
 | `docs/progress-archive.md` | Only when you need history — old `## Last session` logs, completed-phase `VERIFY EVIDENCE`, or resolved `## Open questions`. Never needed for normal work. |
+| Individual files in `docs/lessons/` | When their one-line summary in the lessons README (session-start read #4) matches the task at hand. |
 
 Eagerly loading everything fills the context window before useful work starts. Be selective.
 
@@ -61,6 +63,12 @@ Eagerly loading everything fills the context window before useful work starts. B
   report and stop; don't build until asked. Pause only for: destructive actions, real
   scope changes, a live gate only a human can run, or a design fork worth an ADR — then
   ask and end the turn instead of ending on a promise.
+- **Record lessons as they happen.** When a correction recurs or an approach is confirmed
+  the hard way, write it to `docs/lessons/` (one file per lesson, one-line summary into the
+  README index) in the same round. Update the existing lesson rather than creating a
+  duplicate; delete lessons proven wrong. Don't record what CLAUDE.md, `docs/conventions.md`,
+  or an ADR already holds — link there instead. Decisions stay ADRs; lessons are the
+  recurring corrections around them.
 
 **At the end of every working session (before context clear or model switch), without
 being asked:**
@@ -164,7 +172,7 @@ dmbot/          the DM bot
   logsetup.py   console (green chat) + file logging
 data/           committed seed/reference: systems/ (profiles), lore/ + rules_de/ (curated DE setting/rules), party/ (party JSONs), sessions/_example + the live channel's characters.json. Generated/local (git-ignored — see the .gitignore allowlist): pdfs/ (RAG sources), adventures/ (scene cards, bought-book derivatives), sessions/<id>/ state+recaps, vectordb/ (rag.db)
 prompts/        dm_core_de.md (generic GM persona) + campaign_tone_de.md (campaign overlay)  — GERMAN, game content
-docs/           decisions/ (ADRs), how-to-*.html + character-creation-prompt.md (player guides). SETUP.md lives in the repo root.
+docs/           decisions/ (ADRs), lessons/ (recurring corrections; README = the skimmed index), how-to-*.html + character-creation-prompt.md (player guides). SETUP.md lives in the repo root.
 ```
 
 ## Bot A — the bridge (separate repo)
