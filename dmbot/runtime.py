@@ -285,7 +285,10 @@ class SessionRuntime:
         # Rulebook retriever (stage 3, ADR 019): only wired in when an ingested store exists
         # (data/vectordb/rag.db, built offline via `python -m dmbot.rag.ingest`). Without it the
         # brain runs exactly as before — retrieval is additive.
-        self._retriever = RulebookRetriever(_DATA_DIR / "vectordb" / "rag.db", host=config.ollama_host)
+        self._retriever = RulebookRetriever(
+            _DATA_DIR / "vectordb" / "rag.db", host=config.ollama_host,
+            session_memory=config.session_memory,
+        )
         if self._retriever.available():
             log.info("rulebook RAG store found — retrieval is on")
         else:

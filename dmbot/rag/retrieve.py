@@ -33,6 +33,63 @@ log = logging.getLogger(__name__)
 MAX_DISTANCE = 0.45
 TOP_K = 3  # total across both sources — lore may colour a scene, not flood the prompt
 
+# --- campaign memory (ADR 054): retrieval over PLAYED sessions ---------------------------------
+# Session transcripts are German-vs-German, so matches score much tighter than the DE-vs-EN
+# rulebook case — a separate, stricter ceiling keeps stray narration out of the prompt.
+SESSION_MAX_DISTANCE = 0.38
+# Own budget, IN ADDITION to TOP_K — memories never crowd out rules/lore.
+SESSION_TOP_K = 2
+# Mild recency preference: distance malus per session of age (exact-term FTS hits are exempt —
+# "Vosk" asked by name should surface no matter how old the session).
+SESSION_RECENCY_MALUS = 0.01
+_SESSION_LABEL = (
+    "## Früher in der Kampagne (Erinnerungen aus Session vom {dates} — kann veraltet sein; "
+    "aktueller Status, NPC-Stand und Uhren haben immer Vorrang)"
+)
+
+# FTS candidate terms: strip the per-line speaker labels and [Würfel]/[Regie] tags first — the
+# acting character's name heads every player line and must not pull their whole past into every
+# turn; only names *mentioned in* the utterance ("Was hat Vosk gesagt?") should count.
+_LINE_LABEL = re.compile(r"^\s*(?:\[[^\]]{1,24}\]\s*)?(?:[\w'\-]+(?: [\w'\-]+){0,2}:\s*)?")
+# German function words that start sentences capitalized — never a proper-noun signal. Content
+# nouns are handled by the document-frequency gate in _search_session, not by this list.
+_FTS_STOPWORDS = {
+    "der", "die", "das", "den", "dem", "des", "ein", "eine", "einen", "einem", "einer",
+    "ich", "du", "wir", "ihr", "sie", "es", "er", "man", "mein", "dein", "sein", "uns", "euch",
+    "und", "oder", "aber", "auch", "als", "wenn", "dass", "was", "wer", "wie", "wo", "wann",
+    "warum", "nicht", "kein", "keine", "noch", "schon", "dann", "jetzt", "hier", "dort",
+    "ist", "sind", "war", "waren", "hat", "hatte", "haben", "kann", "koennen", "können",
+    "muss", "soll", "will", "wollen", "wird", "werden", "wurde", "bitte", "okay", "mal",
+    "los", "gut", "nein", "doch", "etwas", "alles", "nichts", "wieder", "weiter", "damit",
+}
+
+
+_SENTENCE_END = ".!?…:;"
+
+
+def _query_terms(query: str) -> list[str]:
+    """Proper-noun candidates for the FTS half of the session search: label-stripped, ≥3 chars,
+    capitalized **mid-sentence**, not a function word. Sentence-initial words are excluded —
+    German capitalizes every sentence start ("Vielleicht gehen wir…"), so an utterance-opening
+    word carries no proper-noun signal and would defeat the heuristic in young stores where the
+    df gate is still loose. The rarity decision (document frequency) happens against the store —
+    this only shapes the candidate list. Pure + unit-testable."""
+    terms: list[str] = []
+    for line in query.splitlines():
+        body = _LINE_LABEL.sub("", line, count=1)
+        for m in re.finditer(r"\w+", body):
+            tok = m.group()
+            prefix = body[: m.start()].rstrip()
+            if not prefix or prefix[-1] in _SENTENCE_END:
+                continue  # sentence-initial — capitalization is grammar, not a name
+            if len(tok) < 3 or not tok[0].isupper() or tok.isdigit():
+                continue
+            if tok.lower() in _FTS_STOPWORDS:
+                continue
+            if tok not in terms:
+                terms.append(tok)
+    return terms[:6]
+
 # Searched sources and their prompt labels, in block order (rules ground truth before colour,
 # broad lore before local Rokarth colour). The curated German lore compendium (ADR 021) ships
 # as two sources so either half can be re-authored + re-ingested without touching the other.
@@ -117,11 +174,13 @@ class RulebookRetriever:
         *,
         k: int = TOP_K,
         max_distance: float = MAX_DISTANCE,
+        session_memory: bool = True,
     ) -> None:
         self._db_path = db_path
         self._host = host.rstrip("/")
         self._k = k
         self._max_distance = max_distance
+        self._session_memory = session_memory  # campaign-memory retrieval (ADR 054) on/off
         self._client: httpx.AsyncClient | None = None
         self._model: str | None = None  # read from the store's meta table on first use
 
@@ -198,9 +257,111 @@ class RulebookRetriever:
             return []
         return [hit for hit in hits if hit[3] <= max_distance]
 
-    async def fetch_block(self, query: str) -> str:
-        """The ``## Regelwerk`` / ``## Weltwissen`` prompt block(s) for ``query``, or ``""`` when
-        nothing is relevant (the common case) or anything fails (never breaks a turn)."""
+    def _search_session(
+        self, vector: list[float], query: str, channel_id: int
+    ) -> list[tuple[str, str, str, float, bool]]:
+        """Hybrid search over THIS channel's played sessions (sync — run via to_thread):
+        KNN under ``SESSION_MAX_DISTANCE`` (with the recency malus applied) merged with an
+        exact-term FTS5 lookup — proper-noun recall ("Vosk") is exactly where embeddings are
+        weakest. An FTS hit outranks any borderline KNN hit and skips malus + threshold; dedupe
+        by chunk id; at most ``SESSION_TOP_K`` rows. → ``[(scene, text, stamp, rank, exact)]``.
+        A store without session rows / stamp column / FTS table → ``[]``, never an error."""
+        source = f"session_{channel_id}"
+        conn = _vec_conn(self._db_path)
+        try:
+            rows = self._knn_sessions(conn, vector, source, SESSION_TOP_K * 3)
+            # session age per rotation stamp: 0 = newest ingested session, 1 = the one before, …
+            stamps = [
+                r[0] for r in conn.execute(
+                    "SELECT DISTINCT stamp FROM chunks WHERE source = ? ORDER BY stamp DESC",
+                    (source,),
+                )
+            ]
+        except sqlite3.OperationalError:
+            return []  # pre-session store (no session vec table / stamp column)
+        age = {stamp: i for i, stamp in enumerate(stamps)}
+        merged: dict[int, tuple[str, str, str, float, bool]] = {}
+        for cid, scene, text, stamp, dist in rows:
+            rank = dist + age.get(stamp, 0) * SESSION_RECENCY_MALUS
+            if rank <= SESSION_MAX_DISTANCE:
+                merged[cid] = (scene, text, stamp, rank, False)
+        for cid, scene, text, stamp in self._fts_session_hits(conn, query, source):
+            merged[cid] = (scene, text, stamp, -1.0, True)  # exact term: outranks, no malus
+        ranked = sorted(merged.values(), key=lambda r: (not r[4], r[3]))
+        return ranked[:SESSION_TOP_K]
+
+    def _knn_sessions(
+        self, conn: sqlite3.Connection, vector: list[float], source: str, k: int
+    ) -> list[tuple[int, str, str, str, float]]:
+        """Raw KNN over the **separate** session vec table (ADR 054) → ``[(id, scene, text,
+        stamp, distance)]``, best first. Sessions get their own vec0 table because ``k`` is
+        global per table and the source filter prunes only afterwards — sharing ``chunks_vec``
+        would let the book corpus starve session recall (and vice versa). May raise
+        ``sqlite3.OperationalError`` on a pre-session store — callers handle it."""
+        return conn.execute(
+            "SELECT c.id, c.heading, c.text, c.stamp, v.distance FROM session_chunks_vec v "
+            "JOIN chunks c ON c.id = v.rowid "
+            "WHERE v.embedding MATCH ? AND v.k = ? AND c.source = ? ORDER BY v.distance",
+            (json.dumps(vector), k, source),
+        ).fetchall()
+
+    def _fts_session_hits(
+        self, conn: sqlite3.Connection, query: str, source: str
+    ) -> list[tuple[int, str, str, str]]:
+        """Exact-term FTS5 hits for the query's rare proper-noun candidates, best bm25 first.
+        A term qualifies only when its document frequency in this source is small — recurring
+        table vocabulary ("Waffe", "Tür") matches half the transcript and is exactly what the
+        KNN threshold already handles; the FTS half exists for the rare name embeddings miss.
+        Missing FTS table (old store, no-FTS5 sqlite) → ``[]`` silently."""
+        terms = _query_terms(query)
+        if not terms:
+            return []
+        try:
+            total = conn.execute(
+                "SELECT COUNT(*) FROM chunks WHERE source = ?", (source,)
+            ).fetchone()[0]
+            if not total:
+                return []
+            df_cap = max(3, int(0.15 * total))
+            rare = []
+            for t in terms:
+                df = conn.execute(
+                    "SELECT COUNT(*) FROM chunks_fts f JOIN chunks c ON c.id = f.rowid "
+                    "WHERE chunks_fts MATCH ? AND c.source = ?",
+                    (f'"{t}"', source),
+                ).fetchone()[0]
+                if 0 < df <= df_cap:
+                    rare.append(t)
+            if not rare:
+                return []
+            match = " OR ".join(f'"{t}"' for t in rare)
+            return conn.execute(
+                "SELECT c.id, c.heading, c.text, c.stamp FROM chunks_fts f "
+                "JOIN chunks c ON c.id = f.rowid "
+                "WHERE chunks_fts MATCH ? AND c.source = ? "
+                "ORDER BY bm25(chunks_fts) LIMIT ?",
+                (match, source, SESSION_TOP_K),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+
+    def _session_block(self, hits: list[tuple[str, str, str, float, bool]]) -> str:
+        """Render session-memory hits as the ``## Früher in der Kampagne`` prompt block. Each
+        chunk already opens with its own ``[Session vom …, Szene: …]`` header line (embedded at
+        ingest), so the label carries the caveat and the chunks carry their framing."""
+        from .ingest_session import stamp_date_de
+
+        dates = list(dict.fromkeys(stamp_date_de(stamp) for _, _, stamp, _, _ in hits))
+        lines = [_SESSION_LABEL.format(dates=" und ".join(dates))]
+        for _, text, _, _, _ in hits:
+            lines.append(text)
+        return "\n".join(lines)
+
+    async def fetch_block(self, query: str, *, channel_id: int | None = None) -> str:
+        """The ``## Regelwerk`` / ``## Weltwissen`` prompt block(s) for ``query`` — plus, with a
+        ``channel_id``, up to ``SESSION_TOP_K`` campaign memories from that channel's played
+        sessions (ADR 054) appended under their own label. ``""`` when nothing is relevant (the
+        common case) or anything fails (never breaks a turn)."""
         query = (query or "").strip()
         if not query:
             return ""
@@ -215,18 +376,31 @@ class RulebookRetriever:
             for s, h, t, d in hits
             if d <= self._max_distance and not _is_junk_hit(s, h, t)
         ]
-        if not hits:
-            return ""
-        log.info("📚 %s", "; ".join(f"{s}:{h!r} (d={d:.2f})" for s, h, _, d in hits))
         lines: list[str] = []
-        for source, label in _SOURCES.items():  # fixed order: rules ground truth before colour
-            grouped = [(h, t) for s, h, t, _ in hits if s == source]
-            if not grouped:
-                continue
-            if lines:
-                lines.append("")
-            lines.append(label)
-            for heading, text in grouped:
-                lines.append(f"[Quelle: {heading}]")
-                lines.append(text)
+        if hits:
+            log.info("📚 %s", "; ".join(f"{s}:{h!r} (d={d:.2f})" for s, h, _, d in hits))
+            for source, label in _SOURCES.items():  # fixed order: rules ground truth before colour
+                grouped = [(h, t) for s, h, t, _ in hits if s == source]
+                if not grouped:
+                    continue
+                if lines:
+                    lines.append("")
+                lines.append(label)
+                for heading, text in grouped:
+                    lines.append(f"[Quelle: {heading}]")
+                    lines.append(text)
+        if self._session_memory and channel_id is not None:
+            try:
+                shits = await asyncio.to_thread(self._search_session, vector, query, channel_id)
+            except Exception:
+                log.exception("session-memory retrieval failed — turn continues without it")
+                shits = []
+            if shits:
+                log.info("🗂 %s", "; ".join(
+                    f"Szene {scene!r}/{stamp} ({'FTS' if exact else f'd={rank:.2f}'})"
+                    for scene, _, stamp, rank, exact in shits
+                ))
+                if lines:
+                    lines.append("")
+                lines.append(self._session_block(shits))
         return "\n".join(lines)

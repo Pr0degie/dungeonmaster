@@ -93,9 +93,11 @@ class DMBrain:
         retriever=None,
     ) -> None:
         self._client = client
-        # Rulebook retriever (stage 3, ADR 019): an object with ``async fetch_block(query) -> str``
-        # (rag/retrieve.RulebookRetriever). Per turn the latest user_msg is embedded and matching
-        # rule chunks join the prompt — threshold-gated, so narration turns carry no block. None →
+        # Rulebook retriever (stage 3, ADR 019): an object with
+        # ``async fetch_block(query, *, channel_id) -> str`` (rag/retrieve.RulebookRetriever).
+        # Per turn the latest user_msg is embedded and matching rule chunks join the prompt —
+        # threshold-gated, so narration turns carry no block; the channel id scopes the
+        # campaign-memory half (ADR 054) to this channel's played sessions. None →
         # no retrieval (pre-10a behaviour, and what most unit tests use).
         self._retriever = retriever
         self._rag_block: dict[int, str] = {}
@@ -271,7 +273,7 @@ class DMBrain:
         if self._retriever is None:
             return
         try:
-            block = await self._retriever.fetch_block(user_msg)
+            block = await self._retriever.fetch_block(user_msg, channel_id=channel_id)
         except Exception:
             log.exception("rag refresh failed — turn continues without it")
             block = ""
