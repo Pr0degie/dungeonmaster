@@ -59,6 +59,10 @@ here is its contract, which DMbot calls:
 - Narrative layers follow the same split: NPC memories/agenda steps (ADR 044/049, in
   `state.json`) and the Chekhov thread list (ADR 050, `chekhov.json`) are LLM prose, but
   code owns every cap, dedupe, clamp and status transition — never read them as hard facts.
+- `history.jsonl` (D41/ADR 046) is autosave AND replay journal AND, once rotated, the
+  campaign-memory feed (ADR 053/054): scene events + `time_minutes` are chunk metadata —
+  don't strip them, and never ingest the live (unrotated) file. Debug-run archives carry a
+  `.debug` filename marker (ADR 055) — that marker IS the sandbox routing; never rename.
 
 ## RAG (`dmbot/rag/`)
 
@@ -66,6 +70,13 @@ here is its contract, which DMbot calls:
   multi-column/table-heavy** — extracted text comes out scrambled. Inspect a real chunk
   before trusting retrieval.
 - Answer rule questions from rulebook chunks; attach the source to the context.
+- Session memory (ADR 054/055, `ingest_session.py` + the session half of `retrieve.py`):
+  rotated journals → per-scene chunks under `session_<channel_id>` (own vec table + FTS5
+  mirror; embed with the STORE's model, never trigger `ensure_schema`'s rebuild). Sources
+  route by **filename** (`.debug` → `session_debug_<id>`); retrieval is hybrid KNN+FTS with
+  its own budget/threshold. Everything here degrades silently — a missing table/store/FTS5
+  build must return empty, never raise. Manual runs: `python -m dmbot.rag.ingest_session
+  <dir|file>` (refuses the live journal); debug reset: `--wipe-debug <channel_id>`.
 
 ## Testing
 

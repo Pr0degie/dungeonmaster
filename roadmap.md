@@ -32,7 +32,8 @@ sessions). The old per-phase model table is retired — the project is past thos
 **Goal:** tools in place, model speaks German.
 - Create repo + project structure (see `architecture.md` §12).
 - Two Discord applications + tokens (Bot A exists, DMbot is new).
-- Install Ollama locally on the 4070, pull models (`mistral-nemo`, `nomic-embed-text`).
+- Install Ollama locally on the 4070, pull models (`mistral-nemo`, `bge-m3` — the embedder;
+  `nomic-embed-text` was the original pick, rejected in D28/ADR 019 for German-vs-English).
 - Model taste test: Mistral Nemo 12B vs. alternatives with the same German Eisenhorn
   prompt; compare tone & speed → pick the primary model.
 - **Manual setup outside the agent:** see `SETUP.md`.
@@ -106,7 +107,8 @@ sessions). The old per-phase model table is retired — the project is past thos
 
 ### Phase 10 — RAG over PDFs + system-profile bootstrap
 **Goal:** the DM knows setting & rules from your PDFs — and can learn a new system from them.
-- Ingestion (PDF → chunks → `nomic-embed-text` → vector store) for rulebook/lore/adventure.
+- Ingestion (PDF → chunks → `bge-m3` → vector store) for rulebook/lore (the adventure took
+  the scene-card path instead — ADR 019).
 - Retrieval into the prompt; answer rule questions from rulebook chunks.
 - **Profile bootstrap:** the DM reads the core-mechanics passages and **proposes a draft
   system profile**; the user confirms/edits it; it's saved to `data/systems/`. This realizes
@@ -133,7 +135,8 @@ Roughly prioritized, deliberately not fully planned yet:
 - **Wake word / push-to-talk.** If VAD is too noisy with the full group.
 - **Per-NPC voices.** Multiple Piper voices or voice cloning for character flavor.
 - **Automatic character progression.** XP, advances, injury tables from the JSON state.
-- **Long-term vector memory.** Semantically searchable across many sessions.
+- **Long-term vector memory.** ✅ Delivered early as campaign memory (ADR 054, 2026-07-17):
+  played-session transcripts, semantically + name-searchable across sessions; live gate G10.
 - **System/campaign library.** Multiple saved system profiles + campaigns (tone overlay +
   PDFs + characters) to switch between — the pay-off of the system-agnostic design.
 

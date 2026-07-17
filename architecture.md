@@ -130,7 +130,7 @@ filtering protects regardless.
 | LLM | **Ollama** (local/5080) + `httpx` | DM system prompt + history + RAG context + JSON state |
 | Embeddings | **`bge-m3`** via Ollama | for the rulebook RAG — multilingual (German questions must hit English rule text; `nomic-embed-text` (D28) failed that live, ADR 019). The store's meta table pins the model |
 | PDF→Markdown (ingestion prep) | `pymupdf4llm` (on PyMuPDF) | **offline** step: converts a legally-owned rulebook PDF to clean Markdown (reconstructs reading order, renders tables) so RAG chunks aren't multi-column layout garbage (CLAUDE.md). CLI `tools/pdf_to_md.py` → `data/pdfs/md/`, **not** the bot runtime; feeds Phase-10 ingestion (golden rule #9) |
-| RAG store | **`sqlite-vec`** (`data/vectordb/rag.db`) | searchable rulebook chunks, cosine KNN + relevance threshold; built offline via `python -m dmbot.rag.ingest`. The adventure stays OUT (scene cards instead, ADR 019) |
+| RAG store | **`sqlite-vec`** (`data/vectordb/rag.db`) | searchable rulebook chunks, cosine KNN + relevance threshold; built offline via `python -m dmbot.rag.ingest`. Played-session transcripts join at runtime (`dmbot.rag.ingest_session` on `!leave`, own vec table + FTS5 mirror, hybrid retrieval — ADR 054). The adventure stays OUT (scene cards instead, ADR 019) |
 | TTS | `coqui-tts` (XTTS v2) **default**, `piper-tts` fallback | XTTS (default): ~58 built-in speakers + voice cloning, rich but heavy (**pulls torch/torchaudio/torchcodec — from the CUDA `cu130` index** (covers Ada + Blackwell) so it runs on the GPU, not the CPU-only build; transformers pinned <5); device per `TTS_DEVICE` (cuda/cpu), auto-degrades to CPU if CUDA is absent or OOMs. Piper: fast, lean, fixed German voice (`de_DE-thorsten`) → WAV — the fallback when XTTS won't load. Selectable per `TTS_ENGINE` (golden rule #9: the CUDA torch stack is the cost of GPU XTTS → ADR 009) |
 | Bridge client | `httpx`/`aiohttp` | `POST` to Bot A `/speak` |
 | Pause box (terminal) | `rich` | animated `Live` "PAUSIERT" panel in the DMbot console while the game is frozen (pause via Esc; the Discord ⏸ button mirrors it). Pure-Python, light — the cost of the animated box (golden rule #9 → ADR 013) |
@@ -337,8 +337,12 @@ after the recap and before the history.
 >   redo}`), written off the event loop after every turn. **Restored** into an empty in-memory
 >   history on `!join` (capped at `max_history_turns`; a `redo` record replaces the prior turn), and
 >   **rotated** to `history.<timestamp>.jsonl` on `!leave` so the next session starts fresh while the
->   record survives. Crash recovery for the *narrative thread* (`state.json` already covers the hard
+>   record survives (a debug-campaign run rotates to `history.<stamp>.debug.jsonl` — the ADR 055
+>   sandbox marker). Crash recovery for the *narrative thread* (`state.json` already covers the hard
 >   facts). Code-owned like `state.json` — the read-only `characters.json` split is unchanged.
+>   Since ADR 053 the journal also carries `{"kind": "scene"}` events (from the single scene
+>   mutator + every `!join`) and `time_minutes` per turn record — chunk metadata for the
+>   campaign-memory ingest (layer f below): every rotated journal feeds the session RAG on `!leave`.
 >   _Known limitation:_ `_last_turn` isn't restored, so `!redo` is unavailable for the restored last turn.
 >   **Doubles as the replay journal (ADR 046):** the turn records additionally carry the replay
 >   fields (structured `lines`/`results`/`notes`, the raw pre-sanitize LLM text, queued `markers`,
@@ -349,7 +353,9 @@ after the recap and before the history.
 > **Character sheets are the source of this JSON, not RAG.** The *shape* of a character (which
 > characteristics, skills, resource tracks exist) is dictated by the active **system profile**
 > (§9) — so it differs between D&D, IM, etc. That lets the engine roll stat-aware and track the
-> right resource (HP/wounds/stress/…). Only the *rulebook/lore/adventure* lives in RAG.
+> right resource (HP/wounds/stress/…). The vector store holds only the *rulebook/lore corpus*
+> and *played-session transcripts* (ADR 054, §8) — never the sheets; the adventure takes the
+> scene-card path (§8).
 
 > **Auto-applied combat damage (Phase 9, ADR 015).** On a successful **attack** test (skill ∈ the
 > profile's `combat.attack_skills`) the engine rolls the weapon's damage and the cog applies
@@ -416,9 +422,27 @@ forced. Humans keep their hands on the list: `!fäden`, `!faden neu "<Detail>" [
 `!faden erledigt <id>`, `!faden weg <id>` (thin ChekhovCog). Rides inside the ADR-044
 extraction (`DM_NPC_MEMORY=0` disables it too).
 
+**f) Episodic session memory (ADR 054/055) — verbatim scenes from played sessions**
+On `!leave` the just-rotated journal is chunked per scene (the ADR 053 events are the
+boundaries; redos collapsed; each chunk opens with `[Session vom <Datum>, Szene: <id>]`) and
+embedded into the existing RAG store under `session_<channel_id>` — its own vec0 table
+(`session_chunks_vec`, so book and session corpora can't starve each other) plus an FTS5
+mirror for exact-term proper-noun recall. A `!join` catch-up scan ingests missing stamps
+(crash recovery + one-time backfill); the live journal is never ingested. Retrieval is
+hybrid: KNN under `SESSION_MAX_DISTANCE=0.38` with a mild recency malus, merged with a
+df-gated FTS rescue for rare names — at most `SESSION_TOP_K=2` chunks *after* Weltwissen,
+labelled `## Früher in der Kampagne … aktueller Status hat Vorrang` (episodic colour only;
+hard facts stay with the state, golden rule #3). `DM_SESSION_MEMORY=0` disables ingest and
+retrieval together. **Debug-campaign runs are sandboxed (ADR 055):** detected by the
+testplan sidecar's file presence, their archives carry a `.debug` filename marker and route —
+by filename alone — into `session_debug_<channel_id>`; catch-up and retrieval see only their
+own mode, so cross-contamination with the live campaign's memory is structurally impossible
+(reset via `python -m dmbot.rag.ingest_session --wipe-debug <channel_id>`).
+
 > Interplay: JSON = state (what *is*), recap = story (what *was*), NPC memories = what each
 > NPC believes happened, agendas = what important NPCs are *doing about it*, the Chekhov
-> list = what the story still *owes* the table.
+> list = what the story still *owes* the table, session memory = what was literally said
+> weeks ago (fallible, always subordinate to state).
 
 ---
 
@@ -459,6 +483,15 @@ adventure and the rulebook take **different paths**:
   D46). Block order: rules truth → broad lore → local Rokarth colour. The wiki lore corpora
   (D28) can join as further `source`s later if play demands breadth (Tyranids/Necrons/T'au are
   deliberately absent).
+- **Played sessions join the store — the spoiler boundary sharpened, not weakened (ADR 054):**
+  rotated session journals are chunked per scene and ingested at runtime
+  (`dmbot/rag/ingest_session.py`; `!leave` background ingest + `!join` catch-up) under
+  `session_<channel_id>` — a **separate** vec0 table plus an FTS5 mirror, with hybrid
+  KNN+FTS retrieval on its own budget/threshold (≤2 chunks after Weltwissen, §7f). Only what
+  was *played* enters the store; the adventure text stays out exactly as before, and the
+  book path is byte-identical (test-pinned). Debug-campaign runs route into the sandboxed
+  `session_debug_<channel_id>` source via the `.debug` archive marker (ADR 055).
+  `DM_SESSION_MEMORY=0` switches ingest + retrieval off together.
 - **Character sheets do NOT go into RAG** — they are structured JSON (§7).
 - **Still open (Phase 10's second half):** the **profile bootstrap** — on first load of a new
   ruleset the DM reads the core-mechanics passages and proposes the profile (§9, ADR 005).

@@ -1,8 +1,9 @@
 # Live-Run-Skript — EIN Abend schließt die Gates (+ kurze Folge-Session)
 
-Stand: 2026-07-11 (nach D98 / ADR 051; Workflow-Migration Runde 5/5). **Ersetzt
-`docs/live-test-checklist.md`** — alle 8 offenen Live-Gates, die Tuning-Checks und die
-Sekundär-Prüfungen aus `progress.md` sind hier in EIN geordnetes Drehbuch gemerged.
+Stand: 2026-07-18 (G10 ergänzt nach D102 / ADR 055; davor 2026-07-11, D98 / ADR 051).
+**Ersetzt `docs/live-test-checklist.md`** — alle offenen Live-Gates (G1–G10), die
+Tuning-Checks und die Sekundär-Prüfungen aus `progress.md` sind hier in EIN geordnetes
+Drehbuch gemerged.
 Log-Zeilen sind exakt aus dem Code zitiert und damit direkt in `logs/debug.log` greppbar.
 
 > **Wiederverwendbare Alternative:** die Debug-Kampagne „Die Mitternachtsfracht“
@@ -41,11 +42,15 @@ ins `VERIFY EVIDENCE` wandert.
 | G7 | **NPC-Agenden** (D96 / ADR 049) | 1 Ziel + zwei Szenenwechsel | Akt 2 + 9 | `NPC-memory: '…' Agenda-Schritt: …`; `!agenden` mit Ingame-Zeitstempel |
 | G8 | **Phase 9 — HP übersteht Neustart + Recap** | 1 Neustart | Akt 10 + 11 → S2 | `loaded world state from …`; `📜 Was bisher geschah` beim nächsten `!j` |
 | G9 | **Chekhov-Fäden** (D97 / ADR 050) — **braucht ZWEI Sessions** | keins | Akt 4 + 11 (Saat) → **Session 2** (Ernte) | `🧵 Chekhov-Liste: N neue Fäden, M aufgelöst`; Callback in S2 |
+| G10 | **Kampagnen-Gedächtnis** (D102 / ADR 054+055) — **reitet auf der G9-Zweitsession** | keins (`DM_SESSION_MEMORY` an = Default) | `!leave` S1 → **Session 2**: eine Erinnerungs-Frage in natürlicher Sprache + eine mit Eigennamen aus S1 (mitten im Satz) | `🗂 session memory: ingested history.<stamp>.jsonl (N chunks)` beim `!leave`; `🗂 session memory: catch-up — N rotated journal(s) pending` beim `!j` von S2; pro Treffer `🗂 Szene '…'/<stamp> (FTS)` bzw. `(d=0.xx)` + Block `## Früher in der Kampagne` |
 
-**Strukturell zweigeteilt ist nur G9:** Session 1 sät (Detail beiläufig fallen lassen +
-`!wrap`-Extraktion), Session 2 erntet (spielt der DM es zurück? ⭐ Auflösung). G8s
-Recap-Hälfte wird in Session 1 nach dem `!wrap` per Neustart vorgeprüft und am echten
-Anfang von Session 2 bestätigt. Alles andere schließt an EINEM Abend.
+**Strukturell zweigeteilt sind nur G9 und G10 — beide auf derselben Zweitsession:** Session 1
+sät (Detail beiläufig fallen lassen + `!wrap`-Extraktion; ihr `!leave` ist zugleich der
+G10-Ingest), Session 2 erntet (spielt der DM es zurück? ⭐ Auflösung — und beantwortet die
+G10-Erinnerungs-Sonden aus dem Session-Store). G8s Recap-Hälfte wird in Session 1 nach dem
+`!wrap` per Neustart vorgeprüft und am echten Anfang von Session 2 bestätigt. Alles andere
+schließt an EINEM Abend. G10-Nebeneffekt fürs Protokoll: das `SESSION_MAX_DISTANCE`-Livetuning
+(ADR 054) bekommt hier seine ersten echten Messwerte.
 
 **Ruht (bewusst nicht in diesem Run):** der Augmetik-Live-Check (D52) — die aktuelle
 Party (Fridolin/Gellicus/Rektalus) hat keinen Implantat-Charakter; wieder aufnehmen, wenn
