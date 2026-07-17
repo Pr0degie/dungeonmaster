@@ -9,6 +9,12 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+_Aus `progress.md` rotiert (2026-07-17, Debug-Sandbox-Runde ADR 055):_
+
+**Journal-Runde: Szenengrenzen + Ingame-Zeit im Session-Journal (2026-07-17, D100 → ADR 053). Prep für die Session-RAG-Folgerunde (`02_session-rag.md`) — KEIN neues Live-Gate (Metadaten-only, WIP-exempt).**
+Drei Commits, einzeln revertierbar: `06ed71b` Scene-Events (`_set_scene` journaliert jeden echten Wechsel als `{"kind": "scene", scene_id, ts}`; `!join` öffnet jedes Journal mit der aktuellen Szene — Start-Szenen-Seed **und** restaurierter Pointer, direkt nach dem ADR-046-Session-Header), `a14cfe3` `time_minutes` auf Turn-Records (dmcog `_autosave_turn` stempelt `WorldState.time_minutes` bei Turn-Abschluss über den `extra`-Mechanismus), `c21e8b9` ADR 053. Nichts an `load_recent`-Semantik, Redo-Collapse, Rotation oder Torn-Line-Toleranz geändert; kein RAG-Code in dieser Runde.
+- **Evidenz:** Suite **716 grün** (+9 Tests: Scene-Event bei Transition + `!join`-Seed + restauriertem Pointer, Same-Scene/`autosave=off`/fremder State schreiben nichts, `load_recent` skippt Scene-Events und kollabiert Redos weiter, `time_minutes` drin + tolerant fehlend, Cog-Stempel-Pfad); ruff sauber; `dm-eval` Exit 0 — alte Goldens ohne die neuen Felder replayen unverändert.
+
 _Aus `progress.md` rotiert (2026-07-17, Session-RAG-Runde ADR 054):_
 
 **Content-Runde: Debug-Kampagne „Die Mitternachtsfracht“ (2026-07-11) — füllt den `testplan.json`-Vertrag aus ADR 052. KEIN neues Live-Gate (Test-Vehikel für die bestehenden 8).**
@@ -1198,6 +1204,10 @@ in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 ---
 
 ## Current focus (Verlauf)
+
+_Aus `progress.md` rotiert (2026-07-17, Debug-Sandbox-Runde ADR 055):_
+
+**Journal-Runde: Szenengrenzen + Ingame-Zeit im Session-Journal (2026-07-17, D100 → ADR 053). Suite 716 grün (+9 Tests), ruff sauber, `dm-eval` Exit 0 gegen unveränderte Goldens. Prep für die Session-RAG-Folgerunde — KEIN neues Live-Gate (Metadaten-only).** Zwei Ergänzungen am bestehenden append-only `history.jsonl` (ADR 046), damit die kommende Session-Transcript-Retrieval-Runde rotierte Journale pro Szene chunken und mit Ingame-Zeit stempeln kann: (1) jeder echte Szenenwechsel (`_set_scene`) und jeder `!join` (Start-Szenen-Seed **oder** restaurierter Pointer — so öffnet jedes Journal mit einer Szene) schreibt ein `{"kind": "scene", scene_id, ts}`-Event; (2) jeder Turn-Record trägt `time_minutes` (`WorldState.time_minutes` bei Turn-Abschluss) über den bestehenden `extra`-Mechanismus von `append_turn`. `load_recent`, Redo-Collapse, Rotation und Torn-Line-Toleranz unverändert — die ADR-046-Skip-Semantik macht beides rückwärtskompatibel (test-gepinnt); kein Renderer/Prompt konsumiert die neuen Felder. 3 Commits, einzeln revertierbar. Projekt-Prio unverändert: der Live-Run (Debug-Kampagne oder One-Shot-Skript).
 
 _Aus `progress.md` rotiert (2026-07-17, Session-RAG-Runde ADR 054):_
 
