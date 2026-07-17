@@ -51,6 +51,7 @@ class Config:
     roll_router: bool
     streaming: bool
     autosave: bool
+    session_memory: bool
     autorecap: bool
     scene_mode: str
     flag_confirm: bool
@@ -201,6 +202,12 @@ class Config:
             # data/sessions/<id>/history.jsonl so a crash doesn't lose the evening's thread; restored
             # on !join, rotated on !leave. ON by default; DM_AUTOSAVE=0 disables it.
             autosave=os.environ.get("DM_AUTOSAVE", "1").strip().lower()
+            in ("1", "true", "yes", "on"),
+            # Campaign memory (ADR 054): on !leave the rotated history.jsonl is chunked per scene
+            # and embedded into the RAG store (source session_<channel_id>); at runtime up to two
+            # memory chunks join the prompt. ON by default; DM_SESSION_MEMORY=0 disables ingest
+            # AND retrieval of played sessions entirely.
+            session_memory=os.environ.get("DM_SESSION_MEMORY", "1").strip().lower()
             in ("1", "true", "yes", "on"),
             # Rolling auto-recap / context handoff (D56): when a turn's prompt nears the num_ctx cap
             # (the early signal before Ollama truncates the prompt HEAD — the persona + adventure),

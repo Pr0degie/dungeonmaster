@@ -24,6 +24,7 @@ import threading
 import time
 import wave
 from datetime import datetime
+from pathlib import Path
 
 import discord
 
@@ -53,6 +54,7 @@ from .memory.state import (
     world_state_summary_de,
 )
 from .rag.adventure import Adventure, Scene
+from .rag import ingest_session
 from .rag.retrieve import RulebookRetriever
 from .rag.testplan import Testplan, overlay_line_de
 
@@ -171,6 +173,13 @@ class SessionRuntime:
         # data/sessions/<id>/history.jsonl so a crash doesn't lose the evening's thread; restored on
         # !join, rotated on !leave. World state already persists separately (ADR 015).
         self._autosave = config.autosave
+        # Campaign memory (ADR 054): rotated session journals are chunked per scene and embedded
+        # into the RAG store on !leave (plus a !join catch-up scan for anything missed), so the
+        # DM can recall episodic detail from earlier evenings. DM_SESSION_MEMORY=0 turns ingest
+        # and retrieval off together.
+        self._session_memory = config.session_memory
+        self._ollama_host = config.ollama_host
+        self._session_tasks: set = set()  # strong refs — bare create_task results can be GC'd
         # Replay-journal notes for the turn in flight (ADR 046): per channel, facts the cogs and
         # the delivery pipeline record (state_before, scene/flag verdicts, the router verdict);
         # the autosave drains them into the turn record so dm-eval can replay the session.
@@ -233,6 +242,7 @@ class SessionRuntime:
         # data/adventures/<name>/. The scene pointer lives in WorldState.scene_id; the block is
         # injected via _persist_and_refresh. Missing/broken → run without (logged loudly).
         self._adventure: Adventure | None = None
+        self._adventure_dir = _DATA_DIR / "adventures" / config.adventure if config.adventure else None
         if config.adventure:
             self._adventure = Adventure.load(_DATA_DIR / "adventures" / config.adventure)
             if self._adventure is not None:
@@ -646,6 +656,77 @@ class SessionRuntime:
             })
         except OSError:
             log.exception("could not journal the scene event for channel %s", cid)
+
+    # --- campaign memory: session-transcript ingest (ADR 054) -----------------------------------
+
+    def _session_ingest_source(self, channel_id: int) -> str | None:
+        """The RAG source this channel's played sessions are ingested under, or ``None`` to skip
+        ingest entirely. Skipped when the feature is off (DM_SESSION_MEMORY=0) — and for
+        debug-campaign runs (ADR 052): those play in the SAME channel as live play, so channel
+        isolation doesn't cover them; a ``testplan.json`` next to the loaded adventure marks the
+        run as debug (pure path check, independent of the DM_DEBUG_OVERLAY kill-switch). This
+        method is the seam for the debug-campaign follow-up, which will return a sandboxed debug
+        source here instead of skipping."""
+        if not self._session_memory:
+            return None
+        if self._adventure_dir is not None and (self._adventure_dir / "testplan.json").is_file():
+            log.info("session ingest skipped — debug-campaign run (testplan.json present)")
+            return None
+        return ingest_session.session_source(channel_id)
+
+    def schedule_session_ingest(self, channel_id: int, rotated: Path | None) -> None:
+        """Ingest one just-rotated journal in the background (the !leave trigger). Degrades
+        silently: any failure only logs; !leave never waits on it."""
+        if rotated is None or self._session_ingest_source(channel_id) is None:
+            return
+        self._spawn_session_ingest([Path(rotated)], channel_id)
+
+    def schedule_session_catchup(self, channel_id: int) -> None:
+        """Ingest every rotated journal whose stamp isn't in the store yet, in the background
+        (the !join trigger). Self-healing: covers crashes, shutdown-during-ingest — and the
+        first !join after the feature lands backfills all existing rotated sessions."""
+        if self._session_ingest_source(channel_id) is None:
+            return
+        session_dir = self._history_path(channel_id).parent
+        db_path = self._retriever._db_path
+
+        def _scan_and_ingest() -> None:
+            for path in ingest_session.pending_files(session_dir, db_path=db_path):
+                self._ingest_one(path, channel_id)
+
+        self._spawn_session_task(_scan_and_ingest)
+
+    def _ingest_one(self, path: Path, channel_id: int) -> None:
+        """One journal into the store (worker thread). Failures log and skip the file — the
+        catch-up retries it on the next !join because its stamp was never recorded."""
+        try:
+            n = ingest_session.ingest_session_file(
+                path, channel_id=channel_id,
+                db_path=self._retriever._db_path, host=self._ollama_host,
+            )
+            log.info("🗂 session memory: ingested %s (%d chunks)", path.name, n)
+        except Exception:
+            log.exception("session ingest failed for %s — skipped", path.name)
+
+    def _spawn_session_ingest(self, paths: list[Path], channel_id: int) -> None:
+        def _work() -> None:
+            for path in paths:
+                self._ingest_one(path, channel_id)
+
+        self._spawn_session_task(_work)
+
+    def _spawn_session_task(self, work) -> None:
+        """Run ``work`` (sync, does its own error logging) off the event loop as a fire-and-forget
+        background task. Without a running loop (unit tests) it degrades to a no-op."""
+        try:
+            task = asyncio.get_running_loop().create_task(asyncio.to_thread(work))
+        except RuntimeError:
+            log.debug("no running event loop — session ingest not scheduled")
+            return
+        tasks = getattr(self, "_session_tasks", None)
+        if tasks is not None:  # stub runtimes in tests may lack the set
+            tasks.add(task)
+            task.add_done_callback(tasks.discard)
 
     def _set_scene_flag(self, state: WorldState, element_id: str, *, resolved: bool) -> str | None:
         """Deterministically flag an element of the CURRENT scene resolved/open (ADR 043, golden

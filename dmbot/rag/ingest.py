@@ -111,7 +111,12 @@ def ensure_schema(conn: sqlite3.Connection, *, model: str, dim: int) -> None:
     if stored and (stored.get("model") != model or stored.get("dim") != str(dim)):
         conn.execute("DROP TABLE IF EXISTS chunks")
         conn.execute("DROP TABLE IF EXISTS chunks_vec")
+        # session mirrors of chunks (ADR 054): FTS + the separate session vec table
+        conn.execute("DROP TABLE IF EXISTS chunks_fts")
+        conn.execute("DROP TABLE IF EXISTS session_chunks_vec")
         conn.execute("DELETE FROM meta WHERE key LIKE 'ingested:%'")
+        # forget ingested session stamps too, so the !join catch-up re-ingests them
+        conn.execute("DELETE FROM meta WHERE key LIKE 'session_ingested:%'")
     conn.execute(
         "CREATE TABLE IF NOT EXISTS chunks (id INTEGER PRIMARY KEY, source TEXT NOT NULL, "
         "heading TEXT NOT NULL, text TEXT NOT NULL)"

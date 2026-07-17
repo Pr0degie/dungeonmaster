@@ -198,6 +198,9 @@ class VoiceCog(commands.Cog):
         sink = voice_recv.SilenceGeneratorSink(vad_sink)
         vc.listen(sink, after=self._on_listen_done)
         char_fallback = self._rt.seed_session(channel, ctx.channel)
+        # Campaign memory (ADR 054): catch up on rotated journals the store doesn't know yet
+        # (crash / shutdown-during-ingest / first join after the feature landed = backfill).
+        self._rt.schedule_session_catchup(channel.id)
 
         log.info(
             "joined voice '%s' (id=%s) and started VAD pipeline (16k mono + silero, push_to_talk=%s)",
@@ -326,12 +329,16 @@ class VoiceCog(commands.Cog):
             # starts fresh (the in-memory history is cleared by reset() just below).
             if self._rt._autosave:
                 try:
-                    history_store.rotate(
+                    rotated = history_store.rotate(
                         self._rt._history_path(self._rt._active_vc_id),
                         stamp=datetime.now().strftime("%Y%m%d-%H%M%S"),
                     )
                 except OSError:
                     log.exception("could not rotate the history autosave on leave")
+                else:
+                    # Campaign memory (ADR 054): embed the finished session in the background —
+                    # never the live journal, and !leave never waits on it.
+                    self._rt.schedule_session_ingest(self._rt._active_vc_id, rotated)
             self._rt._brain.reset(self._rt._active_vc_id)
             self._rt._turn_order.pop(self._rt._active_vc_id, None)
             self._rt._turn_index.pop(self._rt._active_vc_id, None)
