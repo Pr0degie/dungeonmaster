@@ -2,7 +2,7 @@
 
 - **Status:** Accepted (code-complete; live verification pending)
 - **Date:** 2026-06-13
-- **Refs:** decision log D44 in `progress.md`; supersedes the bare dots animation of the
+- **Refs:** decision log D47 in `progress.md`; supersedes the bare dots animation of the
   two-stage Ctrl+C (the **D27/ADR 013** groundwork is unrelated — that's pause, this is exit);
   touches **ADR 017** (streaming synth pipeline) by changing how its synth threads are spawned.
   Suite 157 → 181 (note: count includes adventure/RAG tests landed between sessions).

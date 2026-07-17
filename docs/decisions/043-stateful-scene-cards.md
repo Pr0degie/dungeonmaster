@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-07-02
-- **Refs:** decision log **D87** in progress.md. Builds on **ADR 020** (scene tracker) and
+- **Refs:** decision log **D87** in progress.md. Builds on **ADR 019** (scene tracker) and
   **ADR 026** (the `<<ORT>>` marker flow this mirrors); bound by **ADR 015** (memory state split)
   and **golden rule #3** (world state is advanced by code, never by LLM free text). Touches
   `dmbot/rag/adventure.py`, `dmbot/rules/marker.py`, `dmbot/llm/stream_assembler.py`,
@@ -10,7 +10,7 @@
   `dmbot/memory/state.py`, `dmbot/runtime.py`, `dmbot/discord_ui/flag.py`, `prompts/dm_core_de.md`.
 
 ## Context
-Scene cards (ADR 020/026) are static; the world isn't. On a revisit — or late in a long scene —
+Scene cards (ADR 019/026) are static; the world isn't. On a revisit — or late in a long scene —
 the same fresh card is injected: the DM re-offers Gelegenheiten the party already used, re-hides
 Geheimnisse that are already out in the open, and NPCs the engine knows are at 0 wounds stand
 around alive in „Anwesende NSCs". The card must reflect what has already happened — without the

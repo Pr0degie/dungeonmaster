@@ -15,7 +15,7 @@ compendium. Goal: a 50-page adventure costs an afternoon of *redigieren*, not da
 
 **Read `dmbot/rag/adventure.py` before anything else** — it is the schema's source of truth
 (`Scene`, `AdventureNpc`, `Adventure.load`), including the ADR 043 stateful-card extensions
-(element ids, gated exits). ADR 019/020 (scene-tracker hybrid) and ADR 043 govern the design.
+(element ids, gated exits). ADR 019 (scene-tracker hybrid) and ADR 043 govern the design.
 
 ## Hard rules
 

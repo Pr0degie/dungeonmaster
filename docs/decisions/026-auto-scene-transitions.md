@@ -2,24 +2,25 @@
 
 - **Status:** Accepted
 - **Date:** 2026-06-13
-- **Refs:** supersedes the "moved by humans only" binding of **ADR 020** (filename
-  `020-adventure-scene-tracker-hybrid.md`; note its internal title still reads "ADR 019" — an
-  off-by-one between filename and header); builds on **ADR 004** (dice/marker pattern) and **ADR 022**
+- **Refs:** supersedes the "moved by humans only" binding of **ADR 019** (the scene-tracker
+  hybrid, `019-adventure-scene-tracker-hybrid.md`; its filename and title were crossed with
+  ADR 020's until the 2026-07-18 renumber fix — older references to "ADR 020" for the scene
+  tracker meant this file); builds on **ADR 004** (dice/marker pattern) and **ADR 022**
   (the `<<MANIFEST>>` precedent — a second code-validated marker); golden rules #2 (dice = code) and
   #3 (no hard state from LLM free text).
 
 ## Context
 
 The scene pointer (`state.scene_id`, ADR 015) is moved by `!ort <id>`: a manual, human-only command.
-ADR 020 (the scene-tracker hybrid) made that binding explicit — "the scene pointer is moved by humans
+ADR 019 (the scene-tracker hybrid) made that binding explicit — "the scene pointer is moved by humans
 only" — to keep the narrator LLM clear of hard state (golden rule #3: the LLM never writes hard state).
 
 In live voice play, typing `!ort` mid-scene is friction: it pulls a player out of the conversation to
-type a command the moment the party walks somewhere. ADR 020 anticipated this and **explicitly
+type a command the moment the party walks somewhere. ADR 019 anticipated this and **explicitly
 deferred** the next step — "a director LLM moves the scene pointer … re-evaluate once live play shows
 `!ort` friction." Live play has now shown it. This ADR takes that step.
 
-The constraint is the same one ADR 020 protected: the LLM must not become an authority on hard state.
+The constraint is the same one ADR 019 protected: the LLM must not become an authority on hard state.
 
 ## Decision
 
@@ -42,20 +43,20 @@ Add a **third LLM marker `<<ORT <scene-id>>>`**, mirroring `<<TEST>>` (ADR 004) 
 
 **This upholds golden rule #3, it does not break it.** The LLM still never *writes* hard state — it
 emits a *validated request*, exactly as it *requests* a die roll (golden rule #2) rather than rolling
-it. The engine, not the model, performs the move. The only thing reversed is ADR 020's "moved by
+it. The engine, not the model, performs the move. The only thing reversed is ADR 019's "moved by
 humans only" binding: the pointer is now moved **by code, on a validated, human-confirmed model
 request** — not by free LLM text.
 
 ## Alternatives
 
-- **Keep `!ort` manual-only (ADR 020 as-is).** Lowest risk, but the friction ADR 020 itself flagged
+- **Keep `!ort` manual-only (ADR 019 as-is).** Lowest risk, but the friction ADR 019 itself flagged
   for re-evaluation is now real. Rejected for that reason.
 - **Auto-apply the move without a confirm button.** Removes friction entirely but hands the pointer to
   the model with no human gate — too close to letting the LLM write hard state. Rejected; the confirm
   button is the human-in-the-loop guarantee.
 - **A separate director LLM call to decide moves.** Heavier (extra latency, a second model pass) than
   reusing the narration the model already produces; the in-band marker rides the existing turn. Rejected
-  for the MVP — the marker is the cheap form of ADR 020's "director LLM" idea.
+  for the MVP — the marker is the cheap form of ADR 019's "director LLM" idea.
 - **`frei` mode as the default.** Drops the `leads_to` authorisation boundary and invites teleport
   jumps from a stray id. `verbunden` is the safe default; `frei` stays available for GM convenience.
 

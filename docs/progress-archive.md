@@ -595,7 +595,7 @@ annotierten Log gezogen; Wurzel-Diagnose + Fixes über parallele Agents (Tobis V
   (bzw. Auto-Recap greift sichtbar), DM nennt Spuren/Szenenziel, kein 📚-Garbage bei reinem RP._
 
 **Auto scene transitions — `<<ORT …>>` marker + confirm button (2026-06-13, ADR 026).** `!ort <id>`
-was a manual, human-only pointer move (ADR 020). Now the DM-LLM can *request* a move in-band, code
+was a manual, human-only pointer move (ADR 019). Now the DM-LLM can *request* a move in-band, code
 validates + a human confirms — mirroring the dice/`<<TEST>>` pattern (golden rule #2), so golden
 rule #3 still holds (the model never *writes* `scene_id`, only requests).
 - **Marker:** third extractor `extract_scenes` in `dmbot/rules/marker.py` (profile-free — scenes
