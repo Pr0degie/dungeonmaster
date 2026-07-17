@@ -704,7 +704,12 @@ class SessionRuntime:
         debug = self.is_debug_run  # captured now — the scan sees only this mode's archives
 
         def _scan_and_ingest() -> None:
-            for path in ingest_session.pending_files(session_dir, db_path=db_path, debug=debug):
+            pending = ingest_session.pending_files(session_dir, db_path=db_path, debug=debug)
+            if pending:
+                # gate-G10 evidence: the catch-up half of the ingest story is greppable too
+                log.info("🗂 session memory: catch-up — %d rotated journal(s) pending",
+                         len(pending))
+            for path in pending:
                 self._ingest_one(path, channel_id)
 
         self._spawn_session_task(_scan_and_ingest)
