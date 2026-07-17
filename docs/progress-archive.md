@@ -9,6 +9,13 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+_Aus `progress.md` rotiert (2026-07-17, Journal-Runde ADR 053):_
+
+**🧪 Debug-Overlay-Runde (2026-07-11, D99 → ADR 052). Dev-Tooling, KEIN neues Live-Gate (WIP-exempt — die Live-Verifikation reitet auf der Debug-Kampagne, für die das Overlay existiert).**
+TDD (rot zuerst): neues pures `dmbot/rag/testplan.py` (Sidecar-Loader, fail-open, `overlay_line_de`), `SessionRuntime.update_debug_overlay()` im Uhr-Panel-Muster (edit-in-place), Call-Sites `!ort` / `<<ORT>>`-Confirm / `!start`+`!intro`-Seed / `!join`, `!leave` räumt das Panel ab; Config-Knöpfe `DM_DEBUG_OVERLAY` + `DM_DEBUG_CHANNEL` (+ `.env.example` für die dm-sync-Deckung).
+- **Verifier-Subagent (fresh context; Diff + ADR 026/047 + Golden Rules): kein Blocker.** Übernommen: stärkerer Invisibility-Pin (in `dmbot/` dürfen nur runtime/config die Sidecar überhaupt erwähnen — fängt auch `_testplan`-Attributzugriffe, nicht nur Imports) + das `!join`-Overlay vor die Bottom-Panels (Mic-Button bleibt unten). Bewusst gelassen: das Doppel-Post-Race der zwei Szenen-Pfade (byte-identisch mit dem akzeptierten Uhr-Panel-Race, ADR 047).
+- Evidenz: Suite **707 grün** (+18 Tests; 1 bestehender `!ort`-Test um den Overlay-Pin erweitert), ruff-F sauber, `dm-eval` Exit 0 gegen unveränderte Goldens.
+
 _Aus `progress.md` rotiert (2026-07-11, Content-Runde Debug-Kampagne):_
 
 **Live-Gate-Triage: `docs/live-run-script.md` (2026-07-11, Workflow-Migration Runde 5/5 — die letzte). Doc-only, KEIN neues Live-Gate — der nächste Schritt ist der Spieltisch, keine Build-Runde.**
@@ -1185,6 +1192,10 @@ in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 
 ## Current focus (Verlauf)
 
+_Aus `progress.md` rotiert (2026-07-17, Journal-Runde ADR 053):_
+
+**🧪 Debug-Overlay für Test-Runs gebaut (2026-07-11, D99 → ADR 052). Suite 707 grün (+18 Tests inkl. Invisibility-Pin), ruff-F sauber, `dm-eval` Exit 0 gegen unveränderte Goldens. Dev-Tooling, KEIN neues Live-Gate — die Live-Verifikation fällt als Nebeneffekt der Debug-Kampagne ab, für die das Overlay existiert.** Liefert ein Abenteuer eine `testplan.json` neben der `adventure.json` (`{"scenes": {"<id>": {"gates": [...], "hint_de": "…"}}}`), postet jeder Szenenwechsel EINE kompakte 🧪-OOC-Zeile (Szene, Gates unter Test, Ein-Zeilen-Hinweis) — edit-in-place nach dem Uhr-Panel-Muster (ADR 047), aufgefrischt von `!ort`, bestätigtem `<<ORT>>`, dem `!start`/`!intro`-Seed und `!join`; `!leave` räumt das Panel ab. **Kern-Invariante: LLM-Unsichtbarkeit by construction** — die Sidecar wird in der Runtime NEBEN, nie IN das Adventure geladen (neues pures `dmbot/rag/testplan.py`); ein Source-Inspection-Test pinnt, dass in `dmbot/` außer runtime/config kein Modul sie auch nur erwähnt (fängt auch `_testplan`-Attributzugriffe). Null LLM-Calls, null Prompt-Bytes; fail-open (keine Sidecar → schlafend, kaputte → EINE laute Logzeile), Kill-Switch `DM_DEBUG_OVERLAY=0`, optional `DM_DEBUG_CHANNEL` (unauflösbar → einmal warnen + Spielkanal). Projekt-Prio unverändert: der Tuning+Scene-Cards-Live-Run — als Nächstes die Debug-Kampagne, die den Vertrag füllt.
+
 _Aus `progress.md` rotiert (2026-07-11, Content-Runde Debug-Kampagne):_
 
 **Cleanup-Runde: Marker-Pipeline konsolidiert + Doku-Sweep (2026-07-04, D98 → ADR 051). Suite 689 grün (+6 Registry-Tests, 0 Änderungen an bestehenden Tests), ruff-F sauber, `dm-eval` Exit 0 gegen die unveränderten Goldens — nach jedem Migrationsschritt. Verhaltensneutral, KEIN neues Live-Gate.** Das selbst notierte D94-Debt ist eingelöst, **bevor** ein sechster Marker kommt: die fünfmal handkopierte Marker-Naht (TEST/MANIFEST/ORT/ERLEDIGT/UHR/ZEIT — je eigene Regex+Dataclass+`_pending_*`-Dict, `finalize_answer` als 7-Tupel) läuft jetzt über eine **deklarative `MarkerSpec`-Registry** (`dmbot/rules/marker.py`; Tabellen-Reihenfolge = Extraktions- UND Journal-Key-Reihenfolge) + EINE generische Naht: `extract_all` (kettet die bestehenden Extraktoren byte-identisch), `finalize_answer_markers → (answer, {kind: requests})` (das 7-Tupel bleibt als test-gepinnte View), keyed Pending-Store im Brain (Queue/Redo/Reset/Consistency-Snapshot als Loops, Suppression aus `spec.suppressible`; `take_pending_<kind>`-Wrapper + Alias-Attribute halten die öffentliche Surface), labelled Task-Liste statt zwei kopierter Dispatch-Blöcke in der Delivery, dm-eval liest Keys+Drain aus der Registry. Die per-Marker-**Eigenheiten sind unangetastet** (ZEIT first-valid+12h-Clamp, UHR +1/Uhr/Turn, UHR/ZEIT suppressions-exempt, Confirm-Views unter `DM_FLAG_CONFIRM`, verklebte Marker strippen weiter); Handler-Bodies + pure Verdicts bewusst NICHT generalisiert (ADR 051 #5 — das ist das Feature, nicht die Naht). Migration marker-weise (ORT zuletzt), Journal byte-kompatibel. **Teil B:** README auf den echten Stand (Memory/RAG gelandet + Session-Tools-Liste), progress-Rotation (D75–D81-Focus-Blöcke + D60–D63-Next-step-Verlauf ins Archiv), `logsetup`-Docstring-Kosmetik, Open-questions ausgeräumt. Ein sechster Marker kostet jetzt: Dataclass + Extraktor + eine Registry-Zeile + sein eigentliches Feature. Projekt-Prio unverändert: der Tuning+Scene-Cards-Live-Run.
@@ -1523,6 +1534,44 @@ gate / any follow-up: **Opus 4.8 / xhigh**.
 ---
 
 ## Next concrete step (Verlauf)
+
+_Aus `progress.md` rotiert (2026-07-17, Journal-Runde ADR 053): der datierte
+Carry-over-Block aus „Next concrete step" — verbatim._
+
+_Carry-overs & future directions (Stand 2026-06-12 abends):_
+1. **Modell-Test (Timo):** Mistral Small (o.ä.) auf Timos Box / der 5080 via Tailscale —
+   unabhängig vom Story-Code, Umschalten = `OLLAMA_HOST`-Einzeiler (D6/ADR 002). A/B gegen nemo
+   mit identischer Story fahren, erst NACH der Gate-Session (sonst zwei Variablen gleichzeitig).
+2. **Director→Narrator-Experiment (Timos Architektur-Idee, Diskussion 2026-06-12):** ein
+   constrained-JSON-Call entscheidet pro Turn strukturiert *was passiert* (Szenenziel,
+   NSC-Aktionen, State-Änderungen), nemo macht nur Prosa. **Bewusst aufgeschoben** — der
+   Szenen-Tracker (ADR 019) ist die deterministische Vorstufe; erst bauen, wenn Live-Spiel
+   zeigt, dass `!ort`-Handarbeit nervt oder die Szenen-Kohärenz trotz Karten kippt.
+   Kosten wären ~+1–3 s pro Turn (Single-GPU).
+3. **„The Blazing Seraph"** (Starter-Set-Abenteuer, 49 S., eigenes Bestiarium) → zweites
+   Szenen-Kompendium, NACH dem Chemical-Burn-Live-Test (Feedback einarbeiten). Danach:
+   `DM_ADVENTURE` umschalten genügt.
+4. **„Villains on Voll" (Setting Guide S. 58–67) nachingestieren**, sobald die
+   Chemical-Burn-Kampagne durch ist (`pdf_to_md --pages 58-68` → `ingest --source setting`).
+5. **RAG-Schwelle tunen:** `MAX_DISTANCE` 0.45 ist auf wenigen Fragen kalibriert; deutsche
+   Zustandsnamen („Blutend") liegen knapp drüber. Gegen Live-`📚`-Logzeilen nachjustieren.
+6. **Repo-Sichtbarkeit (Tobi-Entscheidung):** Repo ist PUBLIC → `data/adventures/` bleibt
+   untracked (Ableitung gekaufter Bücher). Auf privat stellen + whitelisten, wenn das
+   Kompendium versioniert/auf die 5080-Box synchronisiert werden soll.
+7. **Remote/Tailscale bridge (ADR 010)** — implemented, **never live-tested**; two-machine check
+   per README "Split hosting" when wanted.
+8. **Roll-router live feel** — router-wins ist seit D43 die einzige Quelle; spurious/odd buttons →
+   classifier prompt (`dmbot/llm/roll_router.py`) tunen. Inline `<<TEST>>` nur noch bei
+   `DM_ROLL_ROUTER=0`.
+9. Older: STT confidence filter on noisy speech; toggleable edit/review window (Part 2; pause
+   control D27/ADR 013 is its groundwork); **input bleed** (stream audio into mics — wake-word
+   concern, not a bug); benign `voice_recv` `voice_member_disconnect` traceback (alpha lib — watch).
+10. **Player-wish status (ADR 016 W-Liste):** **W1** (puppeting) Code-Backstops seit ADR 016,
+    **W2** (Latenz) ✅ Streaming ADR 017, **W3** (Stop-Button) ✅ Tobi, **W4** (Wiederholung)
+    Code-Guard seit D45 (live-unverified), **W5** (exakte Frage) adressiert über
+    Roll-Direktive + Szenenkarten + W4-Nudge (live-unverified), **W6** (TTS-Interpunktion) ✅,
+    **W7** = Phase-9-Gate (pending), **W8** (derbe Inhalte engagen) **offen** — nemos Ceiling,
+    beim Modell-Test (Punkt 1) mitbewerten.
 
 _Aus `progress.md` rotiert (2026-07-11, Live-Gate-Triage-Runde 5/5): der Gate-Fahrplan
 des Live-Runs, gemerged in `docs/live-run-script.md` — hier der Wortlaut (verbatim)._
