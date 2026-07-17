@@ -114,6 +114,21 @@ def test_other_channels_sessions_are_never_searched(tmp_path) -> None:
     assert "Fremde Kampagne." not in block
 
 
+def test_debug_run_reads_only_the_sandbox_and_a_normal_run_never_does(tmp_path) -> None:
+    # ADR 055: same channel, two sources — retrieval isolation in both directions
+    db = _store(tmp_path, [
+        _chunk("sz_live", "Echte Kampagne.", NEW, [1.0, 0.0, 0.0, 0.0]),
+        ("session_debug_42", "sz_dbg",
+         "[Session vom 12.07.2026, Szene: sz_dbg]\nDebug-Durchlauf.", NEW, [1.0, 0.0, 0.0, 0.0]),
+    ])
+    normal = _retriever(db, [1.0, 0.0, 0.0, 0.0])
+    block = asyncio.run(normal.fetch_block("Was war da nochmal?", channel_id=42))
+    assert "Echte Kampagne." in block and "Debug-Durchlauf." not in block
+    dbg = _retriever(db, [1.0, 0.0, 0.0, 0.0], debug_sessions=True)
+    block = asyncio.run(dbg.fetch_block("Was war da nochmal?", channel_id=42))
+    assert "Debug-Durchlauf." in block and "Echte Kampagne." not in block
+
+
 def test_recency_malus_prefers_the_newer_session_on_a_tie(tmp_path) -> None:
     db = _store(tmp_path, [
         _chunk("sz_alt", "Alte Erinnerung.", OLD, [0.9, 0.1, 0.0, 0.0]),

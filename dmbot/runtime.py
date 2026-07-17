@@ -288,6 +288,9 @@ class SessionRuntime:
         self._retriever = RulebookRetriever(
             _DATA_DIR / "vectordb" / "rag.db", host=config.ollama_host,
             session_memory=config.session_memory,
+            # Debug-run sandbox (ADR 055): a debug campaign reads back only its own
+            # session_debug_<id> memories — never the live campaign's, and vice versa.
+            debug_sessions=self.is_debug_run,
         )
         if self._retriever.available():
             log.info("rulebook RAG store found — retrieval is on")
@@ -662,19 +665,25 @@ class SessionRuntime:
 
     # --- campaign memory: session-transcript ingest (ADR 054) -----------------------------------
 
+    @property
+    def is_debug_run(self) -> bool:
+        """True iff a ``testplan.json`` sits next to the loaded adventure (ADR 055) — a pure
+        path check, deliberately independent of the DM_DEBUG_OVERLAY kill-switch (the overlay
+        may be off while the debug campaign is still being played). Only the file's *presence*
+        is used; its content never reaches any prompt or RAG path (ADR 052 invariant)."""
+        return self._adventure_dir is not None and (self._adventure_dir / "testplan.json").is_file()
+
     def _session_ingest_source(self, channel_id: int) -> str | None:
         """The RAG source this channel's played sessions are ingested under, or ``None`` to skip
-        ingest entirely. Skipped when the feature is off (DM_SESSION_MEMORY=0) — and for
-        debug-campaign runs (ADR 052): those play in the SAME channel as live play, so channel
-        isolation doesn't cover them; a ``testplan.json`` next to the loaded adventure marks the
-        run as debug (pure path check, independent of the DM_DEBUG_OVERLAY kill-switch). This
-        method is the seam for the debug-campaign follow-up, which will return a sandboxed debug
-        source here instead of skipping."""
+        ingest entirely (feature off, DM_SESSION_MEMORY=0). Debug-campaign runs (ADR 052/055)
+        play in the SAME channel as live play, so channel isolation doesn't cover them: they
+        route into the sandboxed ``session_debug_<channel_id>`` source instead — the live
+        campaign's memory stays untouched, and the debug run still exercises the full
+        ingest/retrieval path (gate G10)."""
         if not self._session_memory:
             return None
         if self._adventure_dir is not None and (self._adventure_dir / "testplan.json").is_file():
-            log.info("session ingest skipped — debug-campaign run (testplan.json present)")
-            return None
+            return ingest_session.session_source(channel_id, debug=True)
         return ingest_session.session_source(channel_id)
 
     def schedule_session_ingest(self, channel_id: int, rotated: Path | None) -> None:
@@ -692,9 +701,10 @@ class SessionRuntime:
             return
         session_dir = self._history_path(channel_id).parent
         db_path = self._retriever._db_path
+        debug = self.is_debug_run  # captured now — the scan sees only this mode's archives
 
         def _scan_and_ingest() -> None:
-            for path in ingest_session.pending_files(session_dir, db_path=db_path):
+            for path in ingest_session.pending_files(session_dir, db_path=db_path, debug=debug):
                 self._ingest_one(path, channel_id)
 
         self._spawn_session_task(_scan_and_ingest)

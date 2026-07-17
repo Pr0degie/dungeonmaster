@@ -15,6 +15,11 @@ ingested stamp so the ``!join`` catch-up scan (crash recovery + backfill) only p
 ones. Alongside the vectors an FTS5 table over the chunk text is maintained for exact-term
 proper-noun recall — where embeddings are weakest. No LLM anywhere: raw transcript chunks only.
 
+Debug-run sandbox (ADR 055): debug-campaign runs share the live channel's session directory,
+so their rotated archives carry a ``.debug`` filename marker and route — by filename alone —
+into the separate source ``session_debug_<channel_id>``. Cross-contamination with the live
+campaign's memory is structurally impossible in both directions.
+
 Runtime callers run everything here via ``asyncio.to_thread`` and degrade silently (log only).
 Manual runs:
 
@@ -39,14 +44,27 @@ from .ingest import CHUNK_CHARS, EMBED_MODEL, embed_texts, ensure_schema
 log = logging.getLogger(__name__)
 
 # Rotated-journal filename → rotation stamp (memory/history.rotate uses %Y%m%d-%H%M%S). The
-# pattern deliberately does NOT match the live ``history.jsonl``.
-_STAMP_RE = re.compile(r"^history\.(?P<stamp>\d{8}-\d{6})\.jsonl$")
+# pattern deliberately does NOT match the live ``history.jsonl``. The optional ``.debug``
+# marker is the debug-run sandbox (ADR 055): debug-campaign runs share the live channel's
+# session directory, so their archives carry the marker and route to a separate source.
+_STAMP_RE = re.compile(r"^history\.(?P<stamp>\d{8}-\d{6})(?P<debug>\.debug)?\.jsonl$")
 
 
-def session_source(channel_id: int | str) -> str:
+def session_source(channel_id: int | str, *, debug: bool = False) -> str:
     """The store's source tag for one channel's played sessions — retrieval resolves the active
-    channel to exactly this source, so other channels' sessions are never searched."""
-    return f"session_{channel_id}"
+    channel to exactly this source, so other channels' sessions are never searched. Debug-run
+    archives (ADR 055) get their own ``session_debug_<channel_id>`` sandbox source: a debug
+    campaign played in the live channel must never write into — or be read back from — the
+    real campaign's memory."""
+    return f"session_debug_{channel_id}" if debug else f"session_{channel_id}"
+
+
+def is_debug_archive(path: Path) -> bool:
+    """True iff ``path`` is a debug-run archive (``history.<stamp>.debug.jsonl``, ADR 055).
+    Routing keys on the filename alone, so a ``.debug`` file can never reach the live source
+    regardless of the caller's mode — and vice versa."""
+    m = _STAMP_RE.match(Path(path).name)
+    return bool(m and m.group("debug"))
 
 
 def stamp_date_de(stamp: str) -> str:
@@ -195,18 +213,21 @@ def ingested_stamps(db_path: Path, source: str) -> set[str]:
     return {r[0][len(prefix):] for r in rows}
 
 
-def pending_files(session_dir: Path, *, db_path: Path) -> list[Path]:
+def pending_files(session_dir: Path, *, db_path: Path, debug: bool = False) -> list[Path]:
     """The rotated journals in ``session_dir`` whose stamp is not in the meta table yet, oldest
     first — the ``!join`` catch-up (covers crashes, shutdown-during-ingest, and the one-time
-    backfill of pre-feature sessions). The live ``history.jsonl`` never matches."""
+    backfill of pre-feature sessions). The live ``history.jsonl`` never matches. Only archives
+    of the requested mode are returned (ADR 055): a debug run's catch-up sees only ``.debug``
+    files, a normal run's only plain ones — the other mode's archives are structurally
+    invisible, in both directions."""
     session_dir = Path(session_dir)
     if not session_dir.is_dir():
         return []
-    done = ingested_stamps(db_path, session_source(session_dir.name))
+    done = ingested_stamps(db_path, session_source(session_dir.name, debug=debug))
     out = []
     for p in sorted(session_dir.iterdir()):
         m = _STAMP_RE.match(p.name)
-        if m and m.group("stamp") not in done:
+        if m and bool(m.group("debug")) == debug and m.group("stamp") not in done:
             out.append(p)
     return out
 
@@ -222,7 +243,9 @@ def ingest_session_file(
     path = Path(path)
     m = _STAMP_RE.match(path.name)
     stamp = m.group("stamp") if m else path.stem.removeprefix("history.")
-    source = session_source(channel_id)
+    # Routing keys on the filename (ADR 055): a ``.debug`` archive always lands in the debug
+    # sandbox source, a plain one always in the live source — no caller can cross-route.
+    source = session_source(channel_id, debug=is_debug_archive(path))
     model = _store_model(db_path) or model or EMBED_MODEL
     items = load_journal(path)
     chunks = chunk_session(items, stamp=stamp)
@@ -295,12 +318,51 @@ def ingest_session_file(
     return len(chunks)
 
 
+def wipe_debug_source(db_path: Path, channel_id: int | str) -> int:
+    """Delete every row of the debug-run sandbox source ``session_debug_<channel_id>`` (ADR 055):
+    chunk rows, their vec + FTS mirrors, and the ingested-stamp bookkeeping — so a debug-campaign
+    reset can re-ingest from scratch. The live ``session_<channel_id>`` rows are never touched.
+    Returns the removed chunk count; a missing store or missing tables → 0, never an error."""
+    if not Path(db_path).is_file():
+        return 0
+    source = session_source(channel_id, debug=True)
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.enable_load_extension(True)
+        sqlite_vec.load(conn)
+        conn.enable_load_extension(False)
+        try:
+            ids = [
+                r[0] for r in conn.execute("SELECT id FROM chunks WHERE source = ?", (source,))
+            ]
+        except sqlite3.OperationalError:
+            ids = []  # store without a chunks table
+        for rowid in ids:
+            for table in ("session_chunks_vec", "chunks_fts"):
+                try:
+                    conn.execute(f"DELETE FROM {table} WHERE rowid = ?", (rowid,))
+                except sqlite3.OperationalError:
+                    pass  # mirror table absent (no-FTS5 build / pre-session store)
+        if ids:
+            conn.execute("DELETE FROM chunks WHERE source = ?", (source,))
+        try:
+            conn.execute(
+                "DELETE FROM meta WHERE key LIKE ?", (f"session_ingested:{source}:%",)
+            )
+        except sqlite3.OperationalError:
+            pass
+        conn.commit()
+    finally:
+        conn.close()
+    return len(ids)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Ingest rotated session journals into the RAG store (campaign memory)."
     )
     parser.add_argument(
-        "path", type=Path,
+        "path", type=Path, nargs="?",
         help="a session dir (data/sessions/<channel_id>; ingests missing stamps) "
              "or one rotated history.<stamp>.jsonl (always re-ingested)",
     )
@@ -308,13 +370,27 @@ def main() -> int:
                         help="channel id (default: the session dir's name)")
     parser.add_argument("--db", type=Path, default=Path("data/vectordb/rag.db"))
     parser.add_argument("--host", default=None, help="Ollama host (default: OLLAMA_HOST env)")
+    parser.add_argument(
+        "--wipe-debug", metavar="CHANNEL_ID", default=None,
+        help="delete the debug-run sandbox source session_debug_<CHANNEL_ID> from the store "
+             "(debug-campaign reset, ADR 055); live session rows stay untouched",
+    )
     args = parser.parse_args()
     import os
 
+    if args.wipe_debug is not None:
+        n = wipe_debug_source(args.db, args.wipe_debug)
+        print(f"[OK] wiped {n} chunks (source={session_source(args.wipe_debug, debug=True)})")
+        return 0
+    if args.path is None:
+        parser.error("path is required (unless --wipe-debug is given)")
     host = args.host or os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
     if args.path.is_dir():
         channel = args.channel or args.path.name
-        files = pending_files(args.path, db_path=args.db)
+        # manual runs backfill both modes; each file still routes by its own name
+        files = pending_files(args.path, db_path=args.db) + pending_files(
+            args.path, db_path=args.db, debug=True
+        )
         if not files:
             print("[OK] nothing pending — all rotated sessions already ingested")
             return 0
@@ -332,7 +408,8 @@ def main() -> int:
         return 1
     for f in files:
         n = ingest_session_file(f, channel_id=channel, db_path=args.db, host=host)
-        print(f"[OK] {f.name}: {n} chunks -> {args.db} (source={session_source(channel)})")
+        src = session_source(channel, debug=is_debug_archive(f))
+        print(f"[OK] {f.name}: {n} chunks -> {args.db} (source={src})")
     return 0
 
 

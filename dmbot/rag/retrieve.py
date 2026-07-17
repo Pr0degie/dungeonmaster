@@ -175,12 +175,16 @@ class RulebookRetriever:
         k: int = TOP_K,
         max_distance: float = MAX_DISTANCE,
         session_memory: bool = True,
+        debug_sessions: bool = False,
     ) -> None:
         self._db_path = db_path
         self._host = host.rstrip("/")
         self._k = k
         self._max_distance = max_distance
         self._session_memory = session_memory  # campaign-memory retrieval (ADR 054) on/off
+        # Debug-run sandbox (ADR 055): read the session_debug_<id> source instead of the live
+        # one — a debug campaign never sees the real campaign's memories, and vice versa.
+        self._debug_sessions = debug_sessions
         self._client: httpx.AsyncClient | None = None
         self._model: str | None = None  # read from the store's meta table on first use
 
@@ -266,7 +270,9 @@ class RulebookRetriever:
         weakest. An FTS hit outranks any borderline KNN hit and skips malus + threshold; dedupe
         by chunk id; at most ``SESSION_TOP_K`` rows. → ``[(scene, text, stamp, rank, exact)]``.
         A store without session rows / stamp column / FTS table → ``[]``, never an error."""
-        source = f"session_{channel_id}"
+        from .ingest_session import session_source
+
+        source = session_source(channel_id, debug=self._debug_sessions)
         conn = _vec_conn(self._db_path)
         try:
             rows = self._knn_sessions(conn, vector, source, SESSION_TOP_K * 3)

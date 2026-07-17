@@ -332,6 +332,9 @@ class VoiceCog(commands.Cog):
                     rotated = history_store.rotate(
                         self._rt._history_path(self._rt._active_vc_id),
                         stamp=datetime.now().strftime("%Y%m%d-%H%M%S"),
+                        # Debug-run sandbox (ADR 055): mark the archive so it can never be
+                        # mistaken for a real session record in the shared channel directory.
+                        debug=getattr(self._rt, "is_debug_run", False),
                     )
                 except OSError:
                     log.exception("could not rotate the history autosave on leave")

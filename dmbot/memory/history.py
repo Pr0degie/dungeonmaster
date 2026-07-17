@@ -75,13 +75,17 @@ def load_recent(path: Path, max_turns: int) -> list[tuple[str, str]]:
     return turns[-max_turns:] if max_turns and max_turns > 0 else turns
 
 
-def rotate(path: Path, *, stamp: str) -> Path | None:
+def rotate(path: Path, *, stamp: str, debug: bool = False) -> Path | None:
     """Rename the history file to ``history.<stamp>.jsonl`` (keep it, don't delete) on ``!leave``,
     so the next session starts fresh while the record survives. No-op (``None``) if the file
-    doesn't exist; otherwise returns the rotated path."""
+    doesn't exist; otherwise returns the rotated path. ``debug=True`` (a debug-campaign run,
+    ADR 055) names the archive ``history.<stamp>.debug.jsonl`` instead — the marker that keeps
+    debug archives distinguishable from real session records forever after, in a session
+    directory both kinds share."""
     path = Path(path)
     if not path.is_file():
         return None
-    target = path.with_name(f"history.{stamp}.jsonl")
+    suffix = ".debug.jsonl" if debug else ".jsonl"
+    target = path.with_name(f"history.{stamp}{suffix}")
     path.replace(target)
     return target

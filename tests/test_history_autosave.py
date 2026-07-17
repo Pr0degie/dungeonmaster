@@ -179,6 +179,15 @@ def test_rotate_missing_file_is_noop(tmp_path):
     assert history.rotate(tmp_path / "nope.jsonl", stamp="x") is None
 
 
+def test_rotate_debug_run_carries_the_debug_marker(tmp_path):
+    # ADR 055: debug-campaign archives share the live channel's directory — the marker keeps
+    # them distinguishable (and separately routable) forever after
+    p = tmp_path / "history.jsonl"
+    history.append_turn(p, ts="t1", user_msg="u1", answer="a1")
+    target = history.rotate(p, stamp="20260610-101010", debug=True)
+    assert target is not None and target.name == "history.20260610-101010.debug.jsonl"
+
+
 def test_restore_history_into_an_empty_brain():
     brain = DMBrain(object())  # restore_history never touches the client
     ch = 1

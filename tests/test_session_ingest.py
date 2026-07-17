@@ -18,10 +18,12 @@ from dmbot.rag.ingest_session import (
     chunk_session,
     ingest_session_file,
     ingested_stamps,
+    is_debug_archive,
     load_journal,
     pending_files,
     session_source,
     stamp_date_de,
+    wipe_debug_source,
 )
 from dmbot.runtime import SessionRuntime
 
@@ -175,6 +177,69 @@ def test_pending_files_skips_ingested_stamps_and_the_live_journal(tmp_path, monk
     assert [p.name for p in pending] == ["history.20260713-101500.jsonl"]
 
 
+# --- debug-run sandbox (ADR 055) ----------------------------------------------------------------
+
+def test_debug_archive_routes_to_the_sandbox_source_by_filename(tmp_path, monkeypatch) -> None:
+    # routing keys on the filename alone — a .debug archive can never reach the live source
+    monkeypatch.setattr(ingest_session, "embed_texts", _fake_embed)
+    db = tmp_path / "rag.db"
+    journal = _write_journal(
+        tmp_path / "sessions" / "42" / f"history.{STAMP}.debug.jsonl",
+        [_scene("sz_a"), _turn("A: a", "b")],
+    )
+    assert is_debug_archive(journal) and not is_debug_archive(Path("history.x.jsonl"))
+    ingest_session_file(journal, channel_id="42", db_path=db, host="http://unused")
+    assert _rows(db, "SELECT COUNT(*) FROM chunks WHERE source = ?",
+                 session_source("42", debug=True))[0][0] == 1
+    assert _rows(db, "SELECT COUNT(*) FROM chunks WHERE source = ?",
+                 session_source("42"))[0][0] == 0
+
+
+def test_plain_archive_never_routes_to_the_debug_source(tmp_path, monkeypatch) -> None:
+    db = _ingest(tmp_path, monkeypatch, [_scene("sz_a"), _turn("A: a", "b")])
+    assert _rows(db, "SELECT COUNT(*) FROM chunks WHERE source = ?",
+                 session_source("42"))[0][0] == 1
+    assert _rows(db, "SELECT COUNT(*) FROM chunks WHERE source = ?",
+                 session_source("42", debug=True))[0][0] == 0
+
+
+def test_pending_files_sees_only_the_requested_mode_in_both_directions(
+    tmp_path, monkeypatch
+) -> None:
+    records = [_scene("sz_a"), _turn("A: a", "b")]
+    db = _ingest(tmp_path, monkeypatch, records)  # plain STAMP already ingested
+    sess = tmp_path / "sessions" / "42"
+    _write_journal(sess / f"history.{STAMP}.debug.jsonl", records)  # same stamp, other mode
+    _write_journal(sess / "history.20260713-101500.jsonl", records)
+    # normal-mode scan: only plain files — the .debug archive is structurally invisible
+    assert [p.name for p in pending_files(sess, db_path=db)] == ["history.20260713-101500.jsonl"]
+    # debug-mode scan: only .debug files — its stamp bookkeeping is separate from the plain one
+    assert [p.name for p in pending_files(sess, db_path=db, debug=True)] == [
+        f"history.{STAMP}.debug.jsonl"
+    ]
+
+
+def test_wipe_debug_removes_only_the_sandbox_rows(tmp_path, monkeypatch) -> None:
+    records = [_scene("sz_a"), _turn("A: a", "b")]
+    db = _ingest(tmp_path, monkeypatch, records)  # live row under session_42
+    debug_journal = _write_journal(
+        tmp_path / "sessions" / "42" / f"history.{STAMP}.debug.jsonl", records
+    )
+    ingest_session_file(debug_journal, channel_id="42", db_path=db, host="http://unused")
+    assert wipe_debug_source(db, "42") == 1
+    assert _rows(db, "SELECT COUNT(*) FROM chunks WHERE source = ?",
+                 session_source("42", debug=True))[0][0] == 0
+    assert ingested_stamps(db, session_source("42", debug=True)) == set()
+    # the live campaign's rows, FTS mirror and stamp bookkeeping survive untouched
+    assert _rows(db, "SELECT COUNT(*) FROM chunks WHERE source = ?",
+                 session_source("42"))[0][0] == 1
+    assert _rows(db, "SELECT COUNT(*) FROM chunks_fts")[0][0] == 1
+    assert STAMP in ingested_stamps(db, session_source("42"))
+    # idempotent, and a missing store is a silent 0
+    assert wipe_debug_source(db, "42") == 0
+    assert wipe_debug_source(tmp_path / "nope.db", "42") == 0
+
+
 def test_redo_collapse_holds_through_ingest(tmp_path, monkeypatch) -> None:
     records = [
         _scene("sz_a"),
@@ -253,10 +318,11 @@ def test_ingest_source_is_channel_scoped_and_off_switchable(tmp_path) -> None:
     assert SessionRuntime._session_ingest_source(rt_off, 42) is None
 
 
-def test_debug_campaign_runs_never_enter_the_store(tmp_path) -> None:
-    # ADR 052: debug runs play in the SAME channel — the testplan.json sidecar marks them
+def test_debug_campaign_runs_route_to_the_sandbox_source(tmp_path) -> None:
+    # ADR 052/055: debug runs play in the SAME channel — the testplan.json sidecar marks them;
+    # they get their own sandbox source instead of skipping (gate G10 needs the full path)
     rt = _rt_stub(tmp_path, testplan=True)
-    assert SessionRuntime._session_ingest_source(rt, 42) is None
+    assert SessionRuntime._session_ingest_source(rt, 42) == "session_debug_42"
 
 
 def test_schedule_without_event_loop_degrades_to_a_noop(tmp_path) -> None:
