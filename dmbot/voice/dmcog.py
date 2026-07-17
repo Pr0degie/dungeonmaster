@@ -60,6 +60,12 @@ class DMCog(commands.Cog):
         take_notes = getattr(self._rt, "take_replay_notes", None)
         if take_notes is not None:
             extra.update(take_notes(channel))
+        # In-game clock at turn completion (ADR 053): the chunk-time anchor for the upcoming
+        # session-transcript ingest. Metadata only — no renderer or prompt consumes it, and
+        # every reader must tolerate its absence (old journals lack it).
+        state = getattr(self._rt, "_state", {}).get(cid)
+        if state is not None and hasattr(state, "time_minutes"):
+            extra["time_minutes"] = state.time_minutes
         try:
             await asyncio.to_thread(
                 history_store.append_turn, self._rt._history_path(cid),

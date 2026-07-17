@@ -131,6 +131,41 @@ def test_append_turn_core_keys_win_over_extra(tmp_path):
     assert history.load_recent(p, 10) == [("u", "a")]
 
 
+# ---- ADR 053: in-game time on turn records --------------------------------------------------
+
+def test_turn_records_carry_time_minutes_and_load_fine_without_it(tmp_path):
+    """New turns carry the in-game clock via extra; old records lack the field — both load."""
+    p = tmp_path / "history.jsonl"
+    history.append_turn(p, ts="t1", user_msg="u1", answer="a1")  # old-style: no time_minutes
+    history.append_turn(p, ts="t2", user_msg="u2", answer="a2", extra={"time_minutes": 510})
+    recs = [json.loads(line) for line in p.read_text(encoding="utf-8").splitlines()]
+    assert "time_minutes" not in recs[0]
+    assert recs[1]["time_minutes"] == 510
+    assert history.load_recent(p, 10) == [("u1", "a1"), ("u2", "a2")]
+
+
+def test_autosave_turn_stamps_time_minutes(tmp_path):
+    """The cog's autosave stamps the channel's WorldState.time_minutes at turn completion."""
+    import asyncio
+
+    from dmbot.voice.dmcog import DMCog
+
+    cog = object.__new__(DMCog)  # __init__ skipped (the test_subcogs pattern)
+    cog._rt = SimpleNamespace(
+        _autosave=True,
+        _brain_channel=lambda ch: 7,
+        _brain=SimpleNamespace(last_user_msg=lambda cid: "Timo: hi"),
+        _state={7: SimpleNamespace(time_minutes=510)},
+        _history_path=lambda cid: tmp_path / "history.jsonl",
+    )
+    asyncio.run(cog._autosave_turn(SimpleNamespace(id=7), "Antwort", user_msg="Timo: hi"))
+    recs = [json.loads(line)
+            for line in (tmp_path / "history.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert len(recs) == 1
+    assert recs[0]["time_minutes"] == 510
+    assert (recs[0]["user_msg"], recs[0]["answer"]) == ("Timo: hi", "Antwort")
+
+
 def test_rotate_renames_and_keeps_the_record(tmp_path):
     p = tmp_path / "history.jsonl"
     history.append_turn(p, ts="t1", user_msg="u1", answer="a1")
