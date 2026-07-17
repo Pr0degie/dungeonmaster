@@ -59,6 +59,9 @@ or an ADR already holds — link there instead.
   in the installed library's code; mock its real contract, not your mental model.
 
 ### RAG & live process
+- [topk-post-filter-starves-partition-the-index](topk-post-filter-starves-partition-the-index.md) —
+  KNN `k` is global per table and the source filter prunes after; a minority corpus behind a
+  shared index gets starved — partition by table, and make rowid-keyed mirrors self-healing.
 - [rag-misses-are-content-gaps](rag-misses-are-content-gaps.md) — Retrieval misses are
   fixed by content (language, curated German, term in the chunk body, shape), never by the
   threshold; threshold changes need golden-set evidence.

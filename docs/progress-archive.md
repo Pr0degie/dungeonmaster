@@ -9,6 +9,13 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+_Aus `progress.md` rotiert (2026-07-17, Session-RAG-Runde ADR 054):_
+
+**Content-Runde: Debug-Kampagne „Die Mitternachtsfracht“ (2026-07-11) — füllt den `testplan.json`-Vertrag aus ADR 052. KEIN neues Live-Gate (Test-Vehikel für die bestehenden 8).**
+`data/adventures/debug-kampagne/` (lokal, git-ignored): `adventure.json` (6 Szenen, ein Abend, Original-Content — kein Buchmaterial), `npcs.json` (8 Statblocks, 4× `faction: kettenbund`, Kessel mit `goal_de`), `testplan.json` (jede Szene → Gates + Ein-Zeilen-Hinweis fürs 🧪-Overlay). Alle G1–G9 mit eingebauten natürlichen Triggern — Design-Details im archivierten Current-focus-Block, Tisch-Referenz im Runbook.
+- **Evidenz:** `validate.py` (echter `Adventure.load`): `loaded: Die Mitternachtsfracht — 6 scenes, 8 statblocks, start='zollhaus'` / `RESULT: OK` (0 Errors/Warnings), Gate `lagerhaus -> pier_neun requires 'verladebrief'` erkannt; `Testplan.load` OK (6 Szenen), Gate-Abdeckung G1:1 G2:2 G3:3 G4:1 G5:2 G6:2 G7:3 G8:2 G9:3; alle `Fertigkeit (Schwierigkeit)`-Tokens gegen Profil-`difficulty_ladder` + Party-Skill-Union verifiziert.
+- **Committet (nur getrackte Dateien):** `docs/debug-campaign-runbook.md` + Verweis-Zeile im Live-Run-Skript. Die Kampagne selbst bleibt lokal (`data/**`-Ignore, wie chemical_burn) — für Timos Maschine manuell mitkopieren.
+
 _Aus `progress.md` rotiert (2026-07-17, Journal-Runde ADR 053):_
 
 **🧪 Debug-Overlay-Runde (2026-07-11, D99 → ADR 052). Dev-Tooling, KEIN neues Live-Gate (WIP-exempt — die Live-Verifikation reitet auf der Debug-Kampagne, für die das Overlay existiert).**
@@ -1191,6 +1198,10 @@ in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 ---
 
 ## Current focus (Verlauf)
+
+_Aus `progress.md` rotiert (2026-07-17, Session-RAG-Runde ADR 054):_
+
+**Debug-Kampagne „Die Mitternachtsfracht“ authored (2026-07-11, Content-Runde — füllt den `testplan.json`-Vertrag aus ADR 052). Skill-Validator gegen den echten Loader: `RESULT: OK` (0 Errors/Warnings, Statblocks 8/8), `Testplan.load` OK, Gate-Abdeckung G1–G9 vollständig, Fertigkeiten/Schwierigkeiten gegen Profil-`difficulty_ladder` + Party-Vokabular verifiziert. KEIN neues Live-Gate — das ist das Test-Vehikel für die 8 offenen.** Ein Original-Abenteuer (kein Buchmaterial), ein Abend, 6 Szenen (`zollhaus → schrein → pfandhalle → lagerhaus → siedehaus → pier_neun`), 8 NSC-Statblocks — jedes Gate hat einen natürlichen Story-Trigger: G4-Gate `lagerhaus → pier_neun requires 'verladebrief'` fest im File; 4× `faction: kettenbund`, sodass die G5-Lüge an Bree Marlok per Gossip bei Dockmeister Kessel ankommt; Kessel mit `goal_de` (G7, über mehrere Szenenwechsel beobachtbar); Lastenservitor Ohm-3 stirbt im Lagerhaus-Kampf und das Finale erwähnt Servitoren (G6-Versuchung); zwei Chekhov-Saaten (glattgeschliffene Münze, Fenks Hymne) mit verdrahteter Ernte in `pier_neun` (G9); Psi-Nachbild für Fridolin (G1); Sirenen-Frist + Kettenbund-Wachsamkeit als organische G2/G3-Anker; Kampf so bemessen, dass Wunden fallen, aber niemand stirbt (G8). Spieler-Text rein in-fiction — Gate-Hinweise NUR über die LLM-unsichtbare `testplan.json` (ADR 052). Kampagne lokal (`data/**` git-ignored; Timos Maschine braucht eine Handkopie, `dm-sync` zeigt die shas); committet sind `docs/debug-campaign-runbook.md` (Szenen→Beweis-Tabelle mit wörtlichen Logzeilen, Debrief-in-5-Minuten-Greps, Reset-Notiz) + eine Verweis-Zeile im Live-Run-Skript.
 
 _Aus `progress.md` rotiert (2026-07-17, Journal-Runde ADR 053):_
 
