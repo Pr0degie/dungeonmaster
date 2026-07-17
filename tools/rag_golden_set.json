@@ -38,5 +38,24 @@
     "Ich nicke dem Wachmann zu und gehe weiter.",
     "Was laeuft eigentlich nachher noch im Fernsehen?",
     "Ich setze mich an den Tisch und warte auf die anderen."
-  ]
+  ],
+  "session_recall": {
+    "_note": "Campaign-memory recall (ADR 054): retrieval over PLAYED session transcripts. Positives must hit a session chunk (KNN under SESSION_MAX_DISTANCE or an exact-term FTS hit; 'match' = lowercased substring expected in the hit's text). Negatives are pure narration and must retrieve NOTHING. The content targets the committed fixture session under 'fixture_dir' (ingested by rag_calibrate.py as source session_fixture) — replace/extend with questions about real rotated sessions once live play has produced some; until then the report notes that live tuning is pending.",
+    "source": "session_fixture",
+    "fixture_dir": "tools/fixtures/fixture",
+    "positives": [
+      { "q": "Was hat der Haendler Vosk fuer das Datenpad verlangt?", "match": "vosk" },
+      { "q": "Wer oder was ist Kranich-9?", "match": "kranich-9" },
+      { "q": "Was haben wir in der Kapelle geschworen?", "match": "schwur" },
+      { "q": "Wo haben wir das Datenpad versteckt?", "match": "bodenplatte" },
+      { "q": "Wie kamen wir am Umschlagplatz an?", "match": "frachtzug" }
+    ],
+    "negatives": [
+      "Ich ziehe meinen Mantel enger und sehe mich um.",
+      "Wir gehen weiter die Strasse entlang zum naechsten Haus.",
+      "Kurze Pause, ich hole mir was zu trinken.",
+      "Ich nicke dem Wachmann zu und folge den anderen.",
+      "Mein Charakter setzt sich ans Feuer und schweigt."
+    ]
+  }
 }

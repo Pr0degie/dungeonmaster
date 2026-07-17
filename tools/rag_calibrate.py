@@ -28,7 +28,8 @@ try:
 except Exception:
     pass
 
-from dmbot.rag import retrieve as R  # noqa: E402 (after the path insert)
+from dmbot.rag import ingest_session as ING  # noqa: E402 (after the path insert)
+from dmbot.rag import retrieve as R  # noqa: E402
 
 GOLDEN = Path("tools/rag_golden_set.json")
 DB = Path("data/vectordb/rag.db")
@@ -36,6 +37,9 @@ REPORT = Path("tools/rag_calibrate_report.md")
 HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
 TOPK = 5  # over-fetch per query for the analysis (the bot uses TOP_K=3 / k=2/3)
 SWEEP = [round(0.35 + 0.025 * i, 3) for i in range(11)]  # 0.35 … 0.60
+# Session recall (ADR 054) sweeps its own, tighter band: DE-vs-DE transcript matches score far
+# below the DE-vs-EN rulebook case, and SESSION_MAX_DISTANCE starts at 0.38.
+SESSION_SWEEP = [round(0.26 + 0.02 * i, 3) for i in range(11)]  # 0.26 … 0.46
 
 # The retrieval contexts the bot runs, each with its current ceiling (the thing we calibrate).
 CONTEXTS = {
@@ -153,9 +157,77 @@ async def main() -> int:
         emit(f"| {q[:46]} | {best} | {d} |")
     emit("")
 
+    await _session_recall_section(gs)
+
     REPORT.write_text("\n".join(_out_lines) + "\n", encoding="utf-8")
     print(f"\n[OK] report → {REPORT} (gitignored)")
     return 0
+
+
+async def _session_recall_section(gs: dict) -> None:
+    """Campaign-memory recall (ADR 054): sweep ``SESSION_MAX_DISTANCE`` against the
+    ``session_recall`` golden section. The committed fixture session is (re)ingested first
+    (stamp-idempotent) so the sweep always has a session source; the ``session_fixture``
+    source is inert at runtime (retrieval only ever searches the active channel's
+    ``session_<channel_id>``)."""
+    sr = gs.get("session_recall")
+    if not sr:
+        return
+    src, fixture_dir = sr["source"], Path(sr["fixture_dir"])
+    for f in sorted(fixture_dir.glob("history.*.jsonl")):
+        ING.ingest_session_file(f, channel_id=fixture_dir.name, db_path=DB, host=HOST)
+    retr = R.RulebookRetriever(DB, host=HOST)
+    conn = R._vec_conn(DB)
+
+    async def probe(q: str):
+        vector = await retr._embed_query(q)
+        # raw distances over the separate session vec table, no malus/threshold
+        knn = retr._knn_sessions(conn, vector, src, TOPK)  # (id, scene, text, stamp, dist)
+        fts = retr._fts_session_hits(conn, q, src)
+        return knn, fts
+
+    pos = [(p, *(await probe(p["q"]))) for p in sr["positives"]]
+    neg = [(q, *(await probe(q))) for q in sr["negatives"]]
+    await retr.aclose()
+
+    import re as _re
+    live = [
+        s for (s,) in conn.execute(
+            "SELECT DISTINCT source FROM chunks WHERE source LIKE 'session_%'"
+        ) if _re.fullmatch(r"session_\d+", s)
+    ]
+
+    emit(f"## Session-Recall (ADR 054) — Quelle `{src}`  (aktuell: {R.SESSION_MAX_DISTANCE})\n")
+    if not live:
+        emit("_Hinweis: keine echten rotierten Sessions im Store — Sweep laeuft gegen die "
+             "Fixture-Session; **Live-Tuning steht noch aus**._\n")
+    emit("| Frage | bester Treffer korrekt? | Distanz | FTS-Treffer |")
+    emit("|---|---|---|---|")
+
+    def _ok(hits, match):  # 'match' = lowercased substring expected in the hit text
+        return any(match in t.lower() for _, _, t, _, _ in hits)
+
+    for p, knn, fts in pos:
+        d = f"{knn[0][4]:.3f}" if knn else "—"
+        fts_ok = any(p["match"] in text.lower() for _, _, text, _ in fts)
+        emit(f"| {p['q'][:44]} | {'✓' if _ok(knn[:2], p['match']) else '·'} | {d} | "
+             f"{'✓' if fts_ok else '·'} |")
+    emit("")
+    emit("| T | pos✓KNN (nur KNN ≤ T) | pos✓ (KNN ≤ T oder FTS) | negLeak (KNN ≤ T oder FTS) |")
+    emit("|---|---|---|---|")
+    for t in SESSION_SWEEP:
+        def _knn_ok(p, knn, t=t):
+            return any(p["match"] in txt.lower() and d <= t for _, _, txt, _, d in knn[:2])
+
+        pk = sum(1 for p, knn, _ in pos if _knn_ok(p, knn))
+        pc = sum(
+            1 for p, knn, fts in pos
+            if _knn_ok(p, knn) or any(p["match"] in txt.lower() for _, _, txt, _ in fts)
+        )
+        nl = sum(1 for _, knn, fts in neg if (knn and knn[0][4] <= t) or fts)
+        mark = "  ← aktuell" if abs(t - R.SESSION_MAX_DISTANCE) < 1e-6 else ""
+        emit(f"| {t:.3f} | {pk}/{len(pos)} | {pc}/{len(pos)} | {nl}/{len(neg)} |{mark}")
+    emit("")
 
 
 if __name__ == "__main__":
