@@ -180,7 +180,49 @@ def test_autosave_on_calls_restore_history(monkeypatch) -> None:
     rt.seed_session(voice, text)
 
     assert rt._brain.restore_calls == [(voice.id, sentinel_turns)]
-    assert [h["kind"] for h in headers] == ["session"]  # one header per !join (ADR 046)
+    # One header per !join (ADR 046) + the opening scene event (ADR 053) — here the state's
+    # *restored* pointer, so a rotated-fresh journal still opens with a scene.
+    assert [h["kind"] for h in headers] == ["session", "scene"]
+    assert headers[1]["scene_id"] == "x"
+
+
+def _stub_journal(rt, monkeypatch) -> list[dict]:
+    """Route the seed's journal writes into a list — no disk in tests."""
+    import dmbot.runtime as runtime_mod
+
+    events: list[dict] = []
+    rt._history_path = lambda cid: f"/fake/history/{cid}.jsonl"
+    monkeypatch.setattr(runtime_mod.history_store, "load_recent", lambda path, n: [])
+    monkeypatch.setattr(
+        runtime_mod.history_store, "append_event", lambda path, record: events.append(record)
+    )
+    return events
+
+
+def test_join_start_scene_assignment_is_journaled(monkeypatch) -> None:
+    """ADR 053: the initial start-scene seed on !join writes a scene event, so the first chunk
+    of a fresh session has a scene."""
+    state = SimpleNamespace(scene_id="")  # fresh: the seed assigns the start scene
+    adventure = SimpleNamespace(start_scene="szene_01", id="abenteuer")  # header reads .id
+    rt = _make_runtime(adventure=adventure, state_obj=state, autosave=True)
+    voice, text = _channels()
+    events = _stub_journal(rt, monkeypatch)
+
+    rt.seed_session(voice, text)
+
+    assert [e["kind"] for e in events] == ["session", "scene"]
+    assert events[1]["scene_id"] == "szene_01"
+
+
+def test_join_without_scene_writes_no_scene_event(monkeypatch) -> None:
+    state = SimpleNamespace(scene_id="")  # no adventure → the pointer stays empty
+    rt = _make_runtime(adventure=None, state_obj=state, autosave=True)
+    voice, text = _channels()
+    events = _stub_journal(rt, monkeypatch)
+
+    rt.seed_session(voice, text)
+
+    assert [e["kind"] for e in events] == ["session"]  # header only, no empty scene event
 
 
 def test_autosave_off_skips_restore_history() -> None:

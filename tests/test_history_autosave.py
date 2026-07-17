@@ -7,8 +7,12 @@ lines are tolerated, rotation keeps the record, and restore only fills an empty 
 
 from __future__ import annotations
 
+import json
+from types import SimpleNamespace
+
 from dmbot.memory import history
 from dmbot.orchestrator import DMBrain
+from dmbot.runtime import SessionRuntime
 
 
 def test_append_and_load_roundtrip(tmp_path):
@@ -55,6 +59,70 @@ def test_replay_journal_records_are_invisible_to_the_crash_restore(tmp_path):
         extra={"raw": "A1 <<TEST X>>", "lines": [["Timo", "a"]], "markers": {"tests": []}},
     )
     assert history.load_recent(p, 10) == [("Timo: a", "A1")]
+
+
+def test_scene_events_are_invisible_to_the_crash_restore(tmp_path):
+    """ADR 053: scene-boundary events ride the same journal; load_recent must skip them and a
+    redo record must still collapse the prior *turn* across an interleaved scene event."""
+    p = tmp_path / "history.jsonl"
+    history.append_event(p, {"kind": "scene", "scene_id": "zollhaus", "ts": "t0"})
+    history.append_turn(p, ts="t1", user_msg="Timo: a", answer="A1")
+    history.append_event(p, {"kind": "scene", "scene_id": "schrein", "ts": "t2"})
+    history.append_turn(p, ts="t3", user_msg="Timo: a", answer="A1b", redo=True)
+    assert history.load_recent(p, 10) == [("Timo: a", "A1b")]
+
+
+# ---- ADR 053: the runtime journals scene boundaries ----------------------------------------
+
+def _scene_runtime(tmp_path, *, autosave: bool = True, cid: int = 7):
+    """A SessionRuntime with __init__ skipped, wired with only what _set_scene touches
+    (the test_seed_session pattern): a two-scene fake adventure and a real history path."""
+    rt = SessionRuntime.__new__(SessionRuntime)
+    scenes = {sid: SimpleNamespace(id=sid, title_de="") for sid in ("a", "b")}
+    rt._adventure = SimpleNamespace(get_scene=lambda sid: scenes.get(sid))
+    rt._autosave = autosave
+    state = SimpleNamespace(scene_id="a", set_location=lambda loc: None)
+    rt._state = {cid: state}
+    rt._history_path = lambda channel_id: tmp_path / str(channel_id) / "history.jsonl"
+    return rt, state
+
+
+def _journal_records(tmp_path, cid: int = 7) -> list[dict]:
+    p = tmp_path / str(cid) / "history.jsonl"
+    if not p.is_file():
+        return []
+    return [json.loads(line) for line in p.read_text(encoding="utf-8").splitlines()]
+
+
+def test_set_scene_journals_the_transition(tmp_path):
+    rt, state = _scene_runtime(tmp_path)
+    assert rt._set_scene(state, "b") is not None
+    recs = _journal_records(tmp_path)
+    assert [r["kind"] for r in recs] == ["scene"]
+    assert recs[0]["scene_id"] == "b"
+    assert recs[0]["ts"]  # real-time stamp present
+
+
+def test_set_scene_same_scene_writes_no_event(tmp_path):
+    rt, state = _scene_runtime(tmp_path)
+    assert rt._set_scene(state, "a") is not None  # !ort to the current scene — no boundary
+    assert _journal_records(tmp_path) == []
+
+
+def test_set_scene_autosave_off_writes_no_event(tmp_path):
+    rt, state = _scene_runtime(tmp_path, autosave=False)
+    assert rt._set_scene(state, "b") is not None  # the move itself still happens
+    assert state.scene_id == "b"
+    assert _journal_records(tmp_path) == []
+
+
+def test_set_scene_unknown_state_is_tolerated(tmp_path):
+    """A state not registered in _state (partially-built runtime) moves fine, just unjournaled."""
+    rt, _ = _scene_runtime(tmp_path)
+    foreign = SimpleNamespace(scene_id="a", set_location=lambda loc: None)
+    assert rt._set_scene(foreign, "b") is not None
+    assert foreign.scene_id == "b"
+    assert _journal_records(tmp_path) == []
 
 
 def test_append_turn_core_keys_win_over_extra(tmp_path):

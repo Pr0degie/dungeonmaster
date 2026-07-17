@@ -24,8 +24,9 @@ log = logging.getLogger(__name__)
 def append_event(path: Path, record: dict) -> None:
     """Append one journal record as a JSON line (creates the parent dir). Append-only — no atomic
     rename needed; a torn final line is tolerated on load. Besides the per-turn records this also
-    carries typed events (``{"kind": "session", …}``, ADR 046) — :func:`load_recent` skips those
-    (no ``user_msg``/``answer``), so old and new consumers coexist on one file."""
+    carries typed events (``{"kind": "session", …}``, ADR 046; ``{"kind": "scene", …}``, ADR 053)
+    — :func:`load_recent` skips those (no ``user_msg``/``answer``), so old and new consumers
+    coexist on one file."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as fh:

@@ -612,16 +612,40 @@ class SessionRuntime:
         """Move the code-owned scene pointer (golden rule #3): set ``state.scene_id`` and sync the
         prose location. The single deterministic move shared by ``!ort`` and the auto-transition
         path (ADR 026). Returns the Scene moved to, or None if ``scene_id`` is unknown to the
-        adventure. The caller persists + refreshes the prompt."""
+        adventure. The caller persists + refreshes the prompt. A real move (pointer actually
+        changes) is journaled as a ``{"kind": "scene"}`` event (ADR 053)."""
         if self._adventure is None:
             return None
         scene = self._adventure.get_scene(scene_id)
         if scene is None:
             return None
+        changed = state.scene_id != scene.id
         state.scene_id = scene.id
         if scene.title_de:
             state.set_location(scene.title_de)  # keep the prose state block in sync
+        if changed:
+            self._journal_scene_event(state)
         return scene
+
+    def _journal_scene_event(self, state: WorldState) -> None:
+        """Append a ``{"kind": "scene", "scene_id", "ts"}`` record to the session journal
+        (ADR 053): rotated transcripts carry their own scene boundaries for the upcoming
+        session-transcript ingest. ``load_recent`` skips it (no ``user_msg``/``answer``,
+        ADR 046). getattr-guarded like :meth:`replay_note` — journaling must never break a
+        scene move on a partially-built runtime."""
+        if not getattr(self, "_autosave", False):
+            return
+        cid = next((c for c, st in getattr(self, "_state", {}).items() if st is state), None)
+        if cid is None:
+            return
+        try:
+            history_store.append_event(self._history_path(cid), {
+                "kind": "scene",
+                "scene_id": state.scene_id,
+                "ts": datetime.now().isoformat(timespec="seconds"),
+            })
+        except OSError:
+            log.exception("could not journal the scene event for channel %s", cid)
 
     def _set_scene_flag(self, state: WorldState, element_id: str, *, resolved: bool) -> str | None:
         """Deterministically flag an element of the CURRENT scene resolved/open (ADR 043, golden
@@ -964,6 +988,11 @@ class SessionRuntime:
                 })
             except OSError:
                 log.exception("could not write the session header for channel %s", cid)
+            # Scene journal event (ADR 053): open every session's journal with the current scene
+            # — the fresh start-scene seed above or a restored pointer — so the first chunk of a
+            # session has a scene even before the first transition.
+            if self._state[cid].scene_id:
+                self._journal_scene_event(self._state[cid])
         return char_fallback
 
     def replay_note(self, channel, key: str, value) -> None:
