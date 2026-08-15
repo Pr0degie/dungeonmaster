@@ -29,7 +29,11 @@ _ROLE_LABEL = re.compile(
 # narration (the DM never says "ich" of itself — "Als der Inquisitor eintrifft …" doesn't match).
 _META_PREAMBLE = re.compile(
     r"^\s*als\s+(?:die\s+)?(?:spielleit(?:ung|er)|erzähler|gm|dm|game ?master)\s+"
-    r"(?:beschreib\w*|schilder\w*|erzähl\w*|sag\w*|gebe?|beginn\w*|eröffn\w*|er ?öffn\w*|start\w*|leite?)\s+ich\b"
+    # "antworte/reagiere/erwidere ich" joined the list live 2026-08-15: asked in-fiction, nemo
+    # answered "Als Spielleitung antworte ich: …" and stayed in narrator voice instead of playing
+    # the NSC — read aloud verbatim, twice in one session.
+    r"(?:beschreib\w*|schilder\w*|erzähl\w*|sag\w*|gebe?|beginn\w*|eröffn\w*|er ?öffn\w*|start\w*|leite?"
+    r"|antwort\w*|reagier\w*|erwider\w*|entgegn\w*)\s+ich\b"
     r"(?:\s+(?:dir|euch|(?:die|eine|folgende|unsere|heutige)\s+(?:szene|sitzung|runde|spielrunde)))?"
     # zero+ connector words ("so", "wie", "folgendermaßen", …), each maybe after a ":"/"," — so
     # "… beschreibe ich die Szene so:" strips fully instead of leaving a stray "So:" (seen live).

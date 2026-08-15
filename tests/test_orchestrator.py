@@ -142,6 +142,20 @@ def test_sanitize_strips_intro_meta_open_verb_variants() -> None:
     assert _sanitize("Als Spielleitung beginne ich die Runde: Ihr erwacht.") == "Ihr erwacht."
 
 
+def test_sanitize_strips_answering_meta_preamble() -> None:
+    # Live 2026-08-15: a player addressed an NSC, nemo replied in narrator voice —
+    # "Als Spielleitung antworte ich: …" — and it was read aloud verbatim, twice.
+    assert (
+        _sanitize('Als Spielleitung antworte ich: "Natürlich!", sagt der Inquisitor.')
+        == '"Natürlich!", sagt der Inquisitor.'
+    )
+    assert _sanitize("Als Spielleitung reagiere ich: Der Wachmann tritt zurück.") == "Der Wachmann tritt zurück."
+    assert _sanitize("Als Spielleitung erwidere ich: Es bleibt still.") == "Es bleibt still."
+    # The "<verb> ich" anchor must not eat in-fiction narration that merely opens with "Als …".
+    keep = "Als der Inquisitor antwortet, senkt sich seine Stimme."
+    assert _sanitize(keep) == keep
+
+
 def test_unwrap_clean_envelope_only() -> None:
     assert _sanitize('"Es ist dunkel und kalt."') == "Es ist dunkel und kalt."   # clean envelope → unwrap
     # an NPC line inside narration is not an envelope (doesn't start with a quote) → untouched
