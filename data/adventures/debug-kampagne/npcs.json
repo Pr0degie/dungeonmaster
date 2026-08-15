@@ -1,0 +1,93 @@
+{
+  "npcs": [
+    {
+      "name": "Seneschall Bramwell Kaad",
+      "role_de": "Seneschall und Stimme Inquisitor Halikarns in Schleusengrund",
+      "wounds": 8,
+      "toughness_bonus": 2,
+      "armour": 0,
+      "roleplaying_de": "Spricht leise und in Fristen; jede zweite Antwort ist ein Aktenzeichen. Hält Höflichkeit für eine Form von Distanz — und Distanz für eine Tugend."
+    },
+    {
+      "name": "Schwester Cassia Vall",
+      "role_de": "Schreinschwester der Aschenheiligen",
+      "wounds": 7,
+      "toughness_bonus": 2,
+      "armour": 0,
+      "roleplaying_de": "Fegt, wenn sie nervös ist, und flüstert Gebete mitten im Satz. Fühlt sich schuldig, weil sie sich versteckte, als die Diebe kamen — und redet deshalb mehr, als sie müsste."
+    },
+    {
+      "name": "Bree Marlok",
+      "role_de": "Hehlerin, führt die Pfandhalle von Schleusengrund",
+      "wounds": 9,
+      "toughness_bonus": 2,
+      "armour": 0,
+      "roleplaying_de": "Fragt zuerst, in wessen Auftrag man kommt, und vergisst keine Antwort. Lächelt nur, wenn ein Geschäft für die Gegenseite schlecht ausgeht.",
+      "attack_skill": "Nahkampf",
+      "attack_value": 25,
+      "weapon": "Kampfmesser",
+      "damage": "1d10+1",
+      "faction": "kettenbund"
+    },
+    {
+      "name": "Alter Fenk",
+      "role_de": "Blinder Vogelhändler am Tor der Pfandhalle",
+      "wounds": 5,
+      "toughness_bonus": 1,
+      "armour": 0,
+      "roleplaying_de": "Summt eine schiefe Hymne, die niemand zuordnen kann, und behauptet, seine Vögel hätten sie ihm beigebracht. Hört alles, was in der Halle gesprochen wird, und verkauft nichts davon billig."
+    },
+    {
+      "name": "Vosk der Haken",
+      "role_de": "Vorarbeiter und Eintreiber des Kettenbunds",
+      "wounds": 14,
+      "toughness_bonus": 3,
+      "armour": 1,
+      "roleplaying_de": "Redet mit dem Verladehaken in der Hand, als wäre er ein Zeigefinger. Kämpft nur, solange er zu gewinnen glaubt — dann rennt er und nennt es Taktik.",
+      "attack_skill": "Nahkampf",
+      "attack_value": 38,
+      "weapon": "Kettenmesser",
+      "damage": "1d10+3",
+      "faction": "kettenbund"
+    },
+    {
+      "name": "Kettenbund-Schläger",
+      "role_de": "Schläger des Kettenbunds",
+      "wounds": 8,
+      "toughness_bonus": 3,
+      "armour": 0,
+      "roleplaying_de": "Knackt mit den Fingern, bevor er zuschlägt, und zählt danach laut die Zähne des Gegners. Ohne Anführer sofort mutlos.",
+      "attack_skill": "Nahkampf",
+      "attack_value": 32,
+      "weapon": "Kampfmesser",
+      "damage": "1d10+1",
+      "faction": "kettenbund"
+    },
+    {
+      "name": "Lastenservitor Ohm-3",
+      "role_de": "Lastenservitor des Zwischenlagers",
+      "wounds": 10,
+      "toughness_bonus": 4,
+      "armour": 2,
+      "roleplaying_de": "Wiederholt Verladeprotokolle mit zerkratzter Stimme und hält jede Anweisung Vosks für heilig. Riecht nach altem Öl und Weihrauch — niemand weiß mehr, wem er vorher diente.",
+      "attack_skill": "Nahkampf",
+      "attack_value": 25,
+      "weapon": "Greifklaue",
+      "damage": "1d10+2"
+    },
+    {
+      "name": "Arno Kessel",
+      "role_de": "Dockmeister von Pier Neun, Kopf des Kettenbunds",
+      "wounds": 12,
+      "toughness_bonus": 3,
+      "armour": 1,
+      "roleplaying_de": "Zählt beim Reden Gesichter, als wären es Frachtposten. Behandelt Gewalt als Betriebskosten — nichts Persönliches, nur Logistik.",
+      "attack_skill": "Fernkampf",
+      "attack_value": 35,
+      "weapon": "Autopistole",
+      "damage": "1d10+3",
+      "faction": "kettenbund",
+      "goal_de": "Will das Ossarium vor der Mitternachtssirene an Bord der „Groll der Väter“ schaffen und jede Spur tilgen, die zum Kettenbund führt."
+    }
+  ]
+}

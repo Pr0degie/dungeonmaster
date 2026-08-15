@@ -1,0 +1,28 @@
+{
+  "scenes": {
+    "zollhaus": {
+      "gates": ["G2 Uhren (Saat)", "G3 Zeit & Fristen (Saat)", "G7 Agenden (Saat)"],
+      "hint_de": "!zeit prüfen; !uhr neu \"Wachsamkeit des Kettenbunds\" 6; !frist neu \"Mitternachtssirene\" +4h; !npc add Arno_Kessel (registriert seine Agenda aus npcs.json)."
+    },
+    "schrein": {
+      "gates": ["G1 Regelfrage (RAG)", "G9 Chekhov (Saat 1)"],
+      "hint_de": "Fridolin liest das Nachbild (Psi-Probe) und fragt laut eine Regel (z. B. Perils of the Warp), dazu eine !rules-Gegenprobe; die glattgeschliffene Münze nur bemerken, nicht verfolgen."
+    },
+    "pfandhalle": {
+      "gates": ["G5 NPC-Gedächtnis (Saat: Lüge)", "G9 Chekhov (Saat 2)"],
+      "hint_de": "Bree markant anlügen (falsche Identität auf ihre Auftrags-Frage); Fenks Hymne registrieren, nicht nachfragen."
+    },
+    "lagerhaus": {
+      "gates": ["G8 Kampf/Wunden", "G6 Konsistenz (Saat)", "G4 Scene-Card-Gate", "G2 Uhren (Tick)"],
+      "hint_de": "Kampf: Ohm-3 auf 0 Wunden bringen, selbst Wunden kassieren; VOR dem Abhaken einen Wechsel nach pier_neun provozieren (verriegelt), dann Verladebrief finden + abhaken; Lärm = Uhr-Tick."
+    },
+    "siedehaus": {
+      "gates": ["G5 NPC-Gedächtnis (Ernte + Gossip)", "G7 Agenden (Schritt 1)", "G3 Zeit & Fristen (Ernte)"],
+      "hint_de": "!npcmem Bree_Marlok / Arno_Kessel — die Lüge steht drin bzw. kam als Hörensagen an? !agenden nach dem Wechsel; !zeit +2h Richtung Frist."
+    },
+    "pier_neun": {
+      "gates": ["G6 Konsistenz (Ernte)", "G9 Chekhov (Ernte)", "G7 Agenden (Schritt 2)", "G3 Frist-Ablauf", "G8 Neustart/Recap", "G10 Kampagnen-Gedächtnis (Session 2)"],
+      "hint_de": "!sprechmodus nahtlos, dann den toten Ohm-3 gezielt ansprechen lassen; Frist verstreichen lassen (Konsequenz-Turn); danach Bot hart killen → Neustart → !wrap. Session 2: nach der Münze in natürlicher Sprache fragen UND Fenk beim Namen nennen (mitten im Satz) — G10."
+    }
+  }
+}

@@ -168,7 +168,7 @@ dmbot/          the DM bot
   orchestrator.py   the DM brain (history + buffer → LLM)
   bridge.py     HTTP client to Bot A's /speak
   logsetup.py   console (green chat) + file logging
-data/           committed seed/reference: systems/ (profiles), lore/ + rules_de/ (curated DE setting/rules), party/ (party JSONs), sessions/_example + the live channel's characters.json. Generated/local (git-ignored — see the .gitignore allowlist): pdfs/ (RAG sources), adventures/ (scene cards, bought-book derivatives), sessions/<id>/ state+recaps, vectordb/ (rag.db)
+data/           committed seed/reference: systems/ (profiles), lore/ + rules_de/ (curated DE setting/rules), party/ (party JSONs), sessions/_example + the live channel's characters.json, adventures/debug-kampagne/ (the gate-run test campaign — original content). Generated/local (git-ignored — see the .gitignore allowlist): pdfs/ (RAG sources), the other adventures/ compendia (scene cards, bought-book derivatives), sessions/<id>/ state+recaps, vectordb/ (rag.db)
 prompts/        dm_core_de.md (generic GM persona) + campaign_tone_de.md (campaign overlay)  — GERMAN, game content
 docs/           decisions/ (ADRs), lessons/ (recurring corrections; README = the skimmed index), how-to-*.html + character-creation-prompt.md (player guides). SETUP.md lives in the repo root.
 ```

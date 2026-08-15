@@ -65,6 +65,13 @@ tools/rag_calibrate_report.md
 # only characters.json — runtime state (state.json/history/recap) + bought-sheet PDFs stay ignored.
 !data/sessions/1343673766487654464/
 !data/sessions/1343673766487654464/characters.json
+# the debug campaign (ADR 052/055) ships so the gate run works on a teammate's clone: original
+# content written for testing, NOT book-derived — unlike the bought-adventure compendia next to
+# it (chemical_burn etc.), which stay local. The testplan.json sidecar rides along; it never
+# reaches a prompt or RAG path (LLM-invisibility, pinned by tests).
+!data/adventures/
+!data/adventures/debug-kampagne/
+!data/adventures/debug-kampagne/*.json
 
 # Agent / editor / OS cruft
 .claude/**

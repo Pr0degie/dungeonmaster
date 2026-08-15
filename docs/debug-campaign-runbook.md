@@ -2,7 +2,8 @@
 
 Stand: 2026-07-17. Die wiederverwendbare Alternative zum One-Shot-Plan in
 [live-run-script.md](live-run-script.md): eine eigens gebaute 6-Szenen-Kampagne
-(`data/adventures/debug-kampagne/`, **git-ignored, nur lokal**), in der jedes offene
+(`data/adventures/debug-kampagne/`, **committet** — Original-Content, kein Buchmaterial,
+läuft damit auf jedem Clone), in der jedes offene
 Live-Gate einen natürlichen Story-Trigger hat. Die Spieler sehen ein normales
 Imperium-Maledictum-Abenteuer; die Gate-Hinweise kommen ausschließlich über das
 🧪-Debug-Overlay (ADR 052, `testplan.json`-Sidecar — erreicht nie das LLM).
@@ -55,7 +56,7 @@ Münze?“ — semantische Sonde) und (b) mit einem Eigennamen aus Session 1, mi
 ihr FTS-Signal, ADR 054). Beweis sind die `🗂`-Zeilen aus der Tabellenzeile oben plus der
 Block `## Früher in der Kampagne` im Prompt-Log.
 
-Der (git-ignorierte, nur lokale) `testplan.json`-Eintrag `pier_neun` wurde dafür additiv
+Der `testplan.json`-Eintrag `pier_neun` wurde dafür additiv
 erweitert — falls die Datei je neu aufgebaut wird, ist das die exakte Änderung: an `gates`
 wird `"G10 Kampagnen-Gedächtnis (Session 2)"` angehängt, und an `hint_de` der Satz
 `" Session 2: nach der Münze in natürlicher Sprache fragen UND Fenk beim Namen nennen

@@ -7,7 +7,7 @@ Drehbuch gemerged.
 Log-Zeilen sind exakt aus dem Code zitiert und damit direkt in `logs/debug.log` greppbar.
 
 > **Wiederverwendbare Alternative:** die Debug-Kampagne „Die Mitternachtsfracht“
-> (`DM_ADVENTURE=debug-kampagne`, lokal) triggert alle Gates natürlich im Spiel —
+> (`DM_ADVENTURE=debug-kampagne`, committet) triggert alle Gates natürlich im Spiel —
 > Drehbuch + Debrief-Greps in [debug-campaign-runbook.md](debug-campaign-runbook.md).
 > Dieses Skript bleibt der One-Shot-Plan für den aktuellen Backlog.
 
@@ -373,6 +373,7 @@ Kann eine ganz normale Spielsession sein — die Checks kosten keine zehn Minute
    `.env.example`-Kommentare. **G9 bleibt offen bis nach Session 2.**
 3. **Frisches Live-Golden ziehen (D93):** das rotierte Journal der Session kopieren → auf
    eine Handvoll Turns kürzen → `uv run dm-eval <datei>` muss sofort Exit 0 sein
-   (`tests/golden/README.md`). Chemical-Burn-Referenzen bleiben lokal
-   (`data/adventures/` ist git-ignored). Ab dann: `dm-eval` vor jedem Refactor-Merge.
+   (`tests/golden/README.md`). Chemical-Burn-Referenzen bleiben lokal (die gekauften
+   Kompendien unter `data/adventures/` sind git-ignored — nur `debug-kampagne/` ist
+   committet). Ab dann: `dm-eval` vor jedem Refactor-Merge.
 4. Dieses Skript ausmisten: Erledigtes raus, Reste sind der nächste Run.
