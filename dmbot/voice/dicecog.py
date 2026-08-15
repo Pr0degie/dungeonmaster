@@ -468,7 +468,8 @@ class DiceCog(commands.Cog):
 
     @commands.command(name="damage", aliases=["schaden"])
     async def damage(self, ctx: commands.Context, name: str = "", amount: int = 0) -> None:
-        """GM override: apply raw wounds. `!damage Seskin 3` (after soak — this is the final number).
+        """GM override: apply raw wounds. `!damage "<Name>" <Wunden>` (after soak — this is the
+        final number); the name is matched exactly, so multi-word names need the quotes.
         Auto-combat does this for you on a hit; this is for adjudicated/out-of-band damage."""
         cid = self._rt._brain_channel(ctx.channel)
         state = self._rt._state.get(cid)
@@ -488,7 +489,8 @@ class DiceCog(commands.Cog):
 
     @commands.command(name="heal", aliases=["heilung"])
     async def heal(self, ctx: commands.Context, name: str = "", amount: int = 0) -> None:
-        """GM: restore wounds. `!heal Seskin 4` (clamps at max, clears 'kampfunfähig' above 0)."""
+        """GM: restore wounds. `!heal "<Name>" <Wunden>` (clamps at max, clears 'kampfunfähig'
+        above 0); exact name match, so multi-word names need the quotes."""
         cid = self._rt._brain_channel(ctx.channel)
         state = self._rt._state.get(cid)
         if state is None:
@@ -567,7 +569,7 @@ class DiceCog(commands.Cog):
 
     @commands.command(name="npcmem")
     async def npcmem(self, ctx: commands.Context, name: str = "") -> None:
-        """`!npcmem <Name>` — read-only debug view of an NPC's stored memories (ADR 044): gist,
+        """`!npcmem "<Name>"` — read-only debug view of an NPC's stored memories (ADR 044): gist,
         importance, source, believed flag. Editing stays out of scope (state is code-owned)."""
         cid = self._rt._brain_channel(ctx.channel)
         state = self._rt._state.get(cid)
@@ -577,7 +579,7 @@ class DiceCog(commands.Cog):
         if not name:
             with_mem = [n.name for n in state.npcs if n.memories]
             await ctx.send(
-                "Nutzung: `!npcmem <Name>`. NSCs mit Erinnerungen: "
+                'Nutzung: `!npcmem "<Name>"`. NSCs mit Erinnerungen: '
                 + (", ".join(with_mem) if with_mem else "—")
             )
             return
@@ -600,7 +602,7 @@ class DiceCog(commands.Cog):
 
     @commands.command(name="agenda")
     async def agenda(self, ctx: commands.Context, name: str = "", *, goal: str = "") -> None:
-        """`!agenda <NSC> <Ziel>` / `!agenda <NSC> weg` — set/change/remove an NPC's offscreen
+        """`!agenda "<NSC>" <Ziel>` / `!agenda "<NSC>" weg` — set/change/remove an NPC's offscreen
         goal (ADR 049). Goals are human-set, never LLM output; the log survives removal."""
         cid = self._rt._brain_channel(ctx.channel)
         state = self._rt._state.get(cid)

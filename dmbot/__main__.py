@@ -24,6 +24,7 @@ from .llm.preflight import check_ollama
 from .logsetup import setup_logging
 from .runtime import SessionRuntime
 from .shutdown import disconnect_voice, progress
+from .voice.command_errors import argument_error_de
 from .voice.voicecog import VoiceCog
 from .voice.dicecog import DiceCog
 from .voice.dmcog import DMCog
@@ -89,7 +90,18 @@ class DMBot(commands.Bot):
         # own (e.g. !play) instead of spamming CommandNotFound.
         if isinstance(error, commands.CommandNotFound):
             return
-        log.error("command error in %r: %r", getattr(ctx, "command", None), error)
+        # A mistyped argument must ANSWER, not just log: the command body never ran, so the
+        # table would otherwise see a silent no-op and play on as if it had worked. Covers bad
+        # conversions, missing arguments and unbalanced quotes (all UserInputError).
+        cmd = getattr(ctx, "command", None)
+        if isinstance(error, commands.UserInputError) and cmd is not None:
+            log.info("usage error in %r: %r", cmd, error)
+            try:
+                await ctx.send(argument_error_de(cmd.qualified_name, cmd.help, cmd.signature))
+            except discord.HTTPException:
+                log.exception("could not post the usage hint for %r", cmd)
+            return
+        log.error("command error in %r: %r", cmd, error)
 
     async def close(self) -> None:
         """Step-wise teardown with an `[i/n]` console display (dmbot.shutdown.progress), so the
