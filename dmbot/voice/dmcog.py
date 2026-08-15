@@ -450,8 +450,8 @@ class DMCog(commands.Cog):
             return
         state.set_recap(recap)
         self._rt._persist_and_refresh(channel)
-        try:  # mirror to a human-readable recap.md beside state.json
-            (self._rt._state_path(cid).parent / "recap.md").write_text(recap + "\n", encoding="utf-8")
+        try:  # mirror to a human-readable recap.md beside state.json (recap.debug.md on a debug run)
+            self._rt.session_file(cid, "recap", "md").write_text(recap + "\n", encoding="utf-8")
         except OSError:
             log.exception("could not write recap.md")
 

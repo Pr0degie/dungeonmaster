@@ -171,6 +171,9 @@ class _StubRuntime:
     def _state_path(self, channel_id):  # pragma: no cover - always monkeypatched
         raise NotImplementedError
 
+    def session_file(self, channel_id, stem, ext):  # pragma: no cover - always monkeypatched
+        raise NotImplementedError
+
     def _persist_and_refresh(self, channel):  # pragma: no cover - always monkeypatched
         raise NotImplementedError
 
@@ -201,6 +204,7 @@ def test_maybe_compact_persists_recap_and_empties_history(tmp_path, monkeypatch)
     # exactly the parts the auto-recap relies on.
     state_path = tmp_path / "state.json"
     monkeypatch.setattr(cog._rt, "_state_path", lambda c: state_path)
+    monkeypatch.setattr(cog._rt, "session_file", lambda c, stem, ext: tmp_path / f"{stem}.{ext}")
 
     def _refresh(channel) -> None:
         st = cog._rt._state[cog._rt._brain_channel(channel)]

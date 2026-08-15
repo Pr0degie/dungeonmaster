@@ -500,17 +500,27 @@ class SessionRuntime:
                 return CharacterStore.load(default), False
         return CharacterStore.load(sessions / "_example" / "characters.json"), True
 
+    def session_file(self, channel_id: int, stem: str, ext: str) -> Path:
+        """One per-session artifact under ``data/sessions/<channel_id>/``, sandboxed by run mode
+        (ADR 056). A debug-campaign run plays in the SAME channel as live play, so it writes
+        ``<stem>.debug.<ext>`` beside the live file instead of into it — the live campaign's
+        state, thread, recap and loose ends survive a test evening untouched, and the debug run
+        starts from its own clean slate. Mirrors how the rotated archives already split
+        (``history.<stamp>.debug.jsonl``, ADR 055); the mode comes from :attr:`is_debug_run`."""
+        marker = ".debug" if self.is_debug_run else ""
+        return _DATA_DIR / "sessions" / str(channel_id) / f"{stem}{marker}.{ext}"
+
     def _state_path(self, channel_id: int):
         """Where this channel's mutable world state lives (data/sessions/<id>/state.json)."""
-        return _DATA_DIR / "sessions" / str(channel_id) / "state.json"
+        return self.session_file(channel_id, "state", "json")
 
     def _history_path(self, channel_id: int):
         """Where this channel's append-only conversation autosave lives (D41)."""
-        return _DATA_DIR / "sessions" / str(channel_id) / "history.jsonl"
+        return self.session_file(channel_id, "history", "jsonl")
 
     def _chekhov_path(self, channel_id: int):
         """Where this channel's Chekhov list lives (ADR 050), beside the other session files."""
-        return _DATA_DIR / "sessions" / str(channel_id) / "chekhov.json"
+        return self.session_file(channel_id, "chekhov", "json")
 
     def chekhov_list(self, channel_id: int) -> chekhov_mod.ChekhovList:
         """This channel's Chekhov list, lazily loaded (a missing/broken file is an empty list)."""
@@ -1051,9 +1061,20 @@ class SessionRuntime:
         # left off — the "next session opens with a correct recap" half of the gate.
         self._state[cid] = self._load_or_seed_state(cid)
         # Adventure (Phase 10a): point a fresh session at the start scene; a loaded state keeps
-        # its stored pointer (the plot position survives restarts like HP does).
-        if self._adventure is not None and not self._state[cid].scene_id:
-            self._state[cid].scene_id = self._adventure.start_scene
+        # its stored pointer (the plot position survives restarts like HP does) — unless that
+        # pointer names a scene the loaded adventure doesn't have. That happened live (2026-08-15,
+        # ADR 056): the stored pointer belonged to the previous campaign, every get_scene() came
+        # back None, and the evening ran with no scene card and no 🧪 overlay (it only fires on a
+        # scene change, which never came). A foreign pointer re-seeds to the start scene, loudly.
+        if self._adventure is not None:
+            stored = self._state[cid].scene_id
+            if stored and self._adventure.get_scene(stored) is None:
+                log.warning("scene pointer %r is unknown to adventure %r — re-seeding to the start "
+                            "scene %r (stale pointer from another campaign?)",
+                            stored, self._adventure.id, self._adventure.start_scene)
+                self._state[cid].scene_id = ""
+            if not self._state[cid].scene_id:
+                self._state[cid].scene_id = self._adventure.start_scene
         self._persist_and_refresh(voice_channel)
         # Crash recovery (D41): restore the conversation thread from the autosave if the in-memory
         # history is empty (a fresh process after a crash). A clean !leave rotates the file away, so

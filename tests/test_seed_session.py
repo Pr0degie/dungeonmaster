@@ -93,10 +93,19 @@ def _channels(cid: int = 4242):
 
 # ---- scene pointer ------------------------------------------------------------------------
 
+def _adventure(*, start_scene: str = "szene_01", scenes=("szene_01", "szene_07")):
+    """An adventure stub that knows exactly ``scenes`` — enough for the pointer bootstrap, which
+    only asks for ``start_scene``, ``id`` and ``get_scene``."""
+    return SimpleNamespace(
+        id="testabenteuer",
+        start_scene=start_scene,
+        get_scene=lambda sid: SimpleNamespace(id=sid) if sid in scenes else None,
+    )
+
+
 def test_fresh_state_gets_adventure_start_scene() -> None:
     state = SimpleNamespace(scene_id="")  # fresh: no stored pointer
-    adventure = SimpleNamespace(start_scene="szene_01")
-    rt = _make_runtime(adventure=adventure, state_obj=state)
+    rt = _make_runtime(adventure=_adventure(), state_obj=state)
     voice, text = _channels()
 
     rt.seed_session(voice, text)
@@ -107,13 +116,28 @@ def test_fresh_state_gets_adventure_start_scene() -> None:
 
 def test_loaded_state_keeps_its_stored_scene() -> None:
     state = SimpleNamespace(scene_id="szene_07")  # a loaded state with a saved position
-    adventure = SimpleNamespace(start_scene="szene_01")
-    rt = _make_runtime(adventure=adventure, state_obj=state)
+    rt = _make_runtime(adventure=_adventure(), state_obj=state)
     voice, text = _channels()
 
     rt.seed_session(voice, text)
 
     assert state.scene_id == "szene_07"  # the stored pointer survives, not overwritten
+
+
+def test_foreign_scene_pointer_reseeds_to_start_scene(caplog) -> None:
+    # Live 2026-08-15 (ADR 056): DM_ADVENTURE was switched, but the channel's saved state still
+    # pointed at the PREVIOUS campaign's scene. Every get_scene() came back None, so the session
+    # ran with no scene card and no 🧪 overlay. A pointer the loaded adventure doesn't know must
+    # re-seed to the start scene — and say so.
+    state = SimpleNamespace(scene_id="rokarth_gasse")  # belongs to another adventure
+    rt = _make_runtime(adventure=_adventure(), state_obj=state)
+    voice, text = _channels()
+
+    with caplog.at_level("WARNING"):
+        rt.seed_session(voice, text)
+
+    assert state.scene_id == "szene_01"
+    assert "rokarth_gasse" in caplog.text and "unknown to adventure" in caplog.text
 
 
 def test_no_adventure_leaves_scene_untouched() -> None:
