@@ -63,6 +63,17 @@ here is its contract, which DMbot calls:
   campaign-memory feed (ADR 053/054): scene events + `time_minutes` are chunk metadata —
   don't strip them, and never ingest the live (unrotated) file. Debug-run archives carry a
   `.debug` filename marker (ADR 055) — that marker IS the sandbox routing; never rename.
+- A debug run reads and writes `.debug` twins of state/history/chekhov/recap (ADR 056), so
+  the two campaigns in one channel can't reach each other. Everything WITHOUT `.debug` in
+  the name belongs to the real campaign — that is the rule for every manual cleanup.
+- **Trimming a journal by hand** (only reason so far: turns landed in the wrong campaign's
+  file before ADR 056). `tools/cleanup_15aug.py <data/sessions/<channel-id>>` reports what it
+  would cut; `--apply` backs up to `history.jsonl.bak`, keeps the records before the cutoff
+  date, and parks the rest **outside** the session folder — a `history.<stamp>.jsonl` left
+  inside would be ingested on the next `!join`. Idempotent, and it lists the folder so a
+  rotated archive from the bad evening shows up. Dated one-off: delete it once both machines
+  are clean. Never edit a journal in place without a backup — it is also the golden-transcript
+  source (ADR 046).
 
 ## RAG (`dmbot/rag/`)
 

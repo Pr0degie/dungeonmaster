@@ -83,7 +83,21 @@ Ollama → Bot A → DMbot.
    `SETUP.md` nennt an dieser Stelle noch `DM_ADVENTURE=chemical_burn`. Für den Testabend gilt
    die Zeile oben.
 
-6. **`uv run dm-sync` auf beiden Rechnern, Ausgabe diffen.** Übereinstimmen müssen: die
+6. **Einmalig auf jedem Rechner, der am 2026-08-15 den Fehlstart hatte:** Damals schrieb der
+   Debug-Abend seine Turns noch in die **Live**-Dateien des Channels. Für den Testabend ist
+   das egal — die Sandbox greift jetzt —, aber vor der nächsten **echten** Sitzung muss es
+   raus, sonst wandert der Fehlabend beim `!leave` ins Kampagnengedächtnis:
+
+   ```
+   uv run python tools/cleanup_15aug.py data/sessions/<channel-id>            # nur Bericht
+   uv run python tools/cleanup_15aug.py data/sessions/<channel-id> --apply    # ausführen
+   ```
+
+   Sichert nach `history.jsonl.bak` und legt das Entfernte außerhalb des Session-Ordners ab.
+   Mehrfaches Ausführen schadet nicht. Zeigt der Bericht ein Archiv vom 15.08. **ohne**
+   `.debug` im Namen: nicht weitermachen, melden.
+
+7. **`uv run dm-sync` auf beiden Rechnern, Ausgabe diffen.** Übereinstimmen müssen: die
    `repo`-Zeile (gleicher Commit), die drei `sha=`-Werte der `debug-kampagne`-Dateien, sowie
    `model=` und die `chunks:`-Zeile der rag.db. Die `.env`-Zeile vergleicht **nicht** die
    beiden Rechner, sondern nur die lokalen Key-Namen gegen `.env.example` — sie darf abweichen,
