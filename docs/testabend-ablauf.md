@@ -38,11 +38,22 @@ entsteht, und die Live-`state.json` behält ihre Änderungszeit.
 
 ## 2. Vorbereitung am Zweitrechner (einmalig, vor dem Abend)
 
-**Vorher zu klären, nicht am Abend:** Läuft Bot A (der Musikbot, `Pr0degie/musicbot`, Branch
-`dungeon_master`) auf demselben Rechner wie DMbot, oder zeigt `DM_BRIDGE_HOST` auf Tobis
-Maschine? Ohne Bot A **im selben Voice-Channel** sagt der DM nichts — die Bridge antwortet mit
-`bridge /speak refused: HTTP 409 … Bot A is not in the voice channel`. Bei nicht-lokalem Bot A
-muss `DM_BRIDGE_SECRET` auf beiden Bots identisch sein.
+**Topologie: beide Bots auf Timos Rechner.** Bot A ist der Musikbot (`Pr0degie/musicbot`,
+Branch `dungeon_master` — `main` hat kein `/speak`). Damit bleibt es beim Loopback-Standard,
+`DM_BRIDGE_HOST=127.0.0.1` und `DM_BRIDGE_SECRET` leer: die Bots teilen sich die Platte, DMbot
+schickt nur den WAV-Pfad, nichts geht über Netz.
+
+Beide Bots müssen **im selben Voice-Channel** sein, sonst sagt der DM nichts und die Bridge
+antwortet `bridge /speak refused: HTTP 409 … Bot A is not in the voice channel`. Startreihenfolge:
+Ollama → Bot A → DMbot.
+
+> **Zweiter Lauf, getrennt gehostet** (Musikbot bei Tobi, DMbot bei Timo): funktioniert ohne
+> Codeänderung, ist aber ein eigener Test — nicht mit dem Gate-Abend vermischen. DMbot schickt
+> dann die WAV-**Bytes** statt des Pfades, Bot A muss auf `0.0.0.0` lauschen und
+> `DM_BRIDGE_SECRET` auf beiden Seiten identisch sein. Vollständige Anleitung inklusive
+> Tailscale und Firewall: `README.md`, Abschnitt „Split hosting". Erwartete Unterschiede: eine
+> Handvoll MB pro Turn über die Leitung und entsprechend etwas späterer Sprechbeginn; `401` =
+> Secret ungleich, `409` = Bot A nicht im Channel, Timeout = Firewall.
 
 1. **`git pull`.** Die Kampagne selbst kommt mit (drei Dateien unter
    `data/adventures/debug-kampagne/`, seit `7463d5c` getrackt).
