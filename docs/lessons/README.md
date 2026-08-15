@@ -47,6 +47,9 @@ or an ADR already holds — link there instead.
 - [byte-exact-moves-stepwise-gates](byte-exact-moves-stepwise-gates.md) — Refactors: slice
   don't retype, zero test edits as the signal, all gates green after every step; review the
   new logic, not the moves.
+- [isolation-must-enumerate-every-artifact](isolation-must-enumerate-every-artifact.md) —
+  "Isolated" is per artifact, not per feature; enumerate every shared file/table, route them
+  through one seam, and assert the two path sets are disjoint.
 
 ### Config, dependencies & ops
 - [unwired-knobs-and-silent-fallbacks](unwired-knobs-and-silent-fallbacks.md) — Unread

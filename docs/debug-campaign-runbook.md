@@ -26,6 +26,12 @@ exakt aus dem Code zitiert) und direkt in `logs/debug.log` greppbar.
   Archive heißen `history.<stamp>.debug.jsonl` und landen in der separaten Source
   `session_debug_<channel-id>` — die Live-Archive und das Live-Kampagnengedächtnis
   bleiben unberührt, in beide Richtungen.
+- Dasselbe gilt seit **ADR 056** für die laufenden Session-Dateien: ein Debug-Run liest und
+  schreibt `state.debug.json`, `history.debug.jsonl`, `chekhov.debug.json` und
+  `recap.debug.md`. Der Wechsel von `DM_ADVENTURE` und zurück ist damit gefahrlos — jede
+  Kampagne behält ihren eigenen Stand. Nur `characters.json` (die Spielerbögen) teilen sich
+  beide Modi, absichtlich. Zeigt der gespeicherte Szenenzeiger auf eine Szene, die das
+  geladene Abenteuer nicht kennt, setzt `!j` laut protokolliert auf die Startszene zurück.
 
 ## Szenen → Gates → Beweis
 
@@ -97,14 +103,17 @@ grep '"kind": "scene"' data/sessions/<id>/history*.jsonl | head -3
 ## Reset für einen Re-Run
 
 1. In `data/sessions/<channel-id>/` (live: `1343673766487654464/`) löschen:
-   `state.json` (HP, Szene, Flags, Uhren, Zeit, NPC-Gedächtnis, Recap),
-   `history.jsonl` (Gesprächs-Autosave) und `chekhov.json` (Fäden).
-   Zusätzlich (Session-RAG-Sandbox, ADR 055): alle `history.*.debug.jsonl`
-   löschen und die Sandbox-Rows aus dem Store wipen:
+   `state.debug.json` (HP, Szene, Flags, Uhren, Zeit, NPC-Gedächtnis, Recap),
+   `history.debug.jsonl` (Gesprächs-Autosave), `chekhov.debug.json` (Fäden) und
+   `recap.debug.md`. Zusätzlich (Session-RAG-Sandbox, ADR 055): alle
+   `history.*.debug.jsonl` löschen und die Sandbox-Rows aus dem Store wipen:
    `uv run python -m dmbot.rag.ingest_session --wipe-debug <channel-id>`.
-   **Warnung:** Plain-Archive `history.<stamp>.jsonl` sind ECHTE Session-
-   Aufzeichnungen dieses geteilten Channels — bei einem Reset **niemals löschen**
-   (und `--wipe-debug` rührt ihre Store-Rows nie an).
+   **Warnung:** Alles ohne `.debug` im Namen — `state.json`, `history.jsonl`,
+   `chekhov.json`, `recap.md` und die Plain-Archive `history.<stamp>.jsonl` —
+   gehört der ECHTEN Kampagne in diesem geteilten Channel und wird bei einem
+   Reset **niemals gelöscht** (`--wipe-debug` rührt ihre Store-Rows nie an).
+   Der Debug-Run schreibt seit ADR 056 ausschließlich in die `.debug`-Zwillinge,
+   die Live-Dateien sind für ihn unerreichbar.
 2. `characters.json` und `sheets/` **behalten** — das sind die Spielerbögen.
 3. `logs/debug.log` leeren oder wegrotieren, damit die Debrief-Greps sauber bleiben.
 4. Bot neu starten → `!j` seedet frisch auf `zollhaus`; das 🧪-Panel begleitet ab Szene 1.

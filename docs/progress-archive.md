@@ -9,6 +9,12 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+_Aus `progress.md` rotiert (2026-08-15, Playtest-Runde Debug-Sandbox-Artefakte ADR 056):_
+
+**Debug-Sandbox + Gate G10 (2026-07-17, D102 → ADR 055). G10 reitet auf der G9-Zweitsession (kein zusätzlicher Live-Termin); die Sandbox schließt den Shared-Channel-Hazard, BEVOR der Debug-Run Session-RAG anfasst.**
+Vier Commits, einzeln revertierbar: `79a5edd` Sandbox (`rotate()`-Marker `history.<stamp>.debug.jsonl`; Ingest-Routing allein nach Dateiname in `session_debug_<channel_id>`; `pending_files`-Catch-up modusgefiltert; Retriever-Flag `debug_sessions`; CLI `--wipe-debug <channel_id>`), `d9cd961` Catch-up-Logzeile beim `!join` als G10-Evidenz (der einzige vorher stumme Schritt — Ingest- und Treffer-Zeilen existierten schon), `d440728` Runbook additiv (Setup: `DM_SESSION_MEMORY` + Sandbox-Satz; G10-Tabellenzeile auf der G9-Session-2; Debrief-Greps inkl. ADR-053-Journal-Check; Reset: `.debug`-Cleanup + Niemals-löschen-Warnung für Plain-Archive; Sidecar-Änderung wörtlich dokumentiert), `bc3c700` ADR 055. Lokales `testplan.json`: `pier_neun` additiv um das G10-Gate + einen Hinweis-Satz ergänzt; G1–G9-Inhalte byte-identisch.
+- **Evidenz:** Suite **754 grün** (+6 Tests: Rotationsmarker nur bei `debug=True`; Routing beide Richtungen per Dateiname; `pending_files` sieht nur den eigenen Modus, beidseitig; Retrieval-Isolation beidseitig; `--wipe-debug` löscht nur Sandbox-Rows inkl. Stempel, Live-Rows/FTS bleiben; ADR-052-Source-Inspection unverändert grün), ruff auf allen angefassten Dateien sauber (ein **vorbestehender** E402 in `tests/test_adventure.py`), `dm-eval` Exit 0 gegen unveränderte Goldens. **Nachtrag 2026-08-15:** die Sandbox deckte nur Archive + RAG-Source ab, nicht die laufenden Session-Dateien — genau daran scheiterte der erste Debug-Abend (→ ADR 056).
+
 _Aus `progress.md` rotiert (2026-07-18, Doku-Drift-Sweep):_
 
 **Session-RAG-Runde: Kampagnengedächtnis über gespielte Sessions (2026-07-17, D101 → ADR 054). KEIN neues Live-Gate (offline voll testbar, WIP-exempt); `SESSION_MAX_DISTANCE`-Livetuning reitet auf dem anstehenden Live-Run mit.**
@@ -1211,6 +1217,10 @@ in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 ---
 
 ## Current focus (Verlauf)
+
+_Aus `progress.md` rotiert (2026-08-15, Playtest-Runde Debug-Sandbox-Artefakte ADR 056):_
+
+**Session-RAG-Runde: Kampagnengedächtnis über gespielte Sessions (2026-07-17, D101 → ADR 054). Suite 748 grün (+32 Tests), ruff sauber, `dm-eval` Exit 0 gegen unveränderte Goldens, Kalibrierung: 5/5 `session_recall`-Positives, 0/5 Negativ-Leaks über den ganzen Sweep. KEIN neues Live-Gate — offline voll testbar; nur das `SESSION_MAX_DISTANCE`-Livetuning wartet auf echte rotierte Sessions.** Der DM kann jetzt Details aus früheren Abenden wörtlich erinnern („Was hat Vosk in Session 3 gesagt?"): auf `!leave` wird das rotierte Journal pro Szene gechunkt (ADR-053-Events; Redo-Collapse; Header `[Session vom …, Szene: …]` im Chunk) und in `rag.db` unter `session_<channel_id>` eingebettet — eigene vec0-Tabelle (`k` ist tabellenglobal; geteilt würden sich Buch- und Session-Korpus gegenseitig aushungern — Verifier-Fund) + FTS5-Spiegel für Eigennamen-Recall. `!join` holt fehlende Stempel nach (Crash-Recovery + Backfill). Retrieval: max 2 Chunks zusätzlich zu TOP_K=3, Schwelle 0.38 + Recency-Malus, FTS-Exakt-Treffer (satzmittig-großgeschrieben, df-gegated) übertrumpfen; Block „## Früher in der Kampagne … aktueller Status hat Vorrang". Debug-Kampagnen-Runs (testplan.json) werden nie ingestiert; Live-Journal nie; Buch-Retrieval byte-identisch (test-gepinnt).
 
 _Aus `progress.md` rotiert (2026-07-17, Debug-Sandbox-Runde ADR 055):_
 
