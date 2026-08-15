@@ -10,6 +10,11 @@ Imperium-Maledictum-Abenteuer; die Gate-Hinweise kommen ausschließlich über da
 Beweis-Logzeilen sind aus [live-run-script.md](live-run-script.md) übernommen (dort
 exakt aus dem Code zitiert) und direkt in `logs/debug.log` greppbar.
 
+> Dieses Dokument ist die **Szenen-Referenz**: welche Szene welches Gate auslöst und welche
+> Zeile es beweist. Den zeitlichen Ablauf eines Abends — Vorbereitung am Zweitrechner,
+> Sollbild beim Start, Reihenfolge-Fallen, Übergabe und Nacharbeit — hält
+> [testabend-ablauf.md](testabend-ablauf.md).
+
 ## Setup (2 min)
 
 - `.env`: `DM_ADVENTURE=debug-kampagne`, `DM_LOG_FILE=1`, `DM_TRANSCRIPT_FILE=1`;
@@ -42,10 +47,10 @@ ist die Debrief-Referenz: welche Logzeile hinterher den Beweis liefert.
 |---|---|---|
 | `zollhaus` — Die Zoll-Sakristei | G2/G3 Saat, G7 Saat | Uhr-Panel `⏱ ○○○○○○ … 0/6`; Frist-Panel `⏳ … — noch ~4 Std`; nach `!npc add Arno_Kessel` zeigt `!agenden` sein Ziel aus `npcs.json` |
 | `schrein` — Schrein der Aschenheiligen | G1, G9 Saat 1 | `📚 rulebook:'…' (d=0.xx)` + Embed **📖 Regelauskunft** bei `!rules`; die Münzen-Saat hat KEINE Logzeile — Beweis kommt beim `!wrap` (🧵-Zeile) |
-| `pfandhalle` — Die Pfandhalle | G5 Saat (Lüge), G9 Saat 2 | beim nächsten Szenenwechsel: `🧠 NPC-Gedächtnis: N neue Erinnerungen (Szene 'pfandhalle')`; `!npcmem Bree_Marlok` zeigt die Lüge mit wörtlichem Zitat |
+| `pfandhalle` — Die Pfandhalle | G5 Saat (Lüge), G9 Saat 2 | beim nächsten Szenenwechsel: `🧠 NPC-Gedächtnis: N neue Erinnerungen (Szene 'pfandhalle')`; `!npcmem "Bree Marlok"` zeigt die Lüge mit wörtlichem Zitat (Anführungszeichen nötig — Unterstriche versteht nur `!npc add`) |
 | `lagerhaus` — Zwischenlager am Schwarzkanal | G8 (Wunden), G6 Saat (Ohm-3 ✝), G4, G2 Tick | `💥 … = N Wunden → …`; `🚫 Ausgang 'lagerhaus' → 'pier_neun' verriegelt — Bedingung 'verladebrief' nicht erledigt`; `✅ Erledigt vorgeschlagen: …`; `⏱ Tick vorgeschlagen: … (0/6)`; Szenenkarte rendert Ohm-3 `(tot)` |
 | `siedehaus` — Das Siedehaus | G5 Ernte + Gossip, G7 Schritt 1, G3 Ernte | `NPC-memory: N Gossip-Einträge verteilt` (Kessel kennt die Lüge als Hörensagen); `NPC-memory: 'Arno Kessel' Agenda-Schritt: …`; `🕐 Zeitfortschritt vorgeschlagen: +N min` |
-| `pier_neun` — Pier Neun | G6 Ernte, G9 Ernte, G7 Schritt 2, G3 Frist, G8 | `[consistency] violated (dead:Lastenservitor Ohm-3) — regenerating once`; `⏳ Frist '…' (…) verstrichen — Konsequenz-Hinweis für den nächsten Turn eingereiht`; nach Kill+Neustart: `loaded world state from …`; `!wrap` → `🧵 Chekhov-Liste: N neue Fäden, M aufgelöst` |
+| `pier_neun` — Pier Neun | G6 Ernte, G9 Ernte, G7 Schritt 2, G3 Frist, G8 | `[consistency] violated (dead:Lastenservitor Ohm-3) — regenerating once`; `⏳ Frist '…' (…) verstrichen — Konsequenz-Hinweis für den nächsten Turn eingereiht`; nach Kill+Neustart erst `!j` (sonst findet `!wrap` keine Sitzung): `loaded world state from …state.debug.json` + `restored N conversation turns`; dann `!wrap` → `🧵 Chekhov-Liste: N neue Fäden, M aufgelöst`; zum Schluss `!leave` → `🗂 session memory: ingested …` |
 | Session 2 (reitet auf der G9-Session) | G10 Kampagnen-Gedächtnis | beim `!leave` von Session 1: `🗂 session memory: ingested history.<stamp>.debug.jsonl (N chunks)`; beim `!j` von Session 2: `🗂 session memory: catch-up — N rotated journal(s) pending`; pro Treffer im Turn: `🗂 Szene 'schrein'/<stamp> (FTS)` bzw. `(d=0.xx)` |
 
 **G9 braucht wie immer eine ZWEITE (kurze) Session:** Saat sind Münze (`schrein`) und

@@ -57,16 +57,16 @@ D68 globaler Sprech-Modus, D67 Shutdown-Leave-Limit u. a.): siehe **[docs/progre
 ## Next concrete step
 
 **Die Debug-Kampagne live spielen ([`docs/debug-campaign-runbook.md`](docs/debug-campaign-runbook.md))
-oder das One-Shot-Skript — Tobis Wahl.** Beide schließen dieselben 8 Gates: die Kampagne
-(„Die Mitternachtsfracht“, `DM_ADVENTURE=debug-kampagne`, kein Pre-Flight-Edit nötig) führt
-per 🧪-Overlay Szene für Szene durch die Gates und bleibt für Regression-Play-Runs
+oder das One-Shot-Skript — Tobis Wahl.** Beide schließen G1–G10 (G9 und G10 erst in einer
+kurzen Zweitsession): die Kampagne („Die Mitternachtsfracht“, `DM_ADVENTURE=debug-kampagne`)
+führt per 🧪-Overlay Szene für Szene durch die Gates und bleibt für Regression-Play-Runs
 wiederverwendbar; das Skript ist der einmalige, geordnete Abend über Chemical Burn.
 Der Anlauf vom 2026-08-15 zählt nicht — er lief in der alten Kampagne (D103 → ADR 056).
-Vor dem nächsten Versuch auf einem Zweitrechner: `uv run dm-sync` auf beiden Maschinen
-diffen und die `.env`-Keys abgleichen (auf Timos Rechner waren 11 Keys nicht gesetzt und
-drei Zeilen unparsbar).
+Der zeitliche Ablauf des Abends samt Zweitrechner-Vorbereitung, Reihenfolge-Fallen,
+Übergabe und Nacharbeit steht in [`docs/testabend-ablauf.md`](docs/testabend-ablauf.md);
+das Runbook bleibt die Szenen-Referenz.
 
-**Alternative: [`docs/live-run-script.md`](docs/live-run-script.md).** Dieselben 8 Gates als
+**Alternative: [`docs/live-run-script.md`](docs/live-run-script.md).** Dieselben Gates als
 EIN Abend-Drehbuch + kurze Folge-Session: Gate-Register, Pre-Flight, 11 Akte mit exakten
 Beweis-Logzeilen; Chekhov (G9) = Session-1-Saat / Session-2-Ernte. `live-test-checklist.md`
 ist darin aufgegangen; der frühere Fahrplan liegt im Archiv.

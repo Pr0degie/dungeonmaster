@@ -287,7 +287,10 @@ wording of freely available 40k knowledge, comes with the clone.)
 
 **Do not copy** Tobi's `.env` (tokens!). Build your own from `.env.example` — your own Discord
 tokens (one token = one live connection), `OLLAMA_HOST`, GPU profile. Important: set
-`DM_ADVENTURE=chemical_burn`, otherwise the DM loads no adventure.
+`DM_ADVENTURE` — otherwise the DM loads no adventure, silently. Use
+`DM_ADVENTURE=debug-kampagne` (ships with the clone; the test campaign, see
+[docs/testabend-ablauf.md](docs/testabend-ablauf.md)). `chemical_burn` is the bought-book
+compendium and is git-ignored — it only works on a machine that has a hand copy of it.
 
 ### 2. Install yourself
 1. Clone both repos: this one (`main`) + `Pr0degie/musicbot` branch `dungeon_master` (Bot A).
