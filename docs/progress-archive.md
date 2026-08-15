@@ -9,6 +9,12 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+_Aus `progress.md` rotiert (2026-08-15, Testabend-Doku-Runde):_
+
+**Doku-Drift-Sweep (2026-07-18): alle md-Dateien gegen den Code geprüft (3 parallele Verifier-Agents), 5 Drift-Funde, alle direkt gefixt. Kein Live-Gate, WIP-exempt.**
+Zwei Commits: `0912efe` Doku-Nachzug (architecture.md: neue Memory-Schicht §7f Session-Memory + Session-Hälfte im RAG-Kapitel §8 + `.debug`-Marker + Bausteintabelle — die „nur Regelwerk/Lore/Abenteuer in RAG"-Aussage war falsch geworden; conventions.md: RAG/Memory-How-tos um `ingest_session`/Sandbox ergänzt; roadmap.md: „Long-term vector memory" als geliefert markiert [ADR 054] + 2× Embedder-Name nomic→`bge-m3`; live-run-script.md: G10-Registerzeile + Zweitsessions-Absatz, G1–G9-Zeilen unverändert), `aab52a2` ADR-Renumber (Dateinamen 019↔020 getauscht, sodass Dateiname = interner Titel: 019 = Adventure/Scene-Tracker-Hybrid, 020 = Shutdown; die ~11 dateinamens-basierten „ADR 020"-Scene-Tracker-Verweise auf 019 korrigiert [ADR 026 7×, ADR 043 2×, Archiv, author-adventure-Skill]; Refs-Zeile der Shutdown-ADR D44→D47; Erklär-Notiz in ADR 026).
+- **Verifiziert aktuell (kein Fix nötig):** sämtliche im Runbook + Live-Run-Skript zitierten Beweis-Logzeilen exakt gegen den Code (inkl. `grep '"kind": "scene"'` matcht die `json.dumps`-Default-Separatoren), Lessons-Index 17/17, Skills-Index 10/10, ADR-Nummern lückenlos, `tests/golden/README.md`, SETUP/README/CLAUDE.md im Rahmen ihres bewusst hohen Anspruchs.
+
 _Aus `progress.md` rotiert (2026-08-15, Playtest-Runde Debug-Sandbox-Artefakte ADR 056):_
 
 **Debug-Sandbox + Gate G10 (2026-07-17, D102 → ADR 055). G10 reitet auf der G9-Zweitsession (kein zusätzlicher Live-Termin); die Sandbox schließt den Shared-Channel-Hazard, BEVOR der Debug-Run Session-RAG anfasst.**
@@ -1217,6 +1223,10 @@ in ADR 006 and each phase's VERIFY EVIDENCE below.)_
 ---
 
 ## Current focus (Verlauf)
+
+_Aus `progress.md` rotiert (2026-08-15, Testabend-Doku-Runde):_
+
+**Debug-Sandbox + Gate G10 (2026-07-17, D102 → ADR 055). Suite 754 grün (+6 Tests), ruff auf allen angefassten Dateien sauber, `dm-eval` Exit 0. G10 (Kampagnen-Gedächtnis am Tisch) reitet auf der ohnehin nötigen G9-Zweitsession — kein zusätzlicher Live-Termin; die Sandbox selbst ist offline voll testbar.** Die Debug-Kampagne spielt im SELBEN Channel wie das echte Spiel (`circlejerk`); der ADR-054-Stopgap (Ingest-Skip) wich einer echten Sandbox, damit der Debug-Run Session-RAG gefahrlos mittestet: Erkennung über die pure Datei-Präsenz von `testplan.json` neben dem Abenteuer (unabhängig vom Overlay-Kill-Switch; Inhalt bleibt LLM-unsichtbar, ADR-052-Pin unverändert grün), `rotate()` markiert Debug-Archive als `history.<stamp>.debug.jsonl`, Ingest routet allein nach Dateiname in die separate Source `session_debug_<channel_id>`, Catch-up und Retrieval sehen nur den eigenen Modus — Kreuz-Kontamination in beide Richtungen strukturell unmöglich (test-gepinnt). Reset per `uv run python -m dmbot.rag.ingest_session --wipe-debug <channel_id>` (löscht nur Sandbox-Rows); Runbook additiv erweitert (Setup, G10-Zeile, Debrief-Greps, Reset-Warnung: Plain-Archive sind ECHTE Session-Aufzeichnungen), G1–G9 byte-identisch. Projekt-Prio unverändert: der Live-Run (Debug-Kampagne oder One-Shot-Skript).
 
 _Aus `progress.md` rotiert (2026-08-15, Playtest-Runde Debug-Sandbox-Artefakte ADR 056):_
 
