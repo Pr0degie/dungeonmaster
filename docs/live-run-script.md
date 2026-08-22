@@ -52,10 +52,15 @@ G10-Erinnerungs-Sonden aus dem Session-Store). G8s Recap-Hälfte wird in Session
 schließt an EINEM Abend. G10-Nebeneffekt fürs Protokoll: das `SESSION_MAX_DISTANCE`-Livetuning
 (ADR 054) bekommt hier seine ersten echten Messwerte.
 
-**Ruht (bewusst nicht in diesem Run):** der Augmetik-Live-Check (D52) — die aktuelle
-Party (Fridolin/Gellicus/Rektalus) hat keinen Implantat-Charakter; wieder aufnehmen, wenn
-einer dazukommt. Der Profil-Bootstrap (Phase 10b) bleibt zurückgestellt, bis das Spielen
-rund läuft.
+**Wieder aufgenommen:** der Augmetik-Live-Check (D52) ruhte, solange kein Spieler ein
+Implantat hatte. Vinzentius Kabelbrand (seit 2026-08-22 in der Party) trägt drei —
+`Augur-Array`, `Utility-Mechadendrit`, `Vox-Implantat` —, also läuft der Check in diesem Run
+mit: eine Wahrnehmungsprobe von Vinzentius muss den `+5 Wahrnehmung` des Augur-Arrays sichtbar
+einrechnen — Zielwert **44** statt der 39 aus dem Bogen (offline gegengerechnet mit
+`resolve_target(..., skill='Wahrnehmung', target_name='Vinnie')`, 2026-08-22).
+
+**Ruht (bewusst nicht in diesem Run):** der Profil-Bootstrap (Phase 10b) bleibt
+zurückgestellt, bis das Spielen rund läuft.
 
 ---
 
@@ -90,11 +95,12 @@ rund läuft.
    die opp-id vorher aus der Szenenkarte/`!ort` ablesen. Nach dem Test zurückdrehen oder
    einfach `!erledigt <opp-id>` spielen.
 7. **Party-Check:** Channel ist `circlejerk`; `!j` muss **Fridolin Feuchtgebietheld /
-   Gellicus Schulz / Rektalus Zerfickus** aufstellen — **Fridolin ist der Psioniker**
-   (die alte Checkliste nannte fälschlich Rektalus). Eine ⚠-Beispiel-Party-Warnung =
-   falscher Channel → abbrechen.
-8. **Handout:** `docs/how-to-play.html` an Timo & Sezgin (spart die Regelerklärung am
-   Tisch).
+   Gellicus Schulz / Rektalus Zerfickus / Vinzentius Kabelbrand** aufstellen — **Fridolin
+   ist der Psioniker** (die alte Checkliste nannte fälschlich Rektalus). Eine
+   ⚠-Beispiel-Party-Warnung = falscher Channel → abbrechen.
+8. **Handout:** `docs/how-to-play.html` an Timo, Sezgin & Vincent (spart die Regelerklärung
+   am Tisch); Vincent zusätzlich seinen Bogen
+   `data/party/sheets/Vinzentius_Kabelbrand.pdf`.
 
 **Kill-Switch-Spickzettel** (`.env`, wirksam nach Neustart):
 
@@ -132,7 +138,7 @@ Pause = **Esc** im DMbot-Terminal oder der ⏸-Button (es gibt KEIN `!pause`-Com
 - [ ] **Schneller Start (ADR 024):** „logged in“ kommt zügig, VOR dem TTS-Load; später
       `TTS backend 'xtts' ready in …s.`
 - [ ] `!j`: ggf. ⏳/⚠-TTS-Hinweis (okay), erster Satz wird trotzdem gesprochen.
-- [ ] **Join-Line-up:** Party namentlich (Fridolin / Gellicus / Rektalus) +
+- [ ] **Join-Line-up:** Party namentlich (Fridolin / Gellicus / Rektalus / Vinzentius) +
       `📖 Abenteuer: Chemical Burn — Szene: Der Auftrag`.
 
 ### Akt 1 — Tempo-Baseline (Workstream A verifizieren)

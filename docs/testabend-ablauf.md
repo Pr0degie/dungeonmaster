@@ -140,8 +140,8 @@ Beitritts-Text, `👥 **Party:**` mit drei Namen, und
 
 Eine ⚠-Warnung über eine Beispiel-Party wäre ein Abbruchgrund — sie erscheint aber nur, wenn
 auch die Default-Party fehlt. Auf einem fremden Server lädt `DM_DEFAULT_PARTY=_default` die
-echten drei Figuren stillschweigend; entscheidend ist, dass `👥 **Party:**` **Fridolin
-Feuchtgebietheld / Gellicus Schulz / Rektalus Zerfickus** nennt.
+echten vier Figuren stillschweigend; entscheidend ist, dass `👥 **Party:**` **Fridolin
+Feuchtgebietheld / Gellicus Schulz / Rektalus Zerfickus / Vinzentius Kabelbrand** nennt.
 
 Die Channel-id aus der Zeile `joined voice '<name>' (id=<channel id>)` notieren — alle
 Datei-Pfade für Debrief und Reset hängen daran.
