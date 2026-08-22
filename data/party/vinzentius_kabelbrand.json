@@ -1,0 +1,78 @@
+{
+  "_note": "Spieler-Charakter 'Vinzentius Kabelbrand' (Vincent). Von Claude gebaut (Modus B, from scratch). Selbst-Check: Punktekauf = 90 (WS+4, BS+16, Str+5, Tgh+12, Ag+6, Int+18, Per+14, Wil+11, Fel+4), jede Eigenschaft +4..+18 ✓. Herkunft Schmiedewelt: +5 Int fest, +5 BS gewählt ✓ (→ Int 43, BS 41). 6 Steigerungen: Technologie ×2, Fernkampf ×2, Wissen ×1, Wahrnehmung ×1 ✓, keine über +2. Wunden = StrB(2) + 2×TghB(3) + WilB(3) = 11 ✓. Kein Psyker. Augmetik: 3 Stück ≤ TghB(3) ✓, alle drei exakte Katalog-Schlüssel aus data/systems/imperium_maledictum.json ('Augur-Array' ist laut Katalog nur für Adeptus Mechanicus — er IST einer). Lasgewehr steht in der Profil-Waffentabelle (1W10+4); der Ritual-Schraubenschlüssel steht dort NICHT und fällt auf default_damage 1W10 zurück (Wurf über Nahkampf). 'player'/aliases = Discord-Name — bei Bedarf auf Vincents echten Discord-Namen anpassen.",
+
+  "name": "Vinzentius Kabelbrand",
+  "player": "Vincent",
+  "system": "imperium_maledictum",
+  "origin": "Schmiedewelt",
+  "concept": "Enginseer 4. Klasse, der gegen Maschinen, Türen und Mitspieler formale Beschwerden mit Aktenzeichen führt — und meistens recht behält",
+  "faction": "Adeptus Mechanicus (an die Inquisition abgestellt)",
+
+  "characteristics": { "WS": 24, "BS": 41, "Str": 25, "Tgh": 32, "Ag": 26, "Int": 43, "Per": 34, "Wil": 31, "Fel": 24 },
+
+  "skills": {
+    "Nahkampf": 24,
+    "Fernkampf": 51,
+    "Athletik": 25,
+    "Heimlichkeit": 26,
+    "Wahrnehmung": 39,
+    "Technologie": 53,
+    "Wissen": 48,
+    "Medizin": 43,
+    "Überreden": 24,
+    "Einschüchtern": 24
+  },
+
+  "wounds": 11, "max_wounds": 11,
+  "conditions": [],
+
+  "inventory": [
+    "Lasgewehr",
+    "Ritual-Schraubenschlüssel »Der Sanfte Überzeuger«",
+    "Werkzeugrolle mit 41 Teilen (39 vorhanden, 2 mit Aktenzeichen vermisst)",
+    "Datenschreiber mit der Klageschrift (Band VII)",
+    "Ampullen geweihtes Maschinenöl, Sorte 3",
+    "Weihrauchkerzen für den Ritus der Erweckung",
+    "Ersatzsicherungen, Kupferbolzen, Isolierband",
+    "Trockenration Typ Corpus-Stärke",
+    "Blechtasse, angeschraubt"
+  ],
+
+  "weapons": [
+    { "name": "Lasgewehr", "test": "51", "damage": "1W10+4", "range": "Fern", "mag": "40", "enc": "2", "traits": "Zuverlässig; Vinzentius nennt es beim Namen und bedankt sich nach jedem Schuss" },
+    { "name": "Ritual-Schraubenschlüssel »Der Sanfte Überzeuger«", "test": "24", "damage": "1W10", "range": "Nah", "mag": "—", "enc": "2", "traits": "Werkzeug (nicht in der Profiltabelle → 1W10 Standard)" }
+  ],
+
+  "augmetics": [
+    "Augur-Array",
+    "Utility-Mechadendrit",
+    "Vox-Implantat"
+  ],
+
+  "psyker": false,
+  "disciplines": [],
+  "known_powers": [],
+
+  "age": "Registriert 61 Standardjahre. Gewartet: unregelmäßig. Garantie: erloschen.",
+  "eyes": "Links organisch und müde grau, rechts ein Augur-Linsencluster, das im Dunkeln bernsteinfarben nachglüht.",
+  "hair": "Keins. Der Schädel ist an drei Stellen mit Kupferbolzen kontaktiert.",
+  "height": "1,72 m, davon neun Zentimeter Rückenstütze.",
+  "weight": "Schwerer, als er aussieht. Metall wiegt.",
+  "handedness": "Rechtshändig. Der Utility-Mechadendrit ist beidhändig und widerspricht gelegentlich.",
+  "distinguishing": "Sein Vox-Implantat hat einen Defekt: etwa jeder fünfte Satz verlässt ihn in einer fremden, unangemessen fröhlichen Frauenstimme — der Werksdurchsage der Schmiedewelt Kaltmar-IX (»Die Schicht endet nie!«). Er hat den Defekt sechsmal zur Reparatur gemeldet. Die Aktenzeichen kann er auswendig. Ansonsten: rostrote Robe, Weihrauchgeruch, und ein Mechadendrit, der schon anfängt, Dinge zu reparieren, während sein Besitzer noch redet.",
+
+  "talents": [
+    { "name": "Klageschrift", "effect": "Vinzentius protokolliert jeden Mangel — an Maschinen, Gebäuden und Personen — mit Datum und Aktenzeichen. Der Spielleiter darf ältere Einträge jederzeit gegen die Gruppe verwenden. Vinzentius auch." },
+    { "name": "Ritus der Erweckung", "effect": "Öl, Weihrauch und ein sehr ernst gemeintes Gebet. Beschleunigt keine Probe, aber Maschinen, die den Ritus bekommen haben, versagen im Zweifel erzählerisch später als solche ohne." }
+  ],
+
+  "goals": "Kurzfristig: das Zollmanifest der »Groll der Väter« auf Vollständigkeit prüfen. Fracht, die nicht im Manifest steht, ist für ihn keine Fracht, sondern ein Fehler — und Fehler werden behoben, nicht verladen.\nLangfristig: Klageschrift Nr. 1 abschließen. Sie läuft seit neunzehn Jahren gegen einen Magos, sie ist sachlich korrekt, und sie hat ihn vier Dienstgrade gekostet. Er will keinen Ruhm. Er will einen Eingangsstempel.",
+
+  "connections": "Fridolin Feuchtgebietheld — im Protokoll geführt als »unverkabelte Signalquelle, nicht wartbar, Zugang untersagt«. Vinzentius steht ihm konsequent nie näher als drei Meter und hat dafür eine Begründung in Schriftform.\nRektalus Zerfickus — katalogisiert als »Baugruppe mit hervorragender Politur und ungeklärter Funktion«. Er hält ihn ehrlich für ein Zierteil und ist jedes Mal überrascht, wenn das Zierteil etwas totschlägt.\nGellicus Schulz — hat ihm einmal erklärt, er wolle den Gott-Imperator verführen. Vinzentius hat das aufgenommen, protokolliert und ein Aktenzeichen vergeben. Er erwähnt es ungefähr alle zwei Stunden.",
+
+  "notes": "Geboren auf der Schmiedewelt Kaltmar-IX, aufgewachsen im Takt der Werkssirenen — deswegen zuckt er im Hafendistrikt bei jeder Sirene kurz zusammen und weiß trotzdem immer, wie spät es ist. Er war auf dem Weg zum Magos, bis er gegen den Cogitator eines Vorgesetzten formal Beschwerde einlegte. Die Beschwerde war korrekt. Das machte es schlimmer. Seither Enginseer 4. Klasse und als »Verbindungstechnicus« an Inquisitor Halikarn abgestellt — eine Zuteilung, die beide Seiten als Strafe verstehen.\nEr redet mit Maschinen höflicher als mit Menschen, weil Maschinen zuhören. Er hält Organisches für eine Bauform mit schlechten Wartungsintervallen und sagt das auch. Wer ihn kennt, weiß: die Beschwerden sind keine Bosheit, sie sind Fürsorge in der einzigen Sprache, die er gelernt hat. Er hat noch nie jemanden im Stich gelassen. Er hat es nur jedes Mal vorher schriftlich angemerkt.",
+
+  "combat_notes": "Bleibt hinten, hält das Lasgewehr auf mittlere Distanz und gibt über das Augur-Array Zieldaten durch, die niemand anfordert und alle brauchen (Energiequellen, Lebenszeichen, Bewegung). Nahkampf betrachtet er als Wartungsfehler in der Planung. Der Schraubenschlüssel kommt erst heraus, wenn etwas repariert oder etwas beendet werden muss — und für ihn ist das derselbe Vorgang. Vor dem ersten Schuss sagt er dem Gewehr Danke. Nach dem Kampf sammelt er Hülsen ein.",
+
+  "divination": "Der Maschinengeist vergisst nichts. Ich auch nicht. Ich führe Protokoll."
+}
