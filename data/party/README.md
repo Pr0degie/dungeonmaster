@@ -5,9 +5,12 @@ Eine Datei pro Spieler. Dieser Ordner wird **committet** (`.gitignore`-Allowlist
 `data/party/` erweitert) — anders als die echten per-Channel-Session-Ordner.
 
 **Aktuell hier:**
-- `fridolin_feuchtgebietheld.json` — Tobi (Interrogator/Psioniker)
+- `fridolin_feuchtgebietheld.json` — Tobi / `Pr0degie` (Interrogator & Psioniker)
+- `gellicus_schulz.json` — Timo (Schwerenöter, Reden/Wissen)
+- `rektalus_zerfickus.json` — Sezgin / `SezBoss69` (Nahkämpfer, Athletik)
+- `vinzentius_kabelbrand.json` — Vincent / `Vinnie` (Enginseer, Fernkampf/Technologie)
 
-**Noch erwartet:** Sezgins + Timos Charakter (je eine `.json`-Datei hier ablegen).
+Alle vier sind in `data/sessions/1343673766487654464/characters.json` zusammengeführt.
 
 ## Format
 
@@ -21,9 +24,15 @@ Pflicht fürs Würfel-Engine: `name`, `characteristics`, `skills`, `wounds`/`max
 `known_powers` (**Namen müssen Katalog-Schlüssel in `data/systems/imperium_maledictum.json`
 treffen**, sonst kein `<<MANIFEST>>`-Wurf).
 
-## Wenn alle drei da sind
+## Wenn ein Charakter dazukommt
 
-Claude führt die drei Dateien zur **einen** vom Bot geladenen
+Claude führt die Dateien zur **einen** vom Bot geladenen
 `data/sessions/<channel_id>/characters.json` zusammen (gemeinsame `characters`-Liste +
-`aliases`), füllt optional die PDF-Bögen (`tools/fill_character_sheet.py`) und setzt den
-alten Session-State/History/Recap zurück, damit Chemical Burn frisch mit der neuen Party startet.
+`aliases`) und füllt die PDF-Bögen (`tools/fill_character_sheet.py`, bleiben lokal).
+
+**Achtung State:** `state.json` wird nur **einmal** aus dieser Datei geseedet
+(`WorldState.seed_from_store`). Ein bereits existierendes `state.json` nimmt einen neu
+dazugekommenen Charakter also **nicht** auf — für die laufende Kampagne muss er entweder
+von Hand in `state.json` ergänzt oder der State zurückgesetzt werden. Ein Debug-Run ist
+davon nicht betroffen: der legt seinen eigenen `state.debug.json` an (ADR 056) und seedet
+dort frisch.
