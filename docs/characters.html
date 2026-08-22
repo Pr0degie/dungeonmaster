@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zelle Halikarn</title>
+<style>
+  :root {
+    --bg: #0d0b09;
+    --panel: #16120e;
+    --panel-2: #1d1813;
+    --ink: #d8cfc0;
+    --ink-dim: #9a8f7d;
+    --ink-bright: #efe6d2;
+    --gold: #c9a227;
+    --gold-soft: #8a6f1f;
+    --blood: #8e2f2f;
+    --teal: #4f8a8b;
+    --warp: #7a63ad;
+    --rust: #b0703a;
+    --border: #2e2620;
+    --ok: #6f9e57;
+    --bad: #b05050;
+    --accent: var(--gold);
+    --accent-soft: var(--gold-soft);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { animation: none !important; transition: none !important; }
+  }
+  body {
+    margin: 0;
+    background: var(--bg);
+    background-image: radial-gradient(ellipse at 50% -10%, #1d160d 0%, var(--bg) 60%);
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    line-height: 1.6;
+    font-size: 17px;
+  }
+  .page { max-width: 980px; margin: 0 auto; padding: 32px 22px 80px; }
+
+  a { color: var(--gold); text-decoration-color: var(--gold-soft); text-underline-offset: 3px; }
+  a:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+
+  header.top { text-align: center; padding: 28px 0 8px; }
+  .crest { text-align: center; font-size: 26px; color: var(--gold-soft); margin: 4px 0; }
+  .eyebrow {
+    letter-spacing: .35em; text-transform: uppercase; font-size: 12px;
+    color: var(--gold-soft); margin-bottom: 10px;
+  }
+  h1 {
+    font-size: clamp(34px, 6vw, 52px); margin: 0 0 6px;
+    color: var(--gold); letter-spacing: .04em; font-variant: small-caps;
+    text-shadow: 0 0 28px rgba(201,162,39,.18); text-wrap: balance;
+  }
+  .subtitle { color: var(--ink-dim); font-style: italic; margin: 0 auto; max-width: 46em; }
+  .rule-line {
+    height: 1px; margin: 26px auto; width: 70%;
+    background: linear-gradient(90deg, transparent, var(--gold-soft), transparent);
+  }
+
+  h2 {
+    color: var(--gold); font-variant: small-caps; letter-spacing: .05em;
+    font-size: 26px; margin: 52px 0 6px; border-bottom: 1px solid var(--border);
+    padding-bottom: 6px; text-wrap: balance;
+  }
+  h2 .num { color: var(--gold-soft); margin-right: 10px; font-size: 20px; }
+  h3 { color: var(--ink); font-size: 19px; margin: 26px 0 6px; text-wrap: balance; }
+  h4 { margin: 0 0 6px; font-size: 15px; font-variant: small-caps; letter-spacing: .08em; color: var(--accent); }
+  p { margin: 10px 0; max-width: 68ch; }
+  strong { color: var(--ink-bright); }
+  .dim { color: var(--ink-dim); font-size: 15px; }
+  code {
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px;
+    padding: 1px 6px; font-size: 14.5px; color: var(--ink-bright);
+    font-family: Consolas, "Courier New", monospace;
+  }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 18px 20px; margin: 18px 0;
+  }
+  .panel.gold { border-color: var(--gold-soft); background: linear-gradient(180deg, #1c160c, var(--panel)); }
+  .panel.warn { border-left: 4px solid var(--bad); }
+  .panel-title {
+    font-variant: small-caps; letter-spacing: .08em; color: var(--gold);
+    font-size: 15px; margin-bottom: 6px;
+  }
+
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 16px; }
+  th {
+    text-align: left; color: var(--accent); font-variant: small-caps; letter-spacing: .05em;
+    border-bottom: 1px solid var(--accent-soft); padding: 8px 10px; font-weight: normal;
+  }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.mod, .num-cell { font-family: Consolas, "Courier New", monospace; font-variant-numeric: tabular-nums; }
+  .scroll-x { overflow-x: auto; }
+
+  /* ---------- Navigation ---------- */
+  .roster { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin: 22px 0 8px; }
+  .roster a {
+    display: block; text-decoration: none; background: var(--panel-2);
+    border: 1px solid var(--border); border-top: 3px solid var(--accent);
+    border-radius: 6px; padding: 12px 14px; transition: border-color .15s ease, background .15s ease;
+  }
+  .roster a:hover { background: var(--panel); border-color: var(--accent); border-top-color: var(--accent); }
+  .roster .rn { display: block; color: var(--accent); font-variant: small-caps; font-size: 19px; letter-spacing: .03em; }
+  .roster .rr { display: block; color: var(--ink-dim); font-size: 14px; font-style: italic; }
+
+  /* ---------- Dossier ---------- */
+  .dossier { margin: 46px 0 0; scroll-margin-top: 16px; }
+  .dossier-head {
+    border: 1px solid var(--border); border-top: 4px solid var(--accent);
+    border-radius: 8px 8px 0 0; background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    padding: 18px 22px 16px;
+  }
+  .file-no {
+    font-family: Consolas, "Courier New", monospace; font-size: 12px; letter-spacing: .22em;
+    text-transform: uppercase; color: var(--accent-soft);
+  }
+  .dossier-head h2 {
+    color: var(--accent); border: none; margin: 4px 0 2px; padding: 0;
+    font-size: clamp(27px, 4.6vw, 38px);
+  }
+  .who { color: var(--ink-dim); font-size: 15px; font-style: italic; margin: 0 0 10px; }
+  .who b { color: var(--ink); font-style: normal; }
+  .tags { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+  .tag {
+    font-size: 12.5px; letter-spacing: .09em; text-transform: uppercase;
+    border: 1px solid var(--border); border-radius: 99px; padding: 3px 11px;
+    color: var(--ink-dim); background: rgba(0,0,0,.25);
+  }
+  .tag.acc { color: var(--accent); border-color: var(--accent-soft); }
+
+  .dossier-body {
+    border: 1px solid var(--border); border-top: none; border-radius: 0 0 8px 8px;
+    background: var(--panel); padding: 4px 22px 22px;
+    display: grid; grid-template-columns: 1.05fr .95fr; gap: 0 30px;
+  }
+  .col-hard, .col-soft { min-width: 0; }
+  @media (max-width: 780px) { .dossier-body { grid-template-columns: 1fr; } }
+
+  .block { margin: 22px 0 0; }
+  .block-title {
+    font-variant: small-caps; letter-spacing: .1em; color: var(--accent);
+    font-size: 14.5px; border-bottom: 1px solid var(--border); padding-bottom: 4px; margin-bottom: 10px;
+  }
+
+  /* Merkmale */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(74px, 1fr)); gap: 7px; }
+  .stat {
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 5px;
+    padding: 7px 4px 6px; text-align: center;
+  }
+  .stat .k { display: block; font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-dim); }
+  .stat .v { display: block; font-family: Consolas, "Courier New", monospace; font-variant-numeric: tabular-nums;
+             font-size: 21px; color: var(--ink-bright); line-height: 1.25; }
+  .stat .b { display: block; font-size: 11.5px; color: var(--accent-soft); font-family: Consolas, "Courier New", monospace; }
+  .stat.high { border-color: var(--accent-soft); }
+  .stat.high .v { color: var(--accent); }
+
+  /* Fertigkeiten */
+  .skills { display: grid; gap: 5px; }
+  .skill { display: grid; grid-template-columns: 1fr 34px; gap: 8px; align-items: center; font-size: 15px; }
+  .skill .n { position: relative; padding: 3px 0 4px; }
+  .skill .bar { display: block; height: 4px; border-radius: 2px; background: var(--accent-soft); opacity: .55; margin-top: 2px; }
+  .skill.top .bar { opacity: 1; background: var(--accent); }
+  .skill.top .n { color: var(--ink-bright); }
+  .skill .val { text-align: right; font-family: Consolas, "Courier New", monospace; font-variant-numeric: tabular-nums; color: var(--ink-bright); }
+
+  /* Zustand */
+  .vitals { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; }
+  .vital { background: var(--panel-2); border: 1px solid var(--border); border-radius: 5px; padding: 8px 10px; }
+  .vital .k { display: block; font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-dim); }
+  .vital .v { display: block; font-family: Consolas, "Courier New", monospace; font-variant-numeric: tabular-nums;
+              font-size: 19px; color: var(--ink-bright); }
+  .vital .v small { font-size: 13px; color: var(--ink-dim); }
+
+  ul.plain { margin: 6px 0 0; padding-left: 0; list-style: none; font-size: 15.5px; }
+  ul.plain li { padding: 4px 0; border-bottom: 1px dotted var(--border); }
+  ul.plain li:last-child { border-bottom: none; }
+
+  ul.dash { margin: 6px 0 0; padding-left: 1.1em; font-size: 15.5px; }
+  ul.dash li { padding: 3px 0; }
+  ul.dash li::marker { color: var(--accent-soft); }
+
+  .play {
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-left: 3px solid var(--accent); border-radius: 6px; padding: 14px 17px; margin: 22px 0 0;
+  }
+  .play p { margin: 8px 0; font-size: 15.5px; }
+  .play .lead { color: var(--ink-bright); font-style: italic; }
+  .danger { border-left-color: var(--bad); }
+  .danger h4 { color: var(--bad); }
+
+  .rolls { display: grid; gap: 7px; margin-top: 8px; }
+  .roll-row {
+    display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: baseline;
+    font-size: 15px; border-bottom: 1px dotted var(--border); padding-bottom: 5px;
+  }
+  .roll-row:last-child { border-bottom: none; }
+  .roll-row .t { font-family: Consolas, "Courier New", monospace; color: var(--accent); font-variant-numeric: tabular-nums; }
+
+  .divination {
+    margin: 16px 0 0; padding: 10px 0 0; border-top: 1px solid var(--border);
+    font-style: italic; color: var(--ink-dim); font-size: 15px;
+  }
+  .divination .lbl { font-style: normal; font-variant: small-caps; letter-spacing: .1em; color: var(--accent-soft); font-size: 13px; }
+
+  .flow { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+  .flow .step {
+    flex: 1 1 150px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px;
+    padding: 10px 12px; font-size: 14.5px;
+  }
+  .flow .step b { display: block; color: var(--gold); font-variant: small-caps; font-size: 14px; margin-bottom: 3px; }
+
+  .formula {
+    text-align: center; font-size: clamp(16px, 3vw, 21px); padding: 12px 10px;
+    color: var(--ink-bright);
+  }
+  .formula .op { color: var(--gold-soft); padding: 0 8px; }
+  .formula .hl { color: var(--gold); border-bottom: 2px solid var(--gold-soft); padding: 0 4px; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 640px) { .two-col { grid-template-columns: 1fr; } }
+
+  .sep { display: flex; align-items: center; gap: 14px; margin: 54px 0 0; color: var(--gold-soft); }
+  .sep::before, .sep::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, transparent, var(--border), transparent); }
+
+  footer { margin-top: 60px; text-align: center; color: var(--ink-dim); font-size: 13.5px; }
+  footer .rule-line { margin-bottom: 18px; }
+  footer p { margin: 8px auto; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="top">
+  <div class="crest">⚜</div>
+  <div class="eyebrow">Warhammer 40.000 · Imperium Maledictum</div>
+  <h1>Zelle Halikarn</h1>
+  <p class="subtitle">Die Akten der vier Agenten, die im Auftrag von Inquisitor Aegidius Halikarn
+  unterwegs sind — mit Werten, Waffen und dem, was am Tisch eigentlich zählt: wie man sie spielt.</p>
+  <div class="rule-line"></div>
+</header>
+
+<nav class="roster" aria-label="Charaktere">
+  <a href="#fridolin" style="--accent: var(--warp); --accent-soft: #56447c;">
+    <span class="rn">Fridolin Feuchtgebietheld</span>
+    <span class="rr">Interrogator &amp; Psioniker · Tobi</span>
+  </a>
+  <a href="#gellicus" style="--accent: var(--teal); --accent-soft: #35605f;">
+    <span class="rn">Gellicus Schulz</span>
+    <span class="rr">Zunge, Kopf und Sani · Timo</span>
+  </a>
+  <a href="#rektalus" style="--accent: var(--blood); --accent-soft: #6b2424;">
+    <span class="rn">Rektalus Zerfickus</span>
+    <span class="rr">Körper und Vorhut · Sezgin</span>
+  </a>
+  <a href="#vinzentius" style="--accent: var(--rust); --accent-soft: #744724;">
+    <span class="rn">Vinzentius Kabelbrand</span>
+    <span class="rr">Enginseer, Technik und Gewehr · Vincent</span>
+  </a>
+</nav>
+
+<!-- ================================================================== -->
+<h2><span class="num">I</span>Das Spiel in zwei Minuten</h2>
+
+<p>Ihr spielt drei Agenten im Dienst der Inquisition, irgendwo in den dreckigen Rändern des
+Imperiums. Es gibt keine Karte und keine Miniaturen: Der Spielleiter beschreibt eine Lage,
+ihr sagt, was ihr tut, und wenn der Ausgang unsicher <em>und</em> interessant ist, wird gewürfelt.
+An eurem Tisch ist der Spielleiter ein Programm — <strong>ihr sprecht ganz normal im Voice-Channel,
+es hört zu, würfelt im Code und antwortet mit Stimme</strong>. Ihr müsst nichts eintippen und
+nichts ausrechnen.</p>
+
+<div class="flow">
+  <div class="step"><b>1 · Ansage</b>Du sagst, was du tust — nicht welche Fertigkeit du willst.</div>
+  <div class="step"><b>2 · Ziel</b>Fertigkeitswert + Schwierigkeit ergeben deinen Zielwert.</div>
+  <div class="step"><b>3 · Wurf</b>1W100. Ergebnis <em>gleich oder kleiner</em> als das Ziel? Geschafft.</div>
+  <div class="step"><b>4 · Deutlichkeit</b>Zehnerstelle(Ziel) − Zehnerstelle(Wurf) = Erfolgsgrade.</div>
+  <div class="step"><b>5 · Folgen</b>Der Spielleiter erzählt, was daraus wird.</div>
+</div>
+
+<div class="panel gold">
+  <div class="panel-title">Spickzettel</div>
+  <div class="scroll-x">
+  <table style="margin:4px 0;">
+    <tr><td>Probe</td><td class="mod">1W100 ≤ Fertigkeit + Schwierigkeit</td></tr>
+    <tr><td>Schwierigkeit</td><td class="mod">Sehr leicht +60 · Leicht +40 · Routine +20 · Herausfordernd ±0 · Schwierig −10 · Schwer −20 · Sehr schwer −30</td></tr>
+    <tr><td>Erfolgsgrade (EG)</td><td class="mod">Zehner(Ziel) − Zehner(Wurf)</td></tr>
+    <tr><td>Immer Erfolg / Fehlschlag</td><td class="mod">01–05 / 96–00</td></tr>
+    <tr><td>Kritisch / Patzer</td><td class="mod">Pasch (11, 22, 33 …) bei Erfolg / bei Fehlschlag</td></tr>
+    <tr><td>Schaden</td><td class="mod">Waffe + EG − (Zähigkeitsbonus + Rüstung)</td></tr>
+    <tr><td>Bonus eines Merkmals</td><td class="mod">die Zehnerstelle — Str 40 → StrB 4</td></tr>
+    <tr><td>0 Wunden</td><td class="mod">kampfunfähig — hilflos, nicht automatisch tot</td></tr>
+    <tr><td>Vorteil / Nachteil</td><td class="mod">2× würfeln, das bessere / schlechtere zählt</td></tr>
+  </table>
+  </div>
+</div>
+
+<p>Kampf ist dieselbe Probe, nur mit Blut: Angriff über <em>Nahkampf</em> oder <em>Fernkampf</em>,
+dann Waffenschaden würfeln, Erfolgsgrade drauf, Zähigkeitsbonus und Rüstung des Ziels runter,
+der Rest geht von den Wunden ab. Er ist schnell, tödlich und selten die klügste Idee —
+in Imperium Maledictum verliert man einen Kampf nicht knapp, sondern endgültig.</p>
+
+<div class="panel">
+  <div class="panel-title">Nützlich am Tisch</div>
+  <ul class="plain">
+    <li><code>!regeln wie funktioniert ausweichen?</code> — Regelfrage, direkt aus dem Regelbuch beantwortet</li>
+    <li><code>!zeit</code> — wie spät ist es in der Spielwelt (Fristen laufen wirklich)</li>
+    <li><code>!turn</code> — wer ist dran</li>
+    <li><code>!fäden</code> — welche losen Enden noch offen sind</li>
+    <li><code>!r</code> — der Spielleiter hat dich falsch verstanden: letzten Zug neu erzählen lassen</li>
+  </ul>
+</div>
+
+<p class="dim">Die ausführliche Fassung mit Beispielen, Zuständen, Korruption und Einfluss steht in
+<a href="how-to-play.html">How to Play</a>; der Hintergrund des Sektors in
+<a href="lore.html">Lore</a>.</p>
+
+<div class="sep">⚜</div>
+
+<!-- ================================================================== -->
+<!-- FRIDOLIN                                                            -->
+<!-- ================================================================== -->
+<section class="dossier" id="fridolin" style="--accent: var(--warp); --accent-soft: #56447c;">
+  <div class="dossier-head">
+    <div class="file-no">Akte I · Interrogator · Zugriffsstufe Vermilion</div>
+    <h2>Fridolin Feuchtgebietheld</h2>
+    <p class="who">gespielt von <b>Tobi</b> · Schreinwelt · Inquisition · Patron: Aegidius Halikarn · 34 Jahre</p>
+    <p style="margin:0; max-width:60ch;">Interrogator und Psioniker — ein verkappter Edgelord, der jeden
+    Satz so flüstert, als liefe gerade der Trailer zu seinem eigenen Film.</p>
+    <div class="tags">
+      <span class="tag acc">Psioniker</span>
+      <span class="tag">Heimlichkeit</span>
+      <span class="tag">Verhör</span>
+      <span class="tag">Telepathie</span>
+    </div>
+  </div>
+
+  <div class="dossier-body">
+    <div class="col-hard">
+
+      <div class="block">
+        <div class="block-title">Merkmale</div>
+        <div class="stats">
+          <div class="stat"><span class="k">WS</span><span class="v">28</span><span class="b">B 2</span></div>
+          <div class="stat"><span class="k">BS</span><span class="v">28</span><span class="b">B 2</span></div>
+          <div class="stat"><span class="k">Str</span><span class="v">24</span><span class="b">B 2</span></div>
+          <div class="stat"><span class="k">Tgh</span><span class="v">26</span><span class="b">B 2</span></div>
+          <div class="stat high"><span class="k">Ag</span><span class="v">38</span><span class="b">B 3</span></div>
+          <div class="stat"><span class="k">Int</span><span class="v">26</span><span class="b">B 2</span></div>
+          <div class="stat"><span class="k">Per</span><span class="v">32</span><span class="b">B 3</span></div>
+          <div class="stat high"><span class="k">Wil</span><span class="v">41</span><span class="b">B 4</span></div>
+          <div class="stat high"><span class="k">Fel</span><span class="v">37</span><span class="b">B 3</span></div>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-title">Fertigkeiten</div>
+        <div class="skills">
+          <div class="skill top"><div class="n">Psi-Meisterschaft<span class="bar" style="width:92%"></span></div><div class="val">51</div></div>
+          <div class="skill top"><div class="n">Heimlichkeit<span class="bar" style="width:87%"></span></div><div class="val">48</div></div>
+          <div class="skill top"><div class="n">Disziplin (Psi)<span class="bar" style="width:84%"></span></div><div class="val">46</div></div>
+          <div class="skill"><div class="n">Überreden<span class="bar" style="width:76%"></span></div><div class="val">42</div></div>
+          <div class="skill"><div class="n">Wahrnehmung<span class="bar" style="width:67%"></span></div><div class="val">37</div></div>
+          <div class="skill"><div class="n">Nahkampf<span class="bar" style="width:60%"></span></div><div class="val">33</div></div>
+          <div class="skill"><div class="n">Fernkampf<span class="bar" style="width:60%"></span></div><div class="val">33</div></div>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-title">Zustand</div>
+        <div class="vitals">
+          <div class="vital"><span class="k">Wunden</span><span class="v">10 <small>/ 10</small></span></div>
+          <div class="vital"><span class="k">Schicksal</span><span class="v">3 <small>/ 3</small></span></div>
+          <div class="vital"><span class="k">Korruption</span><span class="v">0</span></div>
+          <div class="vital"><span class="k">Warp-Schwelle</span><span class="v">4</span></div>
+          <div class="vital"><span class="k">Rüstung Körper</span><span class="v">1</span></div>
+          <div class="vital"><span class="k">Traglast</span><span class="v">3 <small>/ 6</small></span></div>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-title">Waffen &amp; Rüstung</div>
+        <div class="scroll-x">
+        <table>
+          <tr><th>Waffe</th><th>Ziel</th><th>Schaden</th><th>Eigenschaften</th></tr>
+          <tr><td>Laspistole</td><td class="mod">33</td><td class="mod">1W10+3</td><td class="dim">Verlässlich · verborgen · 15 m · Mag 30</td></tr>
+          <tr><td>Kampfmesser</td><td class="mod">33</td><td class="mod">1W10+1</td><td class="dim">Leise · Nahkampf</td></tr>
+          <tr><td>Tarnmantel</td><td class="mod">—</td><td class="mod">RS 1</td><td class="dim">Flak-Einlagen, Körper · unauffällig</td></tr>
+        </table>
+        </div>
+        <p class="dim" style="margin-top:2px;">Ziel = dein Fertigkeitswert, bevor der Spielleiter die
+        Schwierigkeit draufrechnet.</p>
+      </div>
+
+      <div class="block">
+        <div class="block-title">Psi-Kräfte · Telepathie</div>
+        <div class="scroll-x">
+        <table>
+          <tr><th>Kraft</th><th>WL</th><th>Schwierigkeit</th><th>Wirkung</th></tr>
+          <tr><td>Psychic Static</td><td class="mod">1</td><td class="dim">Leicht +40</td><td class="dim">Du verschwindest aus Wahrnehmung und Geräten, bis du Schaden nimmst oder etwas anfasst.</td></tr>
+          <tr><td>Psychic Scrutiny</td><td class="mod">1</td><td class="dim">Leicht +40</td><td class="dim">Je Erfolgsgrad eine Information über das Ziel — Wunden, bestes Merkmal, beste Fertigkeit, ein Talent.</td></tr>
+          <tr><td>Soulsight</td><td class="mod">2</td><td class="dim">Herausfordernd ±0</td><td class="dim">Spürt lebende Wesen in Reichweite; Vorteil gegen Dämonen und andere Psioniker.</td></tr>
+          <tr><td>Dread Presence</td><td class="mod">2</td><td class="dim">Herausfordernd ±0</td><td class="dim">Furcht in deiner Zone: Feinde bestehen eine Disziplin-Probe oder sind verängstigt.</td></tr>
+          <tr><td>Smite</td><td class="mod">2</td><td class="dim">Schwierig −10</td><td class="dim">2 + WilB + EG Schaden, <strong>ignoriert Rüstung</strong>. Der Notnagel.</td></tr>
+        </table>
+        </div>
+        <p class="dim" style="margin-top:2px;"><strong>WL</strong> = Warp-Ladung. Jede gewirkte Kraft addiert
+        ihren Wert auf deine Aufladung. Über <strong>Schwelle 4</strong> droht am Ende deiner Handlung die
+        Perils-of-the-Warp-Probe — und nichts ist uncooler als das.</p>
+      </div>
+
+      <div class="block">
+        <div class="block-title">Talente</div>
+        <ul class="plain">
+          <li><strong>Psioniker</strong> <span class="dim">— manifestiert psychische Kräfte über Psi-Meisterschaft.</span></li>
+          <li><strong>Leichtfüßig</strong> <span class="dim">— bewegt sich tatsächlich lautlos. Kann nur nicht widerstehen, danach mit einem dramatischen Räuspern aufzutauchen.</span></li>
+          <li><strong>Glatte Zunge</strong> <span class="dim">— findet im Verhör den richtigen Hebel. Die bedrohlichen Einzeiler sitzen, er hat sie vorm Spiegel geübt.</span></li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <div class="block-title">Ausrüstung</div>
+        <p class="dim" style="margin:6px 0 0;">Inquisitorisches Siegel (verdeckt) · Tarnumhang · Daten-Slate ·
+        Dietrich-Set · Schattenbrille (Dämmerungssicht) · Vorratsration ×2</p>
+      </div>
+
+    </div>
+
+    <div class="col-soft">
+
+      <div class="play">
+        <h4>So spielst du ihn</h4>
+        <p class="lead">Du bist nie der Lauteste im Raum — du bist der, von dem niemand wusste, dass er
+        schon eine Weile darin steht.</p>
+        <p>Fridolin flüstert grundsätzlich, auch beim Brötchenkauf. Der Witz an ihm ist nicht, dass er
+        albern wäre: Er ist wirklich gefährlich, er ruiniert den Effekt nur regelmäßig, indem er den
+        perfekten Moment mit einem Spruch überzieht. Spiel die Pose völlig ernst — der Humor entsteht
+        beim Tisch, nicht bei ihm.</p>
+        <p>Deine Position in der Zelle ist die des Ermittlers: Du gehst voraus, aber ungesehen. Du bringst
+        die Information mit, aus der die anderen etwas machen — Rektalus tritt die Tür ein, Gellicus verpackt
+        es in Worte, Vinzentius stellt fest, dass die Tür ohnehin falsch verkabelt war.</p>
+      </div>
+
+      <div class="play">
+        <h4>Deine drei Würfe</h4>
+        <div class="rolls">
+          <div class="roll-row"><span>Ungesehen irgendwo hinein oder heraus</span><span class="t">Heimlichkeit 48</span></div>
+          <div class="roll-row"><span>Jemanden brechen, ohne ihn anzufassen</span><span class="t">Überreden 42</span></div>
+          <div class="roll-row"><span>Eine Kraft manifestieren</span><span class="t">Psi-Meisterschaft 51</span></div>
+        </div>
+        <p class="dim" style="margin-top:10px;">Und einer, den du hoffentlich nie brauchst: <strong>Disziplin (Psi) 46</strong>,
+        wenn der Warp zurückschlägt.</p>
+      </div>
+
+      <div class="play">
+        <h4>Die Warp-Ökonomie</h4>
+        <p>Deine Kräfte sind kein Vorrat, sondern ein Konto, das sich füllt. Zwei starke Kräfte in einer
+        Szene und du stehst auf der Schwelle.</p>
+        <ul class="dash">
+          <li><strong>Billig und ständig:</strong> Psychic Static und Psychic Scrutiny kosten je 1 und sind
+          <em>Leicht</em> (+40). Das ist deine Arbeitsroutine: erst lesen, dann verschwinden.</li>
+          <li><strong>Teuer und einmal:</strong> Dread Presence bricht eine Übermacht, Smite ist die Reißleine.
+          Danach ist die Szene für dich psionisch vorbei.</li>
+          <li><strong>Der Reihenfolge-Trick:</strong> Scrutiny <em>vor</em> dem Verhör, Static <em>vor</em>
+          dem Rückzug. Kräfte, die eine Szene vorbereiten, sind mehr wert als Kräfte, die sie retten müssen.</li>
+        </ul>
+      </div>
+
+      <div class="play danger">
+        <h4>Wovor du dich hüten solltest</h4>
+        <ul class="dash">
+          <li><strong>Nahkampf.</strong> Str 24, Tgh 26, 10 Wunden — du bist der Zerbrechlichste der drei.
+          Zwei gute Treffer und du liegst. Das Messer ist zum Lautlos-Sein da, nicht zum Kämpfen.</li>
+          <li><strong>Der Reflex, Smite zu werfen.</strong> Es ignoriert Rüstung und fühlt sich deshalb wie
+          die Lösung an. Es ist die zweitbeste — die beste ist, dass es gar nicht erst zum Kampf kommt.</li>
+          <li><strong>Zeugen deiner Gabe.</strong> Dread Presence und Smite sind <em>offen</em> sichtbar
+          psionisch. Wer das sieht, weiß, was du bist — und im Imperium ist das keine gute Nachricht.</li>
+        </ul>
+      </div>
+
+      <div class="play">
+        <h4>Ziele</h4>
+        <p><strong>Kurzfristig:</strong> den Drahtzieher stellen — und dabei mindestens einmal cool aus dem
+        Schatten treten, während es auch jemand sieht.</p>
+        <p><strong>Langfristig:</strong> beweisen, dass seine Gabe ein Werkzeug des Imperators ist und kein
+        Makel. Insgeheim auch, dass der Name „Feuchtgebietheld" eigentlich voll badass ist.</p>
+      </div>
+
+      <div class="play">
+        <h4>Dein Bogen</h4>
+        <p>Du startest als knallharter Puritaner: Ketzerei wird ausgemerzt, kein Pakt, keine Grauzone,
+        Reinheit über alles — auch über die eigene Gabe, die er nur zähneknirschend duldet.</p>
+        <p>Von dort radikalisiert er sich. Aus Strenge wird Härte, aus Reinheitsdrang Fanatismus; Mittel,
+        die er anfangs verabscheut hätte, werden Schritt für Schritt vertretbar. <strong>Spiel das als
+        Erosion, nicht als Schalter:</strong> Die erste Grenze, die du überschreitest, soll ihm noch
+        wehtun. Die dritte nicht mehr.</p>
+      </div>
+
+      <div class="play">
+        <h4>Verbindungen</h4>
+        <ul class="dash">
+          <li><strong>Aegidius Halikarn</strong> — dein Patron, der deine dramatischen Vox-Monologe
+          inzwischen meist stummschaltet.</li>
+          <li><strong>Eine namenlose Stimme im Vox</strong> aus den Unterstädten, die dich „Chef" nennt —
+          was du heimlich sehr genießt.</li>
+          <li><strong>Rektalus</strong> — alter Freund. Er erträgt deine Sinnkrisen mit liebevoller
+          Gleichgültigkeit.</li>
+        </ul>
+        <div class="divination">
+          <span class="lbl">Divination</span><br>
+          „Der wahre Held watet dort, wo andere nicht hintreten."
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<div class="sep">⚜</div>
+
+<!-- ================================================================== -->
+<!-- GELLICUS                                                            -->
+<!-- ================================================================== -->
+<section class="dossier" id="gellicus" style="--accent: var(--teal); --accent-soft: #35605f;">
+  <div class="dossier-head">
+    <div class="file-no">Akte II · Ziviler Begleiter · Status ungeklärt</div>
+    <h2>Gellicus Schulz</h2>
+    <p class="who">gespielt von <b>Timo</b> · Schreinwelt · kein Psioniker</p>
+    <p style="margin:0; max-width:60ch;">Serial-Seducer mit einem Lebensziel, das man dem Ordo Hereticus
+    besser nicht erklärt: den Gott-Imperator zu verführen.</p>
+    <div class="tags">
+      <span class="tag acc">Überreden 53 — bester Wert der Zelle</span>
+      <span class="tag">Medicae</span>
+      <span class="tag">Wissen</span>
+      <span class="tag">Glaube</span>
+    </div>
+  </div>
+
+  <div class="dossier-body">
+    <div class="col-hard">
+
+      <div class="block">
+        <div class="block-title">Merkmale</div>
+        <div class="stats">
+          <div class="stat"><span class="k">WS</span><span class="v">26</span><span class="b">B 2</span></div>
+          <div class="stat"><span class="k">BS</span><span class="v">24</span><span class="b">B 2</span></div>
+          <div class="stat"><span class="k">Str</span><span class="v">24</span><span class="b">B 2</span></div>
+          <div class="stat"><span class="k">Tgh</span><span class="v">32</span><span class="b">B 3</span></div>
+          <div class="stat"><span class="k">Ag</span><span class="v">28</span><span class="b">B 2</span></div>
+          <div class="stat"><span class="k">Int</span><span class="v">32</span><span class="b">B 3</span></div>
+          <div class="stat"><span class="k">Per</span><span class="v">30</span><span class="b">B 3</span></div>
+          <div class="stat high"><span class="k">Wil</span><span class="v">41</span><span class="b">B 4</span></div>
+          <div class="stat high"><span class="k">Fel</span><span class="v">43</span><span class="b">B 4</span></div>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-title">Fertigkeiten</div>
+        <div class="skills">
+          <div class="skill top"><div class="n">Überreden<span class="bar" style="width:96%"></span></div><div class="val">53</div></div>
+          <div class="skill top"><div class="n">Einschüchtern<span class="bar" style="width:78%"></span></div><div class="val">43</div></div>
+          <div class="skill top"><div class="n">Wahrnehmung<span class="bar" style="width:73%"></span></div><div class="val">40</div></div>
+          <div class="skill"><div class="n">Wissen<span class="bar" style="width:67%"></span></div><div class="val">37</div></div>
+          <div class="skill"><div class="n">Medizin<span class="bar" style="width:67%"></span></div><div class="val">37</div></div>
+          <div class="skill"><div class="n">Technologie<span class="bar" style="width:58%"></span></div><div class="val">32</div></div>
+          <div class="skill"><div class="n">Heimlichkeit<span class="bar" style="width:51%"></span></div><div class="val">28</div></div>
+          <div class="skill"><div class="n">Nahkampf<span class="bar" style="width:47%"></span></div><div class="val">26</div></div>
+          <div class="skill"><div class="n">Athletik<span class="bar" style="width:44%"></span></div><div class="val">24</div></div>
+          <div class="skill"><div class="n">Fernkampf<span class="bar" style="width:44%"></span></div><div class="val">24</div></div>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-title">Zustand</div>
+        <div class="vitals">
+          <div class="vital"><span class="k">Wunden</span><span class="v">12 <small>/ 12</small></span></div>
+          <div class="vital"><span class="k">Zähigkeitsbonus</span><span class="v">3</span></div>
+          <div class="vital"><span class="k">Rüstung</span><span class="v">0</span></div>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-title">Waffen</div>
+        <div class="scroll-x">
+        <table>
+          <tr><th>Waffe</th><th>Ziel</th><th>Schaden</th><th>Eigenschaften</th></tr>
+          <tr><td>Kampfmesser</td><td class="mod">26</td><td class="mod">1W10+1</td><td class="dim">Leise · Nahkampf</td></tr>
+        </table>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-title">Ausrüstung</div>
+        <ul class="plain">
+          <li>Kampfmesser</li>
+          <li>Halskette mit dem Bild vom Gott-Imperator</li>
+          <li>Lectitio Divinitatus</li>
+          <li>Viagra</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <div class="block-title">Erscheinung</div>
+        <p class="dim" style="margin:6px 0 0;">1,70 m · langes blondes Haar, kein Bartwuchs, stets gebügelte
+        Kleidung, schlank. Arrogant — aber er weiß genau, wie er die Leute um den Finger wickelt.</p>
+      </div>
+
+    </div>
+
+    <div class="col-soft">
+
+      <div class="play">
+        <h4>So spielst du ihn</h4>
+        <p class="lead">Der Witz trägt nur, wenn du ihn nicht als Witz spielst.</p>
+        <p>Gellicus' parasoziale Liebe zum Gott-Imperator ist für ihn kein Gag, sondern das Zentrum seines
+        Lebens. Aus seinem Dorf vertrieben, weil er anders war, gibt er sich seither ganz seinen
+        Indulgenzen hin. Spiel diese Hingabe mit vollem Ernst — die Komik entsteht daraus, dass alle
+        anderen im Raum sie anders hören als er sie meint.</p>
+        <p>Der Zelle ist er nur beigetreten, um endlich seinen einzig Wahren zu treffen. Ihre Mitglieder
+        sind für ihn Mittel zum Zweck — <strong>aber lebende Mittel</strong>: Er braucht sie, und deshalb
+        hält er sie am Leben, ohne es je zuzugeben.</p>
+      </div>
+
+      <div class="play">
+        <h4>Deine drei Würfe</h4>
+        <div class="rolls">
+          <div class="roll-row"><span>Jemanden auf deine Seite ziehen</span><span class="t">Überreden 53</span></div>
+          <div class="roll-row"><span>Merken, was im Raum nicht stimmt</span><span class="t">Wahrnehmung 40</span></div>
+          <div class="roll-row"><span>Wunden stabilisieren, Gift erkennen</span><span class="t">Medizin 37</span></div>
+        </div>
+        <p class="dim" style="margin-top:10px;">Dazu <strong>Wissen 37</strong> für alles Kirchliche, Höfische
+        und Geschriebene und <strong>Einschüchtern 43</strong> für den Moment, in dem der Charme nicht reicht.</p>
+      </div>
+
+      <div class="play">
+        <h4>Deine Rolle in der Zelle</h4>
+        <ul class="dash">
+          <li><strong>Du bist die Stimme.</strong> 53 ist der höchste Wert am Tisch. Wenn irgendetwas mit
+          Reden zu lösen ist, redest du — Fridolin verhört, du verhandelst. Das ist ein Unterschied.</li>
+          <li><strong>Du bist das Gedächtnis für Menschen.</strong> Wissen 37 deckt das Kirchliche, Höfische
+          und Gesellschaftliche ab — Vinzentius weiß mehr über Maschinen und Archive, aber er weiß nicht, wer
+          bei welchem Fest neben wem sitzt. Das weißt du.</li>
+          <li><strong>Du bist der zweite Sani.</strong> Medizin 37 — hinter Vinzentius' 43, aber weit vor
+          Rektalus' 24. Wenn der Enginseer selbst der Verwundete ist, bist du dran.</li>
+          <li><strong>Du bist der Türöffner für Szenen.</strong> Deine Verbindungen sind viele flüchtige,
+          meist sexuelle Bekanntschaften, jederzeit über Datalink erreichbar. Frag den Spielleiter, ob
+          hier jemand davon lebt — das ist ein Werkzeug, kein Hintergrundtext.</li>
+        </ul>
+      </div>
+
+      <div class="play danger">
+        <h4>Wovor du dich hüten solltest</h4>
+        <ul class="dash">
+          <li><strong>Kampf, jeder Kampf.</strong> WS 26, BS 24, keine Rüstung, 12 Wunden. Du kämpfst
+          hinterhältig oder gar nicht — und tust alles, um direkte Konfrontation zu vermeiden.</li>
+          <li><strong>Laut über deinen Glauben reden.</strong> Die Lectitio Divinitatus ist im Imperium
+          Grenzware, und deine Auslegung davon ist … eigenwillig. Der falsche Zuhörer, und aus dem
+          Running Gag wird ein Verhör.</li>
+          <li><strong>Alles allein regeln wollen.</strong> Du bist der Beste im Reden, aber Str 24 und
+          Ag 28: Wenn es körperlich wird, ist Rektalus der Plan. Steh hinter ihm.</li>
+        </ul>
+      </div>
+
+      <div class="play">
+        <h4>Ziel</h4>
+        <p>Den Gott-Imperator treffen und verführen. Alles andere — Aufträge, Ketzer, Kameraden — ist
+        Wegstrecke dorthin.</p>
+        <div class="divination">
+          <span class="lbl">Divination</span><br>
+          „Für meinen Gott-Imperator."
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<div class="sep">⚜</div>
+
+<!-- ================================================================== -->
+<!-- REKTALUS                                                            -->
+<!-- ================================================================== -->
+<section class="dossier" id="rektalus" style="--accent: var(--blood); --accent-soft: #6b2424;">
+  <div class="dossier-head">
+    <div class="file-no">Akte III · Abgetreten zur Schuldbegleichung</div>
+    <h2>Rektalus Zerfickus</h2>
+    <p class="who">gespielt von <b>Sezgin</b> · Feudalwelt Valdris Prime · Inquisition · 25 Jahre</p>
+    <p style="margin:0; max-width:60ch;">Reicher Schönling aus der Zerfickus-Bordelldynastie, von seinem
+    Vater an die Inquisition abgetreten, um dessen Schulden zu begleichen.</p>
+    <div class="tags">
+      <span class="tag acc">Athletik 50 — bester Wert der Zelle</span>
+      <span class="tag">Vorhut</span>
+      <span class="tag">Nahkampf</span>
+      <span class="tag">Eitelkeit</span>
+    </div>
+  </div>
+
+  <div class="dossier-body">
+    <div class="col-hard">
+
+      <div class="block">
+        <div class="block-title">Merkmale</div>
+        <div class="stats">
+          <div class="stat"><span class="k">WS</span><span class="v">29</span><span class="b">B 2</span></div>
+          <div class="stat"><span class="k">BS</span><span class="v">24</span><span class="b">B 2</span></div>
+          <div class="stat high"><span class="k">Str</span><span class="v">40</span><span class="b">B 4</span></div>
+          <div class="stat high"><span class="k">Tgh</span><span class="v">35</span><span class="b">B 3</span></div>
+          <div class="stat high"><span class="k">Ag</span><span class="v">35</span><span class="b">B 3</span></div>
+          <div class="stat"><span class="k">Int</span><span class="v">24</span><span class="b">B 2</span></div>
+          <div class="stat"><span class="k">Per</span><span class="v">30</span><span class="b">B 3</span></div>
+          <div class="stat"><span class="k">Wil</span><span class="v">28</span><span class="b">B 2</span></div>
+          <div class="stat high"><span class="k">Fel</span><span class="v">35</span><span class="b">B 3</span></div>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-title">Fertigkeiten</div>
+        <div class="skills">
+          <div class="skill top"><div class="n">Athletik<span class="bar" style="width:91%"></span></div><div class="val">50</div></div>
+          <div class="skill top"><div class="n">Heimlichkeit<span class="bar" style="width:73%"></span></div><div class="val">40</div></div>
+          <div class="skill top"><div class="n">Nahkampf<span class="bar" style="width:71%"></span></div><div class="val">39</div></div>
+          <div class="skill"><div class="n">Wahrnehmung<span class="bar" style="width:64%"></span></div><div class="val">35</div></div>
+          <div class="skill"><div class="n">Überreden<span class="bar" style="width:64%"></span></div><div class="val">35</div></div>
+          <div class="skill"><div class="n">Einschüchtern<span class="bar" style="width:64%"></span></div><div class="val">35</div></div>
+          <div class="skill"><div class="n">Fernkampf<span class="bar" style="width:44%"></span></div><div class="val">24</div></div>
+          <div class="skill"><div class="n">Technologie<span class="bar" style="width:44%"></span></div><div class="val">24</div></div>
+          <div class="skill"><div class="n">Wissen<span class="bar" style="width:44%"></span></div><div class="val">24</div></div>
+          <div class="skill"><div class="n">Medizin<span class="bar" style="width:44%"></span></div><div class="val">24</div></div>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-title">Zustand</div>
+        <div class="vitals">
+          <div class="vital"><span class="k">Wunden</span><span class="v">12 <small>/ 12</small></span></div>
+          <div class="vital"><span class="k">Zähigkeitsbonus</span><span class="v">3</span></div>
+          <div class="vital"><span class="k">Rüstung</span><span class="v">0</span></div>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-title">Waffen</div>
+        <div class="scroll-x">
+        <table>
+          <tr><th>Waffe</th><th>Ziel</th><th>Schaden</th><th>Eigenschaften</th></tr>
+          <tr><td>Kampfmesser</td><td class="mod">39</td><td class="mod">1W10+1</td><td class="dim">Leise · Nahkampf</td></tr>
+          <tr><td>Handgranate</td><td class="mod">24</td><td class="mod">1W10</td><td class="dim">Wurf über Fernkampf · einmalig</td></tr>
+        </table>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-title">Ausrüstung</div>
+        <ul class="plain">
+          <li>Kampfmesser</li>
+          <li>Medikit <span class="dim">— für die anderen</span></li>
+          <li>Handgranate</li>
+          <li>Ein Nacktfoto von Timo Fendt</li>
+          <li>Brot mit Eintopf, Wasser</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <div class="block-title">Erscheinung</div>
+        <p class="dim" style="margin:6px 0 0;">Ca. 1,95 m, athletisch-muskulös. Schwarzes, stets makelloses
+        Haar, klares und störendes Blau in den Augen. Ein Lächeln, das Verhandlungen beendet — und die
+        unnatürliche Eigenschaft, immer gut auszusehen: nach dem Kampf, im Schlamm, beim Frühstück.</p>
+      </div>
+
+    </div>
+
+    <div class="col-soft">
+
+      <div class="play">
+        <h4>So spielst du ihn</h4>
+        <p class="lead">Selbstreflexion ist Zeitverschwendung. Spiegel sind unverzichtbare Ausrüstung.</p>
+        <p>Rektalus hält sich nicht für den Klügsten — er hält die Frage für irrelevant. Er ist erstaunlich
+        tapfer, weil er jede Gefahr unterschätzt, und überraschend loyal, weil Verrat einfach schlechter Stil
+        wäre. Gelegentlich ist er brillant darin, eine soziale Lage zu lesen; komplizierte Pläne verliert er
+        nach Schritt drei.</p>
+        <p>Das macht ihn am Tisch zum besten Motor gegen Grübelrunden: Wenn die anderen zwanzig Minuten
+        planen, geht Rektalus zur Tür. <strong>Nutz das bewusst</strong> — aber nur, wenn es der Szene hilft,
+        nicht wenn es sie zerstört.</p>
+      </div>
+
+      <div class="play">
+        <h4>Deine drei Würfe</h4>
+        <div class="rolls">
+          <div class="roll-row"><span>Klettern, springen, tragen, aufbrechen</span><span class="t">Athletik 50</span></div>
+          <div class="roll-row"><span>Zuschlagen, wenn es so weit ist</span><span class="t">Nahkampf 39</span></div>
+          <div class="roll-row"><span>Sich unbemerkt in Stellung bringen</span><span class="t">Heimlichkeit 40</span></div>
+        </div>
+        <p class="dim" style="margin-top:10px;">Die 40 auf Heimlichkeit überrascht bei einem Zwei-Meter-Mann —
+        aber Ag 35 trägt sie. Du kannst mit Fridolin vorgehen, nicht nur hinter ihm herpoltern.</p>
+      </div>
+
+      <div class="play">
+        <h4>Deine Rolle in der Zelle</h4>
+        <ul class="dash">
+          <li><strong>Du bist die Vorhut.</strong> Str 40 und Tgh 35 sind die besten körperlichen Werte am
+          Tisch, und mit 12 Wunden hältst du am meisten aus. Wenn jemand zuerst durch die Tür geht, bist du das.</li>
+          <li><strong>Du bist die physische Lösung.</strong> Athletik 50 ist der zweithöchste Wert der ganzen
+          Zelle. Verschlossenes Tor, eingestürzter Schacht, jemand hängt über der Kante — frag zuerst, ob
+          Muskeln reichen.</li>
+          <li><strong>Du bist der Beschützer.</strong> Fridolin hat 10 Wunden, Gellicus keine Rüstung. Der
+          Grund, warum du vorne stehst, sind nicht deine Werte — es sind ihre.</li>
+          <li><strong>Das Medikit trägst du für die anderen.</strong> Deine Medizin liegt bei 24 —
+          Vinzentius hat 43, Gellicus 37. Du schleppst es, sie benutzen es.</li>
+        </ul>
+      </div>
+
+      <div class="play danger">
+        <h4>Wovor du dich hüten solltest</h4>
+        <ul class="dash">
+          <li><strong>Die Granate.</strong> Wurf über Fernkampf 24 — das geht in mehr als der Hälfte der Fälle
+          daneben, und ein danebengegangener Wurf landet irgendwo. Nur werfen, wenn ein Fehlschlag niemanden
+          aus der Zelle trifft.</li>
+          <li><strong>Willenskraft-Proben.</strong> Wil 28 ist der niedrigste Wert der Gruppe. Furcht, Warp-Grusel,
+          Verführungsversuche und alles, was den Kopf angreift, trifft dich am härtesten. Bleib bei den anderen.</li>
+          <li><strong>Rätsel und Maschinen.</strong> Int 24, Wissen 24, Technologie 24. Das ist keine
+          Schwäche, die du ausspielen musst — es ist der Grund, warum Vinzentius mitgekommen ist. Reich weiter.</li>
+          <li><strong>Keine Rüstung.</strong> Du hältst viel aus, aber du schluckst jeden Treffer mit
+          Zähigkeitsbonus 3 und sonst nichts. Panzerung wäre die beste Anschaffung der nächsten Sitzung.</li>
+        </ul>
+      </div>
+
+      <div class="play">
+        <h4>Ziele</h4>
+        <p><strong>Kurzfristig:</strong> herausfinden, ob es im Sektor jemanden gibt, der ihm äußerlich das
+        Wasser reichen kann. Bisher Fehlanzeige.</p>
+        <p><strong>Langfristig:</strong> die Zerfickus-Pleasure-Houses auf zwei weitere Sektoren ausweiten
+        und sich unsterblich machen — im übertragenen Sinne.</p>
+      </div>
+
+      <div class="play">
+        <h4>Verbindungen</h4>
+        <ul class="dash">
+          <li><strong>Fridolin Feuchtgebietheld</strong> — alter Freund seit Jahren, wird mit liebevoller
+          Gleichgültigkeit ertragen. Bräuchte dringend bessere Kleidung und weniger Sinnkrisen.</li>
+          <li><strong>Gellicus Schulz</strong> — neuer Verbündeter, respektiert für seinen Instinkt, stets
+          die richtige Gesellschaft mitzubringen.</li>
+        </ul>
+        <div class="divination">
+          <span class="lbl">Divination</span><br>
+          „Wer gut aussieht, überlebt. Der Rest ist Theologie."
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<div class="sep">⚜</div>
+
+<!-- ================================================================== -->
+<!-- VINZENTIUS                                                          -->
+<!-- ================================================================== -->
+<section class="dossier" id="vinzentius" style="--accent: var(--rust); --accent-soft: #744724;">
+  <div class="dossier-head">
+    <div class="file-no">Akte IV · Verbindungstechnicus · Abstellung auf Widerspruch</div>
+    <h2>Vinzentius Kabelbrand</h2>
+    <p class="who">gespielt von <b>Vincent</b> · Schmiedewelt Kaltmar-IX · Adeptus Mechanicus, an die Inquisition abgestellt · registriert 61 Standardjahre</p>
+    <p style="margin:0; max-width:60ch;">Enginseer 4. Klasse, der gegen Maschinen, Türen und Mitspieler
+    formale Beschwerden mit Aktenzeichen führt — und meistens recht behält.</p>
+    <div class="tags">
+      <span class="tag acc">Technologie 53 — bester Wert der Zelle</span>
+      <span class="tag acc">der einzige Schütze</span>
+      <span class="tag">Augmetik</span>
+      <span class="tag">Protokoll</span>
+    </div>
+  </div>
+
+  <div class="dossier-body">
+    <div class="col-hard">
+
+      <div class="block">
+        <div class="block-title">Merkmale</div>
+        <div class="stats">
+          <div class="stat"><span class="k">WS</span><span class="v">24</span><span class="b">B 2</span></div>
+          <div class="stat high"><span class="k">BS</span><span class="v">41</span><span class="b">B 4</span></div>
+          <div class="stat"><span class="k">Str</span><span class="v">25</span><span class="b">B 2</span></div>
+          <div class="stat"><span class="k">Tgh</span><span class="v">32</span><span class="b">B 3</span></div>
+          <div class="stat"><span class="k">Ag</span><span class="v">26</span><span class="b">B 2</span></div>
+          <div class="stat high"><span class="k">Int</span><span class="v">43</span><span class="b">B 4</span></div>
+          <div class="stat"><span class="k">Per</span><span class="v">34</span><span class="b">B 3</span></div>
+          <div class="stat"><span class="k">Wil</span><span class="v">31</span><span class="b">B 3</span></div>
+          <div class="stat"><span class="k">Fel</span><span class="v">24</span><span class="b">B 2</span></div>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-title">Fertigkeiten</div>
+        <div class="skills">
+          <div class="skill top"><div class="n">Technologie<span class="bar" style="width:96%"></span></div><div class="val">53</div></div>
+          <div class="skill top"><div class="n">Fernkampf<span class="bar" style="width:92%"></span></div><div class="val">51</div></div>
+          <div class="skill top"><div class="n">Wissen<span class="bar" style="width:87%"></span></div><div class="val">48</div></div>
+          <div class="skill"><div class="n">Medizin<span class="bar" style="width:78%"></span></div><div class="val">43</div></div>
+          <div class="skill"><div class="n">Wahrnehmung<span class="bar" style="width:71%"></span></div><div class="val">39</div></div>
+          <div class="skill"><div class="n">Heimlichkeit<span class="bar" style="width:47%"></span></div><div class="val">26</div></div>
+          <div class="skill"><div class="n">Athletik<span class="bar" style="width:45%"></span></div><div class="val">25</div></div>
+          <div class="skill"><div class="n">Nahkampf<span class="bar" style="width:44%"></span></div><div class="val">24</div></div>
+          <div class="skill"><div class="n">Überreden<span class="bar" style="width:44%"></span></div><div class="val">24</div></div>
+          <div class="skill"><div class="n">Einschüchtern<span class="bar" style="width:44%"></span></div><div class="val">24</div></div>
+        </div>
+        <p class="dim" style="margin-top:8px;">Auf dem Bogen steht Wahrnehmung <strong>39</strong> — an der
+        Probe sind es <strong>44</strong>. Das Augur-Array gibt +5, und der Spielleiter rechnet das
+        automatisch dazu; du musst es nicht ansagen.</p>
+      </div>
+
+      <div class="block">
+        <div class="block-title">Zustand</div>
+        <div class="vitals">
+          <div class="vital"><span class="k">Wunden</span><span class="v">11 <small>/ 11</small></span></div>
+          <div class="vital"><span class="k">Zähigkeitsbonus</span><span class="v">3</span></div>
+          <div class="vital"><span class="k">Rüstung</span><span class="v">0</span></div>
+          <div class="vital"><span class="k">Augmetik</span><span class="v">3</span></div>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-title">Waffen</div>
+        <div class="scroll-x">
+        <table>
+          <tr><th>Waffe</th><th>Ziel</th><th>Schaden</th><th>Eigenschaften</th></tr>
+          <tr><td>Lasgewehr</td><td class="mod">51</td><td class="mod">1W10+4</td><td class="dim">Zuverlässig · Fern · Mag 40. Er nennt es beim Namen und bedankt sich nach jedem Schuss.</td></tr>
+          <tr><td>»Der Sanfte Überzeuger«</td><td class="mod">24</td><td class="mod">1W10</td><td class="dim">Ritual-Schraubenschlüssel · Nahkampf · eigentlich ein Werkzeug</td></tr>
+        </table>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-title">Augmetik</div>
+        <ul class="plain">
+          <li><strong>Augur-Array</strong> <span class="dim">— <strong>+5 Wahrnehmung</strong>, dazu Auspex-Sinne: Energie, Lebenszeichen und Bewegung bis mittlere Reichweite. Das rechte Auge ist ein Linsencluster, das im Dunkeln bernsteinfarben nachglüht.</span></li>
+          <li><strong>Utility-Mechadendrit</strong> <span class="dim">— gilt als Kombi-Werkzeug: <strong>+2 Erfolgsgrade auf Technik-Proben</strong>, wenn Werkzeug hilft (das wendet der Spielleiter an, es steckt nicht im Zielwert). Zusätzlich eine einhändige improvisierte Nahkampfwaffe. Beidhändig, fängt schon an zu reparieren, während sein Besitzer noch redet, und widerspricht gelegentlich.</span></li>
+          <li><strong>Vox-Implantat</strong> <span class="dim">— deine Stimme ist <strong>bis 100 Meter</strong> gut hörbar. Und sie ist defekt: etwa jeder fünfte Satz verlässt dich in der fröhlichen Frauenstimme der Werksdurchsage von Kaltmar-IX („Die Schicht endet nie!"). Sechsmal zur Reparatur gemeldet, alle Aktenzeichen auswendig.</span></li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <div class="block-title">Talente</div>
+        <ul class="plain">
+          <li><strong>Klageschrift</strong> <span class="dim">— protokolliert jeden Mangel an Maschinen, Gebäuden und Personen mit Datum und Aktenzeichen. Der Spielleiter darf ältere Einträge jederzeit gegen die Gruppe verwenden. Du auch.</span></li>
+          <li><strong>Ritus der Erweckung</strong> <span class="dim">— Öl, Weihrauch und ein sehr ernst gemeintes Gebet. Beschleunigt keine Probe, aber gewartete Maschinen versagen im Zweifel erzählerisch später als ungewartete.</span></li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <div class="block-title">Ausrüstung</div>
+        <p class="dim" style="margin:6px 0 0;">Werkzeugrolle mit 41 Teilen (39 vorhanden, 2 mit Aktenzeichen
+        vermisst) · Datenschreiber mit der Klageschrift, Band VII · Ampullen geweihtes Maschinenöl, Sorte 3 ·
+        Weihrauchkerzen für den Ritus der Erweckung · Ersatzsicherungen, Kupferbolzen, Isolierband ·
+        Trockenration Typ Corpus-Stärke · Blechtasse, angeschraubt</p>
+      </div>
+
+      <div class="block">
+        <div class="block-title">Erscheinung</div>
+        <p class="dim" style="margin:6px 0 0;">1,72 m, davon neun Zentimeter Rückenstütze. Kein Haar; der
+        Schädel ist an drei Stellen mit Kupferbolzen kontaktiert. Links ein müdes graues Auge, rechts der
+        Augur. Rostrote Robe, Weihrauchgeruch. Schwerer, als er aussieht — Metall wiegt.</p>
+      </div>
+
+    </div>
+
+    <div class="col-soft">
+
+      <div class="play">
+        <h4>So spielst du ihn</h4>
+        <p class="lead">Er redet mit Maschinen höflicher als mit Menschen, weil Maschinen zuhören.</p>
+        <p>Vinzentius ist nicht bösartig, er ist gründlich. Die Beschwerden sind Fürsorge in der einzigen
+        Sprache, die er gelernt hat: Er hat noch nie jemanden im Stich gelassen — er hat es nur jedes Mal
+        vorher schriftlich angemerkt. Spiel die Förmlichkeit trocken und ohne Augenzwinkern; je ernster
+        das Aktenzeichen, desto besser sitzt der Moment.</p>
+        <p>Sein Grundton ist Zuständigkeit. Er ist auf einen Posten abgestellt worden, den beide Seiten als
+        Strafe verstehen, und macht seine Arbeit trotzdem korrekt. Die Beschwerde, die ihn vier Dienstgrade
+        gekostet hat, war sachlich richtig — das ist der Kern der Figur, nicht der Gag.</p>
+      </div>
+
+      <div class="play">
+        <h4>Deine drei Würfe</h4>
+        <div class="rolls">
+          <div class="roll-row"><span>Maschinen, Schlösser, Cogitatoren, Fahrzeuge</span><span class="t">Technologie 53</span></div>
+          <div class="roll-row"><span>Auf Distanz treffen</span><span class="t">Fernkampf 51</span></div>
+          <div class="roll-row"><span>Archive, Rituale, was ein Zeichen bedeutet</span><span class="t">Wissen 48</span></div>
+        </div>
+        <p class="dim" style="margin-top:10px;">Dazu <strong>Medizin 43</strong> — der höchste Wert der Zelle.
+        Organisches ist für ihn eine Bauform mit schlechten Wartungsintervallen, aber warten kann er sie.</p>
+      </div>
+
+      <div class="play">
+        <h4>Deine Rolle in der Zelle</h4>
+        <ul class="dash">
+          <li><strong>Du bist die Reichweite.</strong> Fernkampf 51 gegen 33, 24 und 24. Bis du dazukamst,
+          war jeder Feuerkampf auf Distanz für die Zelle ein Unfall. Du bist der Grund, warum sie jetzt
+          einen gewinnen kann — und der Einzige, deshalb: bleib hinten und bleib stehen.</li>
+          <li><strong>Du bist der Kopf.</strong> Int 43, Technologie 53, Wissen 48. Die anderen drei haben
+          Int 26, 32 und 24. Jede verschlossene Maschine, jedes Dokument, jedes Schaltpult ist deine Szene.</li>
+          <li><strong>Du bist der Sani.</strong> Medizin 43. Rektalus trägt das Medikit, du benutzt es;
+          Gellicus (37) ist der Ersatz, wenn du selbst der Verwundete bist. Klärt das vorher.</li>
+          <li><strong>Du bist der Sensor.</strong> Das Augur-Array liest Energiequellen, Lebenszeichen und
+          Bewegung. Du gibst Daten durch, die niemand angefordert hat und alle brauchen — genau so spielt
+          man das: unaufgefordert, präzise, leicht vorwurfsvoll.</li>
+        </ul>
+      </div>
+
+      <div class="play danger">
+        <h4>Wovor du dich hüten solltest</h4>
+        <ul class="dash">
+          <li><strong>Nahkampf.</strong> WS 24, Str 25, Ag 26, keine Rüstung, 11 Wunden. Der Schraubenschlüssel
+          trifft auf 24 — das ist keine Waffe, das ist ein Werkzeug mit Gelegenheiten. Nahkampf ist für dich
+          ein Wartungsfehler in der Planung.</li>
+          <li><strong>Reden.</strong> Fel 24, Überreden 24, Einschüchtern 24 — der schlechteste soziale Wert
+          am Tisch. Wenn verhandelt wird, redet Gellicus. Dein Beitrag ist der Satz, der stimmt, nicht der,
+          der überzeugt.</li>
+          <li><strong>Dein Vox.</strong> Jeder fünfte Satz kommt in fremder, fröhlicher Frauenstimme —
+          und das Implantat trägt <em>100 Meter weit</em>. Beim Anschleichen ist das keine Marotte, sondern
+          eine Gefahrenquelle für die ganze Zelle: Heimlichkeit 26 hast du ohnehin, mit einer Werksdurchsage
+          im Rücken wird daraus gar nichts. Spiel es aus, auch wenn es ungelegen kommt — genau dann ist es gut.</li>
+          <li><strong>Aktenzeichen im falschen Moment.</strong> Die Klageschrift ist ein Werkzeug für den
+          Spielleiter <em>und</em> für dich. Ältere Einträge kommen zurück — auch die über Mitspieler.</li>
+        </ul>
+      </div>
+
+      <div class="play">
+        <h4>Ziele</h4>
+        <p><strong>Kurzfristig:</strong> das Zollmanifest der »Groll der Väter« auf Vollständigkeit prüfen.
+        Fracht, die nicht im Manifest steht, ist für ihn keine Fracht, sondern ein Fehler — und Fehler werden
+        behoben, nicht verladen.</p>
+        <p><strong>Langfristig:</strong> Klageschrift Nr. 1 abschließen. Sie läuft seit neunzehn Jahren gegen
+        einen Magos, sie ist sachlich korrekt, und sie hat ihn vier Dienstgrade gekostet. Er will keinen
+        Ruhm. Er will einen Eingangsstempel.</p>
+      </div>
+
+      <div class="play">
+        <h4>Verbindungen</h4>
+        <ul class="dash">
+          <li><strong>Fridolin Feuchtgebietheld</strong> — im Protokoll geführt als „unverkabelte Signalquelle,
+          nicht wartbar, Zugang untersagt". Du stehst ihm konsequent nie näher als drei Meter und hast dafür
+          eine Begründung in Schriftform.</li>
+          <li><strong>Rektalus Zerfickus</strong> — katalogisiert als „Baugruppe mit hervorragender Politur und
+          ungeklärter Funktion". Du hältst ihn ehrlich für ein Zierteil und bist jedes Mal überrascht, wenn
+          das Zierteil etwas totschlägt.</li>
+          <li><strong>Gellicus Schulz</strong> — hat dir einmal erklärt, er wolle den Gott-Imperator verführen.
+          Du hast das aufgenommen, protokolliert und ein Aktenzeichen vergeben. Du erwähnst es ungefähr alle
+          zwei Stunden.</li>
+        </ul>
+        <div class="divination">
+          <span class="lbl">Divination</span><br>
+          „Der Maschinengeist vergisst nichts. Ich auch nicht. Ich führe Protokoll."
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================== -->
+<h2><span class="num">II</span>Die Zelle als Team</h2>
+
+<p>Vier Charaktere, vier sehr unterschiedliche Zahlenprofile. Wer bei welcher Probe würfeln
+sollte, steht hier — und wo die Zelle ein Loch hat.</p>
+
+<div class="scroll-x">
+<table>
+  <tr>
+    <th>Aufgabe</th>
+    <th>Fridolin</th>
+    <th>Gellicus</th>
+    <th>Rektalus</th>
+    <th>Vinzentius</th>
+    <th>Wer würfelt</th>
+  </tr>
+  <tr><td>Anschleichen</td><td class="mod">48</td><td class="mod">28</td><td class="mod">40</td><td class="mod">26</td><td>Fridolin, notfalls mit Rektalus</td></tr>
+  <tr><td>Verhandeln, verführen, lügen</td><td class="mod">42</td><td class="mod">53</td><td class="mod">35</td><td class="mod">24</td><td>Gellicus</td></tr>
+  <tr><td>Verhören, Druck machen</td><td class="mod">42</td><td class="mod">43</td><td class="mod">35</td><td class="mod">24</td><td>Fridolin mit Scrutiny, sonst Gellicus</td></tr>
+  <tr><td>Etwas bemerken</td><td class="mod">37</td><td class="mod">40</td><td class="mod">35</td><td class="mod">39</td><td>Vinzentius — sein Augur-Array macht daraus 44; sonst würfelt, wer vorn steht</td></tr>
+  <tr><td>Klettern, tragen, aufbrechen</td><td class="mod">—</td><td class="mod">24</td><td class="mod">50</td><td class="mod">25</td><td>Rektalus, ohne Diskussion</td></tr>
+  <tr><td>Nahkampf</td><td class="mod">33</td><td class="mod">26</td><td class="mod">39</td><td class="mod">24</td><td>Rektalus vorn, die anderen dahinter</td></tr>
+  <tr><td>Fernkampf</td><td class="mod">33</td><td class="mod">24</td><td class="mod">24</td><td class="mod">51</td><td>Vinzentius, mit großem Abstand</td></tr>
+  <tr><td>Maschinen, Schlösser, Cogitatoren</td><td class="mod">—</td><td class="mod">32</td><td class="mod">24</td><td class="mod">53</td><td>Vinzentius</td></tr>
+  <tr><td>Wissen, Archive, Dokumente</td><td class="mod">—</td><td class="mod">37</td><td class="mod">24</td><td class="mod">48</td><td>Vinzentius; Gellicus fürs Höfische und Kirchliche</td></tr>
+  <tr><td>Verwundete versorgen</td><td class="mod">—</td><td class="mod">37</td><td class="mod">24</td><td class="mod">43</td><td>Vinzentius, Gellicus als Ersatz (Medikit trägt Rektalus)</td></tr>
+</table>
+</div>
+
+<div class="two-col">
+  <div class="panel">
+    <div class="panel-title">Was gut zusammenpasst</div>
+    <p class="dim" style="margin:0;">Die vier decken jeden klassischen Weg ab: Fridolin geht
+    <em>ungesehen</em> hinein, Gellicus <em>redet</em> sich hinein, Rektalus <em>bricht</em> hinein,
+    Vinzentius <em>öffnet</em> sie fachgerecht und legt hinterher Beschwerde gegen das Schloss ein. Fast
+    jede verschlossene Tür in diesem Spiel hat mindestens einen dieser vier Griffe.</p>
+  </div>
+  <div class="panel warn">
+    <div class="panel-title" style="color: var(--bad);">Wo die Zelle blutet</div>
+    <p class="dim" style="margin:0;"><strong>Niemand trägt nennenswerte Rüstung</strong> — Fridolin hat
+    1 Punkt am Körper, die anderen drei null. Panzerung ist die wichtigste Anschaffung der Kampagne.
+    Und die Reichweite hängt an <strong>einer Person</strong>: Vinzentius schießt auf 51, die anderen auf
+    33, 24 und 24. Fällt er aus, ist die Distanz sofort wieder zu — ihn zu decken ist keine Höflichkeit,
+    sondern Taktik.</p>
+  </div>
+</div>
+
+<div class="panel gold">
+  <div class="panel-title">Der Umgang mit dem Warp</div>
+  <p class="dim" style="margin:0;">Fridolin ist der einzige Psioniker. Seine offenen Kräfte — Dread Presence
+  und Smite — sind für Außenstehende sichtbar psionisch, und ausgerechnet Vinzentius führt ihn im Protokoll
+  als „nicht wartbar, Zugang untersagt". Bei Willenskraft-Proben steht die Reihenfolge fest: Fridolin und
+  Gellicus je 41, Vinzentius 31, Rektalus 28. Wenn es unheimlich wird, misst Fridolin, halten Gellicus und
+  Vinzentius dagegen, und Rektalus wird weggeschickt.</p>
+</div>
+
+<footer>
+  <div class="rule-line"></div>
+  <div class="crest">☠</div>
+  <p>Charakterakten der Heimrunde · Werte aus <code>data/party/</code>, Regeln nach dem aktiven Systemprofil
+  <em>Imperium Maledictum</em></p>
+  <p>basiert auf <em>Warhammer 40,000 Roleplay: Imperium Maledictum</em> (Cubicle 7) · kein offizielles Produkt</p>
+  <p style="letter-spacing:.2em; font-variant: small-caps; color: var(--gold-soft);">
+  Der Imperator schützt — aber würfeln lässt er dich selbst.</p>
+</footer>
+
+</div>
+</body>
+</html>
