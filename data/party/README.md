@@ -8,7 +8,7 @@ Eine Datei pro Spieler. Dieser Ordner wird **committet** (`.gitignore`-Allowlist
 - `fridolin_feuchtgebietheld.json` — Tobi / `Pr0degie` (Interrogator & Psioniker)
 - `gellicus_schulz.json` — Timo (Schwerenöter, Reden/Wissen)
 - `rektalus_zerfickus.json` — Sezgin / `SezBoss69` (Nahkämpfer, Athletik)
-- `vinzentius_kabelbrand.json` — Vincent / `Vinnie` (Enginseer, Fernkampf/Technologie)
+- `rene_redo.json` — Vincent / `Vinnie` (Enginseer, Fernkampf/Technologie)
 
 Alle vier sind in `data/sessions/1343673766487654464/characters.json` zusammengeführt.
 

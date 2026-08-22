@@ -53,9 +53,9 @@ schließt an EINEM Abend. G10-Nebeneffekt fürs Protokoll: das `SESSION_MAX_DIST
 (ADR 054) bekommt hier seine ersten echten Messwerte.
 
 **Wieder aufgenommen:** der Augmetik-Live-Check (D52) ruhte, solange kein Spieler ein
-Implantat hatte. Vinzentius Kabelbrand (seit 2026-08-22 in der Party) trägt drei —
+Implantat hatte. Rene Redo (seit 2026-08-22 in der Party) trägt drei —
 `Augur-Array`, `Utility-Mechadendrit`, `Vox-Implantat` —, also läuft der Check in diesem Run
-mit: eine Wahrnehmungsprobe von Vinzentius muss den `+5 Wahrnehmung` des Augur-Arrays sichtbar
+mit: eine Wahrnehmungsprobe von Rene muss den `+5 Wahrnehmung` des Augur-Arrays sichtbar
 einrechnen — Zielwert **44** statt der 39 aus dem Bogen (offline gegengerechnet mit
 `resolve_target(..., skill='Wahrnehmung', target_name='Vinnie')`, 2026-08-22).
 
@@ -95,12 +95,12 @@ zurückgestellt, bis das Spielen rund läuft.
    die opp-id vorher aus der Szenenkarte/`!ort` ablesen. Nach dem Test zurückdrehen oder
    einfach `!erledigt <opp-id>` spielen.
 7. **Party-Check:** Channel ist `circlejerk`; `!j` muss **Fridolin Feuchtgebietheld /
-   Gellicus Schulz / Rektalus Zerfickus / Vinzentius Kabelbrand** aufstellen — **Fridolin
+   Gellicus Schulz / Rektalus Zerfickus / Rene Redo** aufstellen — **Fridolin
    ist der Psioniker** (die alte Checkliste nannte fälschlich Rektalus). Eine
    ⚠-Beispiel-Party-Warnung = falscher Channel → abbrechen.
 8. **Handout:** `docs/how-to-play.html` an Timo, Sezgin & Vincent (spart die Regelerklärung
    am Tisch); Vincent zusätzlich seinen Bogen
-   `data/party/sheets/Vinzentius_Kabelbrand.pdf`.
+   `data/party/sheets/Rene_Redo.pdf`.
 
 **Kill-Switch-Spickzettel** (`.env`, wirksam nach Neustart):
 
@@ -138,7 +138,7 @@ Pause = **Esc** im DMbot-Terminal oder der ⏸-Button (es gibt KEIN `!pause`-Com
 - [ ] **Schneller Start (ADR 024):** „logged in“ kommt zügig, VOR dem TTS-Load; später
       `TTS backend 'xtts' ready in …s.`
 - [ ] `!j`: ggf. ⏳/⚠-TTS-Hinweis (okay), erster Satz wird trotzdem gesprochen.
-- [ ] **Join-Line-up:** Party namentlich (Fridolin / Gellicus / Rektalus / Vinzentius) +
+- [ ] **Join-Line-up:** Party namentlich (Fridolin / Gellicus / Rektalus / Rene) +
       `📖 Abenteuer: Chemical Burn — Szene: Der Auftrag`.
 
 ### Akt 1 — Tempo-Baseline (Workstream A verifizieren)

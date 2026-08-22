@@ -23,8 +23,8 @@ exakt aus dem Code zitiert) und direkt in `logs/debug.log` greppbar.
 - Boot-Konsole zeigt: `loaded adventure 'Die Mitternachtsfracht' (6 scenes, 8 NPC
   statblocks)` **und** `🧪 loaded testplan.json (6 scenes) — debug overlay active`.
 - Party-Check wie im Live-Run-Skript (Pre-Flight #7): Channel `circlejerk`, `!j` stellt
-  Fridolin / Gellicus / Rektalus / Vinzentius auf — **Fridolin ist der Psioniker**,
-  **Vinzentius ist der Augmetik-Träger** (Vincent, Discord `Vinnie`).
+  Fridolin / Gellicus / Rektalus / Rene auf — **Fridolin ist der Psioniker**,
+  **Rene ist der Augmetik-Träger** (Vincent, Discord `Vinnie`).
 - Kein Pre-Flight-Edit nötig: das G4-Gate (`lagerhaus → pier_neun` erfordert
   `verladebrief`) ist fest in der Datei.
 - Session-RAG (ADR 054/055): `DM_SESSION_MEMORY` anlassen (Default; `=0` schaltet Ingest
