@@ -53,6 +53,7 @@
     {
       "name": "Kettenbund-Schläger",
       "role_de": "Schläger des Kettenbunds",
+      "generic": true,
       "wounds": 8,
       "toughness_bonus": 3,
       "armour": 0,

@@ -12,6 +12,8 @@ from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
+from .memory.state import TURN_ADVANCE_MINUTES
+
 
 @dataclass(frozen=True, slots=True)
 class Config:
@@ -59,6 +61,13 @@ class Config:
     npc_memory: bool
     npc_memory_top_k: int
     consistency_guard: bool
+    scene_router: bool
+    scene_flag_gate: bool
+    fact_router: bool
+    turn_time_advance: int
+    scene_undo_seconds: int
+    guidance_every: int
+    player_panel: bool
     debug_overlay: bool
     debug_channel_id: int
     speech_mode: str
@@ -246,6 +255,43 @@ class Config:
             # against the world state (dead/absent NPC speaking) with max ONE regenerate,
             # strictly fail-open. ON by default; DM_CONSISTENCY_GUARD=0 disables it.
             consistency_guard=os.environ.get("DM_CONSISTENCY_GUARD", "1").strip().lower()
+            in ("1", "true", "yes", "on"),
+            # --- the post-turn machinery of D107 (ADR 057/058/059). Each block is switchable on
+            # its own, live via !automatik, so one misfiring mechanism costs a command and not the
+            # evening (PRD "Kill switches").
+            # Scene-move classifier (ADR 057 #1): after every narrated turn a constrained-JSON call
+            # asks whether the group actually entered one of the current scene's reachable exits.
+            # ON by default; DM_SCENE_ROUTER=0 leaves the <<ORT>> marker as the only mover again.
+            scene_router=os.environ.get("DM_SCENE_ROUTER", "1").strip().lower()
+            in ("1", "true", "yes", "on"),
+            # Flag gate (ADR 057 #2): a scene whose opportunities are ALL resolved and that has
+            # exactly one open exit advances with no LLM involved. ON by default; DM_SCENE_FLAG_GATE=0
+            # disables the model-free push (the classifier keeps running).
+            scene_flag_gate=os.environ.get("DM_SCENE_FLAG_GATE", "1").strip().lower()
+            in ("1", "true", "yes", "on"),
+            # Fact classifier (ADR 058): the second post-turn call, sharing the scene classifier's
+            # latency window, turning a narrated commitment (item handed over, quest accepted,
+            # promise given) into a hard world-state fact. ON by default; DM_FACT_ROUTER=0 disables it.
+            fact_router=os.environ.get("DM_FACT_ROUTER", "1").strip().lower()
+            in ("1", "true", "yes", "on"),
+            # In-game minutes each narrated turn costs (ADR 059 #2). Small on purpose: the clock
+            # must not outrun the fiction, it only has to move at all — on 2026-08-22 it stood at
+            # 08:00 for 22 turns. 0 disables the per-turn advance (the scene-change advance and
+            # the <<ZEIT>> marker stay).
+            turn_time_advance=max(0, int(os.environ.get("DM_TURN_TIME_ADVANCE", str(TURN_ADVANCE_MINUTES))
+                                         or TURN_ADVANCE_MINUTES)),
+            # How long the "Zurücknehmen" control under an automatic scene change stays live
+            # (seconds, ADR 057 #4). 0 posts the announcement without an undo button.
+            scene_undo_seconds=max(0, int(os.environ.get("DM_SCENE_UNDO_SECONDS", "60") or "60")),
+            # Cadence of the scene's standing GM guidance (PRD block 3 / A5): it is injected on the
+            # first turn in a scene and every Nth turn after that, as an impulse instead of the
+            # standing order that produced the same clock-checking sentence in eight of ten answers.
+            # 1 = every turn (the old behaviour), 0 = never.
+            guidance_every=max(0, int(os.environ.get("DM_GUIDANCE_EVERY", "4") or "4")),
+            # Player panel (PRD stories 14-17): one self-updating message with place, goal, time,
+            # deadline, whose turn it is and what is still open here. ON by default;
+            # DM_PLAYER_PANEL=0 removes it.
+            player_panel=os.environ.get("DM_PLAYER_PANEL", "1").strip().lower()
             in ("1", "true", "yes", "on"),
             # 🧪 Debug overlay (ADR 052): when the loaded adventure ships a testplan.json sidecar,
             # every scene change posts/edits one compact OOC line (gates under test + hint) —

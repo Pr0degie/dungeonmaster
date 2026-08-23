@@ -10,6 +10,14 @@ everything shared through this object; **no cog reaches into another cog** (no `
 Cross-cog calls (a dice roll → DM narration, the delivery → dice/mic buttons) go through the few
 registered hooks below. See ADR 029.
 
+Since D107 it also owns the **post-turn boundary** (:meth:`SessionRuntime.close_turn`, ADR
+057/058/059): once a turn is narrated the in-game clock ticks, the scene and fact classifiers run
+in one shared latency window, a validated verdict moves the code-owned scene pointer (or writes a
+hard fact), and the player panel is re-anchored. It lives here rather than in a cog because every
+piece of it is shared state — pointer, world state, prompt context, panels — and because all four
+scene movers (classifier, flag gate, ``!ort``, the demoted ``<<ORT>>`` marker) must go through the
+same :meth:`move_scene`, or NPC registration and the panels drift apart again.
+
 Docs and code are English; game content (what the DM says) stays German (CLAUDE.md).
 """
 
@@ -30,10 +38,12 @@ import discord
 
 from .config import Config
 from .voice.recv import VadSink
-from .voice.preflight import check_static
+from .voice.preflight import check_static, check_tts_speaker
 from .stt import Transcriber
 from .llm import consistency as consistency_mod
 from .llm.client import OllamaClient
+from .llm.director_msgs import scene_rejected_note_de
+from .llm.scene_router import SceneExit
 from .orchestrator import DMBrain
 from .tts.piper import PiperTTS
 from .tts.textsplit import split_for_discord, strip_speech_punctuation
@@ -41,6 +51,17 @@ from .bridge import BridgeClient
 from .rules import profile as profile_mod
 from .rules.profile import ProfileError, SystemProfile
 from .rules.characters import CharacterStore
+from .rules.scene_flow import (
+    MoveTrigger,
+    apply_scene_undo,
+    capture_scene_undo,
+    is_scene_exhausted,
+    next_scene_on_exhaustion,
+    reachable_exits,
+    resolve_exit,
+)
+from .discord_ui.panel import render_player_panel_de
+from .discord_ui.undo import SceneUndoView
 from .memory import chekhov as chekhov_mod
 from .memory import history as history_store
 from .memory import npc_memory as npc_memory_mod
@@ -125,6 +146,10 @@ class SessionRuntime:
         # Preflight the version-sensitive voice stack at boot, so a drift surfaces as a loud
         # warning here instead of as a silent garbage transcript mid-session (ADR 006).
         check_static()
+        # The configured XTTS speaker must exist (B13: the live run spoke in a random voice
+        # because TTS_SPEAKER carried the value meant for TTS_DEVICE). Loud, never fatal — TTS is
+        # an optional layer, and this runs before the torch import so the message is early.
+        check_tts_speaker(config.tts_speaker, engine=config.tts_engine)
         self._bot_a_user_id = config.bot_a_user_id
         self._dump_utterances = config.dump_utterances
         self._utterance_counts: dict[int, int] = {}
@@ -216,6 +241,26 @@ class SessionRuntime:
         # Consistency guard (ADR 045): deterministic pre-delivery check (dead/absent NPC
         # speaking) with max one regenerate on the batch path; the streaming path logs only.
         self._consistency_guard = config.consistency_guard
+        # --- the post-turn machinery of D107 (ADR 057/058/059). Every block below is switchable
+        # on its own, live via !automatik, because the evening must survive a misfiring mechanism.
+        # Scene-move classifier (ADR 057 #1) + the model-free flag gate (#2): the two movers that
+        # replace the <<ORT>> marker, which fired zero times in 22 live turns. The marker itself
+        # stays wired in the delivery pipeline as an opportunistic fallback.
+        self._scene_router = config.scene_router
+        self._scene_flag_gate = config.scene_flag_gate
+        # Fact classifier (ADR 058): runs on the SAME turn boundary as the scene one, in one
+        # asyncio.gather — one latency window for both, as the ADR requires.
+        self._fact_router = config.fact_router
+        # In-game minutes a narrated turn costs (ADR 059 #2); the bigger scene-change advance
+        # stays _scene_time_advance above.
+        self._turn_time_advance = config.turn_time_advance
+        # How long the ↩ control under an automatic scene change stays live (ADR 057 #4).
+        self._scene_undo_seconds = config.scene_undo_seconds
+        # Cadence of the scene's standing guidance (PRD block 3): injected on the first turn in a
+        # scene and every Nth turn after, as an impulse rather than the standing order that made
+        # the seneschal repeat "die Zeit läuft uns davon" in eight of ten answers.
+        self._guidance_every = config.guidance_every
+        self._scene_turns: dict[int, int] = {}  # turns narrated since entering the current scene
         self._npc_mem_marks: dict[int, int] = {}
         self._npc_mem_running: set[int] = set()
         # Chekhov list (ADR 050): per-channel unresolved threads, extracted at wrap-up inside
@@ -261,6 +306,13 @@ class SessionRuntime:
         self._debug_panel: discord.Message | None = None
         self._debug_channel_id = config.debug_channel_id
         self._debug_channel_warned = False
+        # Player panel (PRD stories 14-17): one message the table reads — place, goal, time,
+        # deadline, whose turn it is, what is still open here — edited in place and re-anchored at
+        # the bottom after every turn. Deliberately NOT a replacement for the 🧪 overlay: that one
+        # is the operator's line (gate codes + command hints) and belongs in DM_DEBUG_CHANNEL,
+        # while this one is in players' language and belongs in the game channel.
+        self._player_panel_enabled = config.player_panel
+        self._player_panel: discord.Message | None = None
         # Memory (Phase 9): the mutable world state per channel — current wounds/conditions, NPCs,
         # quests, location, recap. Loaded/seeded on !join (data/sessions/<id>/state.json), advanced
         # deterministically by code (golden rule #3), persisted on every change so HP survives a
@@ -272,6 +324,13 @@ class SessionRuntime:
         self._turn_order: dict[int, list[str]] = {}
         self._turn_index: dict[int, int] = {}
         self._turn_message: discord.Message | None = None
+        # Identity (PRD "Identity", findings A4/B4): Discord user id → character name, captured
+        # from the voice-channel members at !join. The id is the stable key — a nickname change
+        # mid-session cannot break it, which display-name resolution could. ``_speaker_names``
+        # memoises the resolution per display name, because the STT callback only carries the
+        # name (the utterance callback, which has the id, fills it in).
+        self._char_by_user: dict[int, str] = {}
+        self._speaker_names: dict[str, str] = {}
         # Pause control: one shared flag driven by the terminal Esc key (Variante A) AND the Discord
         # ⏸ button (Variante C). Pause freezes everything — mute the VAD/STT pipeline + block DM
         # turns — until resumed. The text channel + panel message let an Esc-pause also show in Discord.
@@ -369,6 +428,10 @@ class SessionRuntime:
         """
         n = self._utterance_counts.get(user_id, 0) + 1
         self._utterance_counts[user_id] = n
+        # Identity (PRD "Identity"): resolve who this is NOW, while the Discord user id is still
+        # in hand — the STT callback below only gets the display name back. One plain dict write;
+        # the STT thread reads it (GIL-atomic, like _last_stt_ms).
+        self._speaker_names[name] = self.character_name_for(user_id, name)
         if self._dump_utterances:  # debug only — off by default so temp doesn't fill up
             try:
                 path = _write_utterance_wav(name, n, pcm)
@@ -397,7 +460,11 @@ class SessionRuntime:
         # Buffer the line for the next DM turn (triggered by !dm) only when routed. Runs on the STT
         # thread; the brain's buffer is lock-guarded.
         if for_dm and self._active_vc_id is not None:
-            self._brain.add_player_line(self._active_vc_id, name, text)
+            # Under the CHARACTER's name, not the Discord one (PRD "Identity", findings A4/B4):
+            # the prompt used to read "Sezgin: …", so the DM answered "Sezgin, ich kann leider
+            # nicht …" and treated four players as one. The log line above keeps the Discord name
+            # — that is the operator's record of who actually spoke.
+            self._brain.add_player_line(self._active_vc_id, self.prompt_speaker_name(name), text)
             # Remember this utterance's transcribe ms as the turn's stt stage (reuse, don't
             # re-measure). A plain int write; the consuming turn pops it on the event loop.
             self._last_stt_ms[self._active_vc_id] = round(latency_ms)
@@ -500,6 +567,47 @@ class SessionRuntime:
                 return CharacterStore.load(default), False
         return CharacterStore.load(sessions / "_example" / "characters.json"), True
 
+    # ----- Identity: which character a speaker is (PRD "Identity", ADR 003) ----------------------
+
+    def character_name_for(self, user_id: int | None, display_name: str) -> str:
+        """The character name a speaker's line enters the prompt under.
+
+        Resolution order, and the order is the point: the Discord **user id** first (captured
+        from the voice-channel members at ``!join``, so a nickname change mid-session cannot
+        break it — story 24), then the display name through the same alias map (a player who
+        joined the channel after ``!join``), then the display name itself. The last step is not a
+        fallback bug but the guest case: someone at the table without a sheet keeps their own
+        name and nothing raises."""
+        if user_id is not None:
+            resolved = self._char_by_user.get(user_id)
+            if resolved:
+                return resolved
+        char = self._characters.get(display_name) if self._characters else None
+        return char.name if char is not None else display_name
+
+    def prompt_speaker_name(self, display_name: str) -> str:
+        """The memoised resolution for ``display_name`` (written by :meth:`_on_utterance`, which
+        still has the user id). Unknown speaker → the display name, unchanged."""
+        return self._speaker_names.get(display_name) or self.character_name_for(None, display_name)
+
+    def _seed_speaker_identities(self, voice_channel) -> None:
+        """Map every human member of the joined voice channel from their Discord user id to their
+        character name (``!join``). Bots and Bot A are skipped, an unmapped member simply gets no
+        entry — :meth:`character_name_for` then falls back to the display name."""
+        self._char_by_user = {}
+        self._speaker_names = {}
+        for member in getattr(voice_channel, "members", []) or []:
+            if getattr(member, "bot", False) or (
+                self._bot_a_user_id and member.id == self._bot_a_user_id
+            ):
+                continue
+            char = self._characters.get(member.display_name) if self._characters else None
+            if char is not None:
+                self._char_by_user[member.id] = char.name
+        if self._char_by_user:
+            log.info("identity: %d player(s) resolved to character names by Discord id",
+                     len(self._char_by_user))
+
     def session_file(self, channel_id: int, stem: str, ext: str) -> Path:
         """One per-session artifact under ``data/sessions/<channel_id>/``, sandboxed by run mode
         (ADR 056). A debug-campaign run plays in the SAME channel as live play, so it writes
@@ -561,13 +669,20 @@ class SessionRuntime:
         except OSError:
             log.exception("could not persist world state for channel %s", cid)
         adventure_block = ""
+        scene = self._adventure.get_scene(state.scene_id) if self._adventure is not None else None
         if self._adventure is not None:
             adventure_block = self._adventure.adventure_block_de(
                 state.scene_id,
                 resolved_ids=state.resolved_ids(state.scene_id),
                 dead_npcs=[n.name for n in state.npcs if n.wounds <= 0],
+                include_guidance=self._guidance_due(cid),
             )
-        summary = world_state_summary_de(state)
+        # Which registered NPCs are actually HERE (D107). Once scene NPCs are registered on entry
+        # the roster keeps growing, and an unscoped "NSCs in der Szene" line would hand the model
+        # the seneschal from scene one as present in scene four — the contradiction of 2026-08-22.
+        summary = world_state_summary_de(
+            state, present=scene.npcs_here if scene is not None else None
+        )
         chekhov_block = chekhov_mod.chekhov_block_de(self.chekhov_list(cid).top_open())
         for block in (self._psyker_block(state), self._augmetic_block(), chekhov_block):
             if block:
@@ -581,6 +696,18 @@ class SessionRuntime:
             cid, recap=state.recap, state_summary=summary, adventure_block=adventure_block,
             npc_memory_block=npc_block,
         )
+
+    def _guidance_due(self, channel_id: int) -> bool:
+        """Whether the current scene's standing GM guidance rides in the next prompt.
+
+        ADR 019 put ``guidance_de`` in *every* turn's card. Live (2026-08-22, findings A5/B6) the
+        model treated it as a standing order and made the seneschal say the deadline line in eight
+        of ten answers — the guidance was also the only characterisation input it had. The loader
+        now renders it as a one-off impulse and leaves the WHEN to the caller: first turn in a
+        scene, then every ``DM_GUIDANCE_EVERY``-th turn. 1 = every turn (pre-D107), 0 = never."""
+        if self._guidance_every <= 0:
+            return False
+        return self._scene_turns.get(channel_id, 0) % self._guidance_every == 0
 
     def _psyker_block(self, state: WorldState) -> str:
         """A compact German block listing each psyker's known powers, Psi-Meisterschaft value, Warp
@@ -649,9 +776,58 @@ class SessionRuntime:
         state.scene_id = scene.id
         if scene.title_de:
             state.set_location(scene.title_de)  # keep the prose state block in sync
+        # Entering a scene registers its NPCs as present (PRD block 3, story 21) — the single
+        # switch that finally feeds NPC memory (ADR 044), agendas (ADR 049) and the consistency
+        # guard (ADR 045), none of which ever ran because state.npcs was always empty. Done here,
+        # in the one deterministic pointer mover, so all four movers get it.
+        self._register_scene_npcs(state, scene)
         if changed:
             self._journal_scene_event(state)
+            turns = getattr(self, "_scene_turns", None)  # getattr: stub runtimes stay dormant
+            cid = next((c for c, st in getattr(self, "_state", {}).items() if st is state), None)
+            if turns is not None and cid is not None:
+                turns[cid] = 0  # the guidance impulse fires again on the first turn here
         return scene
+
+    def _register_scene_npcs(self, state: WorldState, scene: Scene | None) -> list[str]:
+        """Register the scene card's NPCs in the world state as present, with their statblock
+        values (ADR 044's ``!npc add`` shape). Returns the names newly added.
+
+        Only *named campaign* NPCs are registered — the card's ``npcs_here``. Incidental figures
+        the DM invents (a runner, a bystander) are never registered here, and the consistency
+        guard's presence check is additionally scoped to :meth:`Adventure.npc_names` in
+        :meth:`consistency_checker`, so an accidental registration by the NPC-memory extractor
+        cannot turn the DM's extras into violations either (the trap named in the PRD).
+
+        Idempotent: an already-registered NPC keeps its drifted attitude, wounds and memories —
+        ``attitude=""`` on the update path means "don't touch". A name belonging to a player
+        character is skipped."""
+        # getattr: a partially-built state (tests) has no roster to register into — stay dormant.
+        if self._adventure is None or scene is None or not hasattr(state, "add_or_update_npc"):
+            return []
+        players = {c.name.strip().lower() for c in getattr(state, "characters", [])}
+        known = {n.name.strip().lower() for n in getattr(state, "npcs", [])}
+        added: list[str] = []
+        for raw in scene.npcs_here:
+            name = raw.strip()
+            key = name.lower()
+            if not name or key in players:
+                continue
+            block = self._adventure.npc(name)
+            state.add_or_update_npc(
+                name,
+                wounds=block.wounds if block and key not in known else None,
+                toughness_bonus=block.toughness_bonus if block else 0,
+                armour=block.armour if block else 0,
+                attitude="" if key in known else "neutral",
+                faction=block.faction if block else "",
+                goal=block.goal_de if block else "",
+            )
+            if key not in known:
+                added.append(name)
+        if added:
+            log.info("👥 Szene '%s': %s als anwesend registriert", scene.id, ", ".join(added))
+        return added
 
     def _journal_scene_event(self, state: WorldState) -> None:
         """Append a ``{"kind": "scene", "scene_id", "ts"}`` record to the session journal
@@ -837,19 +1013,32 @@ class SessionRuntime:
 
     # ----- 🧪 Debug overlay (ADR 052) ---------------------------------------------------------
 
+    def _operator_channel(self):
+        """The configured ``DM_DEBUG_CHANNEL``, or ``None`` when none is set or it cannot be
+        resolved — never the game channel.
+
+        Everything that would leak campaign structure if the table read it (scene ids, gate
+        conditions, verdict internals) goes here and nowhere else. ``DM_DEBUG_CHANNEL`` is empty
+        in ``.env.example``, so "fall back to the game channel" means "read it out to the
+        players"; for those lines the log plus the model-facing ``[Regie]`` note are the whole
+        delivery."""
+        if not self._debug_channel_id:
+            return None
+        guild = getattr(self._text_channel, "guild", None)
+        ch = guild.get_channel(self._debug_channel_id) if guild is not None else None
+        if ch is not None:
+            return ch
+        if not self._debug_channel_warned:
+            log.warning("🧪 DM_DEBUG_CHANNEL=%s not resolvable — overlay falls back to "
+                        "the game channel", self._debug_channel_id)
+            self._debug_channel_warned = True
+        return None
+
     def _debug_overlay_channel(self):
-        """The overlay's target: the DM_DEBUG_CHANNEL channel when set and resolvable (one
-        loud line + game-channel fallback otherwise), else the session's text channel."""
-        if self._debug_channel_id:
-            guild = getattr(self._text_channel, "guild", None)
-            ch = guild.get_channel(self._debug_channel_id) if guild is not None else None
-            if ch is not None:
-                return ch
-            if not self._debug_channel_warned:
-                log.warning("🧪 DM_DEBUG_CHANNEL=%s not resolvable — overlay falls back to "
-                            "the game channel", self._debug_channel_id)
-                self._debug_channel_warned = True
-        return self._text_channel
+        """The 🧪 overlay's target: the operator channel when there is one, else the session's
+        text channel. The overlay itself is spoiler-safe by construction (ADR 052), so the
+        fallback is fine here — unlike for the operator lines above."""
+        return self._operator_channel() or self._text_channel
 
     async def update_debug_overlay(self) -> None:
         """(Re)render the 🧪 testplan overlay for the current scene (ADR 052) — edit-in-place
@@ -879,6 +1068,54 @@ class SessionRuntime:
         except discord.HTTPException:
             log.warning("could not post the debug overlay", exc_info=True)
 
+    # ----- Player panel (PRD stories 14-17) ---------------------------------------------------
+
+    def _panel_text(self) -> str:
+        """Render the current player panel, or ``""`` when there is nothing to render.
+
+        The gate labels come from the 🧪 sidecar and are read HERE, in the runtime — the panel
+        renderer never learns the sidecar exists (the ADR-052 LLM-invisibility invariant is
+        structural and pinned by ``tests/test_debug_overlay.py``)."""
+        cid = self._active_vc_id
+        state = self._state.get(cid) if cid is not None else None
+        if state is None:
+            return ""
+        scene = self._adventure.get_scene(state.scene_id) if self._adventure is not None else None
+        plan = getattr(self, "_testplan", None)
+        entry = plan.entry_for(state.scene_id) if plan is not None else None
+        order = self._turn_order.get(cid, [])
+        active = order[self._turn_index.get(cid, 0) % len(order)] if order else ""
+        return render_player_panel_de(
+            state, scene, entry.gates if entry is not None else (), active_player=active
+        )
+
+    async def update_player_panel(self, *, reanchor: bool = False) -> None:
+        """(Re)render the player panel in the session's text channel.
+
+        Edit-in-place by default (the clock-panel pattern, no spam); ``reanchor=True`` deletes and
+        re-posts it so it sits at the BOTTOM again — story 17, the same treatment the mic button
+        gets after every turn. On 2026-08-22 the only comparable message was posted once and
+        scrolled away, because its single refresh trigger was a scene change that never came.
+        Best-effort: a send/edit failure logs and never breaks a turn."""
+        # getattr: a partially-built runtime (tests) stays dormant, like the 🧪 overlay above.
+        if not getattr(self, "_player_panel_enabled", False) or self._text_channel is None:
+            return
+        content = self._panel_text()
+        if not content:
+            return
+        if reanchor:
+            await self.clear_panel("_player_panel")
+        elif self._player_panel is not None:
+            try:
+                await self._player_panel.edit(content=content)
+                return
+            except discord.HTTPException:
+                self._player_panel = None  # message gone — fall through and re-post
+        try:
+            self._player_panel = await self._text_channel.send(content)
+        except discord.HTTPException:
+            log.warning("could not post the player panel", exc_info=True)
+
     # ----- In-game time + deadlines (ADR 048) -----------------------------------------------
 
     async def _advance_time(self, channel, minutes: int) -> int:
@@ -898,13 +1135,297 @@ class SessionRuntime:
                      "Turn eingereiht", dl.label, dl.id)
         self._persist_and_refresh(channel)
         await self.update_clock_panel()
+        await self.update_player_panel()  # the panel shows the clock + the deadline (D107)
         return minutes
 
     async def advance_scene_time(self, channel) -> int:
-        """The default time cost of a *real* scene change (ADR 048 #10) — called by the two
-        move paths (``!ort``, confirmed ``<<ORT>>``) after a successful move to a different
+        """The default time cost of a *real* scene change (ADR 048 #10 / ADR 059 #2, the larger of
+        the two increments) — called by every move path after a successful move to a different
         scene. ``DM_SCENE_TIME_ADVANCE=0`` disables it. Returns the applied minutes."""
         return await self._advance_time(channel, self._scene_time_advance)
+
+    async def advance_turn_time(self, channel) -> int:
+        """The per-turn heartbeat of the in-game clock (ADR 059 #2).
+
+        Small and unconditional: through the whole live run of 2026-08-22 the clock read "Tag 1,
+        08:00, Morgen" while the fiction played the night before midnight, because time only moved
+        when the model emitted a ``<<ZEIT>>`` marker and it emitted none in 22 turns. The marker
+        keeps its job (deliberate jumps, ADR 059 #3) — it is now an accelerator on a clock that
+        already runs. ``DM_TURN_TIME_ADVANCE=0`` disables it."""
+        return await self._advance_time(channel, self._turn_time_advance)
+
+    # ----- The post-turn boundary: scene, facts, clock (ADR 057/058/059) ---------------------
+
+    async def close_turn(self, channel, answer: str) -> None:
+        """Everything code decides once a turn has been narrated — the seam the whole D107 round
+        hangs on. Called by the delivery pipeline concurrently with playback (like the dice
+        button), so its latency is hidden behind the DM's own voice.
+
+        In order: the clock ticks (ADR 059), the two classifiers run in ONE ``gather`` — one
+        latency window for both, as ADR 058 requires — the fact verdict goes through the world
+        state's validating writers, the scene verdict (or the model-free flag gate) moves the
+        pointer, and the player panel is re-anchored at the bottom. Best-effort end to end: a
+        failure here logs and never breaks a turn."""
+        cid = self._brain_channel(channel)
+        state = self._state.get(cid)
+        if state is None:
+            return
+        try:
+            self._scene_turns[cid] = self._scene_turns.get(cid, 0) + 1
+            await self.advance_turn_time(channel)
+            classified_from = state.scene_id     # snapshot: the classifier call takes seconds
+            scene_verdict, fact_verdict = await self._classify_turn(channel, state, answer)
+            self._apply_commitment(channel, state, fact_verdict)
+            if scene_verdict is not None and state.scene_id != classified_from:
+                # Someone moved the pointer while the classifier was thinking (``!ort``, the
+                # ``<<ORT>>`` button, an undo). The verdict was built against the *old* scene's
+                # exits, so it is stale — drop it silently rather than reject it loudly and tell
+                # the model the group did NOT go where it just went
+                # (docs/lessons/snapshot-state-at-event-time.md).
+                log.info("🗺️ Szenen-Verdikt '%s' verworfen — der Zeiger stand bei der "
+                         "Klassifikation auf '%s' und steht jetzt auf '%s'",
+                         getattr(scene_verdict, "target_id", ""), classified_from, state.scene_id)
+                scene_verdict = None
+            await self._apply_scene_verdict(channel, state, scene_verdict)
+            await self.update_player_panel(reanchor=True)
+        except Exception:
+            log.exception("post-turn boundary failed — the turn itself is unaffected")
+
+    async def _classify_turn(self, channel, state: WorldState, answer: str):
+        """Run the scene (ADR 057) and fact (ADR 058) classifiers on the same turn boundary.
+
+        Both are optional layers and fail open: a switched-off block, a missing brain method (a
+        stub in tests) or a degenerate verdict yields ``None`` and changes nothing. Returns
+        ``(scene_verdict | None, fact_verdict | None)``."""
+        scene = self._adventure.get_scene(state.scene_id) if self._adventure is not None else None
+        jobs: list[tuple[str, object]] = []
+        if self._scene_router and scene is not None:
+            classify = getattr(self._brain, "classify_scene_move", None)
+            exits = self._exit_labels(scene, state)
+            if classify is not None and exits:
+                jobs.append(("scene", classify(
+                    turn_text=answer, exits=exits, current_title=scene.title_de,
+                )))
+        if self._fact_router:
+            classify = getattr(self._brain, "classify_commitment", None)
+            if classify is not None:
+                givers = list(scene.npcs_here) if scene is not None else []
+                jobs.append(("fact", classify(
+                    answer_text=answer,
+                    recipients=self._characters.character_names() if self._characters else [],
+                    givers=givers,
+                )))
+        if not jobs:
+            return None, None
+        results = await asyncio.gather(*(coro for _, coro in jobs), return_exceptions=True)
+        out: dict[str, object] = {}
+        for (kind, _), result in zip(jobs, results):
+            if isinstance(result, BaseException):
+                log.exception("%s classifier raised — ignored (fail-open)", kind,
+                              exc_info=result)
+                continue
+            out[kind] = result
+        # Replay journal (ADR 046): the raw verdicts, exactly like the roll router's.
+        for key, attr in (("scene_router", "last_scene_router"), ("facts", "last_facts")):
+            note = getattr(self._brain, attr, None)
+            if note is not None:
+                self.replay_note(channel, key, note)
+        return out.get("scene"), out.get("fact")
+
+    def _exit_labels(self, scene: Scene | None, state: WorldState) -> dict[str, str]:
+        """``{scene_id: title}`` for the exits reachable from ``scene`` right now (ADR 057 #6).
+
+        The title is what lets the model map "zum Hafen" onto ``pier_neun``; a gated exit whose
+        element isn't resolved yet is simply not offered."""
+        if scene is None or self._adventure is None:
+            return {}
+        labels: dict[str, str] = {}
+        for sid in reachable_exits(scene, state.resolved_ids(scene.id)):
+            target = self._adventure.get_scene(sid)
+            labels[sid] = target.title_de if target is not None else ""
+        return labels
+
+    def _apply_commitment(self, channel, state: WorldState, verdict) -> None:
+        """Write a validated commitment into the world state (ADR 058 #2).
+
+        Code decides what the verdict *means*: ``record_commitment`` re-validates the kind and
+        the label and returns ``None`` for anything it won't accept, so a malformed verdict
+        changes nothing. The write is logged because a prompt-resident wrong fact is worse than a
+        forgotten right one and the operator must be able to see (and ``!fakt weg``) it."""
+        commitment = getattr(verdict, "commitment", None)
+        if commitment is None:
+            return
+        written = state.record_commitment(commitment.kind, **commitment.record_kwargs())
+        if written is None:
+            return
+        self._persist_and_refresh(channel)
+        log.info("📌 Fakt aufgenommen (%s): %s → %s%s", commitment.kind, commitment.text,
+                 commitment.to or "Gruppe",
+                 f" (von {commitment.by})" if commitment.by else "")
+
+    async def _apply_scene_verdict(self, channel, state: WorldState, verdict) -> None:
+        """Turn the classifier verdict — or, failing that, the flag gate — into a pointer move.
+
+        The classifier wins when it saw an arrival: it read the narration, the gate only counts
+        flags. The gate (ADR 057 #2) then covers the other failure the run showed, a room squeezed
+        empty with nobody moving on, and only when the answer is unambiguous (exactly one open
+        exit). Both proposals are re-checked by ``scene_flow.resolve_exit`` before anything is
+        written, and a rejection is loud (ADR 057 #5)."""
+        if self._adventure is None:
+            return
+        scene = self._adventure.get_scene(state.scene_id)
+        resolved = state.resolved_ids(scene.id) if scene is not None else []
+        target, trigger = "", None
+        if verdict is not None and getattr(verdict, "moved", False):
+            target, trigger = verdict.target_id, MoveTrigger.CLASSIFIER
+        elif self._scene_flag_gate and is_scene_exhausted(scene, resolved):
+            choice = next_scene_on_exhaustion(scene, resolved)
+            if choice.auto_target:
+                target, trigger = choice.auto_target, MoveTrigger.FLAG_GATE
+                log.info("🔓 Szene '%s' ist ausgespielt — Flag-Zwang schiebt weiter nach '%s'",
+                         scene.id if scene else "—", target)
+            elif choice.candidates:
+                log.info("🔓 Szene '%s' ist ausgespielt, aber %d Ausgänge offen — kein Automatik-"
+                         "Wechsel", scene.id if scene else "—", len(choice.candidates))
+        if not target:
+            return
+        await self.request_scene_move(channel, target, trigger=trigger)
+
+    async def request_scene_move(self, channel, target_id: str, *, trigger=None) -> Scene | None:
+        """Validate a proposed move and perform it, or report the rejection loudly.
+
+        The single gate every automatic mover goes through (classifier, flag gate, and the demoted
+        ``<<ORT>>`` marker). Returns the Scene moved to, or ``None``."""
+        cid = self._brain_channel(channel)
+        state = self._state.get(cid)
+        if state is None or self._adventure is None:
+            return None
+        scene = self._adventure.get_scene(state.scene_id)
+        verdict = resolve_exit(
+            scene, target_id,
+            resolved_ids=state.resolved_ids(scene.id) if scene is not None else [],
+            known_scene_ids=[sid for _, sid, _ in self._adventure.scene_overview()],
+        )
+        self.replay_note(channel, "scene_move", {
+            "requested": target_id,
+            "trigger": getattr(trigger, "value", trigger),
+            "accepted": verdict.permitted,
+            "reason": getattr(verdict.reason, "value", verdict.reason),
+        })
+        if not verdict.permitted:
+            await self.report_rejected_move(channel, verdict)
+            return None
+        return await self.move_scene(channel, verdict.target_id, trigger=trigger)
+
+    async def report_rejected_move(self, channel, verdict) -> None:
+        """Make a refused scene change loud (ADR 057 #5) — a director note for the next turn AND
+        an operator-visible line, never the single ``log.info`` of 2026-08-22.
+
+        Spoiler discipline decides where each half lands: the ``[Regie]`` note (model-facing) and
+        the log carry the reachable exits and the element that would unlock a gated one, and the
+        operator line goes to ``DM_DEBUG_CHANNEL`` *only*. Without one configured there is no
+        channel line at all — a scene id like ``pier_neun`` in the game channel names a locked
+        finale to the players, which is exactly what this docstring claims not to do."""
+        cid = self._brain_channel(channel)
+        labels = [SceneExit(sid, self._scene_title(sid)).label()
+                  for sid in verdict.reachable_exits]
+        note = scene_rejected_note_de(verdict.target_id, verdict.reason, labels)
+        self._brain.add_gm_note(cid, note)
+        log.warning("🚫 Szenenwechsel '%s' abgelehnt (%s)%s — erreichbar: %s; Regie-Hinweis für "
+                    "den nächsten Zug eingereiht", verdict.target_id,
+                    getattr(verdict.reason, "value", verdict.reason),
+                    f", Bedingung '{verdict.required_element_id}' offen"
+                    if verdict.required_element_id else "",
+                    ", ".join(verdict.reachable_exits) or "—")
+        target = self._operator_channel()
+        if target is None:
+            return          # no operator channel — log + [Regie] note are the whole delivery
+        name = self._scene_title(verdict.target_id) or verdict.target_id
+        try:
+            await target.send(
+                f"🚫 Szenenwechsel nach „{name}“ abgelehnt — die Gruppe bleibt, wo "
+                f"sie ist. (Grund im Log; die Spielleitung bekommt einen Hinweis.)"
+            )
+        except discord.HTTPException:
+            log.warning("could not post the rejected-move line", exc_info=True)
+
+    def _scene_title(self, scene_id: str) -> str:
+        scene = self._adventure.get_scene(scene_id) if self._adventure is not None else None
+        return scene.title_de if scene is not None else ""
+
+    async def move_scene(self, channel, scene_id: str, *, trigger=None,
+                         announce: bool = True) -> Scene | None:
+        """Move the scene pointer and do everything a *real* move entails, in one place.
+
+        Deterministic pointer + NPC registration (``_set_scene``), persist + prompt refresh, NPC
+        memory mining for the scene just left (ADR 044), the scene-change time cost (ADR 048 #10),
+        the 🧪 overlay and the player panel — plus, when ``announce``, the channel line and the
+        one-minute ↩ control of ADR 057 #4. The change happens FIRST and is undone on click: the
+        evening proved that a confirmation nobody knows about is the same as no mechanism."""
+        cid = self._brain_channel(channel)
+        state = self._state.get(cid)
+        if state is None:
+            return None
+        undo = capture_scene_undo(state, scene_id, trigger=trigger)
+        old_scene = state.scene_id
+        moved = self._set_scene(state, scene_id)
+        if moved is None:
+            return None
+        self._persist_and_refresh(channel)
+        log.info("scene → %s (%s) [%s]", moved.id, moved.title_de,
+                 getattr(trigger, "value", trigger) or "auto")
+        if old_scene and old_scene != moved.id:
+            self.schedule_npc_memory_extraction(channel, old_scene)
+            await self.advance_scene_time(channel)
+        await self.update_debug_overlay()
+        await self.update_player_panel()
+        if announce:
+            await self._announce_scene_change(channel, moved, undo)
+        return moved
+
+    async def _announce_scene_change(self, channel, scene: Scene, undo) -> None:
+        """Say in the channel that the scene moved, with a ↩ control that stays live for about a
+        minute (ADR 057 #4). ``DM_SCENE_UNDO_SECONDS=0`` posts the line without the button."""
+        text = f"📖 Szene gewechselt: **{scene.title_de}** (Teil {scene.part})."
+        view = None
+        if self._scene_undo_seconds > 0:
+            view = SceneUndoView(self._make_scene_undo(channel, undo),
+                                 timeout=float(self._scene_undo_seconds))
+        try:
+            message = await self._send_with_retry(channel, text, view=view)
+        except discord.HTTPException:
+            log.warning("could not announce the scene change", exc_info=True)
+            return
+        if view is not None:
+            view.message = message  # so the view can grey its button out when the minute is up
+
+    def _make_scene_undo(self, channel, undo):
+        """Build the ↩ callback for one scene change: restore pointer + in-game time, refresh the
+        prompt and the panels, and edit the announcement. ``apply_scene_undo`` refuses (and writes
+        nothing) when the pointer has moved on since — which also makes a second click a no-op."""
+        async def _undo(interaction: discord.Interaction) -> None:
+            cid = self._brain_channel(channel)
+            state = self._state.get(cid)
+            if state is None:
+                return
+            if not apply_scene_undo(undo, state):
+                await interaction.edit_original_response(
+                    content="Nicht mehr aktuell — die Szene ist inzwischen weitergezogen."
+                )
+                return
+            self._persist_and_refresh(channel)
+            self._scene_turns[cid] = 0
+            log.info("scene ↩ zurückgenommen → %s (%s)", state.scene_id,
+                     getattr(undo.trigger, "value", undo.trigger) or "auto")
+            await self.update_debug_overlay()
+            await self.update_player_panel()
+            await self.update_clock_panel()
+            scene = self._adventure.get_scene(state.scene_id) if self._adventure else None
+            title = scene.title_de if scene is not None else state.scene_id
+            await interaction.edit_original_response(
+                content=f"↩ Szenenwechsel zurückgenommen — ihr seid weiter in **{title}**."
+            )
+        return _undo
 
     # ----- Consistency guard (ADR 045) ------------------------------------------------------
 
@@ -919,7 +1440,13 @@ class SessionRuntime:
         if state is None:
             return None
         scene = self._adventure.get_scene(state.scene_id) if self._adventure is not None else None
-        return lambda text: consistency_mod.check(text, state, scene)
+        # Scope the *presence* check to the campaign's named NPCs (D107). Registering a scene's
+        # NPCs on entry is what finally gives this guard data — but the NPC-memory extractor also
+        # registers whatever name it reads out of a transcript, so without this scoping one
+        # invented extra ("Kaads Laufbursche") would become a permanent registered NPC and cost a
+        # regeneration every time the DM let a bystander speak in another scene.
+        named = self._adventure.npc_names() if self._adventure is not None else None
+        return lambda text: consistency_mod.check(text, state, scene, named_only=named)
 
     # ----- NPC memory (ADR 044) -------------------------------------------------------------
 
@@ -1039,6 +1566,34 @@ class SessionRuntime:
             names.append(char.name if char else m.display_name)
         return names
 
+    def _seed_adventure_state(self, state) -> None:
+        """Seed what the adventure ships into a fresh world state: start time, deadlines and
+        consequence clocks (ADR 059 #1), the scene's NPCs as present (PRD block 3) and the
+        campaign objective as the mission quest (ADR 058 #3).
+
+        All three are idempotent — ``seed_time_from_adventure`` latches ``time_seeded``,
+        ``set_mission`` replaces rather than appends and NPC registration keeps existing values —
+        so a re-join or a restart mid-session neither resets the clock nor duplicates a deadline.
+        Every step is ``getattr``-guarded: a partially-built state (tests) simply skips it."""
+        adv = self._adventure
+        if adv is None:
+            return
+        start_time = getattr(adv, "start_time_de", "")
+        deadlines = getattr(adv, "deadlines", []) or []
+        clocks = getattr(adv, "clocks", []) or []
+        seed_time = getattr(state, "seed_time_from_adventure", None)
+        if seed_time is not None and (start_time or deadlines or clocks):
+            seed_time(start_time=start_time or None, deadlines=deadlines, clocks=clocks)
+        mission = getattr(adv, "mission", None) or {}
+        set_mission = getattr(state, "set_mission", None)
+        title = str(mission.get("title_de", "") or "").strip()
+        if set_mission is not None and title:
+            set_mission(title,
+                        detail=str(mission.get("detail_de", "") or ""),
+                        given_by=str(mission.get("given_by", "") or ""))
+        if hasattr(state, "npcs") and getattr(state, "scene_id", ""):
+            self._register_scene_npcs(state, adv.get_scene(state.scene_id))
+
     def seed_session(self, voice_channel, text_channel) -> bool:
         """Seed all per-session state for a fresh !join in the right order: active + text
         channel, party (+ alias/speaker hints), turn order from the voice members, world
@@ -1051,7 +1606,14 @@ class SessionRuntime:
         # Phase 8: load this channel's party (else the example), wire the "who plays whom" alias
         # hint into the prompt (open item F), and seed the turn order from the voice members.
         self._characters, char_fallback = self._load_characters(cid)
-        self._brain.set_alias_hint(cid, self._characters.alias_hint_de())
+        # Identity (PRD "Identity"): who is who, by Discord user id, before anything is buffered.
+        self._seed_speaker_identities(voice_channel)
+        # With the resolution real, the prompt no longer carries the display-name → character
+        # mapping the model had to apply itself — every player line already arrives under its
+        # character name. The party boundary half of the hint stays either way.
+        self._brain.set_alias_hint(
+            cid, self._characters.alias_hint_de(with_mapping=not self._char_by_user)
+        )
         # All table names → cut-labels/stop sequences, so a puppeted "Seskin: …" script is truncated.
         self._brain.set_known_speakers(cid, self._characters.speaker_labels())
         self._turn_order[cid] = self._build_turn_order(voice_channel)
@@ -1075,6 +1637,11 @@ class SessionRuntime:
                 self._state[cid].scene_id = ""
             if not self._state[cid].scene_id:
                 self._state[cid].scene_id = self._adventure.start_scene
+            # The campaign's own clock and its objective (ADR 059 #1 / ADR 058 #3), seeded from
+            # the adventure file instead of typed at the table. Both are idempotent — a resumed
+            # session keeps its time and its mission — so this may run on every !join.
+            self._seed_adventure_state(self._state[cid])
+        self._scene_turns[cid] = 0
         self._persist_and_refresh(voice_channel)
         # Crash recovery (D41): restore the conversation thread from the autosave if the in-memory
         # history is empty (a fresh process after a crash). A clean !leave rotates the file away, so

@@ -12,13 +12,13 @@ is on-demand._
   live-validated. Phase 10b (profile bootstrap) deliberately deferred until play runs smoothly.
 - **Project priority:** the ONE tuning + scene-cards live run — [Ablauf](docs/testabend-ablauf.md),
   Gate-Register + Beweiszeilen in [docs/live-run-script.md](docs/live-run-script.md).
-- **Newest round:** Triage des Debug-Abends vom 22.08. (D107–D110): 76 ursachengeprüfte Funde,
-  20 Entscheidungen, Spezifikation in [docs/plans/coherent-campaign-run.md](docs/plans/coherent-campaign-run.md)
-  plus ADR 057/058/059. Kein Python berührt, keine Suite gelaufen. Davor: Spielerdoku
-  [docs/characters.html](docs/characters.html) + Umbenennung → Rene Redo (D106).
-- **Next concrete step:** Block 1 der Spezifikation bauen — Vorlesen + Einstieg (Sprechmodus-
-  Vergleich am Tisch, lauter XTTS-Speaker-Preflight, gesprochener Laien-Einstieg). Danach Block 2
-  (Szenenwechsel + Panel, ADR 057), 3 (NSC-Leben), 4 (Identität + harte Fakten, ADR 058).
+- **Newest round:** Debug-Abend vom 22.08. aufgearbeitet UND gebaut (D107–D110): Szenenwechsel
+  per Klassifikator + Flag-Zwang, Fakten-Klassifikator, Zeit aus dem Abenteuer, NSC-Spielweise im
+  Prompt, Figurenname statt Discord-Name, Spieler-Panel. 1039 Tests grün, Gate sauber, Goldens
+  abweichungsfrei. Spec: [docs/plans/coherent-campaign-run.md](docs/plans/coherent-campaign-run.md), ADR 057/058/059.
+- **Next concrete step:** Die Debug-Kampagne live spielen. Vorher `DM_DEBUG_CHANNEL` setzen und
+  `OLLAMA_NUM_PARALLEL` ≥ 2 prüfen; am Abend der Sprechmodus-Vergleich
+  ([docs/speech-mode-comparison.md](docs/speech-mode-comparison.md)), danach das erste echte Golden ziehen.
 - **Open live gates (10, all stacked into the one live run):** augmetics (D52 — rested until
   a player carried an implant; Rene Redo carries three), NPC memory (D91), consistency guard (D92), clocks (D94), in-game time/deadlines (D95), NPC agendas (D96), Chekhov threads
   (D97) and campaign memory (G10/D102) — the last two need a 2nd session — plus Phase 9 (HP
@@ -30,35 +30,30 @@ is on-demand._
 
 ## Current focus
 
-**Triage des Debug-Abends vom 22.08. — Spezifikation geschrieben, noch nichts gebaut (D107).** Der Testabend lief 33 Minuten und blieb die ganze Zeit in Szene eins hängen: ein NSC redete fast allein, der DM sprach die Spielerfiguren mit, eine gewonnene Probe wurde neun Züge später stillschweigend zurückgenommen, und im Chat stand nie, was gerade getestet wird. Die Ursache ist ein einziges totes Glied. Alles, was den Abend getragen hätte — Testplan-Overlay, Ingame-Uhr, Fristen, NSC-Agenden, Recap, NSC-Gedächtnis, Chekhov-Fäden, fünf von sechs Szenen und sieben von acht NSCs — hängt am Szenenwechsel, und den kann nur ein Inline-Marker auslösen, den das Modell in 22 Zügen null Mal geschrieben hat. Er steht am Textende, also genau dort, wo die 220-Token-Decke und der Stop-Label-Schnitt ihn zerstören.
-Zweiter, modellunabhängiger Befund: der Bot lief im Default `stream` + `flach`, und dieser Default ist ausdrücklich für **CPU** gebaut. XTTS lief an dem Abend auf cuda und synthetisierte 2–3,5× schneller als Echtzeit — der Tisch hat also die Nähte zwischen den Stream-Chunks und die entfernte Interpunktion für Hardware bezahlt, die das nicht mehr braucht.
-Das Ergebnis der Runde ist Papier: [`docs/plans/coherent-campaign-run.md`](docs/plans/coherent-campaign-run.md) (Problem, 33 User Stories, Umsetzungs- und Testentscheidungen, Out of Scope) plus **ADR 057** (Szenenwechsel per Klassifikator + Flag-Zwang, automatisch mit Undo), **ADR 058** (Fakten-Klassifikator nach dem Zug) und **ADR 059** (Startzeit, Fristen und Uhren aus dem Abenteuer; Zeit läuft pro Zug). Vier Baublöcke in Tobis Reihenfolge: Vorlesen+Einstieg, Szenenwechsel+Panel, NSC-Leben, Identität+harte Fakten. **WIP-Override erteilt** — die zehn offenen Gates liegen ohnehin alle auf demselben nächsten Abend, und ohne diese Fixes wäre der wieder unbrauchbar.
-Bewusst NICHT entschieden: Antworten kürzen (die Länge ist gewollt), Barge-in (bräuchte Bot As Repo), ein Puppeting-Filter (erst Prompt-Widerspruch beheben, dann zählen), Würfelknopf-Identität und ein deterministischer Meta-Satz-Filter.
+**Der Debug-Abend vom 22.08., aufgearbeitet und gebaut (D107–D110).** Der Testabend blieb 22 Züge in Szene eins hängen: ein NSC redete fast allein, der DM sprach die Spielerfiguren mit, eine gewonnene Probe wurde neun Züge später stillschweigend zurückgenommen, und im Chat stand nie, was gerade getestet wird. Die Ursache war ein einziges totes Glied — Testplan-Overlay, Ingame-Uhr, Fristen, NSC-Agenden, Recap, NSC-Gedächtnis, Chekhov-Fäden, fünf von sechs Szenen und sieben von acht NSCs hängen alle am Szenenwechsel, und den konnte nur ein Inline-Marker auslösen, der am Textende steht, wo die Token-Decke ihn kappt. Er kam in 22 Zügen null Mal.
+Jetzt entscheidet **Code** über den Ortswechsel: ein eigener Klassifikator über die echten Ausgänge der Szene (nach dem Vorbild des Würfel-Routers, der live nachweislich funktioniert), dazu ein Flag-Zwang, der eine ausgespielte Szene ohne jedes Modell weiterschiebt — automatisch, mit einem Zurücknehmen-Knopf für eine Minute. Ein zweiter Klassifikator auf derselben Zugnaht schreibt Übergaben, Aufträge und Versprechen als **harte Fakten** in den Weltzustand, `!fakt weg` nimmt einen falschen zurück. Die Uhr läuft pro Zug und bringt Startzeit, Frist und Uhren aus dem Abenteuer mit. Die Rollenspiel-Notizen der NSCs erreichen zum ersten Mal den Prompt (sie hatten im ganzen Repo keinen Leser), anwesende NSCs werden registriert, und die Spielerzeile trägt den **Charakternamen** statt des Discord-Namens. Ein Spieler-Panel im Chat zeigt Szene, Auftrag, Uhrzeit, Frist und was hier noch offen ist.
+Belegt: **1039 Tests grün**, Repo-Lint-Gate (`ruff --select F`) sauber, beide Goldens abweichungsfrei. Elf Agenten haben gebaut, ein adversariales Review fand danach neun Funde — die beiden schweren (kein `!fakt`-Kommando trotz ADR-Zusage; die Ablehnungszeile verriet `pier_neun` im Spielerkanal) sind behoben, ebenso das größte Tischrisiko: die neue NSC-Registrierung hätte den Konsistenzwächter auf Statisten scharfgeschaltet, und „Vosk der Haken" hätte jeden Haken im Hafen zu einem Verstoß gemacht — jetzt zerfallen Beinamen nicht mehr in eigenständige Namen.
+Nicht gebaut, bewusst: kein Puppeting-Filter (erst der Prompt-Widerspruch, dann im nächsten Lauf zählen), kein Kürzen (die Länge ist gewollt), kein Barge-in (fremdes Repo), und der Sprechmodus-Default bleibt `stream`+`flach`, bis Tobi die drei Modi am Tisch gehört hat — Anleitung in [`docs/speech-mode-comparison.md`](docs/speech-mode-comparison.md).
 
 _Ältere Current-focus-Blöcke (Charakter-Akten 2026-08-22, Vierter Spieler D105 2026-08-22 [Enginseer, seit D106 »Rene Redo«], Testabend-Doku + Kommando-Fehlermeldung D104 2026-08-15, Testabend-Vorbereitung 2026-08-15 [Topologie, `cleanup_15aug.py`], Playtest-Triage D103 → ADR 056, Debug-Sandbox + G10 D102 → ADR 055, Session-RAG-Runde D101 → ADR 054, Journal-Runde D100 → ADR 053, Content-Runde Debug-Kampagne „Die Mitternachtsfracht“ 2026-07-11, D99 Debug-Overlay, D98 Marker-Registry u. a.): siehe [docs/progress-archive.md](docs/progress-archive.md), `## Current focus (Verlauf)`._
 
 ## Last session
 
-**Debug-Lauf-Triage D107 (2026-08-23). Analyse + Spezifikation, kein Code angefasst, kein Test gelaufen.**
-Aus dem Terminal-Mitschnitt des Abends vom 22.08. wurden 15 wörtliche Spielerkritiken und 18 Log-Befunde extrahiert, danach in sieben Codebereichen ursachengeprüft (76 Funde) und in fünf Fragerunden mit Tobi auf 20 Entscheidungen eingedampft.
-- **Kernbefund:** der Szenenzeiger bewegte sich in 22 Zügen kein einziges Mal. Er hat drei Beweger — `!ort` (kannte am Tisch niemand), den Inline-`<<ORT>>`-Marker (0 von 22 Zügen) und dessen Bestätigungsknopf. Zwei unabhängige Analysen kamen von verschiedenen Seiten auf dieselbe Mechanik: der Marker steht am Textende und wird dort von Token-Decke und Stop-Label gekappt. Verschärfend zeigt der einzige In-Fiction-Wegweiser der Startszene auf die Pfandhalle, erreichbar ist per `leads_to` nur der Schrein — der einzig erlaubte Zug ist der einzige ohne narrativen Anlass.
-- **Am Code nachgeprüft statt geglaubt** (die sieben Gegenprüfer-Agenten starben am Session-Limit, deshalb von Hand): `roleplaying_de` aller acht NSCs hat keinen einzigen Leser im Repo; `consistency.py` steigt bei leerer `state.npcs`-Liste sofort aus und war damit den ganzen Abend ein No-op; `segments.py` hat gar keine Halluzinations-Blockliste, nur zwei Wahrscheinlichkeitsschwellen; `bridge.py` kennt kein Stop, ein laufendes Vorlesen ist nicht abbrechbar; Zeit bewegt sich ausschließlich über den `<<ZEIT>>`-Marker, weshalb die Ingame-Uhr auf „Tag 1, 08:00, Morgen" stand, während die Fiktion vor Mitternacht spielt; die Spielerzeile geht als `f"{name}: {text}"` mit dem **Discord**-Namen ins Prompt.
-- **Aus den Latenzzeilen gerechnet:** XTTS lief auf cuda mit 2–3,5× Echtzeit (Zug 1: 43,7 s Synthese für 156 s Audio). Der Default `stream`+`flach` ist laut Kommentar für CPU gewählt — die hackenden Nähte und die fehlende Betonung sind also womöglich eine Voreinstellung für die falsche Hardware, kein Bug. `!sprechmodus nahtlos intoniert` existiert bereits; Tobi will die drei Modi am Tisch mit den Ohren vergleichen, bevor ein Default geändert wird.
-- **Ein Fund zurückgezogen:** „der Lauf hinterließ keine `.debug`-Sitzungsdateien" ist ein Artefakt davon, wo die Analyse lief — der Abend war auf Timos Rechner.
-- **Was gut war und nicht angefasst wird:** der Kampagneninhalt (sechs Szenen als saubere Kette, NSCs pro Szene, Gelegenheiten mit Probe und Schwierigkeit, ein echtes Gate an Pier Neun), die Würfelkette (drei Proben, korrekt geroutet und aufgelöst) und die Rückkopplungssperre (Bot As Stimme sauber auf Layer 1 gefiltert).
+**Debug-Lauf-Triage D107 + Bau-Runde (2026-08-23).** Erst Analyse und Spezifikation, dann gebaut: 1039 Tests grün, Lint-Gate sauber, Goldens abweichungsfrei. Details der Analyse unten, das Gebaute im Current-focus-Block darüber.
 
 _Ältere `## Last session`-Einträge (Charakter-Akten `docs/characters.html` + Umbenennung Rene Redo 2026-08-22, Vierter Charakter Vinzentius Kabelbrand D105 2026-08-22 [90-Punkte-Bogen gegen das Profil gerechnet, Deployment in beide `characters.json`, Augmetik-Check reaktiviert], Playtest-Triage nach dem ersten Debug-Abend 2026-08-15 [Fehlstart in der Live-Kampagne, `session_file()`-Naht, Sanitize, Testabend-Doku, Kommando-Fehlermeldung → ADR 056], Doku-Drift-Sweep 2026-07-18 [5 Drift-Funde, alle gefixt; ADR-Renumber 019/020], Debug-Sandbox + Gate G10 2026-07-17 [`.debug`-Archive → `session_debug`-Source, `--wipe-debug` → ADR 055], Session-RAG-Runde D101 2026-07-17 [Ingest + Hybrid-Retrieval + Kalibrierung, Verifier-Fund `session_chunks_vec` → ADR 054], Journal-Runde D100 2026-07-17 [Scene-Events + `time_minutes` im Journal → ADR 053], Content-Runde Debug-Kampagne „Die Mitternachtsfracht“ 2026-07-11 [adventure/npcs/testplan lokal, `validate.py` RESULT: OK, Gate-Abdeckung G1–G9 → Runbook], D99 🧪-Debug-Overlay-Runde 2026-07-11 [Sidecar-Loader `testplan.py`, edit-in-place-Panel, Invisibility-Pin → ADR 052], Live-Gate-Triage 2026-07-11 [alle 8 Gates + Tuning-Checks in EIN Abend-Drehbuch gemerged, `docs/live-run-script.md`; Checklisten-Korrekturen per Code-Sweep], Workflow-Migration Runde 4/5 2026-07-11 [roadmap-Modell-Tabelle → Effort-first-Block + konservativer Skill-Sweep], Doc-Diet-Runde 2026-07-11 [State header + Rotation + Decision-Log-Diät], D98 Marker-Registry-Konsolidierung [`MarkerSpec`-Tabelle + eine generische Naht, marker-weise migriert → ADR 051], D97 Chekhov-Liste [Fäden-Schema + Wrap-up-Extraktion + Top-3-Injektion + ChekhovCog → ADR 050], D96 NPC-Agenden [`goal` + `agenda_log` + Extraktor-Erweiterung → ADR 049], D95 Ingame-Zeit [Minuten-Zähler + `<<ZEIT>>`-Marker + Fristen + Druck-Panel → ADR 048], D94 Consequence Clocks [`<<UHR id>>`-Marker + ClockCog + Druck-Panel + Voll-Uhr-`[Regie]`-Note → ADR 047], D93 Replay-Eval-Harness [Replay-Journal + `uv run dm-eval`, 6 Diff-Kategorien, synthetische Goldens → ADR 046], D92 Konsistenz-Wächter [deterministischer Pre-Delivery-Check, Regenerate-once, fail-open → ADR 045], D91 NPC-Gedächtnis [NpcMemory-Schema + Extraktor + Lügen-Flip/Gossip + Prompt-Block → ADR 044], D90 `dm-sync`-Entry-Point [Package-Move + hatchling, byte-identischer `[sync]`-Block], D89 Sync-Check-Fingerprint-Tool [`[sync]`-Block, Ingest-Stempel, SETUP.md-Sync-Sektion], D88 `/author-adventure`-Authoring-Skill [5-Pass-Workflow + `validate.py`, Dry-Run-Abnahme gegen Chemical Burn], D87 Stateful Scene Cards [`<<ERLEDIGT>>`-Flags, tote NSCs, gated Exits → ADR 043], D85+D86 Spielbarkeits-Tuning [repeat_penalty + Roll-Router-Carve-out, `intro_guard`-Retry], D84 `!intro`-Meta-Auftakt-Strip + Temp 0.7, D83 `!intro`-Temperatur + Direktive, D82 Default-Party-Fix, D81 Scene-/Lore-Sub-Cogs, D80 Deepening #4–#6 [prompt_assembly/seed_session/clear_panel], D79 Deepening #1+#2 [`combat.py`-Auslagerung + `segments.py`-Verdrahtung], D78 Skill-Tooling-Runde [4 Claude-Code-Skills: /tdd, /grill-me, /improve-architecture, /to-prd], D77 Dev-Gates [Lint-Stop-Hook + blockierender git-pre-commit + Review/Simplify-Checkliste], D76 `disconnect_voice`-Kontrakt + neuer Delivery-Test, D75 One-Shot-Setup, D74
 
 ## Next concrete step
 
-**Block 1 der Spezifikation bauen: Vorlesen + Einstieg** ([`docs/plans/coherent-campaign-run.md`](docs/plans/coherent-campaign-run.md)).
-Konkret: die Vergleichsprozedur für die drei Sprechmodi am Tisch schreiben (dieselbe Antwort in
-`stream` / `puffer` / `nahtlos`, je einmal `flach` und `intoniert`), den XTTS-Speaker-Fehlgriff zu
-einem lauten Preflight machen, und den gesprochenen Laien-Einstieg bauen — Klartext vor der
-Stimmungsprosa. Danach Block 2 (Szenenwechsel + Panel, ADR 057), Block 3 (NSC-Leben), Block 4
-(Identität + harte Fakten, ADR 058). Der Abenteuer-Content braucht dafür eine eigene kleine Runde:
-IDs für alle 17 Gelegenheiten (ohne die kann der Flag-Zwang nichts zählen) und Startzeit, Frist und
-Uhren in `adventure.json` (ADR 059).
+**Die Debug-Kampagne live spielen — jetzt zum ersten Mal mit einer Kampagne, die weiterlaufen
+kann.** Vorher zwei Handgriffe: `DM_DEBUG_CHANNEL` setzen (sonst erscheint die Ablehnungszeile
+eines Szenenwechsels nur im Log), und `OLLAMA_NUM_PARALLEL` auf mindestens 2 prüfen, damit die
+zwei Klassifikatoren wirklich in einem Fenster laufen statt der zweite in seinen Timeout zu
+kippen. Am Abend selbst: der Sprechmodus-Vergleich aus
+[`docs/speech-mode-comparison.md`](docs/speech-mode-comparison.md) — er entscheidet den Default,
+und er ist die einzige der sieben Live-Gates, die in fünf Minuten erledigt ist. Danach den
+rotierten Journal-Lauf als erstes echtes Golden ziehen, damit „der DM hat Szene eins nie
+verlassen" künftig ein fehlschlagender Test ist statt einer Anekdote.
 
 ## Decision log
 
@@ -314,6 +309,19 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 ---
 
 ## Open questions / to clarify
+
+
+**Aus dem Review der Bau-Runde (2026-08-23) — nicht behoben, bewusst vertagt:**
+- **Gegenrichtung der Fakten** — der Klassifikator kennt nur Hinzufügen (Gegenstand, Auftrag,
+  Zusage), nicht Zurücknehmen oder Erledigen. Rücknahme läuft über `!fakt weg` von Hand.
+  ADR 058 ist auf den gebauten Umfang korrigiert; die Erweiterung wäre additiv.
+- **`!ortmodus frei` wirkt nur noch auf den Marker**, nicht auf den neuen Klassifikator-Pfad
+  (der prüft immer gegen die echten Ausgänge). Am ersten Abend beobachten, ob das stört.
+- **Discord-Last des Panels** — pro Zug mindestens ein Edit, bei Szenenwechsel mehrere plus
+  Delete+Send. Auf 22 Züge sind das hunderte Kanal-Operationen; ein 429 verschwindet heute in
+  einer Warnung. Erst messen, dann drosseln.
+- **Drei Beweger auf einem Szenenzeiger** (Klassifikator, Flag-Zwang, Marker) — beim Debriefing
+  als Erstes die `scene_move`-Auslöser im Replay-Journal auszählen.
 
 **Aus der Debug-Lauf-Triage (2026-08-23, D107) — bewusst offen gelassen:**
 - **Deterministischer Meta-Satz-Filter** — „Es tut mir leid, aber ich kann Ihre Frage nicht

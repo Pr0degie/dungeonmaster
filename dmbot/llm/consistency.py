@@ -23,6 +23,7 @@ guard must never block the session). The streaming path can only log (audio alre
 from __future__ import annotations
 
 import re
+from collections.abc import Collection
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -100,6 +101,15 @@ def _name_variants(name: str, ambiguous_tokens: set[str]) -> list[str]:
         return []
     variants = [name]
     if len(tokens) > 1:
+        # An epithet name ("Vosk der Haken", "Grimm von Kaltmar") carries its identity in the
+        # part BEFORE the lowercase particle; the tail is a description, and in German it is
+        # usually an ordinary noun. Registering "Haken" as a standalone reference makes every
+        # hook in a harbour scene an absent-NPC violation — and a violation costs a full
+        # regeneration mid-turn (D107 review, ADR 045).
+        for stop, tok in enumerate(tokens):
+            if tok.islower():
+                tokens = tokens[:stop]
+                break
         for tok in tokens:
             if (
                 len(tok) >= 3
@@ -155,13 +165,29 @@ def _ambiguous_tokens(state: WorldState) -> set[str]:
     return ambiguous
 
 
-def check(text: str, world_state: WorldState | None, scene: Scene | None) -> list[Violation]:
+def check(
+    text: str,
+    world_state: WorldState | None,
+    scene: Scene | None,
+    *,
+    named_only: Collection[str] | None = None,
+) -> list[Violation]:
     """Check a DM answer against the world state; return the violations (empty = deliver).
 
     ``scene`` is the active scene card or ``None`` (no adventure / unknown pointer) — the
     absent-NPC check only runs with a scene (without one there is no notion of "here").
     The dead check runs regardless. Pure, conservative, never raises on odd inputs.
-    """
+
+    ``named_only`` scopes the **absent** check to the campaign's *named* NPCs (D107, PRD
+    block 3). Registering a scene's NPCs on entry is what finally gives this guard data — but
+    registration is not the only writer: the NPC-memory extractor registers whatever name it
+    reads out of the transcript (``npc_memory.apply_extraction``), so a nameless extra the DM
+    invented once — Kaad's runner, a passing dock hand — would become a permanent registered
+    NPC and then violate "absent" in every other scene, costing a regeneration each time. With
+    ``named_only`` set (the adventure's own NPC names), an accidental registration can no
+    longer make the DM's incidental figures illegal. ``None`` keeps the pre-D107 behaviour:
+    every registered NPC is presence-checked. The **dead** check is never scoped — code is the
+    only thing that can kill an NPC, so a dead one speaking is always a contradiction."""
     if not text or world_state is None or not getattr(world_state, "npcs", None):
         return []
     stripped = _strip_quotes(text)
@@ -170,6 +196,7 @@ def check(text: str, world_state: WorldState | None, scene: Scene | None) -> lis
     here = None
     if scene is not None:
         here = {n.strip().lower() for n in scene.npcs_here}
+    named = None if named_only is None else {str(n).strip().lower() for n in named_only}
     for npc in world_state.npcs:
         variants = _name_variants(npc.name, ambiguous)
         if not variants:
@@ -181,7 +208,11 @@ def check(text: str, world_state: WorldState | None, scene: Scene | None) -> lis
                     hint_de=(f"{npc.name} ist tot und kann nicht sprechen oder handeln. "
                              f"Erzähle die Szene ohne wörtliche Rede oder Handlung von {npc.name}."),
                 ))
-        elif here is not None and npc.name.strip().lower() not in here:
+        elif (
+            here is not None
+            and npc.name.strip().lower() not in here
+            and (named is None or npc.name.strip().lower() in named)
+        ):
             if _speaks(stripped, variants):
                 violations.append(Violation(
                     kind="absent", npc=npc.name,

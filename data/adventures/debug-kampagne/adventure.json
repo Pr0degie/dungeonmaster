@@ -2,39 +2,94 @@
   "id": "debug-kampagne",
   "title": "Die Mitternachtsfracht",
   "start_scene": "zollhaus",
+  "start_time_de": "Tag 1, 21:00",
+  "deadlines": [
+    {
+      "id": "mitternachtssirene",
+      "label": "Mitternachtssirene: Der Leichter legt ab",
+      "due_in": "+3h"
+    }
+  ],
+  "clocks": [
+    {
+      "id": "wachsamkeit",
+      "name": "Wachsamkeit des Kettenbunds",
+      "size": 6,
+      "filled": 0
+    },
+    {
+      "id": "verladung",
+      "name": "Verladung der Mitternachtsfracht",
+      "size": 8,
+      "filled": 1
+    }
+  ],
+  "briefing_de": "Kurz vorweg, damit alle wissen, worum es geht. Wir spielen in einer Stadt, die so groß ist wie ein ganzes Land: Millionen Menschen, übereinander gestapelt in Schichten aus Stahl und Rauch. Ganz unten liegt der Hafen, und dort seid ihr. Es ist Abend, kurz nach neun. Ihr arbeitet für die Inquisition. Das ist die Geheimpolizei dieses Reiches: Sie darf alles, und sie muss sich vor niemandem erklären. Niemand ist gern in eurer Nähe, und genau das ist euer Werkzeug. Heute Nacht wurde etwas gestohlen: ein Ossarium. Ein Ossarium ist ein Knochenkasten. Stellt euch eine Reisetruhe vor, außen mit Blei beschlagen, innen die Knochen von Toten, die man hier für heilig hält. Der Kasten ist schwer, er ist verschlossen, und er soll verschlossen bleiben. Euer Auftrag ist einfach: Holt ihn zurück, ungeöffnet. Ihr habt bis Mitternacht. Um Mitternacht heult die große Sirene über dem Hafen, und dann legt ein Frachtschiff ab, das letzte in dieser Nacht. Wer den Kasten gestohlen hat, will ihn auf dieses Schiff bringen. Fährt es los, ist der Kasten weg, und niemand holt ihn je wieder zurück. Ihr steht gerade in einem Zollhaus am Wasser. Ein Beamter gibt euch den Auftrag; er heißt Kaad. Fragt ihn alles, was ihr wissen wollt. Danach gehört die Nacht euch.",
+  "mission": {
+    "title_de": "Das Ossarium ungeöffnet zurückholen, vor Mitternacht",
+    "detail_de": "ein bleibeschlagener Knochenkasten, groß wie eine Reisetruhe, verschlossen",
+    "given_by": "Seneschall Kaad"
+  },
   "summary_de": "Makropole Sarghast, Hafendistrikt Schleusengrund: In der Nacht vor der letzten Verladung des Zyklus wurde das Ossarium der Aschenheiligen aus seinem Schrein gestohlen — ein bleiverkleideter Reliquienschrein, den Inquisitor Aegidius Halikarn ungeöffnet zurückverlangt, bevor der Frachtleichter „Groll der Väter“ zur Mitternachtssirene von Pier Neun ablegt. Die Spur führt vom geplünderten Schrein über die Pfandhalle der Hehlerin Bree Marlok zum Kettenbund, dem Schmuggler-Syndikat der Docks: Dockmeister Arno Kessel will die Fracht vor Mitternacht an Bord schaffen und jede Spur tilgen. Die Sirenen takten die Nacht hörbar (Abend-, Nacht-, Mitternachtssirene); je lauter die Gruppe vorgeht, desto wachsamer wird der Kettenbund. WAHRHEIT (streng geheim, nur schrittweise als Andeutung enthüllen): Im Ossarium liegen keine Heiligengebeine, sondern die Fingerknochen des lebendig eingemauerten Ketzerpsionikers Malachy Dren — und sie flüstern. Wer dem Flüstern lauscht oder das Ossarium öffnet, gehört ihm.",
   "scenes": [
     {
       "id": "zollhaus",
       "title_de": "Die Zoll-Sakristei",
       "part": 1,
-      "description_de": "Eine beschlagnahmte Sakristei im Zollhaus von Schleusengrund, vollgestellt mit versiegelter Konterbande; es riecht nach Kerzenrauch und Bilgenwasser. Seneschall Bramwell Kaad überreicht im Namen Inquisitor Halikarns das Mandat: das gestohlene Ossarium der Aschenheiligen ungeöffnet zurückholen, bevor der Leichter „Groll der Väter“ zur Mitternachtssirene von Pier Neun ablegt — der einzigen Startfreigabe dieser Nacht.",
-      "npcs_here": ["Seneschall Bramwell Kaad"],
+      "description_de": "Eine beschlagnahmte Sakristei im Zollhaus von Schleusengrund, vollgestellt mit versiegelter Konterbande; es riecht nach Kerzenrauch und Bilgenwasser. Seneschall Bramwell Kaad überreicht im Namen Inquisitor Halikarns das Mandat: das gestohlene Ossarium der Aschenheiligen ungeöffnet zurückholen, bevor der Leichter „Groll der Väter“ zur Mitternachtssirene von Pier Neun ablegt — der einzigen Startfreigabe dieser Nacht. Der Tatort liegt drei Gassen bergab: der Schrein der Aschenheiligen, seit der Meldung von den Arbites versiegelt. Kaad hat die Siegel für die Gruppe brechen lassen und nennt die Adresse unaufgefordert — dort hat die Nacht angefangen, und dort soll die Gruppe anfangen.",
+      "npcs_here": [
+        "Seneschall Bramwell Kaad"
+      ],
       "opportunities_de": [
-        "Wissen (Routine): Der Kettenbund ist das Schmuggler-Syndikat der Docks; sein Zeichen ist ein einzelnes Kettenglied. (Guter Erfolg: Gestohlenes aus dem Viertel läuft fast immer über die Pfandhalle.)",
-        "Überreden (Herausfordernd): Kaad rückt eine Zollvollmacht heraus, die im Hafenviertel Türen öffnet — und Fragen erspart."
+        {
+          "id": "siegelmeldung",
+          "text_de": "Technologie (Routine): Kaads Datentafel die Siegelmeldung des Schreins entlocken — Zeitstempel kurz nach der Abendsirene, das Siegel von außen aufgebrochen. (Guter Erfolg: Die Meldung kam nicht von der Schreinschwester, sondern vom Siegel selbst — niemand hat die Diebe gerufen, und niemand hat sie aufgehalten.)"
+        },
+        {
+          "id": "kettenbund-zeichen",
+          "text_de": "Wissen (Routine): Der Kettenbund ist das Schmuggler-Syndikat der Docks; sein Zeichen ist ein einzelnes Kettenglied. (Guter Erfolg: Wer für den Kettenbund arbeitet, trägt sein Zeichen irgendwo am Körper — sichtbar nur für den, der weiß, wonach er sucht.)"
+        },
+        {
+          "id": "zollvollmacht",
+          "text_de": "Überreden (Herausfordernd): Kaad rückt eine Zollvollmacht heraus, die im Hafenviertel Türen öffnet — und Fragen erspart."
+        }
       ],
       "secrets_de": [
         "Kaad verschweigt auf Halikarns Weisung, WAS im Ossarium liegt — nur: ungeöffnet, um jeden Preis. Er weiß es selbst nicht mehr."
       ],
-      "leads_to": ["schrein"],
-      "guidance_de": "Die Sirenen takten die Nacht hörbar — die Frist immer wieder beiläufig ins Bild holen. Trödelt die Gruppe, schickt Kaad einen Laufburschen mit einer knappen Mahnung."
+      "leads_to": [
+        "schrein"
+      ],
+      "guidance_de": "Kaad nennt den Schrein der Aschenheiligen als ersten Anlaufpunkt und gibt die Adresse heraus, sobald die Gruppe nach dem nächsten Schritt fragt — dorthin führt der Weg aus dieser Sakristei. Ein einzelner Sirenenstoß im Hintergrund genügt als Zeitdruck; die Frist steht der Gruppe ohnehin sichtbar vor Augen. Trödelt die Gruppe, schickt Kaad einen Laufburschen mit einer knappen Mahnung."
     },
     {
       "id": "schrein",
       "title_de": "Schrein der Aschenheiligen",
       "part": 1,
       "description_de": "Die Schreinkapelle ist kalt und rußgeschwärzt, das Reliquiar aufgestemmt und leer; Schwester Cassia Vall fegt Asche, als könne sie das Loch im Altar wegkehren. Zwischen den Votivgaben liegt eine Messingmünze, deren Aquila jemand glattgeschliffen hat, und über dem leeren Sockel steht die Luft wie vor einem Gewitter.",
-      "npcs_here": ["Schwester Cassia Vall"],
+      "npcs_here": [
+        "Schwester Cassia Vall"
+      ],
       "opportunities_de": [
-        "Wahrnehmung (Routine): Stemmspuren und Bleistaub am Sockel — die Diebe schleppten eine schwere, bleiverkleidete Kiste durch den Aschenschacht Richtung Kanal.",
-        "Psi-Meisterschaft (Herausfordernd): Das psychische Nachbild am Reliquiar lesen: vermummte Träger, eine bleiverkleidete Kiste — und ein Flüstern, das mit ihnen geht. (Guter Erfolg: Die Träger trugen Pfandhallen-Plomben am Gürtel.)",
-        "Überreden (Leicht): Schwester Vall gesteht: In der Nacht rollten Karren zur Pfandhalle; sie hat sich nicht getraut, die Arbites zu rufen."
+        {
+          "id": "stemmspuren",
+          "text_de": "Wahrnehmung (Routine): Stemmspuren und Bleistaub am Sockel — die Diebe schleppten eine schwere, bleiverkleidete Kiste durch den Aschenschacht Richtung Kanal."
+        },
+        {
+          "id": "nachbild",
+          "text_de": "Psi-Meisterschaft (Herausfordernd): Das psychische Nachbild am Reliquiar lesen: vermummte Träger, eine bleiverkleidete Kiste — und ein Flüstern, das mit ihnen geht. (Guter Erfolg: Die Träger trugen Pfandhallen-Plomben am Gürtel.)"
+        },
+        {
+          "id": "vall-gestaendnis",
+          "text_de": "Überreden (Leicht): Schwester Vall gesteht: In der Nacht rollten Karren zur Pfandhalle; sie hat sich nicht getraut, die Arbites zu rufen."
+        }
       ],
       "secrets_de": [
         "Das Flüstern im Nachbild kommt aus dem Ossarium selbst — kein Heiliger klingt so. (Nur als Unbehagen andeuten.)"
       ],
-      "leads_to": ["pfandhalle"],
+      "leads_to": [
+        "pfandhalle"
+      ],
       "guidance_de": "Die glattgeschliffene Münze nur beiläufig erwähnen und nicht erklären — ihr Gegenstück hängt an Pier Neun um Kessels Hals. Hängt die Gruppe fest: Schwester Vall hat die Karren zur Pfandhalle gehört."
     },
     {
@@ -42,16 +97,30 @@
       "title_de": "Die Pfandhalle",
       "part": 2,
       "description_de": "Die Pfandhalle von Schleusengrund: Reihen vergitterter Pfandkäfige mit allem, was das Viertel je versetzt hat; am Eingang summt der blinde Vogelhändler Alter Fenk eine schiefe Hymne vor seinen verhängten Käfigen. Hinter dem Bronzegitter wacht die Hehlerin Bree Marlok über ihre Bücher — und wer mehr als ein Pfand will, dem stellt sie zuerst eine Frage: In wessen Auftrag?",
-      "npcs_here": ["Bree Marlok", "Alter Fenk"],
+      "npcs_here": [
+        "Bree Marlok",
+        "Alter Fenk"
+      ],
       "opportunities_de": [
-        "Überreden (Herausfordernd): Bree eine glaubwürdige Geschichte auftischen — sie bestätigt: Eine bleiverkleidete Kiste ging noch in der Nacht ins Zwischenlager des Kettenbunds am Schwarzkanal. (Guter Erfolg: Sie nennt Vosk den Haken als Abholer.)",
-        "Einschüchtern (Schwierig): Bree gibt das Zwischenlager preis — aber sie merkt sich jedes Gesicht und jedes Wort.",
-        "Wahrnehmung (Herausfordernd): Frische Schleifspuren und Bleistaub führen vom Ladetor zum Kanalsteg — schwere Fracht, hastig verladen."
+        {
+          "id": "bree-geschichte",
+          "text_de": "Überreden (Herausfordernd): Bree eine glaubwürdige Geschichte auftischen — sie bestätigt: Eine bleiverkleidete Kiste ging noch in der Nacht ins Zwischenlager des Kettenbunds am Schwarzkanal. (Guter Erfolg: Sie nennt Vosk den Haken als Abholer.)"
+        },
+        {
+          "id": "bree-einschuechtern",
+          "text_de": "Einschüchtern (Schwierig): Bree gibt das Zwischenlager preis — aber sie merkt sich jedes Gesicht und jedes Wort."
+        },
+        {
+          "id": "schleifspuren",
+          "text_de": "Wahrnehmung (Herausfordernd): Frische Schleifspuren und Bleistaub führen vom Ladetor zum Kanalsteg — schwere Fracht, hastig verladen."
+        }
       ],
       "secrets_de": [
         "Bree führt die doppelten Bücher des Kettenbunds und hat die Kiste selbst plombiert. Was man ihr erzählt, erzählt sie weiter — der Kettenbund hört mit."
       ],
-      "leads_to": ["lagerhaus"],
+      "leads_to": [
+        "lagerhaus"
+      ],
       "guidance_de": "Brees Auftrags-Frage ernst spielen: Die Antwort der Gruppe prägt, wie das Viertel sie behandelt. Fenks schiefe Hymne beiläufig einstreuen und nicht erklären — dieselbe Melodie kehrt an Pier Neun wieder."
     },
     {
@@ -59,17 +128,36 @@
       "title_de": "Zwischenlager am Schwarzkanal",
       "part": 2,
       "description_de": "Ein triefendes Lagerhaus über dem Schwarzkanal, gestapelte Frachtkisten mit Kettenglied-Brandzeichen; der Lastenservitor Ohm-3 wuchtet Kisten auf einen Kahn, während Vosk der Haken die Verladung antreibt. Wer hier unangemeldet auftaucht, ist Zeuge — und Zeugen lässt der Kettenbund nicht gehen.",
-      "npcs_here": ["Vosk der Haken", "Kettenbund-Schläger", "Lastenservitor Ohm-3"],
+      "npcs_here": [
+        "Vosk der Haken",
+        "Kettenbund-Schläger",
+        "Lastenservitor Ohm-3"
+      ],
       "opportunities_de": [
-        "Heimlichkeit (Herausfordernd): Ungesehen zwischen die Stapel — die Wachablösung belauschen: Kessel will die Fracht noch vor der Mitternachtssirene an Bord wissen.",
-        "Athletik (Routine): Über die Kranbrücke aufs Zwischendeck — Überblick über die Halle und der Überraschungsmoment.",
-        {"id": "verladebrief", "text_de": "Wahrnehmung (Routine): Vosks Gürteltasche birgt den Verladebrief — Pier Neun, Leichter „Groll der Väter“, Startfreigabe zur Mitternachtssirene."}
+        {
+          "id": "wachabloesung",
+          "text_de": "Heimlichkeit (Herausfordernd): Ungesehen zwischen die Stapel — die Wachablösung belauschen: Kessel will die Fracht noch vor der Mitternachtssirene an Bord wissen."
+        },
+        {
+          "id": "kranbruecke",
+          "text_de": "Athletik (Routine): Über die Kranbrücke aufs Zwischendeck — Überblick über die Halle und der Überraschungsmoment."
+        },
+        {
+          "id": "verladebrief",
+          "text_de": "Wahrnehmung (Routine): Vosks Gürteltasche birgt den Verladebrief — Pier Neun, Leichter „Groll der Väter“, Startfreigabe zur Mitternachtssirene."
+        }
       ],
       "secrets_de": [
         "Vosk kämpft nur, solange es nach Sieg aussieht: Fällt Ohm-3 oder blutet er selbst, flieht er zum Siedehaus und warnt Kessel.",
         "Ohne den Verladebrief kennt hier niemand den Pier — wo verladen wird, wissen nur Kessels Leute."
       ],
-      "leads_to": ["siedehaus", {"ziel": "pier_neun", "requires": "verladebrief"}],
+      "leads_to": [
+        "siedehaus",
+        {
+          "ziel": "pier_neun",
+          "requires": "verladebrief"
+        }
+      ],
       "guidance_de": "Der Kampf darf Wunden kosten, aber keine Leichen auf Seiten der Gruppe — Vosk schiebt Ohm-3 als Schild vor, und der Servitor geht dabei glaubwürdig zu Bruch. Ohne Verladebrief führt die Spur über das Siedehaus."
     },
     {
@@ -77,16 +165,30 @@
       "title_de": "Das Siedehaus",
       "part": 2,
       "description_de": "Die Kantine der Dockschichten, aufgehängt über dampfenden Siedekesseln: Lärm, Schweiß, Rekaf und Fusel. An der Stirnwand hält Dockmeister Arno Kessel Hof, teilt Nachtschichten ein und zählt Gesichter; Bree Marlok schiebt sich mit ihrem Buch durch die Menge zu ihm durch.",
-      "npcs_here": ["Arno Kessel", "Bree Marlok"],
+      "npcs_here": [
+        "Arno Kessel",
+        "Bree Marlok"
+      ],
       "opportunities_de": [
-        "Heimlichkeit (Herausfordernd): In die Nische hinter den Siedekesseln — Kessels Anweisungen belauschen: doppelte Wachen an Pier Neun, Verladung vorgezogen, der Leichter wartet auf niemanden.",
-        "Überreden (Schwierig): Kessel glaubt an Geschäfte: Wer mehr bietet als sein Auftraggeber, bekommt Pier und Startfreigabe genannt.",
-        "Einschüchtern (Schwer): Kessel vor seinen Leuten brechen — er nennt Pier Neun, aber der Kettenbund vergisst so etwas nie."
+        {
+          "id": "kessel-belauschen",
+          "text_de": "Heimlichkeit (Herausfordernd): In die Nische hinter den Siedekesseln — Kessels Anweisungen belauschen: doppelte Wachen an Pier Neun, Verladung vorgezogen, der Leichter wartet auf niemanden."
+        },
+        {
+          "id": "kessel-handel",
+          "text_de": "Überreden (Schwierig): Kessel glaubt an Geschäfte: Wer mehr bietet als sein Auftraggeber, bekommt Pier und Startfreigabe genannt."
+        },
+        {
+          "id": "kessel-brechen",
+          "text_de": "Einschüchtern (Schwer): Kessel vor seinen Leuten brechen — er nennt Pier Neun, aber der Kettenbund vergisst so etwas nie."
+        }
       ],
       "secrets_de": [
         "Kessel weiß bereits, was in der Pfandhalle erzählt wurde — Bree trägt ihm alles zu. Er prüft die Gruppe mit ihrer eigenen Geschichte; Lügen fliegen hier auf."
       ],
-      "leads_to": ["pier_neun"],
+      "leads_to": [
+        "pier_neun"
+      ],
       "guidance_de": "Kessel konfrontiert die Gruppe beiläufig mit ihren eigenen Worten aus der Pfandhalle. Offener Kampf ruft die halbe Schicht — Konsequenzen draußen am Kai spielen, nicht im Saal."
     },
     {
@@ -94,11 +196,23 @@
       "title_de": "Pier Neun — die Mitternachtsfracht",
       "part": 3,
       "description_de": "Nebel über dem Ladebecken; der Frachtleichter „Groll der Väter“ liegt unter Dampf, Lastenservitoren wuchten die letzten Kisten an Bord, und im Krannetz über dem Laderaum hängt das bleiverkleidete Ossarium. Zwischen den Sirenenstößen ist es zu hören: ein Flüstern wie eine schief gesungene Hymne — und die Servitoren am Kai stocken im Takt.",
-      "npcs_here": ["Arno Kessel", "Kettenbund-Schläger"],
+      "npcs_here": [
+        "Arno Kessel",
+        "Kettenbund-Schläger"
+      ],
       "opportunities_de": [
-        "Athletik (Herausfordernd): Den Kranausleger entern und das Netz mit dem Ossarium über den Kai statt über den Laderaum schwenken.",
-        "Technologie (Schwierig): Im Hafenkontor die Startfreigabe verzögern — der Leichter verpasst sein Fenster bis zur nächsten Sirene.",
-        "Disziplin (Psi) (Herausfordernd): Das Ziehen des Flüsterns an den Rändern der Gedanken abschütteln, statt hinzuhören."
+        {
+          "id": "kranausleger",
+          "text_de": "Athletik (Herausfordernd): Den Kranausleger entern und das Netz mit dem Ossarium über den Kai statt über den Laderaum schwenken."
+        },
+        {
+          "id": "startfreigabe",
+          "text_de": "Technologie (Schwierig): Im Hafenkontor die Startfreigabe verzögern — der Leichter verpasst sein Fenster bis zur nächsten Sirene."
+        },
+        {
+          "id": "fluestern-widerstehen",
+          "text_de": "Disziplin (Psi) (Herausfordernd): Das Ziehen des Flüsterns an den Rändern der Gedanken abschütteln, statt hinzuhören."
+        }
       ],
       "secrets_de": [
         "Das Flüstern ist Fenks schiefe Hymne, Note für Note — wer beides gehört hat, erkennt sie wieder.",

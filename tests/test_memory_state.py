@@ -5,9 +5,19 @@ no LLM, seeded RNG where dice are involved.
 
 from __future__ import annotations
 
+import json
 import random
 
-from dmbot.memory.state import DOWNED_CONDITION, WorldState, world_state_summary_de
+from dmbot.memory.state import (
+    DOWNED_CONDITION,
+    FACT_CAP,
+    FACT_TEXT_MAX,
+    GROUP_HOLDER,
+    Fact,
+    Quest,
+    WorldState,
+    world_state_summary_de,
+)
 from dmbot.rules import engine, profile as profile_mod
 from dmbot.rules.characters import CharacterStore
 
@@ -182,3 +192,144 @@ def test_profile_combat_accessors() -> None:
     assert _IM.weapon_damage("Unbekannt") is None
     assert _IM.default_damage() == "1d10"
     assert _IM.soak_characteristic() == "Tgh" and _IM.soak_mode() == "tens"
+
+
+# -- hard facts: handed-over items, promises, the mission (ADR 058) ------------------------
+
+def test_give_item_lands_on_the_sheet_and_becomes_a_dated_fact() -> None:
+    s = WorldState.seed_from_store(_STORE)
+    s.time_minutes = 21 * 60 + 10
+    f = s.give_item("Zollvollmacht", to="seskin", by="Seneschall Kaad")
+    assert f is not None
+    assert (f.kind, f.text, f.holder, f.source, f.status) == (
+        "item", "Zollvollmacht", "Seskin", "Seneschall Kaad", "open"
+    )
+    assert f.at_minutes == 21 * 60 + 10                    # "when" comes from the code-owned clock
+    assert "Zollvollmacht" in s.find("Seskin").inventory   # extends the existing inventory
+
+
+def test_give_item_without_a_known_recipient_goes_to_the_group() -> None:
+    s = WorldState.seed_from_store(_STORE)
+    assert s.give_item("Ladeliste").holder == GROUP_HOLDER
+    assert s.give_item("Frachtbrief", to="Ein Kurier").holder == GROUP_HOLDER
+
+
+def test_give_item_is_idempotent_per_holder() -> None:
+    s = WorldState.seed_from_store(_STORE)
+    first = s.give_item("Zollvollmacht", to="Seskin", by="Kaad")
+    again = s.give_item("zollvollmacht", to="Seskin", by="Kaad")
+    assert again is first
+    assert len(s.facts) == 1
+    assert s.find("Seskin").inventory.count("Zollvollmacht") == 1
+
+
+def test_take_item_revokes_the_fact_and_clears_the_sheet() -> None:
+    s = WorldState.seed_from_store(_STORE)
+    s.give_item("Zollvollmacht", to="Seskin")
+    f = s.take_item("Zollvollmacht", holder="Seskin")
+    assert f is not None and f.status == "revoked"
+    assert "Zollvollmacht" not in s.find("Seskin").inventory
+    assert s.open_facts("item") == []
+    assert s.take_item("Zollvollmacht", holder="Seskin") is None  # already revoked
+
+
+def test_writers_reject_free_text_and_empty_values() -> None:
+    s = WorldState.seed_from_store(_STORE)
+    assert s.give_item("") is None
+    assert s.give_item("   ") is None
+    assert s.give_item("x" * (FACT_TEXT_MAX + 1)) is None
+    assert s.give_item("Er reicht ihr die Vollmacht.\nSie nimmt sie entgegen.") is None
+    assert s.record_promise("") is None
+    assert s.record_commitment("geruecht", text="irgendwas") is None
+    assert s.record_commitment("item", text="") is None
+    assert s.facts == [] and s.quests == []  # a rejected verdict never touches state
+
+
+def test_record_commitment_routes_the_classifier_verdict_by_kind() -> None:
+    s = WorldState.seed_from_store(_STORE)
+    q = s.record_commitment("quest", text="Das Ossarium zurückholen", by="Seneschall Kaad")
+    assert isinstance(q, Quest) and q.status == "open" and q.given_by == "Seneschall Kaad"
+    i = s.record_commitment("item", text="Zollvollmacht", to="Seskin", by="Kaad")
+    assert isinstance(i, Fact) and i.kind == "item"
+    p = s.record_commitment("promise", text="Freie Durchfahrt bis Mitternacht", by="Kaad")
+    assert isinstance(p, Fact) and p.kind == "promise" and p.source == "Kaad"
+
+
+def test_facts_are_capped_and_drop_the_revoked_ones_first() -> None:
+    s = WorldState()
+    s.give_item("Alter Krempel")
+    s.take_item("Alter Krempel")
+    for n in range(FACT_CAP):
+        s.give_item(f"Gegenstand {n}")
+    assert len(s.facts) == FACT_CAP
+    assert all(f.status == "open" for f in s.facts)
+
+
+def test_mission_is_a_hard_fact_and_the_only_one() -> None:
+    s = WorldState()
+    m = s.set_mission("Das Ossarium zurückholen",
+                      detail="ein handtellergroßer Schrein aus Knochen und Messing",
+                      given_by="Seneschall Kaad")
+    assert m.is_mission and m.status == "open"
+    again = s.set_mission("Das Ossarium doch nicht zurückholen")
+    assert len(s.quests) == 1 and s.mission() is again  # one mission per campaign, replaced
+
+
+def test_summary_names_the_mission_the_items_and_the_promises() -> None:
+    s = WorldState.seed_from_store(_STORE)
+    s.time_minutes = 21 * 60 + 10
+    s.set_mission("Das Ossarium zurückholen", detail="ein Schrein aus Knochen und Messing")
+    s.give_item("Zollvollmacht", to="Seskin", by="Seneschall Kaad")
+    s.record_promise("Freie Durchfahrt bis Mitternacht", by="Kaad", to=GROUP_HOLDER)
+    s.add_quest("Die Ladeliste beschaffen")
+    out = world_state_summary_de(s)
+    assert "Auftrag: Das Ossarium zurückholen — ein Schrein aus Knochen und Messing" in out
+    assert "Zollvollmacht" in out and "Seneschall Kaad" in out and "Tag 1, 21:10" in out
+    assert "Freie Durchfahrt bis Mitternacht" in out
+    assert "Die Ladeliste beschaffen" in out
+    # the mission does not double as a plain open quest
+    assert out.count("Das Ossarium zurückholen") == 1
+
+
+def test_summary_omits_the_new_sections_when_there_is_nothing_to_say() -> None:
+    out = world_state_summary_de(WorldState())
+    assert "Auftrag:" not in out and "Übergeben" not in out and "Zusagen" not in out
+
+
+def test_facts_and_mission_survive_the_round_trip(tmp_path) -> None:
+    s = WorldState.seed_from_store(_STORE, session_id="7")
+    s.set_mission("Das Ossarium zurückholen", detail="ein Schrein", given_by="Kaad")
+    s.give_item("Zollvollmacht", to="Seskin", by="Kaad")
+    s.record_promise("Freie Durchfahrt", by="Kaad")
+    path = tmp_path / "state.json"
+    s.save(path)
+
+    again = WorldState.load(path)
+    assert again is not None
+    m = again.mission()
+    assert m is not None and m.detail == "ein Schrein" and m.given_by == "Kaad"
+    item = again.find_fact("Zollvollmacht", kind="item")
+    assert item is not None and item.holder == "Seskin" and item.source == "Kaad"
+    assert [f.kind for f in again.open_facts()] == ["item", "promise"]
+
+
+def test_a_pre_058_state_file_defaults_the_new_fields(tmp_path) -> None:
+    # An older session file knows neither facts, nor the mission fields, nor the seed flag.
+    legacy = {
+        "session_id": "old", "system": "imperium_maledictum",
+        "characters": [{"name": "Seskin", "wounds": 5, "max_wounds": 11}],
+        "quests": [{"title": "Finde den Häretiker", "status": "open"}],
+        "location": "Hive Primus", "time_minutes": 600, "recap": "",
+    }
+    path = tmp_path / "state.json"
+    path.write_text(json.dumps(legacy, ensure_ascii=False), encoding="utf-8")
+
+    s = WorldState.load(path)
+    assert s is not None
+    assert s.facts == [] and s.time_seeded is False
+    q = s.quests[0]
+    assert q.detail == "" and q.given_by == "" and q.at_minutes is None and q.is_mission is False
+    assert s.mission() is None
+    assert "Übergeben" not in world_state_summary_de(s)
+    s.save(path)  # and the migrated file round-trips cleanly
+    assert WorldState.load(path).facts == []

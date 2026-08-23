@@ -210,6 +210,9 @@ class VoiceCog(commands.Cog):
         # gates right away, BEFORE the bottom-pinned panels (turn order / mic) are posted.
         # Dormant without a plan sidecar.
         await self._rt.update_debug_overlay()
+        # The player panel (D107, stories 14-17) goes up right away — place, goal, time, deadline
+        # and what is still open here — and is re-anchored at the bottom after every turn.
+        await self._rt.update_player_panel()
         if self._rt._push_to_talk:
             close = (
                 "wenn ihr fertig seid – **dann antwortet die Spielleitung automatisch** (kein `!dm` nötig)"
@@ -355,7 +358,7 @@ class VoiceCog(commands.Cog):
             self._anim_task.cancel()
         self._rt._text_channel = None
         for msg_attr in ("_mic_message", "_turn_message", "_pause_message", "_clock_panel",
-                         "_debug_panel"):
+                         "_debug_panel", "_player_panel"):
             await self._rt.clear_panel(msg_attr)
         await ctx.send("Voice-Channel verlassen.")
 

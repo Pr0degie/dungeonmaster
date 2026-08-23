@@ -56,7 +56,10 @@ from .llm.echo_guard import (  # noqa: F401
 from .llm.director_msgs import (  # noqa: F401
     build_intro_director_msg,
     build_opening_director_msg,
+    scene_rejected_note_de,
 )
+from .llm.fact_router import FactVerdict, classify_commitment
+from .llm.scene_router import SceneVerdict, classify_scene_move
 from .llm.consistency import Violation, retry_nudge_de
 from .llm.intro_guard import INTRO_RETRY_NUDGE
 from .llm.stream_assembler import StreamAssembler, finalize_answer, finalize_answer_markers  # noqa: F401
@@ -192,6 +195,12 @@ class DMBrain:
         # cog copies it into the turn's replay notes right after classifying. None until then
         # (and back to None when a classification fails).
         self.last_router: dict | None = None
+        # The two post-turn classifiers of D107, captured the same way for the replay journal:
+        # {"raw": <constrained-JSON text>, "verdict": <target id / commitment dict>,
+        #  "failure": <enum value or None>}. Stateless like the calls themselves — the runtime
+        # copies them into the turn's notes right after classifying (ADR 046).
+        self.last_scene_router: dict | None = None
+        self.last_facts: dict | None = None
 
     @property
     def max_history_turns(self) -> int:
@@ -836,6 +845,41 @@ class DMBrain:
         req = to_test_request(data, character=character)
         self.last_router = {"raw": raw, "decision": asdict(req) if req is not None else None}
         return req
+
+    async def classify_scene_move(
+        self, *, turn_text: str, exits, current_title: str = ""
+    ) -> SceneVerdict:
+        """Scene-move classifier (ADR 057 #1) — the same shape as :meth:`classify_test`: a
+        separate, stateless, constrained-JSON call whose answer space is exactly the current
+        scene's reachable exits plus "nein". The brain only lends its client and records the
+        verdict for the replay journal; validation and the pointer write live outside
+        (``llm/scene_router.py`` and ``rules/scene_flow.py``). Never raises."""
+        verdict = await classify_scene_move(
+            self._client.chat, turn_text=turn_text, exits=exits, current_title=current_title
+        )
+        self.last_scene_router = {
+            "raw": verdict.raw,
+            "verdict": verdict.target_id,
+            "failure": verdict.failure.value if verdict.failure else None,
+        }
+        return verdict
+
+    async def classify_commitment(
+        self, *, answer_text: str, recipients=(), givers=()
+    ) -> FactVerdict:
+        """Fact classifier (ADR 058 #1) — the second post-turn call, run on the same turn
+        boundary as :meth:`classify_scene_move` so the two share one latency window. Reports what
+        the narration committed to; the world-state write is the caller's, through
+        ``WorldState.record_commitment``. Never raises."""
+        verdict = await classify_commitment(
+            self._client.chat, answer_text=answer_text, recipients=recipients, givers=givers
+        )
+        self.last_facts = {
+            "raw": verdict.raw,
+            "verdict": asdict(verdict.commitment) if verdict.commitment is not None else None,
+            "failure": verdict.failure.value if verdict.failure else None,
+        }
+        return verdict
 
     def add_test_result(self, channel_id: int, line: str) -> None:
         """Buffer a rolled test result (a German summary line) to feed the next turn so the DM

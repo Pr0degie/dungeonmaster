@@ -160,6 +160,17 @@ def test_all_registered_commands_yield_a_usable_usage_line() -> None:
     assert seen > 30, f"expected the full command surface, walked only {seen}"
 
 
+def test_the_fact_group_and_its_subcommand_print_their_own_usage() -> None:
+    """`!fakt`'s docstring names its own subcommand, so the boundary rule has to hold here:
+    the group must print `!fakt`, not `!fakt weg <Text>` (ADR 058's retraction command)."""
+    from dmbot.voice.scenecog import SceneCog
+
+    group = next(c for c in SceneCog.__cog_commands__ if c.name == "fakt")
+    weg = next(c for c in group.commands if c.name == "weg")
+    assert usage_de(group.qualified_name, group.help, group.signature) == "!fakt"
+    assert usage_de(weg.qualified_name, weg.help, weg.signature) == "!fakt weg <Text>"
+
+
 def test_the_name_taking_commands_document_the_quoted_form() -> None:
     """The trap that cost the 2026-08-15 evening: !npcmem/!agenda/!damage/!heal match the
     stored name EXACTLY, so a multi-word NSC needs quotes. Their usage lines must show it —

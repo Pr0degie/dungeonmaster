@@ -199,6 +199,7 @@ class DMCog(commands.Cog):
             if moved is not None:
                 self._rt._persist_and_refresh(ctx.channel)
                 await self._rt.update_debug_overlay()  # 🧪 debug overlay (ADR 052)
+                await self._rt.update_player_panel()   # the table's panel (D107)
         director_msg = build_opening_director_msg()
         guild_id = ctx.guild.id if ctx.guild else None
         timing = self._delivery._begin_turn(cid)
@@ -327,8 +328,13 @@ class DMCog(commands.Cog):
             if moved is not None:
                 self._rt._persist_and_refresh(ctx.channel)
                 await self._rt.update_debug_overlay()  # 🧪 debug overlay (ADR 052)
+                await self._rt.update_player_panel()   # the table's panel (D107)
         roster = self._rt._characters.intro_roster_de() if self._rt._characters else ""
-        director_msg = build_intro_director_msg(roster)
+        # The adventure's own plain-language opening (D107, findings A1/A9/A11): with it the
+        # first part of the monologue is the campaign's text instead of the model's invention,
+        # so a newcomer is not handed two paragraphs of unexplained Warhammer vocabulary.
+        briefing = getattr(self._rt._adventure, "briefing_de", "") if self._rt._adventure else ""
+        director_msg = build_intro_director_msg(roster, briefing)
         np = self._rt._intro_num_predict
         tmp = self._rt._intro_temperature  # lower, fixed !intro temperature (D83) — steadier monologue
         guild_id = ctx.guild.id if ctx.guild else None

@@ -83,7 +83,7 @@ def test_intro_director_msg_with_roster() -> None:
     assert msg.startswith("[Regie]")          # a director instruction, not a player line
     assert "Monolog" in msg                    # one coherent opening monologue (not a list)
     assert "Probe" in msg                      # "Verlange keine Probe." — no dice on the auftakt
-    assert "folgenden Figuren" in msg          # the character-involvement clause is present
+    assert "folgenden Figuren" in msg          # the character clause is present
     assert roster in msg                       # the actual party roster is embedded
 
 
@@ -93,6 +93,53 @@ def test_intro_director_msg_without_roster_degrades() -> None:
     assert "Monolog" in msg and "Probe" in msg
     # with no party loaded, the per-character clause is dropped (nothing to weave in)
     assert "folgenden Figuren" not in msg
+
+
+# --- D107: introduce the figures, never puppet them (findings A3 / B5) ------------------------
+
+def test_intro_director_msg_introduces_figures_instead_of_giving_them_a_beat() -> None:
+    """The brief used to ask for a personal MOMENT per player character — exactly what
+    ``prompts/dm_core_de.md`` forbids, and live the DM gave all four figures dialogue and motives.
+    It may now only INTRODUCE them from the outside."""
+    msg = build_intro_director_msg(_STORE.intro_roster_de())
+    assert "persönlichen Moment" not in msg      # the contradictory instruction is gone
+    assert "Stelle" in msg and "von außen" in msg  # ...replaced by an outside introduction
+    # the prohibition is spelled out in the brief itself, not only in the persona
+    for forbidden in ("keine wörtliche Rede", "kein Gedanke", "keine Handlung"):
+        assert forbidden in msg
+    assert "Ruf" in msg                                # what it MAY use: appearance/reputation
+
+
+# --- D107: the plain-language opening comes first (findings A1 / A9 / A11) --------------------
+
+def test_intro_director_msg_puts_plain_language_before_the_atmosphere() -> None:
+    msg = build_intro_director_msg(_STORE.intro_roster_de())
+    assert "ERSTER TEIL" in msg and "ZWEITER TEIL" in msg
+    assert msg.index("ERSTER TEIL") < msg.index("ZWEITER TEIL")   # Klartext first, mood after
+    assert "Klartext" in msg
+    assert "Alltagssprache" in msg      # no jargon in part one (A1: "Chinesisch mit mir reden")
+    assert "Frist" in msg               # ...and it must say why it is urgent
+
+
+def test_intro_director_msg_embeds_the_adventures_own_opening_text() -> None:
+    briefing = "Ihr steht im Zollhaus von Sarghast. Bis Mitternacht muss die Kiste zurück sein."
+    msg = build_intro_director_msg(_STORE.intro_roster_de(), briefing)
+    assert briefing in msg              # the adventure's text is used verbatim as the basis...
+    assert "Einstiegstext" in msg       # ...and labelled as such
+    assert msg.index("Einstiegstext") < msg.index("folgenden Figuren")
+
+
+def test_intro_director_msg_without_briefing_leaves_no_dangling_reference() -> None:
+    msg = build_intro_director_msg(_STORE.intro_roster_de())
+    assert "Einstiegstext" not in msg   # nothing points at a text that was never handed over
+    assert "ERSTER TEIL" in msg         # the plain-language part still stands on its own
+
+
+def test_intro_director_msg_briefing_without_roster() -> None:
+    msg = build_intro_director_msg("", "Kurzer Einstieg für Neulinge.")
+    assert "Kurzer Einstieg für Neulinge." in msg
+    assert "folgenden Figuren" not in msg
+    assert "Probe" in msg
 
 
 # --- the num_predict override on the opening path ---------------------------------------------

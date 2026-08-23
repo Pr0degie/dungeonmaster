@@ -35,6 +35,7 @@ from ..discord_ui.scene import SceneChangeView
 from ..discord_ui.zeit import ZeitView
 from ..memory.gametime import MAX_MARKER_ADVANCE_MINUTES, render_time_phase_de
 from ..rag.adventure import Scene
+from ..rules.scene_flow import MoveTrigger, resolve_exit
 from ..runtime import (
     SessionRuntime, _TurnTiming, _wav_duration_s, _safe_remove, _TTS_LOAD_TIMEOUT_S,
 )
@@ -192,6 +193,13 @@ class DeliveryPipeline:
         if note is not None:
             note(channel, key, value)
 
+    async def _refresh_player_panel(self) -> None:
+        """Re-render the player panel in place after something it shows changed (a flag, the
+        time). ``getattr``-guarded: a stub runtime without the panel is a silent no-op."""
+        update = getattr(self._rt, "update_player_panel", None)
+        if update is not None:
+            await update()
+
     def _note_state_before(self, channel) -> None:
         """Replay journal (ADR 046): snapshot the world state the marker handlers are about to
         validate against — dm-eval re-runs the scene/flag verdicts on exactly this state."""
@@ -225,6 +233,18 @@ class DeliveryPipeline:
             "mode": self._rt._scene_mode,
         })
         if target is None:  # no-op, unknown id, not a leads_to neighbour, or a locked gate
+            # Loud, not log-only (ADR 057 #5): on 2026-08-22 a refused move produced one log.info
+            # line, so neither the table nor the model ever learned that the world had not
+            # followed the narration. The runtime turns the reason into a [Regie] note for the
+            # next turn plus an operator line; a stub runtime without it keeps the old log.
+            report = getattr(self._rt, "report_rejected_move", None)
+            if report is not None:
+                await report(channel, resolve_exit(
+                    self._rt._adventure.get_scene(state.scene_id), req.scene_id,
+                    resolved_ids=state.resolved_ids(state.scene_id),
+                    known_scene_ids=[s for _, s, _ in self._rt._adventure.scene_overview()],
+                ))
+                return
             log.info("🚫 Auto-Szenenwechsel '%s' abgelehnt (Modus '%s', aktuelle Szene '%s')",
                      req.scene_id, self._rt._scene_mode, state.scene_id)
             return
@@ -237,24 +257,33 @@ class DeliveryPipeline:
     def _make_scene_confirm(self, channel, scene: Scene):
         """Build the confirm callback for a proposed move to ``scene``: on click, perform the same
         deterministic pointer move ``!ort`` does (``_set_scene`` + persist + prompt refresh) and edit
-        the proposal message to reflect it."""
+        the proposal message to reflect it.
+
+        Since D107 the work itself lives in ``SessionRuntime.move_scene`` — one mover for the
+        classifier, the flag gate, ``!ort`` and this fallback marker, so NPC registration, the NPC
+        memory mining, the travel time, the overlay and the player panel cannot drift apart.
+        ``announce=False``: this path already has a message to edit, and the human click IS the
+        confirmation, so it needs no undo control on top."""
         async def _confirm(interaction: discord.Interaction) -> None:
             cid = self._rt._brain_channel(channel)
             state = self._rt._state.get(cid)
             if state is None:
                 return
-            old_scene = state.scene_id
-            moved = self._rt._set_scene(state, scene.id)
+            move = getattr(self._rt, "move_scene", None)
+            if move is not None:
+                moved = await move(channel, scene.id, trigger=MoveTrigger.MARKER, announce=False)
+            else:  # stub runtimes (tests) keep the pre-D107 inline path
+                old_scene = state.scene_id
+                moved = self._rt._set_scene(state, scene.id)
+                if moved is not None:
+                    self._rt._persist_and_refresh(channel)
+                    if old_scene and old_scene != moved.id:
+                        self._rt.schedule_npc_memory_extraction(channel, old_scene)
+                        await self._rt.advance_scene_time(channel)
+                    await self._rt.update_debug_overlay()
             if moved is None:  # the scene vanished between proposal and click — shouldn't happen
                 return
-            self._rt._persist_and_refresh(channel)
             log.info("scene → %s (%s) [auto, bestätigt]", moved.id, moved.title_de)
-            if old_scene != moved.id:  # mine the departed scene for NPC memories (ADR 044)
-                self._rt.schedule_npc_memory_extraction(channel, old_scene)
-            if old_scene and old_scene != moved.id:
-                # a *real* move: default travel time passes (ADR 048 #10)
-                await self._rt.advance_scene_time(channel)
-            await self._rt.update_debug_overlay()  # 🧪 debug overlay — dormant without a plan (ADR 052)
             await interaction.edit_original_response(
                 content=f"📖 Szene gewechselt: **{moved.title_de}** (Teil {moved.part})."
             )
@@ -312,6 +341,7 @@ class DeliveryPipeline:
         self._replay_note(channel, "flag_verdicts", verdicts)
         if applied_any:
             self._rt._persist_and_refresh(channel)
+            await self._refresh_player_panel()
 
     def _make_flag_confirm(self, channel, element_id: str):
         """Build the confirm callback for a proposed element flag: on click, perform the same
@@ -330,6 +360,7 @@ class DeliveryPipeline:
                 )
                 return
             self._rt._persist_and_refresh(channel)
+            await self._refresh_player_panel()
             log.info("✅ erledigt: %s [auto, bestätigt]", element_id)
             await interaction.edit_original_response(
                 content=f"✅ Abgehakt: **{text}** (`{element_id}`)."
@@ -517,7 +548,7 @@ class DeliveryPipeline:
             log.info("(inhaltslose Antwort — nichts gepostet/gesprochen; nur ggf. Würfel)")
         self._note_state_before(channel)  # replay journal (ADR 046): the verdict context
         dice_task = asyncio.create_task(self._rt.handle_dice(channel))
-        marker_tasks = self._marker_proposal_tasks(channel)
+        marker_tasks = self._marker_proposal_tasks(channel, answer)
         # dice_task/marker tasks must ALWAYS be awaited — even if _speak raises a bridge-side error.
         # Otherwise the dice button is never posted and the orphaned tasks log "Task exception was
         # never retrieved". The finally awaits them (logging, not dropping, their own exceptions) and
@@ -552,17 +583,26 @@ class DeliveryPipeline:
                         "logged only (ADR 045)",
                         ",".join(f"{v.kind}:{v.npc}" for v in violations))
 
-    def _marker_proposal_tasks(self, channel) -> list[tuple[asyncio.Task, str]]:
+    def _marker_proposal_tasks(self, channel, answer: str = "") -> list[tuple[asyncio.Task, str]]:
         """Spawn the per-marker proposal handlers as concurrent tasks (labelled for the error
         log). One list, used by both delivery paths right after ``_note_state_before`` snapshots
         the verdict context — a new marker's handler (its actual feature work, ADR 051) plugs in
-        here once instead of at two hand-copied dispatch sites."""
-        return [
+        here once instead of at two hand-copied dispatch sites.
+
+        The post-turn boundary of D107 (ADR 057/058/059 — clock, scene classifier, fact
+        classifier, panel) rides along as the last entry, for the same reason the dice button
+        does: it runs while the DM is still speaking, so its two LLM calls cost the table
+        nothing. ``answer`` is what was narrated — without it there is nothing to classify."""
+        tasks = [
             (asyncio.create_task(self._handle_scene(channel)), "scene proposal"),    # ADR 026
             (asyncio.create_task(self._handle_erledigt(channel)), "flag proposal"),  # ADR 043
             (asyncio.create_task(self._handle_uhr(channel)), "clock tick"),          # ADR 047
             (asyncio.create_task(self._handle_zeit(channel)), "time advance"),       # ADR 048
         ]
+        close_turn = getattr(self._rt, "close_turn", None)  # getattr: stub runtimes stay dormant
+        if close_turn is not None and answer.strip():
+            tasks.append((asyncio.create_task(close_turn(channel, answer)), "turn boundary"))
+        return tasks
 
     @staticmethod
     async def _await_turn_tasks(dice_task: asyncio.Task | None,
@@ -736,7 +776,7 @@ class DeliveryPipeline:
                     await self._rt._send_with_retry(channel, answer)
                 self._note_state_before(channel)  # replay journal (ADR 046)
                 dice_task = asyncio.create_task(self._rt.handle_dice(channel))
-                marker_tasks = self._marker_proposal_tasks(channel)
+                marker_tasks = self._marker_proposal_tasks(channel, answer)
             # gather() re-raises the FIRST worker exception WITHOUT cancelling its siblings — so if
             # play_worker dies on a mid-stream bridge 5xx, synth_worker would hang forever on the
             # bounded wav_q.put and leak its temp WAV. Log a worker failure here; the finally then

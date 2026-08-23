@@ -6,7 +6,7 @@
         "G3 Zeit & Fristen (Saat)",
         "G7 Agenden (Saat)"
       ],
-      "hint_de": "!zeit prüfen; !uhr neu \"Wachsamkeit des Kettenbunds\" 6; !frist neu \"Mitternachtssirene\" +4h; !npc add Arno_Kessel (registriert seine Agenda aus npcs.json)."
+      "hint_de": "Zeit, Uhren und Frist kommen aus dem Abenteuer — NICHT von Hand anlegen, nur prüfen: !zeit muss \"Tag 1, 21:00 (Abend)\" zeigen, !uhren die beiden Uhren wachsamkeit (0/6) und verladung (1/8), !fristen die Frist mitternachtssirene um Mitternacht. Dann !npc add Arno_Kessel (registriert seine Agenda aus npcs.json)."
     },
     "schrein": {
       "gates": [
@@ -29,7 +29,7 @@
         "G4 Scene-Card-Gate",
         "G2 Uhren (Tick)"
       ],
-      "hint_de": "!npc add Lastenservitor_Ohm-3 VOR dem Kampf; Ohm-3 auf 0 Wunden bringen, selbst Wunden kassieren; VOR dem Abhaken einen Wechsel nach pier_neun im Spiel provozieren (verriegelt — nicht !ort benutzen, das umgeht die Prüfung), dann Verladebrief finden + abhaken; Lärm = Uhr-Tick."
+      "hint_de": "!npc add Lastenservitor_Ohm-3 VOR dem Kampf; Ohm-3 auf 0 Wunden bringen, selbst Wunden kassieren; VOR dem Abhaken einen Wechsel nach pier_neun im Spiel provozieren (verriegelt — nicht !ort benutzen, das umgeht die Prüfung), dann Verladebrief finden + abhaken (Element-ID: verladebrief); Lärm = !uhr tick wachsamkeit."
     },
     "siedehaus": {
       "gates": [
@@ -37,7 +37,7 @@
         "G7 Agenden (Schritt 1)",
         "G3 Zeit & Fristen (Ernte)"
       ],
-      "hint_de": "!npcmem \"Bree Marlok\" / \"Arno Kessel\" (Anführungszeichen nötig, Unterstriche gehen nur bei !npc add) — die Lüge steht drin bzw. kam als Hörensagen an? !agenden nach dem Wechsel; !zeit +2h Richtung Frist."
+      "hint_de": "!npcmem \"Bree Marlok\" / \"Arno Kessel\" (Anführungszeichen nötig, Unterstriche gehen nur bei !npc add) — die Lüge steht drin bzw. kam als Hörensagen an? !agenden nach dem Wechsel; !zeit +1h Richtung Frist (die Ingame-Uhr läuft ohnehin pro Turn mit, das Fenster ist nur 3 Stunden lang)."
     },
     "pier_neun": {
       "gates": [

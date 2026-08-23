@@ -21,10 +21,17 @@ from dmbot.runtime import SessionRuntime
 class _FakeStore:
     """Stands in for CharacterStore: only the two hint accessors seed_session calls."""
 
-    def alias_hint_de(self) -> str:
-        return "ALIAS_HINT"
+    def alias_hint_de(self, *, with_mapping: bool = True) -> str:
+        # D107: seed_session drops the display-name mapping once identities resolve by user id.
+        return "ALIAS_HINT" if with_mapping else "ALIAS_HINT_NO_MAPPING"
 
     def speaker_labels(self) -> list[str]:
+        return ["Mortn", "Seskin", "Vask"]
+
+    def get(self, name: str):
+        return None  # no aliases in the fake store — every speaker keeps its display name
+
+    def character_names(self) -> list[str]:
         return ["Mortn", "Seskin", "Vask"]
 
 
@@ -74,6 +81,10 @@ def _make_runtime(
     rt._turn_order = {}
     rt._turn_index = {}
     rt._npc_mem_marks = {}
+    rt._scene_turns = {}       # D107: turns since entering the current scene (guidance cadence)
+    rt._char_by_user = {}      # D107: Discord user id → character name (identity)
+    rt._speaker_names = {}
+    rt._bot_a_user_id = None
 
     rt._persist_calls: list[object] = []  # recorder for _persist_and_refresh
 

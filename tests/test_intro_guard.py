@@ -54,5 +54,23 @@ def test_empty_roster_reduces_to_length_check() -> None:
     assert is_weak_intro("zu kurz", []) is True
 
 
+# An opening in the D107 shape: it INTRODUCES every figure from the outside (appearance,
+# reputation, trade) without giving any of them a line, a thought or an action.
+_INTRODUCED_NOT_PUPPETED = (
+    "Rost-Regen trommelt auf die Plastahl-Dächer von Rokarth. Vier Gestalten treten durch das "
+    "Schmugglertor, und wer hier lange genug lebt, kennt sie vom Sehen. Fridolin, hager, im "
+    "abgetragenen Mantel eines Inquisitionsdieners, dem man nachsagt, er stehe plötzlich im Raum, "
+    "ohne dass jemand die Tür gehen hörte. Neben ihm Seskin, breit, vernarbt, die Klinge offen "
+    "am Gürtel getragen, wie es hier unten nur tut, wer sie auch benutzt. Vor ihnen öffnet sich "
+    "der Markt der Verlorenen, und irgendwo darin endet die Spur, der sie wochenlang gefolgt sind."
+)
+
+
+def test_introduced_but_not_puppeted_opening_is_not_weak() -> None:
+    # D107: the intro brief no longer asks for a personal beat per figure, only for an outside
+    # introduction. Such an opening still names everyone, so it must not be regenerated.
+    assert is_weak_intro(_INTRODUCED_NOT_PUPPETED, _ROSTER) is False
+
+
 def test_retry_nudge_is_a_director_instruction() -> None:
     assert INTRO_RETRY_NUDGE.startswith("[Regie]")

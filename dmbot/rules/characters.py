@@ -140,19 +140,34 @@ class CharacterStore:
                 return value
         return None
 
-    def alias_hint_de(self) -> str:
+    def alias_hint_de(self, *, with_mapping: bool = True) -> str:
         """The 'who plays whom' block appended **last** to the system prompt (open item F). Besides
         mapping display name → character (so the model stops confusing "SezBoss69" with "Seskin"),
         it draws the hard boundary that these characters belong to the players. Placed last so it is
         the *freshest* instruction the model reads — the live fix for nemo puppeting the whole party
         (it kept speaking and acting for every PC, players: "hat noch nicht gerafft, dass es mehrere
-        Spieler gibt"). Empty if no aliases."""
+        Spieler gibt"). Empty if no aliases.
+
+        ``with_mapping=False`` drops the display-name → character mapping and keeps only the
+        boundary (D107, PRD "Identity"). Once the runtime resolves a player's Discord user id to
+        the character name *before* the line enters the prompt, the model never sees a display
+        name — and being told about them made it address the table by them ("Sezgin, ich kann
+        leider nicht …", finding A4/B4). The boundary half stays either way: it is the softer
+        backstop to the no-puppeting rule and has nothing to do with the mapping."""
         if not self._alias_pairs:
             return ""
-        pairs = "; ".join(f"{display} spielt {char}" for display, char in self._alias_pairs)
         chars = ", ".join(dict.fromkeys(char for _, char in self._alias_pairs))  # dedupe, keep order
+        if with_mapping:
+            pairs = "; ".join(f"{display} spielt {char}" for display, char in self._alias_pairs)
+            lead = f"Am Tisch sitzen mehrere Spielende mit je einer eigenen Figur: {pairs}. "
+        else:
+            lead = (
+                "Am Tisch sitzen mehrere Spielende mit je einer eigenen Figur. Jede Spielerzeile "
+                f"steht bereits unter dem Namen der Figur, die sie gesagt hat ({chars}) — sprich "
+                "die Anwesenden immer mit diesem Figurennamen an, nie mit einem anderen. "
+            )
         return (
-            f"Am Tisch sitzen mehrere Spielende mit je einer eigenen Figur: {pairs}. "
+            f"{lead}"
             f"Diese Spielfiguren ({chars}) gehören allein den Spielenden — du sprichst, denkst und "
             "handelst NIE für sie und erfindest weder ihre Worte noch ihre Taten. Du steuerst "
             "ausschließlich NSCs, Gegner und die Umgebung und reagierst nur auf das, was die "

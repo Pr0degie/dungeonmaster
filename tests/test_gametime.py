@@ -1,5 +1,8 @@
 """The pure in-game-time helpers (ADR 048): duration parsing (tolerant units), time/phase
-rendering, the next-morning jump, coarse deadline remaining-time and the expiry-note framing."""
+rendering, the next-morning jump, coarse deadline remaining-time and the expiry-note framing.
+
+Plus the clock that runs without the model (ADR 059): the per-turn and per-scene-change
+increments on ``WorldState`` and the adventure-seeded start time, deadlines and clocks."""
 
 from __future__ import annotations
 
@@ -16,6 +19,14 @@ from dmbot.memory.gametime import (
     remaining_de,
     render_time_de,
     render_time_phase_de,
+)
+from dmbot.memory.state import (
+    SCENE_CHANGE_ADVANCE_MINUTES,
+    TURN_ADVANCE_MINUTES,
+    WorldState,
+    absolute_minutes,
+    parse_campaign_time_de,
+    parse_time_of_day,
 )
 
 
@@ -95,3 +106,144 @@ def test_deadline_note_names_the_label_in_quotes() -> None:
 
 def test_marker_clamp_is_twelve_hours() -> None:
     assert MAX_MARKER_ADVANCE_MINUTES == 720
+
+
+# -- the clock runs without the model: per-turn / per-scene-change advance (ADR 059) -------
+
+def test_a_turn_costs_a_small_fixed_amount_of_ingame_time() -> None:
+    s = WorldState()
+    assert s.time_minutes == DEFAULT_START_MINUTES
+    assert s.advance_turn() == []                       # no deadlines → nothing expires
+    assert s.time_minutes == DEFAULT_START_MINUTES + TURN_ADVANCE_MINUTES
+    assert s.time_ingame == render_time_de(s.time_minutes)   # the mirror is re-rendered
+
+
+def test_a_scene_change_costs_more_than_a_turn() -> None:
+    assert SCENE_CHANGE_ADVANCE_MINUTES > TURN_ADVANCE_MINUTES
+    s = WorldState()
+    s.advance_scene_change()
+    assert s.time_minutes == DEFAULT_START_MINUTES + SCENE_CHANGE_ADVANCE_MINUTES
+
+
+def test_turn_advance_crosses_a_deadline_exactly_once() -> None:
+    s = WorldState()
+    s.add_deadline("Mitternachtssirene", TURN_ADVANCE_MINUTES + 1)
+    assert s.advance_turn() == []                        # not due yet
+    assert [dl.label for dl in s.advance_turn()] == ["Mitternachtssirene"]
+    assert s.advance_turn() == []                        # latched — never fires twice
+
+
+def test_turn_advance_can_be_switched_off_with_zero() -> None:
+    s = WorldState()
+    assert s.advance_turn(minutes=0) == []
+    assert s.advance_scene_change(minutes=0) == []
+    assert s.time_minutes == DEFAULT_START_MINUTES and s.time_ingame == ""
+
+
+# -- the adventure ships its own clock (ADR 059) -------------------------------------------
+
+@pytest.mark.parametrize("text,minutes", [
+    ("21:00", 1260), ("00:00", 0), ("08:05", 485), ("23:59", 1439), (" 7:30 ", 450),
+])
+def test_parse_time_of_day_accepts_hh_mm(text: str, minutes: int) -> None:
+    assert parse_time_of_day(text) == minutes
+
+
+@pytest.mark.parametrize("text", ["", "abends", "24:00", "21:60", "21", "21:00:00", "-1:00"])
+def test_parse_time_of_day_rejects_everything_else(text: str) -> None:
+    assert parse_time_of_day(text) is None
+
+
+def test_campaign_time_reads_back_what_render_time_de_prints() -> None:
+    assert parse_campaign_time_de("Tag 1, 21:00") == 1260
+    assert parse_campaign_time_de("Tag 2, 00:00") == 1440
+    assert parse_campaign_time_de("tag 3, 07:05") == 2 * 1440 + 425
+    assert parse_campaign_time_de("21:00") is None and parse_campaign_time_de("Tag 1") is None
+    for minutes in (0, 485, 1260, 4321):
+        assert parse_campaign_time_de(render_time_de(minutes)) == minutes
+
+
+def test_absolute_minutes_takes_ints_and_clock_times_with_a_day() -> None:
+    assert absolute_minutes(1260) == 1260
+    assert absolute_minutes("1260") == 1260
+    assert absolute_minutes("21:00") == 1260
+    assert absolute_minutes("Tag 1, 21:00") == 1260      # the day rides in the string
+    assert absolute_minutes("Tag 2, 00:00", day=9) == 1440
+    assert absolute_minutes("00:00", day=2) == 1440      # midnight *after* day 1
+    assert absolute_minutes("21:00", day=3) == 2 * 1440 + 1260
+    assert absolute_minutes(None) is None
+    assert absolute_minutes("bald") is None
+    assert absolute_minutes(-5) is None
+
+
+def test_seed_time_from_adventure_sets_start_deadlines_and_clocks() -> None:
+    s = WorldState()
+    assert s.seed_time_from_adventure(
+        start_time="21:00",
+        deadlines=[{"label": "Mitternachtssirene", "at": "00:00", "day": 2}],
+        clocks=[{"name": "Arbites-Ermittlung", "size": 6, "filled": 1}],
+    ) is True
+    assert s.time_minutes == 1260 and s.time_ingame == "Tag 1, 21:00"
+    assert s.time_seeded is True
+    dl = s.deadlines[0]
+    assert (dl.id, dl.label, dl.due_minutes) == ("mitternachtssirene", "Mitternachtssirene", 1440)
+    assert remaining_de(dl.due_minutes, s.time_minutes) == "noch ~3 Std"
+    c = s.clocks[0]
+    assert (c.id, c.name, c.size, c.filled) == ("arbites-ermittlung", "Arbites-Ermittlung", 6, 1)
+
+
+def test_seeded_deadlines_also_accept_a_relative_offset() -> None:
+    s = WorldState()
+    s.seed_time_from_adventure(start_time=1260, deadlines=[
+        {"label": "Die Barke legt ab", "in_minutes": 180},
+        {"label": "Absolut", "due_minutes": 1400},
+    ])
+    assert [dl.due_minutes for dl in s.deadlines] == [1440, 1400]
+
+
+def test_seeding_reads_the_shape_the_adventure_file_ships() -> None:
+    # Exactly the block data/adventures/debug-kampagne/adventure.json carries: the rendered
+    # start time, a deadline as a duration from the start, clocks with their own ids.
+    s = WorldState()
+    assert s.seed_time_from_adventure(
+        start_time="Tag 1, 21:00",
+        deadlines=[{"id": "mitternachtssirene",
+                    "label": "Mitternachtssirene: Der Leichter legt ab", "due_in": "+3h"}],
+        clocks=[{"id": "wachsamkeit", "name": "Wachsamkeit des Kettenbunds",
+                 "size": 6, "filled": 0}],
+    ) is True
+    assert s.time_ingame == "Tag 1, 21:00"
+    dl = s.deadlines[0]
+    assert dl.id == "mitternachtssirene"          # the file's id wins over the slugified label
+    assert dl.due_minutes == 1440 and remaining_de(dl.due_minutes, s.time_minutes) == "noch ~3 Std"
+    assert s.clocks[0].id == "wachsamkeit" and s.clocks[0].filled == 0
+
+
+def test_seeding_skips_a_deadline_whose_duration_does_not_parse() -> None:
+    s = WorldState()
+    s.seed_time_from_adventure(deadlines=[{"label": "Sirene", "due_in": "bald"}])
+    assert s.deadlines == []
+
+
+def test_seeding_twice_is_a_no_op_unless_forced() -> None:
+    s = WorldState()
+    s.seed_time_from_adventure(start_time="21:00", deadlines=[{"label": "Sirene", "at": "23:00"}])
+    s.advance_turn()
+    assert s.seed_time_from_adventure(start_time="21:00",
+                                      deadlines=[{"label": "Sirene", "at": "23:00"}]) is False
+    assert len(s.deadlines) == 1 and s.time_minutes == 1260 + TURN_ADVANCE_MINUTES
+    assert s.seed_time_from_adventure(start_time="06:00", force=True) is True
+    assert s.time_minutes == 360
+
+
+def test_seeding_skips_malformed_entries_without_touching_the_rest() -> None:
+    s = WorldState()
+    assert s.seed_time_from_adventure(
+        start_time="nachts",                       # unparseable → the default start survives
+        deadlines=[{"at": "23:00"}, {"label": "Sirene", "at": "quatsch"},
+                   {"label": "Echt", "at": "23:00"}],
+        clocks=[{"size": 6}, {"name": "Schief", "size": 5}, {"name": "Gut"}],
+    ) is True
+    assert s.time_minutes == DEFAULT_START_MINUTES
+    assert [dl.label for dl in s.deadlines] == ["Echt"]
+    assert [(c.name, c.size) for c in s.clocks] == [("Gut", 6)]

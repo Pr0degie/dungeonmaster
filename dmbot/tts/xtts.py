@@ -21,13 +21,17 @@ os.environ.setdefault("COQUI_TOS_AGREED", "1")  # accept the model licence non-i
 
 from TTS.api import TTS  # noqa: E402 — heavy (torch); only imported when XTTS is selected
 
+from ..voice.preflight import (  # noqa: E402 — torch-free; the shared speaker-config helpers
+    DEFAULT_XTTS_SPEAKER,
+    resolve_speaker,
+    speaker_problem,
+)
 from .textsplit import chunk_text, normalize_for_tts  # noqa: E402
 from .wavio import concat_wavs, write_silent_wav  # noqa: E402
 
 log = logging.getLogger(__name__)
 
 _MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
-_DEFAULT_SPEAKER = "Dionisio Schuyler"
 
 _CHUNK_GAP_S = 0.15  # a little silence between re-joined chunks so they don't run together
 
@@ -100,10 +104,24 @@ class XttsTTS:
             )
             device = "cpu"
             self._tts = TTS(_MODEL).to(device)
+        # Speaker resolution, checked against the model's REAL speaker list (the boot preflight
+        # `voice.preflight.check_tts_speaker` runs the same check earlier against the baked list,
+        # before torch is even loaded). An unknown name still degrades rather than crashing — TTS
+        # is an optional layer, it fails open (docs/lessons/optional-layers-fail-open-core-fails-
+        # loud.md) — but it degrades LOUDLY: B13 (2026-08-22) had TTS_SPEAKER=cuda and one WARNING
+        # line was enough to lose a whole evening to a random voice.
         available = list(self._tts.speakers)
-        self._speaker = speaker if speaker in available else _DEFAULT_SPEAKER
-        if speaker and speaker not in available:
-            log.warning("XTTS speaker %r unknown — using %s", speaker, self._speaker)
+        problem = speaker_problem(speaker, available)
+        if problem is not None:
+            log.error("XTTS speaker misconfigured: %s", problem)
+        self._speaker = resolve_speaker(speaker, available)
+        if problem is None and self._speaker != (speaker.strip() or DEFAULT_XTTS_SPEAKER):
+            # Only reachable if the model itself no longer ships the default voice.
+            log.error(
+                "XTTS default speaker %r is missing from this model — speaking as %r instead. "
+                "Set TTS_SPEAKER in .env explicitly (`!voices` lists what the model has).",
+                DEFAULT_XTTS_SPEAKER, self._speaker,
+            )
         log.info("XTTS v2 loaded on %s — speaker: %s", device, self._speaker)
 
     @property

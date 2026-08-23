@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import asyncio
 
-from dmbot.llm.consistency import Violation, check, retry_nudge_de
+from dmbot.llm.consistency import Violation, _name_variants, check, retry_nudge_de
 from dmbot.memory.state import Combatant, WorldState
 from dmbot.orchestrator import DMBrain
-from dmbot.rag.adventure import Scene
+from dmbot.rag.adventure import Adventure, AdventureNpc, Scene
 from dmbot.rules import profile as profile_mod
 
 _IM = profile_mod.load("imperium_maledictum")
@@ -132,6 +132,28 @@ def test_absent_mention_is_allowed() -> None:
 def test_npcs_here_matching_is_case_insensitive() -> None:
     state = _state(_npc("Janelle"))
     assert check("Janelle sagt: Hallo.", state, _scene("janelle ")) == []
+
+
+def test_a_generic_mook_never_triggers_the_absent_check():
+    """The false-alarm surface D107's NPC registration switched live: the thug squad is
+    registered on entering the warehouse, so „Der Schläger brüllt" three scenes later would be
+    a violation — and each hit costs a full regeneration mid-session. ``npc_names`` leaves a
+    ``generic`` statblock out, and the definite article („Der …") is exactly the case ADR 045's
+    indefinite-reference escape does NOT cover."""
+    adv = Adventure(
+        scenes=[Scene(id="lagerhaus", title_de="Lagerhaus", npcs_here=["Kettenbund-Schläger"]),
+                Scene(id="schrein", title_de="Schrein", npcs_here=["Cassia Vall"])],
+        npcs=[AdventureNpc(name="Kettenbund-Schläger", generic=True),
+              AdventureNpc(name="Cassia Vall")],
+    )
+    state = _state(_npc("Kettenbund-Schläger"), _npc("Cassia Vall"))
+    text = "Der Schläger brüllt etwas durch die Halle."
+    assert check(text, state, adv.get_scene("schrein"), named_only=adv.npc_names()) == []
+    # …and unscoped it WOULD have flagged — that is the alarm the flag removes
+    assert [v.kind for v in check(text, state, adv.get_scene("schrein"))] == ["absent"]
+    # the named NPC of the same campaign is still presence-checked
+    assert [v.kind for v in check("Vall sagt etwas.", state, adv.get_scene("lagerhaus"),
+                                  named_only=adv.npc_names())] == ["absent"]
 
 
 # --- names: tokens, ambiguity, titles --------------------------------------------------------
@@ -296,3 +318,24 @@ def test_redo_also_runs_the_guard() -> None:
     asyncio.run(brain.respond(1, check=_checker_for(state)))
     answer = asyncio.run(brain.redo(1, check=_checker_for(state)))
     assert answer == "Nur Staub und Stille." and len(client.calls) == 3
+
+
+def test_an_epithet_tail_is_not_a_standalone_reference() -> None:
+    """"Vosk der Haken" registers "Vosk", never "Haken".
+
+    German epithet names carry their identity before the lowercase particle; the tail is an
+    ordinary noun. Registering it standalone made every hook in a harbour scene an absent-NPC
+    violation — and each violation costs a full regeneration mid-turn (D107 review, ADR 045).
+    """
+    assert _name_variants("Vosk der Haken", set()) == ["Vosk der Haken", "Vosk"]
+    assert _name_variants("Grimm von Kaltmar", set()) == ["Grimm von Kaltmar", "Grimm"]
+    # a name without a particle keeps every capitalized token
+    assert _name_variants("Bramwell Kaad", set()) == ["Bramwell Kaad", "Bramwell", "Kaad"]
+
+
+def test_the_epithet_tail_does_not_trigger_the_guard_but_the_head_still_does() -> None:
+    # a dead NPC: speech attributed to it is a violation, so the two probes differ only in
+    # which variant the text names
+    state = _state(_npc("Vosk der Haken", wounds=0))
+    assert check('"Weiter", knurrt der Haken.', state, None) == []
+    assert [v.npc for v in check('"Genug", sagt Vosk.', state, None)] == ["Vosk der Haken"]

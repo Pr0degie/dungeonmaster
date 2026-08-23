@@ -17,10 +17,17 @@ _MIN_INTRO_CHARS = 280
 
 # Appended to the director instruction on the single retry — a firmer nudge toward the properties
 # the first attempt missed (length + every figure), without changing the persona.
+#
+# D107: this used to ask for "einen eigenen Moment" per figure — the very phrasing removed from
+# the intro brief in the same round, because it asks for exactly what the persona forbids (words,
+# thoughts and deeds invented for a player character). Left in, every second attempt would have
+# re-injected the puppeting by prompt. The retry now asks for the same thing the brief does: each
+# figure introduced from the OUTSIDE.
 INTRO_RETRY_NUDGE = (
     "[Regie] Der erste Anlauf war zu knapp oder hat eine Figur ausgelassen. Schreibe den "
-    "Eröffnungs-Monolog jetzt ausführlich (mehrere Absätze) und beziehe JEDE genannte Figur "
-    "namentlich mit einem eigenen Moment ein. Kein Meta, keine Aufzählung."
+    "Eröffnungs-Monolog jetzt ausführlich (mehrere Absätze), zuerst den Klartext-Teil, und "
+    "stelle JEDE genannte Figur namentlich von außen vor — ohne ihr Worte, Gedanken oder "
+    "Handlungen zu geben. Kein Meta, keine Aufzählung."
 )
 
 

@@ -79,3 +79,23 @@ validates and records. Plot-side commitments have never had that seam.
   and operator-visible, and there is a command to remove a fact at the table.
 - **−** More state means more to migrate; the schema gains fields that older session files do not
   carry, so the loader must default them the way the in-game clock migration already does.
+
+## Amendment (2026-08-23, same round) — one direction only, retraction is manual
+
+Decision 1 above names "an item handed over **or taken away**, a quest accepted **or completed**".
+The build round implemented only the forward direction: the classifier's enumeration is
+item / quest / promise, all of them additions. The ADR is corrected to the built scope.
+
+Reason: the reverse direction needs its own reliable trigger, and inventing one in the same round
+that first switches the forward path on would make a misfire impossible to attribute at the table.
+A wrongly *added* fact and a wrongly *removed* one are both prompt-visible, but only the first can
+be seen and undone by a human reading the panel.
+
+Retraction is therefore **manual and operator-driven** in this round: the `!fakt` command lists the
+open facts and removes one. That is the mitigation this ADR's Consequences section already
+promised, and it is now actually wired — `revoke_fact` had no caller when the review looked.
+
+Open, and the first thing to reassess after the next run: whether the table hits the reverse case
+often enough to justify a second enumeration. If it does, the extension is additive — two more
+enumeration values routed to the existing `take_item` / quest-status writers, which are already
+there.

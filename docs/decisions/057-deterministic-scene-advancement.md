@@ -97,3 +97,24 @@ it doesn't"). In a six-scene campaign it is mandatory.
   interaction is the first thing to watch on the next run; each is individually switchable.
 - **−** A wrong automatic change is felt at the table before it can be undone. Accepted: the
   observed failure was never moving at all.
+
+## Amendment (2026-08-23, same round) — ids warn, they do not refuse the load
+
+Decision 3 above says an opportunity without an id is a load-time content error. The build round
+did not implement it that way, deliberately, and the ADR is corrected rather than the code.
+
+`data/adventures/` is git-ignored apart from the debug campaign: `chemical_burn` — the compendium
+derived from the bought book — exists only on Tobi's disk and carries no opportunity ids. A hard
+load error would make his real campaign unloadable to fix a problem the debug campaign has. So:
+
+- A missing opportunity id is a **loud warning at load**, not a refusal.
+- The **flag gate compensates**: a scene whose opportunities carry no ids can never count as
+  exhausted, so an id-less campaign simply never triggers the model-free advancement path. It
+  degrades to classifier-only, which is exactly the behaviour an unmigrated campaign should have.
+
+The intent of decision 3 — "this cannot half-work silently" — is preserved by the second half: the
+gate cannot fire on incomplete data, and the warning says so. What is given up is the guarantee
+that a half-migrated campaign is caught before play; the warning has to be read.
+
+The PRD's testing decision that named the negative case as "fails to load" is superseded by this
+amendment: the tested negative case is that an id-less scene never counts as exhausted.

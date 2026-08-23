@@ -156,9 +156,11 @@ def test_dead_npc_renders_tot_case_insensitive() -> None:
 
 def test_locked_exit_hidden_until_unlocked() -> None:
     adv = _adv()
-    assert "Mögliche nächste Orte: b\n" in adv.adventure_block_de("a") + "\n"  # c is locked
+    # Exits render as "id — title" since D107 (ADR 057 #6): a bare id gives the model nothing
+    # to map a fictional direction onto.
+    assert "Mögliche nächste Orte: b — B\n" in adv.adventure_block_de("a") + "\n"  # c is locked
     unlocked = adv.adventure_block_de("a", resolved_ids=["opp-1"])
-    assert "Mögliche nächste Orte:" in unlocked and ", c" in unlocked
+    assert "Mögliche nächste Orte:" in unlocked and ", c — C" in unlocked
 
 
 def test_all_exits_locked_omits_the_line() -> None:

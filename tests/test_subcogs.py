@@ -9,6 +9,8 @@ import asyncio
 import types
 from pathlib import Path
 
+from dmbot.memory.state import WorldState
+from dmbot.rules.scene_flow import MoveTrigger
 from dmbot.voice.scenecog import SceneCog
 from dmbot.voice.lorecog import LoreCog
 
@@ -74,51 +76,138 @@ def test_ort_without_adventure_reports_missing() -> None:
     assert any("Kein Abenteuer geladen" in m for m in ctx.sent)
 
 
-def test_ort_moves_pointer_via_code_not_llm() -> None:
-    # golden rule #3: the command moves the plot pointer deterministically through _set_scene
-    # + _persist_and_refresh — the model is never consulted here.
-    flags = {}
-    scene = types.SimpleNamespace(id="s2", title_de="Die Brücke", part=2)
+def _move_scene_runtime(scene, *, known: str = "s2"):
+    """A stub runtime that records the move_scene call !ort makes."""
+    calls: dict = {}
 
-    async def _advance_scene_time(ch):
-        flags["time_advanced"] = True
-        return 30
-
-    async def _overlay():
-        flags["overlay"] = True
+    async def _move_scene(channel, scene_id, *, trigger=None, announce=True):
+        calls["args"] = (channel, scene_id, trigger, announce)
+        return scene if scene_id == known else None
 
     rt = types.SimpleNamespace(
         _adventure=types.SimpleNamespace(),
         _brain_channel=lambda ch: 7,
         _state={7: types.SimpleNamespace(scene_id="s1")},
-        _set_scene=lambda st, sid: scene if sid == "s2" else None,
-        _persist_and_refresh=lambda ch: flags.__setitem__("persisted", True),
-        schedule_npc_memory_extraction=lambda ch, sid: flags.__setitem__("mined", sid),
-        advance_scene_time=_advance_scene_time,
-        update_debug_overlay=_overlay,
+        move_scene=_move_scene,
     )
+    return rt, calls
+
+
+def test_ort_moves_the_pointer_through_the_shared_move_scene() -> None:
+    # golden rule #3 (code moves the pointer, never the model) AND the runtime docstring's rule
+    # that all four movers share ONE move_scene: persist, NPC registration, NPC-memory mining,
+    # travel time, overlay and panel belong to it (covered in tests/test_turn_boundary.py), so
+    # !ort contributes only the trigger and its own reply instead of a hand-copied sequence.
+    scene = types.SimpleNamespace(id="s2", title_de="Die Brücke", part=2)
+    rt, calls = _move_scene_runtime(scene)
     ctx = _Ctx()
     asyncio.run(SceneCog.ort.callback(_scene_cog(rt), ctx, "s2"))
-    assert flags.get("persisted") is True
-    assert flags.get("mined") == "s1"  # the DEPARTED scene is mined for NPC memories (ADR 044)
-    assert flags.get("time_advanced") is True  # a REAL move lets travel time pass (ADR 048 #10)
-    assert flags.get("overlay") is True  # 🧪 debug overlay refreshed after the move (ADR 052)
+    channel, scene_id, trigger, announce = calls["args"]
+    assert (channel, scene_id) == (ctx.channel, "s2")
+    assert trigger is MoveTrigger.COMMAND  # a misfiring mover stays attributable (ADR 057)
+    assert announce is False  # the cog answers in the channel the command came from
     assert any("Szene gewechselt" in m and "Die Brücke" in m for m in ctx.sent)
 
 
-def test_ort_unknown_scene_does_not_persist() -> None:
-    flags = {}
-    rt = types.SimpleNamespace(
-        _adventure=types.SimpleNamespace(),
-        _brain_channel=lambda ch: 7,
-        _state={7: types.SimpleNamespace(scene_id="s1")},
-        _set_scene=lambda st, sid: None,  # unknown id
-        _persist_and_refresh=lambda ch: flags.__setitem__("persisted", True),
-    )
+def test_ort_may_target_a_scene_the_automation_would_never_propose() -> None:
+    # the point of the command: the human at the table is not bound to the current scene's
+    # exits, so the raw id goes to move_scene unfiltered (the exit check lives in the
+    # classifier path, not here).
+    scene = types.SimpleNamespace(id="geheimlabor", title_de="Das Labor", part=4)
+    rt, calls = _move_scene_runtime(scene, known="geheimlabor")
+    ctx = _Ctx()
+    asyncio.run(SceneCog.ort.callback(_scene_cog(rt), ctx, "geheimlabor"))
+    assert calls["args"][1] == "geheimlabor"
+    assert any("Das Labor" in m for m in ctx.sent)
+
+
+def test_ort_unknown_scene_reports_and_says_nothing_else() -> None:
+    rt, _ = _move_scene_runtime(types.SimpleNamespace())  # every id but "s2" is unknown
     ctx = _Ctx()
     asyncio.run(SceneCog.ort.callback(_scene_cog(rt), ctx, "nope"))
+    assert len(ctx.sent) == 1
+    assert "Unbekannte Szene" in ctx.sent[0]
+
+
+# --- SceneCog (!fakt — the ADR-058 retraction) ---------------------------------------------
+
+def _fact_runtime(state: WorldState):
+    """Stub runtime with a REAL WorldState: !fakt reads and revokes hard facts, and both
+    writers under it (revoke_fact / take_item) had no caller at all before this command."""
+    flags: dict = {}
+
+    async def _panel():
+        flags["panel"] = True
+
+    rt = types.SimpleNamespace(
+        _brain_channel=lambda ch: 7,
+        _state={7: state},
+        _persist_and_refresh=lambda ch: flags.__setitem__("persisted", True),
+        update_player_panel=_panel,
+    )
+    return rt, flags
+
+
+def test_fakt_lists_the_open_facts() -> None:
+    state = WorldState()
+    state.give_item("Zollvollmacht", by="Seneschall Kaad")
+    state.record_promise("Freies Geleit", by="Kaad")
+    rt, _ = _fact_runtime(state)
+    ctx = _Ctx()
+    asyncio.run(SceneCog.fakt.callback(_scene_cog(rt), ctx))
+    joined = "\n".join(ctx.sent)
+    # kind, label, holder, source and the in-game time the code-owned clock stamped (ADR 058)
+    assert "Gegenstand: Zollvollmacht → Gruppe (von Seneschall Kaad, Tag 1, 08:00)" in joined
+    assert "Zusage: Freies Geleit → Gruppe (von Kaad, Tag 1, 08:00)" in joined
+    assert "!fakt weg" in joined  # the listing tells the table how to take one back
+
+
+def test_fakt_without_any_facts_says_so() -> None:
+    rt, _ = _fact_runtime(WorldState())
+    ctx = _Ctx()
+    asyncio.run(SceneCog.fakt.callback(_scene_cog(rt), ctx))
+    assert any("Keine harten Fakten" in m for m in ctx.sent)
+
+
+def test_fakt_weg_revokes_the_fact_and_refreshes_prompt_and_panel() -> None:
+    state = WorldState()
+    state.give_item("Zollvollmacht", by="Kaad")
+    rt, flags = _fact_runtime(state)
+    ctx = _Ctx()
+    asyncio.run(SceneCog.fakt_weg.callback(_scene_cog(rt), ctx, text="  zollvollmacht  "))
+    assert state.open_facts() == []  # matched case-insensitively, on the trimmed label
+    assert state.facts[0].status == "revoked"
+    assert flags.get("persisted") is True  # gone from the next prompt (ADR 058)
+    assert flags.get("panel") is True
+    assert any("Fakt zurückgenommen" in m and "Zollvollmacht" in m for m in ctx.sent)
+
+
+def test_fakt_weg_unknown_label_changes_nothing() -> None:
+    state = WorldState()
+    state.give_item("Zollvollmacht", by="Kaad")
+    rt, flags = _fact_runtime(state)
+    ctx = _Ctx()
+    asyncio.run(SceneCog.fakt_weg.callback(_scene_cog(rt), ctx, text="Ossarium"))
+    assert len(state.open_facts()) == 1
     assert "persisted" not in flags
-    assert any("Unbekannte Szene" in m for m in ctx.sent)
+    assert any("Kein offener Fakt" in m for m in ctx.sent)
+
+
+def test_fakt_weg_without_a_label_prints_its_usage() -> None:
+    state = WorldState()
+    state.give_item("Zollvollmacht", by="Kaad")
+    rt, flags = _fact_runtime(state)
+    ctx = _Ctx()
+    asyncio.run(SceneCog.fakt_weg.callback(_scene_cog(rt), ctx, text=""))
+    assert len(state.open_facts()) == 1 and "persisted" not in flags
+    assert any("Nutzung: `!fakt weg <Text>`" in m for m in ctx.sent)
+
+
+def test_fakt_without_a_session_reports_instead_of_crashing() -> None:
+    rt = types.SimpleNamespace(_brain_channel=lambda ch: 7, _state={})
+    ctx = _Ctx()
+    asyncio.run(SceneCog.fakt.callback(_scene_cog(rt), ctx))
+    assert any("Keine aktive Sitzung" in m for m in ctx.sent)
 
 
 # --- LoreCog (!lore) -----------------------------------------------------------------------
