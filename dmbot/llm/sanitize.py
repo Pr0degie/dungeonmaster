@@ -71,6 +71,100 @@ _META_SELFCORRECT = re.compile(
 _ROLE_LABELS = ["Spielleitung", "Spielleiter", "Spieler", "Erzähler", "GM", "DM"]
 
 
+# The same director frame in the other word order — "In diesem Fall würde ich als Spielleitung
+# antworten: …" (read aloud live on 2026-08-22, turn 4). _META_PREAMBLE anchors on
+# "Als <rolle> <verb> ich" at the start and cannot see this shape.
+_META_WOULD = re.compile(
+    r"^[^.!?]{0,60}?\bwürde\s+ich\s+als\s+(?:die\s+)?"
+    r"(?:spielleit(?:ung|er)|erzähler|gm|dm|game ?master)\s+"
+    r"(?:antwort\w*|sag\w*|beschreib\w*|erzähl\w*|reagier\w*|erwider\w*)\s*[:,]\s*",
+    re.IGNORECASE,
+)
+# --- Meta sentences: assistant register + handover stage directions (D112) ----------------------
+#
+# The 2026-08-22 run read three kinds of non-fiction aloud. The persona forbids all of them and
+# nemo writes them anyway — docs/lessons/deterministic-guards-over-persona-hopes.md: the prompt
+# shapes, code removes. Both filters work per SENTENCE and skip any sentence carrying a quote
+# character: an NSC may apologise, ask formally or say it is waiting, and that is the game, not a
+# chatbot. A sentence without a terminator (one still arriving mid-stream) never matches, so the
+# same function is safe on the incremental streaming path.
+
+# Stage directions that hand play back to the table: "Damit übergibt Kaad die Verantwortung wieder
+# an die Gruppe.", "Damit endet dein Zug …", "Ich warte darauf, wie die Gruppe reagiert." The verb
+# alone is not enough — "Damit endet die Schicht im Hafenbecken." is narration — so a handover
+# object is required.
+_HANDOVER_SENTENCE = re.compile(
+    r"^(?:Damit\s+(?:übergib\w*|übergeb\w*|gib\w*|geb\w*|end\w*|ist|hast|habt|liegt)"
+    r"|Ich\s+warte\b|Ich\s+übergebe\b)"
+    r"[^.!?]*?"
+    r"(?:an\s+die\s+Gruppe|die\s+Gruppe\s+reagiert|die\s+Gruppe\s+entscheidet"
+    r"|(?:dein|deinen|ihren|euren|seinen|den)\s+(?:nächsten\s+)?Zug|nächsten\s+Zug"
+    r"|das\s+Wort|die\s+Verantwortung|den\s+Ball|nächste\s+Aktion)"
+    r"[^.!?]*[.!?]$",
+    re.IGNORECASE,
+)
+
+# The assistant register: a helpful chatbot apologising, asking a formal follow-up question or
+# promising to do better. Every pattern names the speaker as "ich" plus a service phrase, so
+# narration *about* an apology ("Der Seneschall entschuldigt sich …") is untouched.
+_ASSISTANT_SENTENCE = re.compile(
+    r"(?:ich\s+(?:kann|konnte)\s+(?:Ihre|Ihren|deine|eure)\s+(?:Frage|Anfrage|Bitte|Aussage)\b[^.!?]*\bnicht\b"
+    r"|es\s+tut\s+mir\s+leid\b[^.!?]*\bich\s+(?:kann|konnte|verstehe)\b[^.!?]*\bnicht\b"
+    r"|könnt(?:en)?\s+Sie\s+bitte\b"
+    r"|ich\s+entschuldige\s+mich\s+für\b"
+    r"|ich\s+werde\s+(?:in\s+Zukunft|künftig|ab\s+jetzt|fortan)\s+darauf\s+achten\b"
+    r"|als\s+(?:Sprachmodell|Sprach-Modell|KI|AI)\b"
+    r"|ich\s+bin\s+(?:nur\s+)?ein(?:e)?\s+(?:Sprachmodell|KI|Assistent|Assistenz)\w*\b)",
+    re.IGNORECASE,
+)
+
+# Spoken when a whole answer was nothing but meta. Silence after someone pressed the mic reads as
+# a broken bot at the table — this keeps the model's actual intent (I did not follow you) and drops
+# only the register. Du/ihr like every other DM line, never the formal "Sie".
+META_FALLBACK_DE = "Ich habe das nicht mitbekommen — sagt es noch einmal."
+
+# A quote character anywhere in the sentence means someone is speaking in the fiction: hands off.
+_QUOTE_CHARS = "\"'„“”»«‚‘’"
+
+def _sentences(text: str) -> list[str]:
+    """Split into sentences by slicing at the ends found by :data:`_SENTENCE_END`.
+
+    Slicing, not ``re.split``: the boundary pattern swallows a closing quote, and a split would
+    drop it — an NSC's line would come back missing its final ``"``.
+    """
+    out: list[str] = []
+    start = 0
+    for match in _SENTENCE_END.finditer(text):
+        out.append(text[start:match.end()])
+        start = match.end()
+    if text[start:].strip():
+        out.append(text[start:])
+    return out
+
+
+def _drop_meta_sentences(text: str) -> str:
+    """Drop whole sentences that are assistant register or a handover stage direction (D112).
+
+    Sentence-level and quote-safe, so an NSC apologising or waiting survives. Returns ``""`` when
+    the answer was nothing else — the caller decides what to say instead
+    (:data:`META_FALLBACK_DE`), because "speak nothing" and "speak a fallback" are different
+    decisions at different seams.
+    """
+    if not text.strip():
+        return text
+    kept: list[str] = []
+    for sentence in _sentences(text):
+        stripped = sentence.strip()
+        if not stripped:
+            continue
+        if not any(ch in stripped for ch in _QUOTE_CHARS) and (
+            _HANDOVER_SENTENCE.match(stripped) or _ASSISTANT_SENTENCE.search(stripped)
+        ):
+            continue
+        kept.append(stripped)
+    return " ".join(kept).strip()
+
+
 def _cut_at_labels(text: str, labels: list[str]) -> str:
     """Truncate at the first ``<label>:`` after the start — where the model began inventing a
     next speaker (a player reply or another DM turn). Position 0 (a leading label) is left for
@@ -142,6 +236,8 @@ def _sanitize_leading(text: str) -> str:
     text = _META_SELFCORRECT.sub("", text, count=1).strip()  # drop a "…Sprachmodell… Hier ist die korrekte Antwort:" frame
     text = _ROLE_LABEL.sub("", text).strip()  # drop a leading role label
     text = _strip_meta_preamble(text)  # drop a leading "Als Spielleitung beschreibe ich …" preamble
+    text = _META_WOULD.sub("", text, count=1).strip()  # "In diesem Fall würde ich als SL antworten:"
+    text = _drop_meta_sentences(text)  # drop assistant-register + handover stage-direction sentences
     return text
 
 

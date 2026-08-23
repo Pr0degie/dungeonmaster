@@ -14,6 +14,7 @@ import logging
 from dataclasses import dataclass
 
 from .sanitize import (
+    META_FALLBACK_DE,
     _cut_at_labels,
     _sanitize,
     _sanitize_leading,
@@ -45,9 +46,15 @@ def finalize_answer_markers(
     :meth:`StreamAssembler.finish` — so the two can never drift and the stored history is
     identical for the same raw text (the parity guarantee, ADR 017)."""
     answer = _sanitize(_cut_at_labels(raw, labels)) or _sanitize(raw)
+    # The meta filter (D112) can eat an entire answer — the model wrote nothing but assistant
+    # register. That is a *different* emptiness from an answer that was only a marker, so the
+    # distinction is taken here, before ``extract_all`` removes anything: silence after someone
+    # pressed the mic reads as a broken bot, a stripped marker legitimately leaves nothing to say.
+    meta_only = bool(raw.strip()) and not answer.strip()
     answer = _strip_leading_label(answer, labels)  # kill a leaked leading "Name:"/"DM:" label
     answer, markers = extract_all(answer, profile)  # strip every <<…>> marker in registry order
-    return _trim_to_last_sentence(answer), markers
+    answer = _trim_to_last_sentence(answer)
+    return (META_FALLBACK_DE if meta_only else answer), markers
 
 
 def finalize_answer(
