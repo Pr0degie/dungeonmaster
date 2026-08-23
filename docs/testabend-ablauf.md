@@ -12,6 +12,34 @@ Die Auflösung der Kampagne steht hier bewusst nicht — wer mitspielt, kann das
 
 ---
 
+## 0. Was sich seit dem letzten Abend geändert hat (D107)
+
+Der Lauf vom 22.08. blieb 22 Züge in Szene eins hängen. Fünf Dinge sind seitdem anders, und
+alle fünf ändern, worauf du am Bildschirm achtest:
+
+- **Der Ortswechsel passiert von selbst.** Ein Klassifikator prüft nach jedem Zug, ob die Gruppe
+  einen der echten Ausgänge betreten hat, und wechselt sofort — mit einem ↩-Knopf, der den
+  Wechsel eine Minute lang zurücknimmt. Zusätzlich schiebt der Flag-Zwang weiter, sobald alle
+  Gelegenheiten einer Szene abgehakt sind. `!ort` bleibt dein Notnagel und darf mehr als die
+  Automatik: es setzt jede Szene, auch eine unerreichbare.
+- **Ein abgelehnter Wechsel ist sichtbar** — aber nur, wenn `DM_DEBUG_CHANNEL` gesetzt ist.
+  Ohne den Kanal steht er nur im Log. **Vor dem Abend setzen.**
+- **Uhr und Fristen kommen aus dem Abenteuer** und laufen pro Zug weiter. Nichts von Hand
+  anlegen (siehe Szene 1).
+- **Harte Fakten.** Übergibt ein NSC etwas, nimmt die Gruppe einen Auftrag an oder gibt jemand
+  ein Versprechen, landet das im Weltzustand und steht ab dann in jedem Prompt. `!fakt` listet
+  sie, `!fakt weg <Text>` nimmt einen falschen zurück — **das ist der Knopf, den du brauchst,
+  wenn der Klassifikator Unsinn einträgt.**
+- **Ein Spieler-Panel im Chat** zeigt Szene, Auftrag, Uhrzeit, Frist und was hier noch offen
+  ist. Es aktualisiert sich selbst und verankert sich am Ende des Kanals neu.
+
+Zwei Einstellungen vorher prüfen: `DM_DEBUG_CHANNEL` (sonst sind Ablehnungen unsichtbar) und
+`OLLAMA_NUM_PARALLEL` ≥ 2 — sonst serialisiert Ollama die zwei Klassifikatoren, die auf einer
+Zugnaht laufen, und der zweite kippt in seinen Timeout, statt zu antworten.
+
+Der Sprechmodus-Vergleich aus [speech-mode-comparison.md](speech-mode-comparison.md) gehört an
+den Anfang des Abends: er dauert fünf Minuten und entscheidet, wie der ganze Rest klingt.
+
 ## 1. Was der Abend beweisen soll
 
 Zehn Gates. Acht schließen an einem Abend, zwei brauchen eine kurze zweite Sitzung.
@@ -162,21 +190,25 @@ Die Abkürzung `lagerhaus → pier_neun` existiert und ist nach dem Abhaken offe
 Drei Gates werden hier nur *gesät*, geerntet wird später.
 
 ```
-!zeit
-!uhr neu "Wachsamkeit des Kettenbunds" 6
-!frist neu "Mitternachtssirene" +4h
+!zeit                     ← muss „Tag 1, 21:00 (Abend)" zeigen
+!uhren                    ← beide Uhren müssen schon da sein
+!fristen                  ← die Mitternachtssirene muss schon da sein
 !npc add Arno_Kessel
 ```
 
-**Die Anführungszeichen bei `!uhr neu` sind Pflicht**, weil der Name mehrere Wörter hat. Ohne
-sie stirbt das Kommando still: discord.py versucht „des" als Größe zu lesen, bricht ab, und der
-Bot antwortet **gar nicht** — nur die Konsole zeigt `command error in …`. Es entsteht keine
-Uhr, auch keine falsch benannte. Kommt keine Zeile `⏱ Neue Uhr: …` zurück, existiert sie nicht;
-mit `!uhren` prüfen und wiederholen. (Bei `!frist neu` ist das Label einwortig, dort sind die
-Anführungszeichen optional.)
+**Uhr und Frist NICHT mehr von Hand anlegen (seit D107 / ADR 059).** Die Kampagne bringt
+Startzeit, Mitternachtsfrist und beide Uhren selbst mit; sie werden beim Sitzungsstart aus
+`adventure.json` gesetzt. Ein `!uhr neu "Wachsamkeit des Kettenbunds" 6` würde jetzt eine
+**zweite** Uhr gleichen Namens erzeugen.
 
-Die id steht in der Antwort (`⏱ Neue Uhr: **…** (`<id>`) ○○○○○○ 0/6`) und wird später für
-`!uhr tick <id>` gebraucht: notieren.
+Prüfen statt anlegen: `!zeit` muss `Tag 1, 21:00 (Abend)` zeigen — steht dort noch
+`Tag 1, 08:00 (Morgen)`, wurde das Abenteuer nicht geladen oder die Sitzung stammt aus einer
+älteren Datei, dann ist der ganze Zeitdruck des Abends tot. `!uhren` muss die Wachsamkeit des
+Kettenbunds und die Verladung zeigen, `!fristen` die Mitternachtssirene mit Restzeit. Die ids
+für spätere `!uhr tick <id>` stehen in der Antwort von `!uhren`.
+
+Die Ingame-Uhr läuft ab jetzt **pro Zug** von selbst weiter, plus einen größeren Sprung bei
+jedem Ortswechsel. Du musst Zeit nicht mehr schieben, damit die Frist näher rückt.
 
 `!npc add Arno_Kessel` muss mit `*(Statblock aus dem Abenteuer)*` antworten. Nur dann wurde
 sein `goal_de` mitgeladen — ohne das bleibt `!agenden` den ganzen Abend leer und G7 fällt aus.
@@ -239,15 +271,18 @@ Kessel konfrontiert die Gruppe mit ihren eigenen Worten aus der Pfandhalle. Prü
 !npcmem "Bree Marlok"     ← die Lüge steht drin, mit wörtlichem Zitat
 !npcmem "Arno Kessel"     ← dieselbe Lüge als Hörensagen (Gossip über die Fraktion)
 !agenden                  ← Kessels Ziel plus sein erster Offscreen-Schritt
-!zeit +2h                 ← Richtung Mitternachtssirene
+!zeit                     ← Kontrolle: die Uhr läuft pro Zug von selbst
 ```
 
 **Die Anführungszeichen sind Pflicht.** `!npcmem Bree_Marlok` schlägt fehl — der NSC heißt im
 Weltzustand „Bree Marlok" mit Leerzeichen, und nur `!npc add` versteht Unterstriche. Dasselbe
 gilt für `!agenda`, `!damage` und `!heal`.
 
-`!zeit +2h` von Hand loggt `time advance (manual): …` statt `🕐 Zeitfortschritt vorgeschlagen`.
-Die Fristen-Hälfte von G3 (das Verstreichen) zählt trotzdem — sie hängt nicht am Marker.
+Zeit von Hand zu schieben ist seit D107 nur noch der Notnagel: die Uhr läuft pro Zug und pro
+Ortswechsel automatisch, und die Frist wurde beim Start aus dem Abenteuer gesetzt. Wenn ihr im
+Zeitplan zurückliegt und das Finale trotzdem sehen wollt, ist `!zeit +1h` weiterhin erlaubt —
+es loggt `time advance (manual): …`. Die Fristen-Hälfte von G3 (das Verstreichen) zählt so oder
+so, sie hing nie am Marker.
 
 ### Szene 6 — `pier_neun`: Finale, Konsistenz, Neustart
 

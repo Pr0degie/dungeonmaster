@@ -122,6 +122,7 @@ zurückgestellt, bis das Spielen rund läuft.
 `!npc add <Name> [Wunden] [TB] [Rüstung]` / `!npc list` / `!damage` / `!heal` ·
 `!ort [id]` / `!szenen` / `!ortmodus verbunden|frei` / `!erledigt <id>` / `!offen <id>` ·
 `!uhr neu|tick|zurück|weg` / `!uhren` · `!zeit [+2h|tag]` / `!frist neu|weg` / `!fristen` ·
+`!fakt` / `!fakt weg <Text>` (harte Fakten sehen und zurücknehmen, D107) ·
 `!agenda <NSC> "<Ziel>"|weg` / `!agenden` · `!faden neu|erledigt|weg` / `!fäden` ·
 `!npcmem <Name>` · `!rules <frage>` / `!lore [frage|tts]` · `!wrap` ·
 Pause = **Esc** im DMbot-Terminal oder der ⏸-Button (es gibt KEIN `!pause`-Command).
