@@ -2060,6 +2060,12 @@ Gate-Run ist weg.** _(Sezgin könnte Rektalus' Werte noch finalisieren, sonst st
 
 ## Open questions (erledigt/archiviert)
 
+**Vom Playtest-Fix-Runde (2026-06-16, D82–D84) — live-unverified:**
+- **Klingt `!intro` jetzt zuverlässig wie der 14.06.-Lauf?** Party lädt channel-unabhängig (D82), die drei
+  Chat-Tics (Meta-Auftakt, `"…"`-Umschlag, „Was tut ihr?"-Abwürgen) werden deterministisch gestrippt (D84),
+  Temp auf 0.7 (D84). Ob die **Prosa-Reichheit** (atmosphärisch vs. formelhaft) jetzt passt, ist Modell-Sache —
+  am Tisch prüfen; Stellschraube `DM_INTRO_TEMPERATURE` (0.3–0.8) bzw. Director-Brief-Wortlaut.
+
 **Aus der Doc-Diet-Runde rotiert (2026-07-11):**
 - ✅ **Aufräum-Pass `progress.md` — erledigt (2026-07-04 D98 Teil B + 2026-07-11 Doc-Diet-Runde).**
   Ursprünglicher Eintrag (aus der D82–D84-Runde): „Current focus“ (D75–D81) + „Next concrete step“

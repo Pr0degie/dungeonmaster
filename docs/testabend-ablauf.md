@@ -12,7 +12,7 @@ Die Auflösung der Kampagne steht hier bewusst nicht — wer mitspielt, kann das
 
 ---
 
-## 0. Was sich seit dem letzten Abend geändert hat (D107)
+## 0. Was sich seit dem letzten Abend geändert hat (D107–D114)
 
 Der Lauf vom 22.08. blieb 22 Züge in Szene eins hängen. Fünf Dinge sind seitdem anders, und
 alle fünf ändern, worauf du am Bildschirm achtest:
@@ -32,6 +32,25 @@ alle fünf ändern, worauf du am Bildschirm achtest:
   wenn der Klassifikator Unsinn einträgt.**
 - **Ein Spieler-Panel im Chat** zeigt Szene, Auftrag, Uhrzeit, Frist und was hier noch offen
   ist. Es aktualisiert sich selbst und verankert sich am Ende des Kanals neu.
+
+Dazu vier Nachzügler, die den gesprochenen Text und die Würfel betreffen:
+
+- **Ein Würfelknopf je ansagender Figur (D111).** Bisher wurde nur die letzte Pufferzeile eines
+  Zuges geprüft — sagten zwei Spieler etwas an, verschwand die eine Ansage spurlos. Jetzt bekommt
+  jede Figur ihren eigenen, namentlich beschrifteten Knopf. Die Figur kommt vom **Sprecher**, nicht
+  vom Klickenden: du darfst den Knopf eines abwesenden Mitspielers drücken, ohne seine Probe zu
+  stehlen. Erwartete Logzeile: `🎲 router: Gellicus Schulz — '…' → Überreden (Herausfordernd)`.
+- **Meta-Sätze werden nicht mehr vorgelesen (D112).** Entschuldigungen im Sie-Register, „In diesem
+  Fall würde ich als Spielleitung antworten:" und das „Damit übergibt er wieder an die Gruppe" am
+  Ende. War eine Antwort *nur* Meta, sagt der DM stattdessen eine neutrale Zeile — hörst du
+  „Ich habe das nicht mitbekommen — sagt es noch einmal.", hat der Filter eine ganze Antwort
+  kassiert; das ist ein Befund fürs Debriefing, kein Bedienfehler.
+- **Der DM spricht nur noch NSCs (D113).** Legt er einer Spielerfigur wörtliche Rede in den Mund,
+  fliegt der Satz. Handlungen von Spielerfiguren bleiben absichtlich stehen — wenn euch *das*
+  stört, ist es ein neuer Befund, kein Bug.
+- **Whisper-Abspänne landen nicht mehr im Puffer (D114).** „Das war's für heute, tschüss" wird
+  inhaltlich geblockt, einzelne Floskeln überleben. Sichtbar als
+  `🚫 Whisper-Halluzination verworfen (Name): …` — die Zeile ist der Beweis, dass der Filter greift.
 
 Zwei Einstellungen vorher prüfen: `DM_DEBUG_CHANNEL` (sonst sind Ablehnungen unsichtbar) und
 `OLLAMA_NUM_PARALLEL` ≥ 2 — sonst serialisiert Ollama die zwei Klassifikatoren, die auf einer

@@ -151,6 +151,12 @@ D16). Check the items off.
   - `ollama pull qwen2.5:14b` (optional, for the taste test)
   - `ollama pull bge-m3` (embeddings for RAG — multilingual; replaced the original
     `nomic-embed-text` plan, which failed German→English retrieval, ADR 019/D45)
+- [ ] **`OLLAMA_NUM_PARALLEL` >= 2 on the Ollama service** (D107). A turn fires two short side
+      calls at once — the scene classifier and the fact classifier share one latency window. With
+      the default of 1 the server serialises them while both timeouts run from the same moment, so
+      the second silently times out and its feature quietly stops working. `setx OLLAMA_NUM_PARALLEL 2`
+      and restart Ollama; verify with `Get-Process ollama` after a restart and by watching that
+      both `scene_router` and `facts` appear in a turn's replay journal.
 - [ ] **Verification (= Phase 0 gate):**
       `curl http://localhost:11434/api/generate -d "{\"model\":\"mistral-nemo\",\"prompt\":\"Say something grim in German.\",\"stream\":false}"`
       → plausible German answer.

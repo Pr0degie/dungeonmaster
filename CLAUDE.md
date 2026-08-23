@@ -157,20 +157,20 @@ This is the **DMbot repo**. Bot A is a separate repo (the music bot) — not her
 dmbot/          the DM bot
   runtime.py    SessionRuntime — shared session state/services, injected into every cog (ADR 029)
   voice/        recv, resample, VAD + the Discord cogs (voicecog / dicecog / dmcog + scenecog / lorecog / clockcog / timecog / chekhovcog, ADR 039/047/048/050) + delivery.py (the answer→audio turn-delivery pipeline, ADR 035)
-  stt/          faster-whisper wrapper + segments.py (pure hallucination guard)
+  stt/          faster-whisper wrapper + segments.py (pure hallucination guard: confidence thresholds AND the outro-phrase blocklist, D114)
   tts/          piper + xtts (Coqui XTTS v2) wrappers
-  llm/          Ollama client, prompt building + orchestrator's extracted pure helpers (sanitize / echo_guard / director_msgs / stream_assembler, ADR 034; prompt_assembly = system-prompt order owner, ADR 038; consistency = deterministic pre-delivery guard, ADR 045)
+  llm/          Ollama client, prompt building + orchestrator's extracted pure helpers (sanitize / echo_guard / director_msgs / stream_assembler, ADR 034; prompt_assembly = system-prompt order owner, ADR 038; consistency = deterministic pre-delivery guard, ADR 045; turn_actions = one action per speaker, D111). Constrained-JSON side calls, all built like roll_router: scene_router (ADR 057), fact_router (ADR 058)
   rag/          ingestion + retrieval + profile bootstrap
   memory/       JSON state + recaps + gametime.py (pure in-game-time helpers, ADR 048) + chekhov.py (loose-thread list, ADR 050)
-  rules/        engine.py (generic) + combat.py (attack/Warp resolution, ADR 037) + profile loader (+ tests)  ← deterministic core
-  discord_ui/   buttons, turn-order view
+  rules/        engine.py (generic) + combat.py (attack/Warp resolution, ADR 037) + scene_flow.py (exit resolution, flag gate, scene undo — ADR 057) + profile loader (+ tests)  ← deterministic core
+  discord_ui/   buttons, turn-order view + panel.py (the player panel: scene, mission, time, what is still open) + undo.py (take back an automatic scene change, ADR 057)
   tools/        dev CLIs via [project.scripts]: sync_check (`uv run dm-sync`, D89/D90) + eval_replay (`uv run dm-eval`, golden-transcript regression replay, ADR 046 — goldens in tests/golden/)
   orchestrator.py   the DM brain (history + buffer → LLM)
   bridge.py     HTTP client to Bot A's /speak
   logsetup.py   console (green chat) + file logging
 data/           committed seed/reference: systems/ (profiles), lore/ + rules_de/ (curated DE setting/rules), party/ (party JSONs), sessions/_example + the live channel's characters.json, adventures/debug-kampagne/ (the gate-run test campaign — original content). Generated/local (git-ignored — see the .gitignore allowlist): pdfs/ (RAG sources), the other adventures/ compendia (scene cards, bought-book derivatives), sessions/<id>/ state+recaps, vectordb/ (rag.db)
 prompts/        dm_core_de.md (generic GM persona) + campaign_tone_de.md (campaign overlay)  — GERMAN, game content
-docs/           decisions/ (ADRs), lessons/ (recurring corrections; README = the skimmed index), how-to-*.html + character-creation-prompt.md (player guides). SETUP.md lives in the repo root.
+docs/           decisions/ (ADRs), plans/ (specs written before a build round + the findings they rest on), lessons/ (recurring corrections; README = the skimmed index), how-to-*.html + character-creation-prompt.md (player guides), speech-mode-comparison.md (the at-the-table A/B for the delivery modes). SETUP.md lives in the repo root.
 ```
 
 ## Bot A — the bridge (separate repo)
