@@ -30,7 +30,7 @@ from typing import Callable
 
 import numpy as np
 
-from .segments import confident_text
+from .segments import confident_text, is_stock_phrase_only
 
 log = logging.getLogger(__name__)
 
@@ -238,5 +238,10 @@ class Transcriber:
             )
         if text:
             self._on_transcript(name, text, clip_s, latency_ms, for_dm)
+        elif dropped and is_stock_phrase_only(" ".join(d[0] for d in dropped)):
+            # Visible on purpose (D114): a content-blocked hallucination is the guard working, and
+            # the only way to prove at the table that it did. Threshold drops stay at debug.
+            log.info("🚫 Whisper-Halluzination verworfen (%s): %s",
+                     name, " ".join(d[0] for d in dropped)[:120])
         else:
             log.debug("no confident speech in a %s utterance (%d samples)", name, audio.size)
