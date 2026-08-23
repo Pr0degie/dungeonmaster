@@ -278,3 +278,41 @@ def test_known_speakers_truncate_puppeted_party_script() -> None:
     assert answer == "Du schlägst zu."
     # and the table's names also became Ollama stop sequences
     assert "\nSeskin:" in client.options["stop"] and "\nPr0degie:" in client.options["stop"]
+
+
+def test_the_turn_remembers_one_action_per_speaker_not_just_the_last() -> None:
+    """D111: the roll router walks every speaker's declaration, not only the last buffered line.
+
+    Before this, a turn in which Timo declared a persuade and Sezgin then said something else
+    could only ever produce a test for Sezgin's character — Timo's declaration was dropped with
+    no log line, and the table saw a die roll for the wrong action.
+    """
+    client = _FakeClient()
+    brain = DMBrain(client)
+    ch = 77
+    brain.add_player_line(ch, "Timo", "Ich wende mich an Kaad")
+    brain.add_player_line(ch, "Timo", "und versuche ihn zu überreden.")
+    brain.add_player_line(ch, "Sezgin", "Ich schaue mich in der Sakristei um.")
+    asyncio.run(brain.respond(ch))
+
+    assert brain.last_actions(ch) == [
+        ("Timo", "Ich wende mich an Kaad und versuche ihn zu überreden."),
+        ("Sezgin", "Ich schaue mich in der Sakristei um."),
+    ]
+    # the single-action accessor still answers "was there a player action at all?"
+    assert brain.last_action(ch) == ("Sezgin", "Ich schaue mich in der Sakristei um.")
+
+
+def test_a_results_only_turn_leaves_no_actions_for_the_router() -> None:
+    """A post-roll narration must not make the router re-fire on a stale declaration."""
+    client = _FakeClient()
+    brain = DMBrain(client)
+    ch = 78
+    brain.add_player_line(ch, "Timo", "Ich überrede ihn.")
+    asyncio.run(brain.respond(ch))
+    assert brain.last_actions(ch) != []
+    # the dice result comes back and the DM narrates it — no player line in this turn
+    brain.add_test_result(ch, "Gellicus Schulz auf Überreden: 16 — Erfolg, 4 EG.")
+    asyncio.run(brain.respond(ch))
+    assert brain.last_actions(ch) == []
+    assert brain.last_action(ch) is None

@@ -61,32 +61,46 @@ class DiceCog(commands.Cog):
         return combat.toughness_bonus(self._rt._profile, self._rt._characters, target)
 
     async def _post_router_dice(self, channel) -> None:
-        """Roll-detection router (ADR 014): classify the latest player action in a separate
-        constrained-JSON call and post a dice button if it needs a test. Skips silently when there's
-        no player action this turn (e.g. a post-roll narration) or no matching character."""
+        """Roll-detection router (ADR 014): classify each player action of the turn in a separate
+        constrained-JSON call and post a dice button per action that needs a test. Skips silently
+        when there's no player action this turn (e.g. a post-roll narration) or no matching
+        character.
+
+        One action per *speaker* (D111). Until then only the last buffered line was classified, so
+        in a turn where two players each declared something only whoever spoke last could ever be
+        asked to roll — the other declaration vanished without a log line. The character always
+        comes from the speaker of the action, never from who presses the button, so a player may
+        press a team-mate's button without stealing their test.
+
+        Deliberately sequential, not gathered: the brain exposes the router's raw verdict as a
+        single ``last_router`` attribute that each call overwrites, so parallel calls would
+        cross-attribute the replay journal (ADR 046). This runs off the hot path while the DM is
+        speaking, and multi-speaker turns are the minority.
+        """
         if self._rt._profile is None or self._rt._characters is None:
             return
-        action = self._rt._brain.last_action(self._rt._brain_channel(channel))
-        if not action:
+        actions = self._rt._brain.last_actions(self._rt._brain_channel(channel))
+        if not actions:
             return
-        name, text = action
-        char = self._rt._characters.get(name)
-        if char is None:
-            return
-        # Constrain the classifier to this character's sheet: skills first, then any same-named
-        # governing characteristic (skill_value falls back to those).
-        skills = list(char.skills) + [c for c in char.characteristics if c not in char.skills]
-        req = await self._rt._brain.classify_test(action=text, character=char.name, skills=skills)
-        # Replay journal (ADR 046): the router's raw constrained-JSON verdict + parsed decision,
-        # so dm-eval can re-run the classification offline. None (a failed call) records nothing.
-        recorded = getattr(self._rt._brain, "last_router", None)
-        if recorded is not None:
-            self._rt.replay_note(channel, "router", {
-                "action": text, "character": char.name, "skills": skills, **recorded,
-            })
-        if req is not None:
-            log.info("🎲 router: '%s' → %s (%s)", text[:50], req.skill, req.difficulty or "Standard")
-            await self._post_dice_button(channel, req)
+        for name, text in actions:
+            char = self._rt._characters.get(name)
+            if char is None:
+                continue
+            # Constrain the classifier to this character's sheet: skills first, then any same-named
+            # governing characteristic (skill_value falls back to those).
+            skills = list(char.skills) + [c for c in char.characteristics if c not in char.skills]
+            req = await self._rt._brain.classify_test(action=text, character=char.name, skills=skills)
+            # Replay journal (ADR 046): the router's raw constrained-JSON verdict + parsed decision,
+            # so dm-eval can re-run the classification offline. None (a failed call) records nothing.
+            recorded = getattr(self._rt._brain, "last_router", None)
+            if recorded is not None:
+                self._rt.replay_note(channel, "router", {
+                    "action": text, "character": char.name, "skills": skills, **recorded,
+                })
+            if req is not None:
+                log.info("🎲 router: %s — '%s' → %s (%s)",
+                         char.name, text[:50], req.skill, req.difficulty or "Standard")
+                await self._post_dice_button(channel, req)
 
     async def _post_dice_button(self, channel, req: TestRequest) -> None:
         """Resolve a test request (skill value + difficulty → target, all in code) and post its button."""

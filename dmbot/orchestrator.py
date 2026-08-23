@@ -62,6 +62,7 @@ from .llm.fact_router import FactVerdict, classify_commitment
 from .llm.scene_router import SceneVerdict, classify_scene_move
 from .llm.consistency import Violation, retry_nudge_de
 from .llm.intro_guard import INTRO_RETRY_NUDGE
+from .llm.turn_actions import group_by_speaker
 from .llm.stream_assembler import StreamAssembler, finalize_answer, finalize_answer_markers  # noqa: F401
 
 log = logging.getLogger(__name__)
@@ -178,6 +179,11 @@ class DMBrain:
         # (ADR 014) classifies it after the narration turn. None when a turn had no player line
         # (e.g. a test-result feedback turn), so the router skips it.
         self._last_action: dict[int, tuple[str, str] | None] = {}
+        # Every speaker's action of that same turn, one entry each (D111). ``_last_action``
+        # is its last element and stays for callers that only ask "was there an action?";
+        # the router walks this list so a turn with several declarations produces a test
+        # button per declaring character instead of only for whoever spoke last.
+        self._last_actions: dict[int, list[tuple[str, str]]] = {}
         self._lock = threading.Lock()  # buffer written from STT thread, read on event loop
         # Token stats (prompt_eval_count / eval_count / num_ctx) from the most recent *narration*
         # call — set only by _generate (respond/redo), so the router's classify_test and summarize
@@ -252,6 +258,7 @@ class DMBrain:
         # Remember the latest player action for the roll-detection router (ADR 014); None on a
         # results-only turn so the router doesn't re-fire on a stale action after a dice roll.
         self._last_action[channel_id] = lines[-1] if lines else None
+        self._last_actions[channel_id] = group_by_speaker(lines)
         # Replay capture (ADR 046): the structured turn input, post-cap — what dm-eval re-feeds.
         self._replay_turn[channel_id] = {
             "lines": [[n, t] for n, t in lines], "results": list(results), "notes": list(notes),
@@ -777,6 +784,15 @@ class DMBrain:
         roll-detection router (ADR 014) classifies this. None on a results-only turn."""
         return self._last_action.get(channel_id)
 
+    def last_actions(self, channel_id: int) -> list[tuple[str, str]]:
+        """Every speaker's action of the turn just answered, one ``(display-name, text)`` each.
+
+        The roll-detection router (ADR 014) walks this instead of :meth:`last_action`, so a turn
+        in which two players each declared something can produce a test for both — before D111
+        only the last speaker of a turn could ever be asked to roll.
+        """
+        return list(self._last_actions.get(channel_id) or ())
+
     def take_replay_turn(self, channel_id: int) -> dict | None:
         """Return and clear the last turn's replay-journal fields (ADR 046): the structured
         input (``lines``/``results``/``opening``), the kept answer's ``raw`` LLM text and the
@@ -1039,6 +1055,7 @@ class DMBrain:
         self._gm_notes.pop(channel_id, None)
         self._test_results.pop(channel_id, None)
         self._last_action.pop(channel_id, None)
+        self._last_actions.pop(channel_id, None)
         self._alias_hint.pop(channel_id, None)
         self._recap.pop(channel_id, None)
         self._state_summary.pop(channel_id, None)
