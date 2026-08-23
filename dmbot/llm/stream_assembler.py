@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from .sanitize import (
     META_FALLBACK_DE,
     _cut_at_labels,
+    _drop_puppet_speech,
     _sanitize,
     _sanitize_leading,
     _strip_leading_label,
@@ -46,6 +47,7 @@ def finalize_answer_markers(
     :meth:`StreamAssembler.finish` — so the two can never drift and the stored history is
     identical for the same raw text (the parity guarantee, ADR 017)."""
     answer = _sanitize(_cut_at_labels(raw, labels)) or _sanitize(raw)
+    answer = _drop_puppet_speech(answer, labels)  # the DM speaks NSCs, never the players (D113)
     # The meta filter (D112) can eat an entire answer — the model wrote nothing but assistant
     # register. That is a *different* emptiness from an answer that was only a marker, so the
     # distinction is taken here, before ``extract_all`` removes anything: silence after someone
@@ -172,6 +174,10 @@ class StreamAssembler:
             text, _ = extract_all(text, self._profile)
         text = _sanitize_leading(text)
         text = _strip_leading_label(text, self._labels)
+        # D113, on the incremental view: ``allow_empty`` so a puppeted sentence stays dropped from
+        # the moment it completes. Without it a first sentence could survive (briefly the only one)
+        # and vanish later, shifting the index this class tracks spoken sentences by.
+        text = _drop_puppet_speech(text, self._labels, allow_empty=True)
         if not self._released:
             sentences, _tail = split_completed(text)
             if not sentences and len(text) < _FIRST_CHUNK_MIN_CHARS:

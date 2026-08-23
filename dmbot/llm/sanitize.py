@@ -165,6 +165,100 @@ def _drop_meta_sentences(text: str) -> str:
     return " ".join(kept).strip()
 
 
+# --- Puppeting: the DM speaks NSCs, never the player characters (D113) --------------------------
+#
+# On 2026-08-22 the DM put words in the players' mouths — "'Ich sehe hier keine illegalen Waffen',
+# sagst du kühl." — and two players called it out at the table. D110 deferred a filter in favour of
+# a prompt fix plus measurement; Tobi overrode that, so the rule is enforced in code.
+#
+# Scope is speech only. A player character *acting* in the narration stays: the line between
+# narrating a consequence and steering someone's character is not sharp enough to cut with a
+# regex, and a filter that eats real narration costs more than the tic it removes.
+
+# German 2nd-person singular verb forms are unambiguous — "sagst" can only have "du" as its
+# subject — so the verb alone identifies the speaker. "ihr" needs its pronoun, because "sagt" is
+# also third person ("Kaad sagt").
+_SPEECH_VERB_DU = (r"sagst|antwortest|fragst|flüsterst|erwiderst|rufst|entgegnest|murmelst"
+                   r"|br(?:ü|ue)llst|zischst|stammelst|erkl(?:ä|ae)rst|befiehlst|wiederholst")
+_SPEECH_VERB_3 = (r"sagt|sagte|antwortet|antwortete|fragt|fragte|fl(?:ü|ue)stert|fl(?:ü|ue)sterte"
+                  r"|erwidert|erwiderte|ruft|rief|entgegnet|entgegnete|murmelt|murmelte"
+                  r"|br(?:ü|ue)llt|zischt|stammelt|erkl(?:ä|ae)rt|meint|meinte|spricht")
+
+_SECOND_PERSON_SPEECH = re.compile(
+    rf"\b(?:{_SPEECH_VERB_DU})\b"
+    rf"|\bihr\s+(?:{_SPEECH_VERB_3})\b"
+    rf"|\b(?:{_SPEECH_VERB_3})\s+ihr\b",
+    re.IGNORECASE,
+)
+
+
+def _speaks_as(name: str) -> re.Pattern:
+    """Pattern for "<name> … <speech verb>" or "<speech verb> <name>" — an attribution of quoted
+    speech to that name, in either German word order."""
+    escaped = re.escape(name)
+    return re.compile(
+        rf"\b{escaped}\b[^\"„“”»«]{{0,40}}?\b(?:{_SPEECH_VERB_3})\b"
+        rf"|\b(?:{_SPEECH_VERB_3})\s+(?:\w+\s+){{0,2}}?{escaped}\b",
+        re.IGNORECASE,
+    )
+
+
+def _party_variants(labels: list[str]) -> list[str]:
+    """Every string that names a player character: the label itself plus its first token, so
+    "Fridolin" counts as "Fridolin Feuchtgebietheld". Short tokens are dropped — a three-letter
+    fragment matches half the German language."""
+    out: list[str] = []
+    for label in labels:
+        label = (label or "").strip()
+        if not label:
+            continue
+        out.append(label)
+        head = re.split(r"[\s\-]+", label)[0]
+        if len(head) >= 4 and head != label:
+            out.append(head)
+    return out
+
+
+def _drop_puppet_speech(text: str, labels: list[str], *, allow_empty: bool = False) -> str:
+    """Drop sentences in which the DM speaks *as* a player character (D113).
+
+    A sentence has to do two things at once to qualify: carry quoted speech, and attribute it to a
+    player — either in the second person ("sagst du") or by a name from ``labels`` (the table's
+    character and player names, the same roster the anti-puppeting stop sequences use). One alone
+    is not enough: "Du fragst dich, ob er lügt." has no quote, and "Kaad mustert Gellicus lange."
+    has no speech.
+
+    Never strips a turn down to nothing — silence at the table is worse than the tic, the same
+    rule :func:`_strip_trailing_prompt` already follows.
+
+    ``allow_empty`` turns that rule off, and the streaming assembler needs it: it tracks spoken
+    sentences by index, so a sentence that survives early (because it was briefly the only one)
+    and disappears later would shift the list and skip a line. On the incremental view a dropped
+    sentence must stay dropped from the first moment it is complete.
+    """
+    if not text.strip():
+        return text
+    speakers = [_speaks_as(name) for name in _party_variants(labels)]
+    kept: list[str] = []
+    dropped = False
+    for sentence in _sentences(text):
+        stripped = sentence.strip()
+        if not stripped:
+            continue
+        quoted = any(ch in stripped for ch in _QUOTE_CHARS)
+        if quoted and (
+            _SECOND_PERSON_SPEECH.search(stripped)
+            or any(pattern.search(stripped) for pattern in speakers)
+        ):
+            dropped = True
+            continue
+        kept.append(stripped)
+    if not dropped:
+        return text
+    cleaned = " ".join(kept).strip()
+    return cleaned if (cleaned or allow_empty) else text
+
+
 def _cut_at_labels(text: str, labels: list[str]) -> str:
     """Truncate at the first ``<label>:`` after the start — where the model began inventing a
     next speaker (a player reply or another DM turn). Position 0 (a leading label) is left for

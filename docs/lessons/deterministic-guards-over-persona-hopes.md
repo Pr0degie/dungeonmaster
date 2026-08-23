@@ -31,3 +31,18 @@ Each new failure looks like a wording problem ("just tell it not to"), so the ch
 prompt edit is always the first instinct — and it fails the same way every time. Golden
 rules #2/#3 in CLAUDE.md are the two hard-wired instances of this principle; this lesson is
 the general case. See also [[mandatory-decisions-need-a-separate-classifier]].
+
+## Confirmed again, 2026-08-23 (D112/D113)
+
+The debug run read assistant apologies, director frames and handover stage directions aloud, and
+put words in the players' mouths — all four already forbidden by `prompts/dm_core_de.md`. The
+prompt fix that went in first (removing a self-contradiction: the intro director demanded a moment
+per player character while the persona forbade speaking for them) was the right first move and was
+still not enough on its own; both removals ended up in code, sentence-level, in `sanitize.py`.
+
+The useful refinement from that round: a deterministic guard needs its **negative** cases written
+first. An NSC may apologise, ask formally, or say it is waiting; a scene may legitimately end
+something. The filters therefore require two signals at once (quoted speech *and* an attribution to
+a player; a handover verb *and* a handover object) and skip any sentence carrying a quote
+character. Half the tests exist to prove what the filter must *not* touch — eating real narration
+costs more than the tic being removed.
