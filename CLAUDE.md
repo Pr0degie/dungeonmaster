@@ -5,7 +5,7 @@ Instructions for Claude Code in this repository. Read first, every session.
 ## Session ritual
 
 This project runs over many sessions, across different models and effort levels. To
-survive context clears and model switches, state lives on disk:
+survive context clears and model switches, state lives on disk.
 
 **At the start of every session, read in this order:**
 1. This file (`CLAUDE.md`) — conventions
@@ -15,88 +15,45 @@ survive context clears and model switches, state lives on disk:
    when its summary touches the task
 
 Then state in two or three sentences: where we are, what we're about to do. Don't touch
-files until that handshake is done. Full `progress.md`, the decision log, and older ADRs
-are on-demand reads when the task touches them. When you have enough to act, act — don't
-re-derive established facts or re-litigate decided ADRs.
+files until that handshake is done. When you have enough to act, act — don't re-derive
+established facts or re-litigate decided ADRs.
 
 **Before touching a subsystem or starting a phase:** the decision log and the
-**phase → ADR map** in `progress.md` remain the routing mechanism — consult them to find
-the governing ADR(s) and read those **before** implementing. On-demand, but mandatory for
-that case. This is how the older ADRs (001–004) get used — not just the newest one.
+**phase → ADR map** in `progress.md` say which ADR(s) govern it — read those **before**
+implementing. On-demand, but mandatory for that case.
 
-**WIP limit: max 3 open live gates.** A round that would open a FOURTH doesn't start — the
-next session is a live-verification session; say so in the handshake and propose the
-shortest script to close the oldest gates. Exempt: rounds that open no new live gate (dev
-tooling, refactors covered by suite + dm-eval). Tobi can explicitly override
-("WIP-Override") when a live session isn't schedulable — note the override in the wrap-up.
+**WIP limit: max 3 open live gates.** A round that would open a fourth doesn't start — the
+next session is a live-verification session; say so in the handshake. Details and the
+"WIP-Override" exception are in the `session-ritual` skill.
 
-**Other documents — read on demand, NOT every session:**
-
-| File | When to read |
-|---|---|
-| `architecture.md` | Only when the task touches design. Skim the relevant section; don't re-read top to bottom. |
-| `roadmap.md` | When transitioning into a new phase, or when the user asks "what's the goal of Phase X?" |
-| `SETUP.md` | In Phase 0 or when a setup/install step comes up (Ollama, Discord tokens, cuDNN DLLs, PDFs, fresh-machine copy). Point Tobi at the open items there — the agent cannot do them itself. |
-| Older ADRs in `docs/decisions/` | When working in the area they cover. Don't guess which — the decision log + phase→ADR map in `progress.md` tell you which ADR governs the current decision/phase (e.g. ADR 003 before touching turn-taking, ADR 005 before the dice engine). |
-| `docs/conventions.md` | When working in a module (rules/memory/rag/tts/voice) or on testing/runtime/troubleshooting/commit-style details. Holds the per-module how-tos moved out of this file. |
-| `docs/progress-archive.md` | Only when you need history — old `## Last session` logs, completed-phase `VERIFY EVIDENCE`, or resolved `## Open questions`. Never needed for normal work. |
-| Individual files in `docs/lessons/` | When their one-line summary in the lessons README (session-start read #4) matches the task at hand. |
-
-Eagerly loading everything fills the context window before useful work starts. Be selective.
+**Read on demand, NOT every session:**
+- `architecture.md` — only when the task touches design; skim the relevant section
+- `roadmap.md` — at a phase transition, or when asked "what's the goal of Phase X?"
+- `SETUP.md` — when a setup/install step comes up; point Tobi at the open items there, the
+  agent cannot do them itself
+- `docs/conventions.md` — when working in a module (rules/memory/rag/tts/voice) or on
+  testing/runtime/troubleshooting/commit-style details; also holds the **repo layout** with
+  the governing ADR per module
+- Older ADRs in `docs/decisions/` — when working in the area they cover
+- `docs/progress-archive.md` — only for history; never needed for normal work
+- Individual files in `docs/lessons/` — when their summary in the lessons README matches the task
 
 **While working:**
-- Ground every done-claim in a tool result from this session (pytest, ruff, dm-eval exit
-  code). Anything not live-verified is labeled live-unverified.
-- Before committing a round that touches orchestrator / llm helpers / marker / roll_router /
-  delivery verdicts: dispatch a fresh-context verifier subagent that reads only the diff,
-  the governing ADR, and the golden rules. Resolve or explicitly defer each finding before
-  commit. Skip it when a /code-review round over the same commits is planned — one review
-  layer, not two.
-- Delegate independent subtasks to parallel subagents (progress rotation, doc-drift sweeps,
-  golden regeneration, the verify above). ADR write-ups stay in the main thread.
-- Effort is the primary dial (Fable 5): default high; xhigh for unknowns, integration
-  debugging, subtle async/state bugs, and persona prose; medium for clearly specified
-  deterministic modules and doc sweeps; step down only after seeing quality hold.
+- Label anything not live-verified as live-unverified; a done-claim rests on a tool result
+  from this session (pytest, ruff, dm-eval exit code).
 - When Tobi describes a problem or thinks out loud, the deliverable is your assessment —
   report and stop; don't build until asked. Pause only for: destructive actions, real
-  scope changes, a live gate only a human can run, or a design fork worth an ADR — then
-  ask and end the turn instead of ending on a promise.
+  scope changes, a live gate only a human can run, or a design fork worth an ADR.
 - **Record lessons as they happen.** When a correction recurs or an approach is confirmed
   the hard way, write it to `docs/lessons/` (one file per lesson, one-line summary into the
   README index) in the same round. Update the existing lesson rather than creating a
   duplicate; delete lessons proven wrong. Don't record what CLAUDE.md, `docs/conventions.md`,
-  or an ADR already holds — link there instead. Decisions stay ADRs; lessons are the
-  recurring corrections around them.
+  or an ADR already holds — link there instead.
 
-**At the end of every working session (before context clear or model switch), without
-being asked:**
-1. Update `progress.md`:
-   - `## Current focus` if the phase changed
-   - `## Last session` — what we actually did
-   - `## Next concrete step` — the specific next action, not a vague goal
-   - `## Open questions` — anything that came up but isn't actionable yet
-   - Fill the `VERIFY EVIDENCE` field of the affected phase when a gate was met
-   - **Keep it lean (rotation + caps, enforced every wrap-up, not "eventually"):** when you
-     prepend a new `## Last session` entry, move the *previous* one to
-     `docs/progress-archive.md` (`## Last session (Verlauf)`) — keep only the newest 1–2
-     live. Rotate ✅-resolved `## Open questions` and just-completed phases (full
-     `VERIFY EVIDENCE`) there too, leaving a one-line summary live. Caps: State header max
-     25 lines; `## Current focus` max 2 blocks live (rotate in the same edit that adds a
-     new one); decision-log rows max 2 lines ("what + one-clause why + → ADR NNN" — the
-     rationale lives in the ADR; rows without an ADR are exempt); `progress.md` over 400
-     lines → rotate rotatable content (archived history, old Current-focus blocks) before
-     committing — the exempt no-ADR decision-log rows don't count against this. `## Decision
-     log` and the `### Phase → ADR map` stay fully live.
-2. On a non-trivial decision (real trade-off, alternatives weighed), create the
-   next-numbered ADR in `docs/decisions/` (format in the README there).
-
-Current-focus blocks and wrap-up messages are for a fresh reader: one plain sentence on
-what changed and why it matters for play, then evidence, then at most five lines of
-mechanism — the rest goes in the ADR. No arrow chains, no hyphen-stacked compounds.
-
-If the user types `wrap up` or `update progress`, that is the explicit trigger for the
-end-of-session step. If a session ends without an explicit hint: do it anyway — silence
-here is the failure mode that breaks continuity across sessions.
+**At the end of every working session, without being asked** (and on `wrap up` /
+`update progress`): run the `session-ritual` skill. It holds the wrap-up procedure —
+`progress.md` update, rotation caps, WIP check, ADR scaffold. If a session ends without a
+hint, do it anyway: silence here is what breaks continuity across sessions.
 
 ## What this project is
 
@@ -148,30 +105,6 @@ in the same change.**
    per-campaign tone overlays in German. Code/logs in English.
 9. **No new heavy dependencies without a note.** If you add one, justify it in the
    commit/PR description and in `architecture.md` §3.
-
-## Repo layout
-
-This is the **DMbot repo**. Bot A is a separate repo (the music bot) — not here.
-
-```
-dmbot/          the DM bot
-  runtime.py    SessionRuntime — shared session state/services, injected into every cog (ADR 029)
-  voice/        recv, resample, VAD + the Discord cogs (voicecog / dicecog / dmcog + scenecog / lorecog / clockcog / timecog / chekhovcog, ADR 039/047/048/050) + delivery.py (the answer→audio turn-delivery pipeline, ADR 035)
-  stt/          faster-whisper wrapper + segments.py (pure hallucination guard: confidence thresholds AND the outro-phrase blocklist, D114)
-  tts/          piper + xtts (Coqui XTTS v2) wrappers
-  llm/          Ollama client, prompt building + orchestrator's extracted pure helpers (sanitize / echo_guard / director_msgs / stream_assembler, ADR 034; prompt_assembly = system-prompt order owner, ADR 038; consistency = deterministic pre-delivery guard, ADR 045; turn_actions = one action per speaker, D111). Constrained-JSON side calls, all built like roll_router: scene_router (ADR 057), fact_router (ADR 058)
-  rag/          ingestion + retrieval + profile bootstrap
-  memory/       JSON state + recaps + gametime.py (pure in-game-time helpers, ADR 048) + chekhov.py (loose-thread list, ADR 050)
-  rules/        engine.py (generic) + combat.py (attack/Warp resolution, ADR 037) + scene_flow.py (exit resolution, flag gate, scene undo — ADR 057) + profile loader (+ tests)  ← deterministic core
-  discord_ui/   buttons, turn-order view + panel.py (the player panel: scene, mission, time, what is still open) + undo.py (take back an automatic scene change, ADR 057)
-  tools/        dev CLIs via [project.scripts]: sync_check (`uv run dm-sync`, D89/D90) + eval_replay (`uv run dm-eval`, golden-transcript regression replay, ADR 046 — goldens in tests/golden/)
-  orchestrator.py   the DM brain (history + buffer → LLM)
-  bridge.py     HTTP client to Bot A's /speak
-  logsetup.py   console (green chat) + file logging
-data/           committed seed/reference: systems/ (profiles), lore/ + rules_de/ (curated DE setting/rules), party/ (party JSONs), sessions/_example + the live channel's characters.json, adventures/debug-kampagne/ (the gate-run test campaign — original content). Generated/local (git-ignored — see the .gitignore allowlist): pdfs/ (RAG sources), the other adventures/ compendia (scene cards, bought-book derivatives), sessions/<id>/ state+recaps, vectordb/ (rag.db)
-prompts/        dm_core_de.md (generic GM persona) + campaign_tone_de.md (campaign overlay)  — GERMAN, game content
-docs/           decisions/ (ADRs), plans/ (specs written before a build round + the findings they rest on), lessons/ (recurring corrections; README = the skimmed index), how-to-*.html + character-creation-prompt.md (player guides), speech-mode-comparison.md (the at-the-table A/B for the delivery modes). SETUP.md lives in the repo root.
-```
 
 ## Bot A — the bridge (separate repo)
 
