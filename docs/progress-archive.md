@@ -9,6 +9,15 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+_Aus `progress.md` rotiert (2026-10-06, Phase 11 Schritt 4–6):_
+
+**Phase 11 Schritt 1–3 gebaut (2026-10-06, D116).** Drei Commits auf `main`: `1d870bb` (Protocol), `4b6eb84` (ClaudeClient), `b3e1fb1` (Failover, Config, Preflight, `!backend`).
+- **Schritt 1:** `LLMClient` als `typing.Protocol` in `llm/client.py`; `DMBrain` und der NSC-Extraktor sind nur umannotiert. Gate erfüllt: 1090 Tests ohne eine Teständerung, `dm-eval` Exit 0.
+- **Schritt 2:** `llm/claude_client.py` — ein `query()` pro Aufruf, Verlauf als Transkript im Prompt, Modellstufe über `format`, vollständige Isolation (leeres `cwd`, keine Settings, Skills, Plugins, MCP-Server, keine Sitzungsdatei), `last_stats` mit `spawn_ms`/`cache_read`/`truncated`. Neue Abhängigkeit `claude-agent-sdk` 0.2.163, lazy importiert.
+- **Schritt 3:** `llm/failover.py` (Cooldown oder Reset-Zeit des Rate-Limits, Stream-Failover nur vor dem ersten Delta, eine Meldung pro Wechsel), acht Config-Knöpfe, `build_llm_client`, `check_claude`, `!backend claude|ollama|auto`.
+- **Am SDK geprüft statt geraten:** Feldnamen aus dem installierten Paket, das Verhalten an der Ausgabegrenze, bei Schema-Antworten und beim frühen Abbruch per Live-Smoke gemessen. Abweichungen sind im Code kommentiert und im ADR-Nachtrag festgehalten.
+- **Bewusst offen gelassen:** `turn_timing.py` hängt `spawn`/`cache`/`cut` noch nicht an die `[latency]`-Zeile; SETUP.md nennt noch nicht die native Installation (das SDK lehnt `claude.cmd` aus npm unter Windows ab).
+
 **Debug-Lauf-Triage, Bau-Runde und Doku-Sweep (2026-08-23, D107–D115).** Aus Tobis Terminal-Mitschnitt des 22.08. wurden 15 wörtliche Spielerkritiken und 18 Log-Befunde extrahiert, in sieben Codebereichen ursachengeprüft (76 Funde) und in fünf Fragerunden auf 20 Entscheidungen eingedampft; danach gebaut, review't, nachgebessert und dokumentiert.
 - **Papier zuerst:** [`docs/plans/coherent-campaign-run.md`](docs/plans/coherent-campaign-run.md) (Problem, 33 User Stories, Umsetzungs- und Testentscheidungen) und [`docs/plans/debug-run-2026-08-22-findings.md`](docs/plans/debug-run-2026-08-22-findings.md) (die Kritik-Extraktion selbst, A1–A15 / B1–B18). ADR **057** (Szenenwechsel per Klassifikator + Flag-Zwang), **058** (Fakten-Klassifikator), **059** (Zeit/Uhren aus dem Abenteuer), **060** (das gemeinsame Muster der drei Filterrunden).
 - **Zwei ADR-Nachträge, weil der Code bewusst abwich:** fehlende Gelegenheits-IDs *warnen* statt den Ladevorgang zu verweigern (sonst wäre das nicht versionierte `chemical_burn` unbrauchbar; der Flag-Zwang fängt es auf, weil eine Szene ohne IDs nie als erschöpft gilt), und die Fakten-Rücknahme ist manuell (`!fakt weg`) statt klassifiziert.
