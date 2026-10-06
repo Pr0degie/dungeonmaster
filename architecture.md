@@ -307,7 +307,10 @@ after the recap and before the history.
 > one-shot `[Regie]` directive into the next turn ("the consequence hits now") and stays visible
 > until `!uhr weg`. The schema's `visible` field is reserved for hidden GM clocks — the UI ignores
 > it for now (deliberate first cut). `<<UHR>>` is exempt from the results-only marker suppression:
-> the post-roll consequence turn is the canonical tick moment.
+> the post-roll consequence turn is the canonical tick moment. **Kill switch `DM_CLOCKS=0`**
+> (D118): the adventure's clocks are not seeded, no clock reaches the prompt or the panel,
+> `<<UHR>>` is stripped and then ignored, and the `!uhr` commands answer with a hint. It hides,
+> it never deletes — saved clocks stay in the state file; deadlines and in-game time keep running.
 
 > **In-game time + deadlines (ADR 048).** Time is one code-owned int: `time_minutes` since
 > day 1, 00:00 (fresh campaigns start day 1, 08:00; pre-048 states migrate there with a log).

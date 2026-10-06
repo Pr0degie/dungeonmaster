@@ -125,6 +125,7 @@ zurückgestellt, bis das Spielen rund läuft.
 |---|---|---|
 | `DM_NPC_MEMORY=0` | 1 | NPC-Gedächtnis + Agenden + Chekhov-Extraktion (EIN Knopf für alle drei) |
 | `DM_CONSISTENCY_GUARD=0` | 1 | Konsistenz-Wächter |
+| `DM_CLOCKS=0` | 1 | Uhren: kein Seeding, kein Prompt, kein Panel, `<<UHR>>` ignoriert, `!uhr` mit Hinweis (blendet aus, löscht nichts) |
 | `DM_FLAG_CONFIRM=0` | 1 | Confirm-Buttons für ERLEDIGT/UHR/ZEIT (0 = auto-apply) |
 | `DM_SCENE_TIME_ADVANCE=0` | 30 | +Minuten pro Szenenwechsel |
 | `DM_ROLL_ROUTER=0` | 1 | Router aus → wieder inline `<<TEST>>` |

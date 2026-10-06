@@ -447,7 +447,7 @@ gilt der ADR.
 benutzt der Bot Tobis Abo-Login, und der darf auf keinem fremden Rechner liegen. Bot A kann
 auf demselben Rechner laufen (Loopback wie in §2) oder getrennt bleiben.
 
-Stand vor dem Abend: Code, Doku und Review sind fertig, 1192 Tests grün. Live geprüft ist nur
+Stand vor dem Abend: Code, Doku und Review sind fertig, 1203 Tests grün. Live geprüft ist nur
 der Boot-Preflight (Opus und Haiku antworten, ein falscher Modellname fällt auf) und ein kurzer
 Haiku-Smoke (Text, Schema-Antwort, Stream mit Verlauf, Schnitt an der Ausgabegrenze). **Opus mit vollem Systemprompt, ein ganzer Zug mit Stimme und alles unter 9.4 sind
 live unverifiziert.**

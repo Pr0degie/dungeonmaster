@@ -106,3 +106,10 @@ harmless. Clocks follow that groove instead of inventing a new one.
   delivery/clamp/panel, commands).
 - Live gate (open at the time of writing): create a clock, provoke the DM into a tick, watch
   the panel update — see the live-test checklist.
+
+## Amendment (2026-10-06, D118) — a kill switch
+
+`DM_CLOCKS=0` hides the subsystem without touching saved state: no seeding from the adventure
+(ADR 059 #1), no clock line in the prompt or the pressure panel, `<<UHR>>` stripped and then
+ignored, the `!uhr` commands answer with a hint. Default `1` is the behaviour decided above. A
+session first seeded with `0` does not get the adventure's clocks later (the seed latch is set).

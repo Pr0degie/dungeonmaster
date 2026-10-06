@@ -124,3 +124,5 @@ grep '"kind": "scene"' data/sessions/<id>/history*.jsonl | head -3
 3. `logs/debug.log` leeren oder wegrotieren, damit die Debrief-Greps sauber bleiben.
 4. Bot neu starten → `!j` seedet frisch auf `zollhaus`; das 🧪-Panel begleitet ab Szene 1.
 5. Für einen Normal-Spielabend ohne Overlay: `DM_DEBUG_OVERLAY=0` (Kampagne bleibt spielbar).
+6. Gate G2 (Uhren) braucht `DM_CLOCKS=1`. Wurde die Sandbox mit `DM_CLOCKS=0` begonnen (Phase-11-Abend),
+   legt ein späteres `1` die Uhren der Kampagne nicht nach — vorher die Sandbox wie in Schritt 1 leeren.
