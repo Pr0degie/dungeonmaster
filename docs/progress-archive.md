@@ -9,6 +9,16 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+_Aus `progress.md` rotiert (2026-10-06, Abend-Vorbereitung):_
+
+**Phase 11 Schritt 4–6: Reste, Doku, Review, Abend vorbereitet (2026-10-06, D117).** Vier Commits auf `main`: `382c89d`, `07864c2`, `b6a57bd`, `83ba77f`.
+- **Code-Reste:** die `[latency]`-Zeile zeigt `spawn`, `cache` und `cut`; `check_claude` pingt beide Modellstufen und nennt beide Ergebnisse; Schema-Aufrufe schreiben auf dem Claude-Pfad nicht mehr in den Statistik-Platz der Erzählung.
+- **Doku:** CLAUDE.md, README, architecture §3 und §10, conventions, SETUP B10 (native Installation, nicht npm), `.env.example`, die drei veralteten PRD-Zeilen, roadmap.
+- **Review:** ein Verifier über den Diff seit `01a8d14`. Behoben: ein offener Stream hob einen frischen Failover wieder auf; die Verlaufs-Etiketten waren für die Etikett-Wächter unsichtbar; Fehler beim Vorbereiten eines Aufrufs umgingen den Failover; dazu vier kleinere. Zurückgestellt und im ADR benannt: acht Punkte, der wichtigste sind Timeouts, die auf Claude rund 5 s länger laufen.
+- **Nachgereicht:** jeder Klassifikator-Aufruf schreibt `[classifier] roll|scene|fact <N>ms → <Urteil>`; die Messung „Zeit bis zum Würfelknopf" ist damit ein Grep.
+- **Abend:** die 17 alten Gates sind im Live-Run-Skript als geparkt markiert; das Ablaufblatt steht in `docs/testabend-ablauf.md` §9.
+- **Aufgefallen:** für Uhren, Agenden und Fäden gibt es keinen eigenen `.env`-Schalter und `!automatik` kennt sie nicht. Das Ablaufblatt nennt den tatsächlichen Weg (`!uhr weg`, `DM_NPC_MEMORY=0`, leere Sandbox).
+
 _Aus `progress.md` rotiert (2026-10-06, Phase 11 Schritt 4–6):_
 
 **Phase 11 Schritt 1–3 gebaut (2026-10-06, D116).** Drei Commits auf `main`: `1d870bb` (Protocol), `4b6eb84` (ClaudeClient), `b3e1fb1` (Failover, Config, Preflight, `!backend`).

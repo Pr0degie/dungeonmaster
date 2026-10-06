@@ -18,7 +18,8 @@ is on-demand._
   Haiku-Smoke; ein Opus-Zug mit vollem Prompt und Stimme ist **live unverifiziert**.
 - **Next concrete step:** der Phase-11-Abend nach
   [testabend-ablauf.md §9](docs/testabend-ablauf.md) — auf Tobis Rechner, Gate-Punkte 0–9, drei
-  Messungen. Keine Bau-Runde davor.
+  Messungen. Keine Bau-Runde davor. Der Rechner ist seit 2026-10-06 vorbereitet (`.env`, Sandbox,
+  Preflight, Stimme auf der GPU); offen ist nur noch der Verbrauchsstand vor dem Start.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
   geparkt (ADR 061, im [Live-Run-Skript](docs/live-run-script.md) markiert) und werden nach dem
   Abend neu gesichtet; sie zählen nicht gegen die WIP-Grenze.
@@ -34,20 +35,22 @@ _Ältere Current-focus-Blöcke (Charakter-Akten 2026-08-22, Vierter Spieler D105
 
 ## Last session
 
-**Phase 11 Schritt 4–6: Reste, Doku, Review, Abend vorbereitet (2026-10-06, D117).** Vier Commits auf `main`: `382c89d`, `07864c2`, `b6a57bd`, `83ba77f`.
-- **Code-Reste:** die `[latency]`-Zeile zeigt `spawn`, `cache` und `cut`; `check_claude` pingt beide Modellstufen und nennt beide Ergebnisse; Schema-Aufrufe schreiben auf dem Claude-Pfad nicht mehr in den Statistik-Platz der Erzählung.
-- **Doku:** CLAUDE.md, README, architecture §3 und §10, conventions, SETUP B10 (native Installation, nicht npm), `.env.example`, die drei veralteten PRD-Zeilen, roadmap.
-- **Review:** ein Verifier über den Diff seit `01a8d14`. Behoben: ein offener Stream hob einen frischen Failover wieder auf; die Verlaufs-Etiketten waren für die Etikett-Wächter unsichtbar; Fehler beim Vorbereiten eines Aufrufs umgingen den Failover; dazu vier kleinere. Zurückgestellt und im ADR benannt: acht Punkte, der wichtigste sind Timeouts, die auf Claude rund 5 s länger laufen.
-- **Nachgereicht:** jeder Klassifikator-Aufruf schreibt `[classifier] roll|scene|fact <N>ms → <Urteil>`; die Messung „Zeit bis zum Würfelknopf" ist damit ein Grep.
-- **Abend:** die 17 alten Gates sind im Live-Run-Skript als geparkt markiert; das Ablaufblatt steht in `docs/testabend-ablauf.md` §9.
-- **Aufgefallen:** für Uhren, Agenden und Fäden gibt es keinen eigenen `.env`-Schalter und `!automatik` kennt sie nicht. Das Ablaufblatt nennt den tatsächlichen Weg (`!uhr weg`, `DM_NPC_MEMORY=0`, leere Sandbox).
+**Tobis Rechner für den Phase-11-Abend vorbereitet (2026-10-06).** Kein Code geändert; alles unten ist auf dieser Maschine gelaufen, nichts davon am Tisch.
+- **Claude-CLI:** nativ unter `~/.local/bin/claude.exe`, Version 2.1.291, `claude -p "hi"` antwortet. `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL` und die Bedrock/Vertex-Schalter stehen weder in der Benutzer- oder System-Umgebung noch in `.env`.
+- **`.env` nach §9.2:** Sicherung in `.env.bak-2026-10-06`. Geändert: `TTS_DEVICE=cuda`, `DM_ADVENTURE=debug-kampagne`, `DM_FLAG_CONFIRM=0`, `DM_NPC_MEMORY=0`, `DM_CONSISTENCY_GUARD=0`; neu: `DM_LLM_BACKEND=claude`, die sechs `CLAUDE_*`-Zeilen, `DM_LLM_FAILOVER_COOLDOWN_S=600`, `DM_DEBUG_OVERLAY=0`. Nach dem Abend zurück mit `Copy-Item .env.bak-2026-10-06 .env`.
+- **Sandbox:** war schon leer (keine `.debug`-Datei unter `data/sessions/`, keine `session_debug_*`-Zeile im Store); nichts gelöscht, `--wipe-debug` nicht ausgeführt.
+- **Preflight ohne Discord:** `Ollama preflight OK` (`mistral-nemo`, `bge-m3` vorhanden) und `Claude preflight OK — narration opus: OK · aux haiku: OK`. Ollama lief vorher nicht und wurde erst durch `ollama list` gestartet.
+- **Stimme:** XTTS lädt mit den `.env`-Werten auf `cuda:0` (RTX 4070) und spricht einen Probesatz mit rund 3× Echtzeit bei 2,3 GB VRAM. Allein gemessen, nicht neben Nemo und Whisper.
+- **Logs:** die drei Dateien vom 15.06. liegen in `logs/archive/2026-06-15/`, `logs/` ist leer.
+- **Aufgefallen:** für „Preflight ohne Discord" gibt es keinen Einstieg (lief über ein Wegwerf-Skript); `claude -p` aus dem Repo-Ordner lädt die CLAUDE.md und spult das Ritual ab, für den Login-Check besser aus einem neutralen Ordner.
 
 _Ältere `## Last session`-Einträge (Charakter-Akten `docs/characters.html` + Umbenennung Rene Redo 2026-08-22, Vierter Charakter Vinzentius Kabelbrand D105 2026-08-22 [90-Punkte-Bogen gegen das Profil gerechnet, Deployment in beide `characters.json`, Augmetik-Check reaktiviert], Playtest-Triage nach dem ersten Debug-Abend 2026-08-15 [Fehlstart in der Live-Kampagne, `session_file()`-Naht, Sanitize, Testabend-Doku, Kommando-Fehlermeldung → ADR 056], Doku-Drift-Sweep 2026-07-18 [5 Drift-Funde, alle gefixt; ADR-Renumber 019/020], Debug-Sandbox + Gate G10 2026-07-17 [`.debug`-Archive → `session_debug`-Source, `--wipe-debug` → ADR 055], Session-RAG-Runde D101 2026-07-17 [Ingest + Hybrid-Retrieval + Kalibrierung, Verifier-Fund `session_chunks_vec` → ADR 054], Journal-Runde D100 2026-07-17 [Scene-Events + `time_minutes` im Journal → ADR 053], Content-Runde Debug-Kampagne „Die Mitternachtsfracht“ 2026-07-11 [adventure/npcs/testplan lokal, `validate.py` RESULT: OK, Gate-Abdeckung G1–G9 → Runbook], D99 🧪-Debug-Overlay-Runde 2026-07-11 [Sidecar-Loader `testplan.py`, edit-in-place-Panel, Invisibility-Pin → ADR 052], Live-Gate-Triage 2026-07-11 [alle 8 Gates + Tuning-Checks in EIN Abend-Drehbuch gemerged, `docs/live-run-script.md`; Checklisten-Korrekturen per Code-Sweep], Workflow-Migration Runde 4/5 2026-07-11 [roadmap-Modell-Tabelle → Effort-first-Block + konservativer Skill-Sweep], Doc-Diet-Runde 2026-07-11 [State header + Rotation + Decision-Log-Diät], D98 Marker-Registry-Konsolidierung [`MarkerSpec`-Tabelle + eine generische Naht, marker-weise migriert → ADR 051], D97 Chekhov-Liste [Fäden-Schema + Wrap-up-Extraktion + Top-3-Injektion + ChekhovCog → ADR 050], D96 NPC-Agenden [`goal` + `agenda_log` + Extraktor-Erweiterung → ADR 049], D95 Ingame-Zeit [Minuten-Zähler + `<<ZEIT>>`-Marker + Fristen + Druck-Panel → ADR 048], D94 Consequence Clocks [`<<UHR id>>`-Marker + ClockCog + Druck-Panel + Voll-Uhr-`[Regie]`-Note → ADR 047], D93 Replay-Eval-Harness [Replay-Journal + `uv run dm-eval`, 6 Diff-Kategorien, synthetische Goldens → ADR 046], D92 Konsistenz-Wächter [deterministischer Pre-Delivery-Check, Regenerate-once, fail-open → ADR 045], D91 NPC-Gedächtnis [NpcMemory-Schema + Extraktor + Lügen-Flip/Gossip + Prompt-Block → ADR 044], D90 `dm-sync`-Entry-Point [Package-Move + hatchling, byte-identischer `[sync]`-Block], D89 Sync-Check-Fingerprint-Tool [`[sync]`-Block, Ingest-Stempel, SETUP.md-Sync-Sektion], D88 `/author-adventure`-Authoring-Skill [5-Pass-Workflow + `validate.py`, Dry-Run-Abnahme gegen Chemical Burn], D87 Stateful Scene Cards [`<<ERLEDIGT>>`-Flags, tote NSCs, gated Exits → ADR 043], D85+D86 Spielbarkeits-Tuning [repeat_penalty + Roll-Router-Carve-out, `intro_guard`-Retry], D84 `!intro`-Meta-Auftakt-Strip + Temp 0.7, D83 `!intro`-Temperatur + Direktive, D82 Default-Party-Fix, D81 Scene-/Lore-Sub-Cogs, D80 Deepening #4–#6 [prompt_assembly/seed_session/clear_panel], D79 Deepening #1+#2 [`combat.py`-Auslagerung + `segments.py`-Verdrahtung], D78 Skill-Tooling-Runde [4 Claude-Code-Skills: /tdd, /grill-me, /improve-architecture, /to-prd], D77 Dev-Gates [Lint-Stop-Hook + blockierender git-pre-commit + Review/Simplify-Checkliste], D76 `disconnect_voice`-Kontrakt + neuer Delivery-Test, D75 One-Shot-Setup, D74
 
 ## Next concrete step
 
-**Der Phase-11-Abend, nach [docs/testabend-ablauf.md §9](docs/testabend-ablauf.md).** Zum Mitlesen am Tisch: [docs/phase-11-abend.md](docs/phase-11-abend.md). Auf Tobis Rechner. Vorher einmalig: Sandbox der
-Debug-Kampagne leeren, `.env` nach §9.2 setzen, Verbrauchsstand notieren. Am Abend: Gate-Punkte 0–9, nach `!j` die zwei Uhren
+**Der Phase-11-Abend, nach [docs/testabend-ablauf.md §9](docs/testabend-ablauf.md).** Zum Mitlesen am Tisch: [docs/phase-11-abend.md](docs/phase-11-abend.md). Auf Tobis Rechner. Sandbox, `.env` nach §9.2,
+Preflight und alte Logs sind erledigt (2026-10-06). Vorher noch: Verbrauchsstand auf claude.ai notieren und prüfen, dass
+Ollama läuft. Am Abend: Gate-Punkte 0–9, nach `!j` die zwei Uhren
 entfernen (§9.3), und die drei Messungen aus §9.6 sichern (ein Opus-Zug mit `spawn` und `first_audio`, Zeit bis zum
 Würfelknopf auf Haiku, Anteil `cut`). Danach in einer eigenen Session: Befunde eintragen, ADR 061 annehmen oder begründet
 zurücknehmen, die 17 geparkten Gates neu sichten, erst dann das PRD für Phase 12.
