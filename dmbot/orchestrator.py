@@ -17,7 +17,7 @@ import threading
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict
 
-from .llm.client import OllamaClient
+from .llm.client import LLMClient
 from .llm.persona import load_system_prompt
 from .llm.prompt_assembly import assemble_system_prompt
 from .llm.roll_router import classifier_schema, classifier_system, to_test_request
@@ -88,7 +88,7 @@ class DMBrain:
 
     def __init__(
         self,
-        client: OllamaClient,
+        client: LLMClient,
         *,
         profile: SystemProfile | None = None,
         max_history_turns: int = 20,
@@ -992,7 +992,7 @@ class DMBrain:
         return [dict(m) for m in (self._history.get(channel_id) or [])[start:]]
 
     @property
-    def client(self) -> "OllamaClient":
+    def client(self) -> "LLMClient":
         """The shared Ollama client — injected into side-band callers that own their own prompt
         (the NPC-memory extractor, ADR 044), so they stay testable pure-function modules."""
         return self._client

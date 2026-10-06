@@ -9,6 +9,10 @@ Two entry points: :meth:`OllamaClient.chat` returns the finished German answer (
 recap, tests use it); :meth:`OllamaClient.chat_stream` yields text deltas as they generate so the
 DM turn can synthesise + speak the first sentence before the rest is done (ADR 017). Both set
 ``last_stats`` from the final response object identically.
+
+:class:`LLMClient` is the seam (ADR 061): the surface the brain actually uses, as a structural
+protocol. ``OllamaClient``, the eval ``PlaybackClient`` and every test double satisfy it without
+inheriting anything; a second backend is a second implementation, not a call-site change.
 """
 
 from __future__ import annotations
@@ -16,10 +20,44 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import AsyncIterator
+from typing import Protocol
 
 import httpx
 
 log = logging.getLogger(__name__)
+
+
+class LLMClient(Protocol):
+    """The client seam (ADR 061) — exactly the surface the brain drives, nothing more.
+
+    Structural typing only: nothing inherits from this. ``last_stats`` is the token accounting of
+    the most recent call (``prompt_eval_count`` / ``eval_count`` / ``num_ctx``; a backend may add
+    keys, consumers ignore the ones they don't know), ``None`` until the first call.
+    """
+
+    last_stats: dict | None
+
+    @property
+    def model(self) -> str: ...
+
+    async def chat(
+        self,
+        system: str,
+        messages: list[dict[str, str]],
+        *,
+        options: dict | None = None,
+        format: dict | str | None = None,
+    ) -> str: ...
+
+    def chat_stream(
+        self,
+        system: str,
+        messages: list[dict[str, str]],
+        *,
+        options: dict | None = None,
+    ) -> AsyncIterator[str]: ...
+
+    async def aclose(self) -> None: ...
 
 
 def _parse_stream_line(line: str) -> tuple[str, dict | None]:

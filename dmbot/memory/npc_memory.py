@@ -26,7 +26,7 @@ from .chekhov import CHEKHOV_SCHEMA
 from .state import ATTITUDE_SCALE, AgendaStep, Combatant, NpcMemory, WorldState, step_attitude
 
 if TYPE_CHECKING:
-    from ..llm.client import OllamaClient
+    from ..llm.client import LLMClient
     from ..rag.adventure import AdventureNpc
 
 log = logging.getLogger(__name__)
@@ -424,7 +424,7 @@ def npc_memory_block_de(npcs: list[Combatant], *, top_k: int = 6) -> str:
 
 
 async def request_extraction(
-    client: "OllamaClient",
+    client: "LLMClient",
     *,
     turns: list[dict[str, str]],
     npcs: list[Combatant],
