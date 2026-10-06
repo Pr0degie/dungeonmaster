@@ -27,6 +27,19 @@ import httpx
 log = logging.getLogger(__name__)
 
 
+class LLMBackendError(Exception):
+    """A backend could not answer at all (ADR 061) — the one error the failover reacts to.
+
+    Raised by ``ClaudeClient`` for every way the Claude path can fail (CLI missing, process
+    error, error result, rejected rate limit). ``resets_at`` is the unix time a rejected rate
+    limit lifts, when the backend reported one. ``OllamaClient`` keeps raising ``httpx`` errors.
+    """
+
+    def __init__(self, message: str, *, resets_at: int | None = None) -> None:
+        super().__init__(message)
+        self.resets_at = resets_at
+
+
 class LLMClient(Protocol):
     """The client seam (ADR 061) — exactly the surface the brain drives, nothing more.
 

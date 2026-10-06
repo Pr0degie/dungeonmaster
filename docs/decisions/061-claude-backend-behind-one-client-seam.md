@@ -117,3 +117,69 @@ Decided, without widening this round's code scope:
   truncation is counted, so the probe result is interpretable.
 - Fixing ERLEDIGT and dropping the persona's "remind the group" instructions belong to Phase 12,
   together with tools for every remaining inline marker and for damage to any combatant.
+
+## Amendment (2026-10-06, build) — where the installed SDK differs from the plan
+
+Found while building `dmbot/llm/claude_client.py` against the installed `claude-agent-sdk`
+0.2.163 and the native CLI 2.1.291, by reading the SDK source and by a short live smoke on Haiku
+(subscription login, this machine). Each point is commented at its spot in the client.
+
+**The output cap is not a hard cut.** `CLAUDE_CODE_MAX_OUTPUT_TOKENS` caps one API request. When
+it hits, the CLI injects "Output token limit hit. Resume directly…" and asks again, up to three
+times, regardless of `max_turns=1`; if the answer still does not fit, the run ends with an
+assistant error `max_output_tokens`. Left alone, a narration turn would talk for up to four times
+`num_predict` and then fail over to Ollama. The client therefore cuts narration itself at the
+first `max_tokens` stop reason in the stream frames and closes the stream. This restores the
+PRD's premise (hard cut, `truncated`, the `✂` WARNING), so gate items 7 and 8 stay meaningful.
+The CLI's first resume request may still run in the background until the process is ended.
+
+**A stop reason exists.** `ResultMessage.stop_reason` is a real field, and every request's stop
+reason is in the `message_delta` stream frame. The token comparison is only the fallback.
+Partial messages are therefore switched on for batch calls too.
+
+**Structured output is a tool call, not a constrained decode.** `output_format` makes the CLI
+register a `StructuredOutput` tool. Three consequences: (1) with `max_turns=1` a model that
+answers in prose first fails the run ("Reached maximum number of turns (1)", seen live), so
+schema calls get three turns; (2) the callers' `num_predict` (80 for the roll router) is sized
+for Ollama's grammar and made the CLI spend four requests on one verdict (5.4 s), so schema calls
+get a floor of 1024 output tokens per request; (3) the client appends one German line to the
+system prompt of schema calls asking for the tool call without preamble (1.5 s instead of 3 s on a
+toy prompt). A schema call that still runs out of cap returns its text and logs a WARNING — the
+callers fail open as they do on a bad verdict from Ollama; it is not a backend failure.
+Classifier latency on Haiku was 1.5–5 s in the smoke. That is an input for the live gate and for
+the router timing question of Phase 12.
+
+**The system prompt goes through a file.** The SDK puts a string `system_prompt` on the command
+line; persona + state + RAG outgrows Windows' 32,767-character limit. The client writes it to a
+per-call file under the system temp dir and passes `{"type": "file", …}`.
+
+**Early close ends the subprocess, about five seconds later.** `query()` does not close its inner
+generator on an early exit; the event loop finalises it, and the SDK's transport then sends stdin
+EOF, waits up to 5 s and terminates. Measured: closing returns at once, the CLI process is gone
+after about 5 s. A per-call `ClaudeSDKClient` would end it deterministically but blocks the turn
+for those 5 s, so `query()` stays. A test drives the real `query()` over a fake transport to pin
+that the close arrives.
+
+**Isolation needs two more switches than the PRD listed.** The SDK has no field for session
+persistence, so every DM turn would be written to `~/.claude/projects` as a transcript; the
+client passes the CLI flag `--no-session-persistence` through `extra_args`. `strict_mcp_config`
+keeps the operator's own MCP servers out. With both, the init frame reports no tools and no MCP
+servers; a one-line prompt costs about 520 input tokens of CLI overhead.
+
+**On Windows the SDK refuses npm's `claude.cmd`.** It only spawns a native `claude.exe` (batch
+files run through `cmd.exe`, which it treats as an injection risk), and this install bundles no
+CLI. `SETUP.md` must therefore describe the native installer (`irm https://claude.ai/install.ps1 |
+iex`), not `npm i -g @anthropic-ai/claude-code` as the PRD says. Open for the docs step.
+
+**Smaller decisions taken in the client, beyond the PRD:**
+
+- A call with exactly one user message is sent verbatim. The transcript header ("antworte nur als
+  Spielleitung") would contradict the routers', extractors' and recap's own instruction.
+- The API-key refusal is enforced per call, not only in the preflight — otherwise a failed
+  preflight would still let the CLI bill the API.
+- An `AssistantMessage.error` is a backend error; its text is the CLI's "API Error: …" prose and
+  must never be spoken.
+- A call that produces nothing for 120 s (streaming: before its first delta) is a backend error.
+
+**Measured in the smoke, Haiku only:** spawn-to-first-message about 0.7 s per call. Not yet
+measured: Opus, a full-size system prompt, cache reads.

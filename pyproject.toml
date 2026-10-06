@@ -10,6 +10,7 @@ requires-python = ">=3.12,<3.13"
 # roadmap.md). Phase 0 needs none — it is install + config + smoke test only.
 # New heavy deps must be justified in the commit/PR and architecture.md §3 (golden rule #9).
 dependencies = [
+    "claude-agent-sdk>=0.2.163",
     "colorama>=0.4.6",
     "coqui-tts>=0.27.5",
     # Voice-receive core is PINNED EXACTLY, not >=. The DAVE/E2EE decrypt reaches into a
