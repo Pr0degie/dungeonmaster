@@ -16,6 +16,13 @@ model. Mocks written from the mental model confirm the wrong assumption.**
   with no error (Phase 3); Discord's DAVE/E2EE decrypt requirement was discovered live
   (Phase 2, ADR 006).
 
+- The Claude backend (D116, ADR 061) was specified from the SDK's field names. The fields
+  existed, but three behaviours did not match: the output cap is resumed past instead of
+  cutting, structured output is a tool call that needs more than one turn, and an early close
+  ends the subprocess five seconds later. Reading the source found two of them; only a
+  five-call live smoke found the cap. Field names are not behaviour — when a plan rests on
+  what a foreign process *does*, run it once before writing the client around it.
+
 ## The correction
 
 Before fixing "your" bug, read the exact installed version's source of the API you wrap
