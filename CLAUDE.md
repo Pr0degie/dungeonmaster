@@ -63,7 +63,8 @@ learns the setting (RAG) and the mechanics (a per-system **profile** it proposes
 rulebook, §9) and runs the game. Two discord.py bots: **Bot A** (existing music bot, output
 via the `/speak` bridge — separate repo) and **DMbot** (this repo, the DM brain: voice
 receive, VAD, STT, LLM orchestration, TTS, RAG, memory, rules engine, Discord UI).
-Everything local — no cloud, no API costs.
+Local by default; an optional Claude backend runs over the operator's own subscription
+(ADR 061), never an API key — `DM_LLM_BACKEND=ollama` is the way back at any time.
 
 **First campaign:** Warhammer 40,000 / Imperium Maledictum in the Eisenhorn grimdark tone —
 but that's just the first system profile + tone overlay, *not* baked into the DM.
@@ -120,6 +121,12 @@ troubleshooting and style live in **`docs/conventions.md`** — read it when you
 
 - **Windows runtime:** never hardcode POSIX paths — WAV temp via `tempfile.gettempdir()`, **never `/tmp`**.
 - **Never hardcode `OLLAMA_HOST`** (env/config) — the 4070→5080 switch stays a one-liner.
+- **LLM backends sit behind one seam (ADR 061).** `llm/client.py` holds the `LLMClient` protocol
+  and `OllamaClient` (do not edit it for Claude's sake); `llm/claude_client.py` is everything
+  Claude-specific; `llm/failover.py` degrades loudly to Ollama. **Tier rule:** a call with a
+  JSON-schema `format` goes to the aux model (Haiku), every other call to the narration model
+  (Opus) — call sites never name a model. Read ADR 061 with both amendments before touching
+  either file; the SDK differs from the PRD and the ADR wins.
 - **Audio reality:** per-user PCM arrives 48 kHz **stereo** → resample to **16 kHz mono** before
   anything else, or you get a garbage transcript (not an error).
 - **Commit messages:** imperative, scoped — `dmbot(stt): resample to 16k mono`, `rules(im): success-level calculation`.

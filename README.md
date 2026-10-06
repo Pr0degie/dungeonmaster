@@ -3,7 +3,9 @@
 **DMbot** is a self-hosted AI game master for tabletop RPGs that plays **by voice over
 Discord**, in **German**. You talk; it listens, thinks, and answers aloud in character. It is
 **system-agnostic** — load a ruleset/adventure as PDFs and it learns the setting (RAG) and the
-mechanics (a per-system profile). Everything runs **locally** — no cloud, no API costs.
+mechanics (a per-system profile). Everything runs **locally** by default; an optional Claude backend over your own
+subscription (never an API key) can take over the narration, with the local model as its
+loud fallback (ADR 061).
 
 First campaign: **Warhammer 40,000 / Imperium Maledictum** in Dan Abnett's *Eisenhorn*
 grimdark tone — but that's just the first profile + tone overlay, not baked into the DM.

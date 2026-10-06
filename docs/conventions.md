@@ -30,6 +30,16 @@ here is its contract, which DMbot calls:
   4070, Nemo 12B), later optionally on the 5080 via Tailscale. **Never hardcode the
   host** — use env/config (`OLLAMA_HOST`), so the switch is a one-liner. Before blaming
   the client: `ollama list` — is the model even pulled?
+- **LLM backends (`llm/client.py`, `llm/claude_client.py`, `llm/failover.py`, ADR 061):** the
+  brain only knows the `LLMClient` protocol. `DM_LLM_BACKEND=ollama` (default) builds the
+  `OllamaClient` alone; `claude` builds `FailoverClient(ClaudeClient, OllamaClient)`. **Tier
+  rule:** a `format` schema → aux model (Haiku), anything else → narration model (Opus); never
+  pass a model name from a call site. A new side call that wants Haiku must carry a schema.
+  Claude ignores `temperature`, `stop` and the repeat penalties, cuts narration itself at
+  `num_predict`, and keeps schema-call stats out of `last_stats` (`last_aux_stats`). Everything
+  Claude-specific stays in `claude_client.py`; `OllamaClient` is not edited for it. Tests use a
+  fake `claude_agent_sdk.query` with the real SDK dataclasses — check field names against the
+  installed package, not the PRD.
 - **Prompt building (`llm/`):** order = generic GM core → campaign tone overlay → recap →
   **adventure summary + current scene card** (code-owned pointer `state.scene_id`, ADR 019) →
   JSON state → Regelwerk hits (threshold-gated rulebook RAG) → recent history. Pass state and
@@ -171,6 +181,13 @@ hier (ich schlage `/simplify` vor, wenn ein Batch die Trigger trifft)._
   env/`.env`, **never commit them**.
 - Ollama runs as its own process, not bundled with DMbot — in development locally on the
   4070, later optionally on the 5080 (Tailscale). Switchable via `OLLAMA_HOST`.
+- **Claude backend (`DM_LLM_BACKEND=claude`):** needs the native `claude` CLI installed and
+  logged in **on the Windows machine that runs the bot** (SETUP.md „Claude backend"). Ollama
+  keeps running — it embeds for RAG and is the fallback. Nemo is then not resident during play,
+  so `TTS_DEVICE=cuda` fits on the 4070. Boot logs one `Claude preflight …` line naming the
+  narration and the aux result; `!backend` shows which side answered and `!backend
+  claude|ollama|auto` pins or releases it for the session. The `[latency]` line gains
+  `spawn=…ms cache=…` and `cut` on a truncated answer.
 - Keep the latency chain lean (LAN/Tailscale). Streaming TTS is a later optimization, not
   an MVP must.
 - **Two machines drift** — the must-haves that git doesn't carry (`data/adventures/`,
@@ -185,6 +202,14 @@ The pipeline doesn't lie about itself — but real-time audio and foreign libs d
 - **No sound?** First check: are *both* bots actually connected to the voice channel?
 - **Garbage transcript?** Suspect the sample rate (16 kHz mono?) before the model.
 - **LLM not answering?** `ollama list` + reachability of the host (ping/curl) before the client.
+- **LLM not answering on the Claude backend?** First the boot line: `Claude preflight FAILED`
+  names the tier and the cause. Then, in the **same `cmd` window that starts the bot**:
+  `claude -p "hi"` (does the login answer?), `claude auth status` (subscription login, not an
+  API key?), `echo %ANTHROPIC_API_KEY%` (must print the name back, i.e. be unset — with a key
+  the backend refuses to run). `where claude` must show a native `claude.exe`, not npm's
+  `claude.cmd` (the SDK refuses the shim). A ⚠ line in the chat means the failover is active:
+  `!backend` shows the cause and until when; `!backend claude` retries at once. One tier wrong
+  (login fine, one model FAILED) is a typo in `CLAUDE_MODEL_NARRATION` / `CLAUDE_MODEL_AUX`.
 - **RAG hallucinating?** Look at a real extracted PDF chunk — probably layout garbage.
 - **No sound despite correct code (Windows)?** Is the Opus DLL loaded for discord.py voice?
 - **faster-whisper won't start (Windows)?** Are the cuDNN/cuBLAS DLLs on the `PATH`?
@@ -208,7 +233,7 @@ dmbot/          the DM bot
   voice/        recv, resample, VAD + the Discord cogs (voicecog / dicecog / dmcog + scenecog / lorecog / clockcog / timecog / chekhovcog, ADR 039/047/048/050) + delivery.py (the answer→audio turn-delivery pipeline, ADR 035)
   stt/          faster-whisper wrapper + segments.py (pure hallucination guard: confidence thresholds AND the outro-phrase blocklist, D114)
   tts/          piper + xtts (Coqui XTTS v2) wrappers
-  llm/          Ollama client, prompt building + orchestrator's extracted pure helpers (sanitize / echo_guard / director_msgs / stream_assembler, ADR 034; prompt_assembly = system-prompt order owner, ADR 038; consistency = deterministic pre-delivery guard, ADR 045; turn_actions = one action per speaker, D111). Constrained-JSON side calls, all built like roll_router: scene_router (ADR 057), fact_router (ADR 058)
+  llm/          the LLMClient seam (ADR 061): client.py (protocol + Ollama client), claude_client.py (Claude over the Agent SDK; tier rule: schema call → Haiku, prose → Opus), failover.py (loud fallback to Ollama), preflight.py (check_ollama / check_claude); prompt building + orchestrator's extracted pure helpers (sanitize / echo_guard / director_msgs / stream_assembler, ADR 034; prompt_assembly = system-prompt order owner, ADR 038; consistency = deterministic pre-delivery guard, ADR 045; turn_actions = one action per speaker, D111). Constrained-JSON side calls, all built like roll_router: scene_router (ADR 057), fact_router (ADR 058)
   rag/          ingestion + retrieval + profile bootstrap
   memory/       JSON state + recaps + gametime.py (pure in-game-time helpers, ADR 048) + chekhov.py (loose-thread list, ADR 050)
   rules/        engine.py (generic) + combat.py (attack/Warp resolution, ADR 037) + scene_flow.py (exit resolution, flag gate, scene undo — ADR 057) + profile loader (+ tests)  ← deterministic core

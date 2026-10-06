@@ -1,6 +1,7 @@
 # PRD — A second LLM backend: Claude (Opus) via the Agent SDK, Ollama kept intact
 
-**Status:** specified, not built · **Date:** 2026-09-02, amended 2026-10-06 · **Round:** D116 (Phase A of three)
+**Status:** built (steps 1–5), live gate open — where this text and ADR 061 disagree, the ADR's
+"Amendment (2026-10-06, build)" wins · **Date:** 2026-09-02, amended 2026-10-06 · **Round:** D116 (Phase A of three)
 **Source:** Tobi's competitor survey of 2026-09-02 (DungeonsDeep, Friends & Fables, AI Realm,
 RoleForge, VoxDungeon, AI Dungeon) and five question rounds. The one finding that mattered: the
 features are at parity or ahead; the quality gap at the table is the model. Story/answer quality is
@@ -125,20 +126,20 @@ use the subscription without an API key, and it is optional at import (imported 
 backend factory, like `xtts`, so the Ollama path never pulls it).
 
 **Statelessness.** Every call is one `claude_agent_sdk.query(prompt, options)` with
-`max_turns=1`. `DMBrain` remains the sole owner of history (redo, echo-guard pair removal,
+`max_turns=1` *(schema calls: 3, see the table)*. `DMBrain` remains the sole owner of history (redo, echo-guard pair removal,
 auto-recap compaction, crash restore, D41). `resume`/`continue_conversation` are **not** used.
 
 **Mapping of the `chat` contract onto `ClaudeAgentOptions`:**
 
 | Ours | SDK | Note |
 |---|---|---|
-| `system` | `system_prompt=<str>` | A plain string **replaces** the CLI's own coding system prompt. Never the preset. |
+| `system` | `system_prompt={"type": "file", "path": …}` | *(corrected 2026-10-06)* Written to a per-call file under the system temp dir: a plain string goes on the command line and outgrows Windows' 32,767-character limit. Still **replaces** the CLI's own coding system prompt; never the preset. → ADR 061 build amendment, "The system prompt goes through a file". |
 | `messages` (history + user) | rendered into the single `prompt` string | One labelled transcript block (`[Spieler] …` / `[Spielleitung] …`, last user line last), preceded by a one-line German instruction "Setze die Sitzung fort; antworte nur als Spielleitung." A pure `render_transcript(messages) -> str` helper, unit-tested. |
-| `options["num_predict"]` | `env={"CLAUDE_CODE_MAX_OUTPUT_TOKENS": str(n)}` | The SDK has no max_tokens field; the CLI reads this env var. Per-call `env`. *(amended)* A hard cut here also cuts end-of-answer markers — see *Truncation detection*. |
+| `options["num_predict"]` | `env={"CLAUDE_CODE_MAX_OUTPUT_TOKENS": str(n)}` **plus a cut in the client** | *(corrected 2026-10-06)* The env var caps one API request, it is **not** a hard cut: the CLI then asks the model to resume, up to three times, and finally fails the run. The client therefore ends a narration call itself at the first `max_tokens` stop reason. Schema calls get a floor of 1024 tokens. The cut still removes end-of-answer markers — see *Truncation detection*. → ADR 061 build amendment, "The output cap is not a hard cut". |
 | `options["temperature"]` | **not available** | Log once at WARNING on first use and ignore. D83's intro temperature is a no-op on Claude; its retry guard (`intro_guard`, D86) still applies. |
 | `options["stop"]` | **not available** | The anti-puppeting label cut already exists client-side (`_cut_at_labels`, `StreamAssembler.stopped`); the server-side stop was belt-and-braces. Document in ADR 061. |
 | `repeat_penalty`, `repeat_last_n`, `top_p`, `num_ctx` | ignored | Nemo-specific (ADR 042). Silently dropped — they are instance defaults the caller never asked for. |
-| `format=<schema>` | `output_format={"type": "json_schema", "schema": schema}` → `ResultMessage.structured_output` | Return `json.dumps(structured_output)` so callers' `json.loads` + validators run unchanged. If `structured_output` is `None`, fall back to the `result` text. |
+| `format=<schema>` | `output_format={"type": "json_schema", "schema": schema}` → `ResultMessage.structured_output` | Return `json.dumps(structured_output)` so callers' `json.loads` + validators run unchanged. If `structured_output` is `None`, fall back to the `result` text. *(corrected 2026-10-06)* This is a **tool call**, not a constrained decode: schema calls run with `max_turns=3` (not 1), a 1024-token floor and one appended German system line asking for the call without preamble; a verdict that does not arrive is lost, not a backend error. → ADR 061 build amendment, "Structured output is a tool call". |
 | — | `tools=[]`, `allowed_tools=[]`, `permission_mode="dontAsk"` | No tools this round. |
 | — | `thinking={"type": "disabled"}` | Latency. Phase 12 may revisit. |
 | — | `cwd=<empty temp dir>`, `setting_sources=[]`, `skills=None`, `plugins=[]` | **Isolation.** Otherwise the CLI loads *this repo's* `CLAUDE.md`, `.claude/skills` and settings into the DM's context. Enumerate every source (`isolation-must-enumerate-every-artifact`); assert in a test that the options carry all four. |
@@ -229,14 +230,16 @@ inline. The retriever's `host=config.ollama_host` is untouched (embeddings stay 
 `CLAUDE_ALLOW_API_KEY != 1` → ERROR and `False` (refuse; the CLI's credential precedence puts the
 key above the OAuth login); (2) CLI found (`cli_path` or PATH) and `--version` runs; (3) a
 minimal `query("ping", model=aux, max output 8, tools=[])` completes without `is_error` →
-INFO with both model names. Never raises. When `check_claude` fails at boot with backend
+INFO with both model names *(built 2026-10-06: the narration model is pinged too, and the line
+names both outcomes)*. Never raises. When `check_claude` fails at boot with backend
 `claude`, the factory still builds the failover pair — the table gets Nemo, the log says why.
 `check_ollama` keeps running on both backends (embedder + fallback).
 
 ### Ops and docs
 
 - `start_dmbot.bat`: Ollama warm-up unchanged (bge-m3 must be resident; Nemo may be).
-- `SETUP.md`: new section *Claude backend* — Node.js + `npm i -g @anthropic-ai/claude-code`,
+- `SETUP.md`: new section *Claude backend* — *(corrected 2026-10-06: the **native** installer
+  `irm https://claude.ai/install.ps1 | iex`; the SDK refuses npm's `claude.cmd` on Windows)* ~~Node.js + `npm i -g @anthropic-ai/claude-code`~~,
   `claude` login once **on the Windows bot machine** (browser OAuth; a login inside WSL does not
   count, the bot runs on Windows, D16), verify with `claude -p "hi"` from the same shell that
   starts the bot; the API-key warning; `TTS_DEVICE=cuda` now recommended on the 4070 when

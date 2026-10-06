@@ -5,8 +5,9 @@
 A local, **system-agnostic** AI game master for tabletop RPGs over Discord: voice-only
 interaction, dice and turn mechanics as text buttons, German play language. You load a
 ruleset/adventure as PDFs; the DM learns the setting (RAG) and the mechanics (a per-system
-**profile** it proposes from the rulebook) and runs the game. Everything runs locally —
-no cloud, no API costs.
+**profile** it proposes from the rulebook) and runs the game. It runs locally by default;
+an optional second LLM backend (Claude, over the operator's own subscription, never an API key)
+can take over the narration, and the local path stays complete as its fallback (ADR 061).
 
 **The first campaign** is Warhammer 40,000 with **Imperium Maledictum**, in the grimdark
 tone of Dan Abnett's *Eisenhorn* — but that is just the first loaded system + tone layer,
@@ -130,6 +131,7 @@ filtering protects regardless.
 | LLM | **Ollama** (local/5080) + `httpx` | DM system prompt + history + RAG context + JSON state |
 | Embeddings | **`bge-m3`** via Ollama | for the rulebook RAG — multilingual (German questions must hit English rule text; `nomic-embed-text` (D28) failed that live, ADR 019). The store's meta table pins the model |
 | LLM, optional second backend | `claude-agent-sdk` (drives the installed native `claude` CLI) | `ClaudeClient` behind the `LLMClient` seam (`dmbot/llm/client.py`): Opus for prose, Haiku for schema-constrained side calls, on the operator's own subscription login, never an API key. Imported lazily — the Ollama path never loads it. The dependency is the only way to use the subscription without an API key (golden rule #9 → ADR 061, which also lists where the SDK differs from the plan) |
+| LLM failover | `dmbot/llm/failover.py` (own code, no dependency) | With `DM_LLM_BACKEND=claude` the brain talks to a `FailoverClient(ClaudeClient, OllamaClient)`: a backend error re-issues the same call on Ollama, one ⚠ line reaches the table per outage, the primary is retried after `DM_LLM_FAILOVER_COOLDOWN_S` (or the reported rate-limit reset). Streaming fails over only before the first delta. `check_claude` pings both tiers at boot |
 | PDF→Markdown (ingestion prep) | `pymupdf4llm` (on PyMuPDF) | **offline** step: converts a legally-owned rulebook PDF to clean Markdown (reconstructs reading order, renders tables) so RAG chunks aren't multi-column layout garbage (CLAUDE.md). CLI `tools/pdf_to_md.py` → `data/pdfs/md/`, **not** the bot runtime; feeds Phase-10 ingestion (golden rule #9) |
 | RAG store | **`sqlite-vec`** (`data/vectordb/rag.db`) | searchable rulebook chunks, cosine KNN + relevance threshold; built offline via `python -m dmbot.rag.ingest`. Played-session transcripts join at runtime (`dmbot.rag.ingest_session` on `!leave`, own vec table + FTS5 mirror, hybrid retrieval — ADR 054). The adventure stays OUT (scene cards instead, ADR 019) |
 | TTS | `coqui-tts` (XTTS v2) **default**, `piper-tts` fallback | XTTS (default): ~58 built-in speakers + voice cloning, rich but heavy (**pulls torch/torchaudio/torchcodec — from the CUDA `cu130` index** (covers Ada + Blackwell) so it runs on the GPU, not the CPU-only build; transformers pinned <5); device per `TTS_DEVICE` (cuda/cpu), auto-degrades to CPU if CUDA is absent or OOMs. Piper: fast, lean, fixed German voice (`de_DE-thorsten`) → WAV — the fallback when XTTS won't load. Selectable per `TTS_ENGINE` (golden rule #9: the CUDA torch stack is the cost of GPU XTTS → ADR 009) |
@@ -601,6 +603,43 @@ Starting recommendation (runs on the 4070, later also on the 5080):
 Final choice via taste test (Phase 0): the same German Eisenhorn prompt to several
 models, compare tone & speed.
 
+### The backend seam and the Claude backend (ADR 061)
+
+Everything above the client talks to one surface, the `LLMClient` protocol in
+`dmbot/llm/client.py`: `chat`, `chat_stream`, `last_stats`, `model`, `aclose`. Three things
+implement it — `OllamaClient` (unchanged, the default), `ClaudeClient`
+(`dmbot/llm/claude_client.py`) and `FailoverClient` (`dmbot/llm/failover.py`), which wraps the
+other two when `DM_LLM_BACKEND=claude`. Orchestrator, routers, extractors, delivery, markers and
+the replay harness do not know which one answers.
+
+- **Tier rule.** `ClaudeClient` picks the model from the call's shape: a JSON-schema `format`
+  means a classifier or extractor and goes to `CLAUDE_MODEL_AUX` (Haiku); every other call is
+  prose and goes to `CLAUDE_MODEL_NARRATION` (Opus). No call site names a model.
+- **Stateless.** One SDK `query()` per call; `DMBrain` stays the only owner of history, which is
+  rendered into the prompt as a labelled transcript. No SDK session, no tools (Phase 12).
+- **Not mappable on Claude:** `temperature` (the intro temperature of D83 is a no-op), server-side
+  `stop` sequences, `repeat_penalty` / `repeat_last_n` / `top_p`. The client-side speaker-label
+  cut stays the anti-puppeting guard. `num_ctx` is a *nominal* budget (`CLAUDE_NUM_CTX`, equal to
+  Ollama's) so auto-recap and the `[ctx]` warning keep their cadence.
+- **`num_predict` is enforced by the client.** The CLI's own cap is per request and it resumes up
+  to three times; the client cuts narration at the first `max_tokens` stop and reports
+  `truncated` (the `✂` WARNING, `cut` in the `[latency]` line). End-of-answer markers still sit
+  where the cap cuts — measured this phase, removed in Phase 12.
+- **Structured output is a tool call**, not a constrained decode: schema calls get three turns
+  and a floor of 1024 output tokens, and a verdict that does not arrive is a lost verdict
+  (callers fail open), not a backend failure.
+- **Isolation.** Empty working directory, no settings, skills, plugins, MCP servers or session
+  file — otherwise the CLI would load this repo's `CLAUDE.md` into the DM's context.
+- **Stats.** Narration and schema calls report into separate slots (`last_stats` /
+  `last_aux_stats`), so a classifier running beside a narration stream cannot feed the turn's
+  `[latency]` line or the auto-recap trigger. `OllamaClient` still has one slot.
+- **Never an API key.** The CLI ranks `ANTHROPIC_API_KEY` above the subscription login; the
+  backend refuses to run while it is set (`CLAUDE_ALLOW_API_KEY=1` overrides). The bot must run
+  on the operator's own machine when this backend is on.
+
+The full list of places where the installed SDK differs from the plan is ADR 061, "Amendment
+(2026-10-06, build)".
+
 _Re-confirmed 2026-06-08:_ gemma3:12b narrates a touch cleaner but did **not** fix the dice-marker
 problem — both models self-resolve actions, which the **roll-detection router** (ADR 014) solves
 *independently of model size*. **nemo kept** for tone; "upgrade to a bigger model" would not have
@@ -622,6 +661,10 @@ fixed the markers.
 - **Remote Ollama reachability:** the colleague must be online & reachable; Tailscale
   recommended.
 - **Rule hallucination:** contained by RAG + code-side dice/success logic.
+- **Subscription policy (Claude backend):** using the Agent SDK on a personal subscription is
+  permitted for individual use today and can change without notice. Mitigation: the Ollama path
+  is never removed, and the failover turns a policy change into a quality loss, not a lost
+  evening (ADR 061).
 - **Windows specifics:** (a) **no `/tmp`** — build WAV paths via `tempfile.gettempdir()`,
   never hardcoded. (b) **Opus DLL** — discord.py voice (send *and* receive) needs libopus;
   on Windows you may have to ship the DLL and call `discord.opus.load_opus(...)`
@@ -643,7 +686,7 @@ cogitator/                 # = the DMbot repo
 │   ├── voice/             # recv, resample, VAD + the Discord cogs (voicecog/dicecog/dmcog + scenecog/lorecog split off in ADR 039) + delivery.py (turn-delivery pipeline, ADR 035)
 │   ├── stt/               # faster-whisper wrapper
 │   ├── tts/               # piper wrapper
-│   ├── llm/               # Ollama client, prompt building
+│   ├── llm/               # LLMClient seam: Ollama client, Claude client, failover; prompt building
 │   ├── rag/               # ingestion + retrieval + profile bootstrap
 │   ├── memory/            # JSON state + recaps
 │   ├── rules/             # engine.py + combat.py (attack/Warp resolution, ADR 037) + profile loader (+ tests)  ← deterministic core

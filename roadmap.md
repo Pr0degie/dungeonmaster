@@ -149,6 +149,10 @@ Four phases, each with its own PRD and live gate. Target picture for all of them
 `DM_LLM_BACKEND=ollama` is the way back at any point. **One variable per live evening.**
 
 ### Phase 11 — Claude backend behind one client seam   (PRD: `docs/plans/claude-backend.md`, ADR 061)
+**Status: code-complete (2026-10-06), live gate open.** Built, documented and reviewed; Opus and
+a whole turn at the table are live-unverified. The evening runs after
+`docs/testabend-ablauf.md`, section „Phase-11-Abend". Where the SDK differs from the PRD, ADR
+061's build amendment is authoritative.
 **Goal:** frontier prose at the table without an API key — Opus for narration, Haiku for the
 classifiers, via the Agent SDK on Tobi's own subscription; loud failover to Nemo.
 - `LLMClient` protocol over today's surface; `OllamaClient` untouched; `ClaudeClient` +

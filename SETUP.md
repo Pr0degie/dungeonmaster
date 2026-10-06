@@ -16,6 +16,7 @@ Runtime is **Windows**, Python **3.12**, managed with **uv** (no direct `pip`).
 6. XTTS (default, self-downloads) / Piper voice + Opus DLL (§B5/§B6)
 7. Rulebook & story PDF into `data/pdfs/` (§B7)
 8. RAG store + adventure: copy or rebuild `rag.db`, set `DM_ADVENTURE` (§B9)
+9. *Optional:* Claude backend — native `claude` CLI + login on the bot machine (§B10)
 
 Then **Install → Configure → Run** below. Tailscale & the character JSON schema come later
 (§C). Moving to a fresh machine? See **Running on another machine**.
@@ -63,6 +64,8 @@ optional, sensible defaults):
 | `DISCORD_TOKEN_DMBOT` | — | **required** |
 | `BOT_A_USER_ID` | — | Bot A's user-ID; filtered from voice (feedback layer 1) |
 | `OLLAMA_HOST` / `OLLAMA_MODEL` | `127.0.0.1:11434` / `mistral-nemo` | LLM host + model |
+| `DM_LLM_BACKEND` | `ollama` | `claude` = Opus/Haiku over your own subscription with Ollama as the loud fallback (§B10). Anything else is a config error at boot |
+| `CLAUDE_MODEL_NARRATION` / `CLAUDE_MODEL_AUX` | `opus` / `haiku` | prose model / model for the schema-constrained side calls; both are pinged at boot |
 | `WHISPER_MODEL` / `WHISPER_DEVICE` / `WHISPER_COMPUTE` | `medium` / `cuda` / `float16` | STT; use `cpu`/`int8` to free GPU VRAM |
 | `TTS_ENGINE` | `xtts` | Coqui XTTS v2 (58 voices + cloning) — the default; set `piper` for the fast, lean fallback voice |
 | `TTS_SPEAKER` / `TTS_DEVICE` | *Dionisio Schuyler* / `cuda` | XTTS speaker + device (`cuda` = GPU, the default; set `cpu` on a tight 12 GB card. Load-time auto-falls back to CPU) |
@@ -95,6 +98,8 @@ tracebacks, heartbeat flood collapsed).
   with `WHISPER_DEVICE=cpu` (+ `WHISPER_COMPUTE=int8`), and/or run XTTS on GPU
   (`TTS_DEVICE=cuda`); check `ollama ps` (nemo should be 100 % GPU) and `nvidia-smi`. Long-term:
   Ollama on a second GPU via Tailscale (ADR 002).
+- **`Claude preflight FAILED` at boot, or a ⚠ line in the chat:** see §B10 „If it does not
+  work". The bot keeps answering from Ollama meanwhile.
 - **No sound:** are **both** bots in the voice channel? Is ffmpeg available to Bot A?
 - **Garbage transcript:** suspect the sample rate (must be 16 kHz mono) before the model.
 - **XTTS won't load (it's the default):** it needs torch/torchaudio/torchcodec + `transformers<5`;
@@ -261,6 +266,51 @@ another machine** for what to copy first). What git carries with the clone: the 
       otherwise the DM loads no adventure.
 - [ ] **Sanity check:** ask a Chaos or lore question in a live session — a `📚 lore_…:` line
       must appear in `debug.log`; a rule question shows `📚 rulebook:…`.
+
+#### B10 — Claude backend (optional, Phase 11 / ADR 061)
+
+Lets Claude narrate (Opus) and classify (Haiku) over **your own Claude subscription**. No API
+key is involved, and none may be set. Ollama stays installed and running: it embeds for RAG
+and answers whenever Claude does not. Do all of this **on the Windows machine that runs the
+bot**, as the Windows user that starts it — the agent cannot do it for you.
+
+- [ ] **Install Claude Code natively** — in PowerShell:
+      `irm https://claude.ai/install.ps1 | iex`
+      This puts a real `claude.exe` under `%USERPROFILE%\.local\bin`. **Do not** use
+      `npm i -g @anthropic-ai/claude-code`: npm installs a `claude.cmd` batch shim, and the
+      Agent SDK refuses to run batch files on Windows. If both exist, `where claude` must list
+      the `.exe` first, or set `CLAUDE_CLI_PATH` to it. Open a **new** terminal afterwards so
+      `PATH` is picked up.
+- [ ] **Log in once, on this machine:** run `claude` in a terminal, choose the subscription
+      login and finish it in the browser. A login inside WSL or on another PC does not count —
+      the bot runs on Windows and uses this user's login. Never copy the login to someone
+      else's machine; with this backend on, the bot runs on the subscriber's own PC.
+- [ ] **Check it from `cmd`** (the shell `start_dmbot.bat` runs in):
+      `claude -p "hi"` → a short answer. `claude auth status` → the subscription login.
+- [ ] **No `ANTHROPIC_API_KEY`.** `echo %ANTHROPIC_API_KEY%` must print the name back
+      (= unset), and `.env` must not contain it. The CLI ranks a key above the subscription
+      login and would **bill the API per token** without saying so. DMbot therefore refuses to
+      use the Claude backend while the variable is set and answers from Ollama instead
+      (`CLAUDE_ALLOW_API_KEY=1` overrides — only if you really mean it). Check the Windows user
+      and system environment variables too, not only the current shell.
+- [ ] **Switch it on** in `.env`: `DM_LLM_BACKEND=claude`. On a 12 GB card also set
+      `TTS_DEVICE=cuda` — Nemo is no longer resident during play, so XTTS fits on the GPU.
+- [ ] **Read the boot log.** Expected:
+      `Ollama preflight OK — …` and
+      `Claude preflight OK — narration opus: OK · aux haiku: OK (CLI …)`.
+      Both models are pinged, so a mistyped model name shows up here and not in the first turn.
+
+**If it does not work.** `Claude preflight FAILED` names what failed: both tiers → the login
+(`claude -p "hi"` in `cmd`); one tier → that model name (`CLAUDE_MODEL_NARRATION` /
+`CLAUDE_MODEL_AUX`); `batch shim` → the npm install is being found instead of the native one;
+`ANTHROPIC_API_KEY is set` → remove the key. In play, one ⚠ line in the chat means Claude
+failed and Nemo took over (the first local answer pays a cold model load of 10–15 s);
+`!backend` shows why and until when, `!backend claude` retries at once, `!backend ollama` stays
+local for the session. **The way back** is one line: `DM_LLM_BACKEND=ollama`.
+
+Usage counts against the subscription's limits (a rate-limit warning is logged before it
+bites). Anthropic permits this for individual use today and may change it — which is why the
+local path is kept complete.
 
 ### C. Only needed later (not for the MVP)
 

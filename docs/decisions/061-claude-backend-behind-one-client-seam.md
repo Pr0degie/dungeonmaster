@@ -169,7 +169,7 @@ servers; a one-line prompt costs about 520 input tokens of CLI overhead.
 **On Windows the SDK refuses npm's `claude.cmd`.** It only spawns a native `claude.exe` (batch
 files run through `cmd.exe`, which it treats as an injection risk), and this install bundles no
 CLI. `SETUP.md` must therefore describe the native installer (`irm https://claude.ai/install.ps1 |
-iex`), not `npm i -g @anthropic-ai/claude-code` as the PRD says. Open for the docs step.
+iex`), not `npm i -g @anthropic-ai/claude-code` as the PRD says. Done in `SETUP.md` B10.
 
 **Smaller decisions taken in the client, beyond the PRD:**
 
@@ -194,7 +194,28 @@ measured: Opus, a full-size system prompt, cache reads.
   A wrong or unavailable aux model still degrades the whole pair — loud, and intended.
 - A retry that fails after the announced time has passed posts a corrected notice, once per
   cooldown.
-- **Known and not fixed:** `last_stats` is one slot per client. When a classifier call overlaps
+- **Known and not fixed** *(closed for the Claude path later the same day — see the next amendment)***:** `last_stats` is one slot per client. When a classifier call overlaps
   an aborted narration stream, the turn's `[latency]` line and the auto-recap trigger can read
   the classifier's numbers. The same holds for `OllamaClient` today; a fix needs per-call stats
   across the seam and belongs to Phase 12, where the turn flow changes anyway.
+
+## Amendment (2026-10-06, steps 4-6) — the stats slot, the boot ping
+
+**The `last_stats` overwrite is closed on the Claude path.** The note above called it known and
+not fixed. On closer reading the fix did not need per-call stats across the seam: `ClaudeClient`
+now keeps two slots — `last_stats` for prose calls, `last_aux_stats` for schema calls — and
+`FailoverClient.last_stats` follows the side that answered the last *prose* call. A classifier
+that finishes, or fails over, while a narration stream is open can no longer feed the turn's
+`[latency]` line or the auto-recap trigger. What remains: `OllamaClient` is deliberately
+untouched and still has one slot, so the old overlap exists on the pure Ollama path and while the
+pair is degraded; and two overlapping *prose* calls (a narration and an auto-recap) still share
+the narration slot on both backends. Both stay with Phase 12.
+
+**The boot ping covers both tiers.** `check_claude` pings the narration model and the aux model
+side by side and names both outcomes in one line. A mistyped `CLAUDE_MODEL_NARRATION` used to
+pass the aux-only ping and fail over on the first turn. Measured live on this machine: both pings
+together 2.9 s; a nonsense narration model is reported as `model_not_found` with the knob named.
+The cost is one eight-token Opus request per boot.
+
+**The `[latency]` line carries `spawn`, `cache` and `cut`** when the stats have them; an Ollama
+turn's line is unchanged.
