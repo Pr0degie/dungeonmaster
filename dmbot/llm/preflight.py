@@ -70,16 +70,20 @@ def check_ollama(host: str, model: str, *, timeout: float = 5.0) -> bool:
 
 def _find_claude_cli(cli_path: str) -> str | None:
     """The claude executable the backend will use, or ``None``. Mirrors the SDK's own search
-    closely enough for a boot message: a configured path, else PATH (on Windows a native
-    ``claude.exe`` first), else the native installer's default location."""
+    closely enough for a boot message: a configured path, else on Windows a native ``claude.exe``
+    — on PATH or at the native installer's default location — and only then whatever ``claude``
+    PATH offers. The native exe wins over npm's ``claude.cmd`` even when only the shim is on
+    PATH (a terminal not reopened after installing): the SDK finds it there too, so reporting
+    the shim would announce a fallback that does not happen."""
     if cli_path:
         return cli_path if Path(cli_path).is_file() else None
     if sys.platform == "win32":
-        found = shutil.which("claude.exe") or shutil.which("claude")
+        found = shutil.which("claude.exe")
         if found:
             return found
         default = Path.home() / ".local" / "bin" / "claude.exe"
-        return str(default) if default.is_file() else None
+        if default.is_file():
+            return str(default)
     return shutil.which("claude")
 
 
@@ -93,6 +97,9 @@ async def _claude_ping(config, model: str, timeout: float) -> None:
     client = ClaudeClient(
         narration_model=model,
         aux_model=model,
+        # The same optional Anthropic-side fallback the real client passes, so a value the CLI
+        # rejects fails here and not on the first turn.
+        fallback_model=getattr(config, "claude_model_fallback", "") or None,
         cli_path=config.claude_cli_path or None,
         allow_api_key=config.claude_allow_api_key,
         timeout=timeout,

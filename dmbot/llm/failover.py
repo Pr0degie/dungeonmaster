@@ -67,6 +67,9 @@ class FailoverClient:
         self._clock = clock
         self._mode = "auto"
         self._degraded_until: float | None = None
+        # Counts degrades. A primary call remembers the count it started under, and its success
+        # only ends a degraded period that already existed then (see _primary_answered).
+        self._degrades = 0
         self._last_error: str | None = None
         self._answered: LLMClient | None = None
         # The side that answered the most recent PROSE call (no `format`). `last_stats` follows
@@ -151,6 +154,7 @@ class FailoverClient:
         announce = self._degraded_until is None or self._clock() >= self._degraded_until
         # A reported rate-limit reset beats the cooldown: retrying before it lifts cannot work.
         self._degraded_until = max(self._clock() + self._cooldown_s, float(exc.resets_at or 0))
+        self._degrades += 1
         self._last_error = str(exc)
         until = time.strftime("%H:%M", time.localtime(self._degraded_until))
         log.error("LLM backend %s failed — falling back to %s until %s: %s", primary, fallback, until, exc)
@@ -160,9 +164,13 @@ class FailoverClient:
                 f"über das lokale Modell ({self._fallback.model}) weiter."
             )
 
-    def _primary_answered(self) -> None:
+    def _primary_answered(self, started_under: int) -> None:
+        """The primary answered a call that began at degrade count ``started_under``. That is
+        proof of recovery only if no degrade happened since: a narration stream that was already
+        open when a classifier failed says nothing about the failure, and letting it clear the
+        cooldown would send the next call into the same error and announce it again."""
         self._answered = self._primary
-        if self._degraded_until is not None:
+        if self._degraded_until is not None and started_under == self._degrades:
             self._degraded_until = None
             self._last_error = None
             primary = self._names[id(self._primary)]
@@ -180,12 +188,13 @@ class FailoverClient:
         format: dict | str | None = None,
     ) -> str:
         if self._try_primary():
+            started_under = self._degrades
             try:
                 answer = await self._primary.chat(system, messages, options=options, format=format)
             except LLMBackendError as exc:
                 self._degrade(exc)
             else:
-                self._primary_answered()
+                self._primary_answered(started_under)
                 if format is None:
                     self._narrated = self._primary
                 return answer
@@ -203,6 +212,7 @@ class FailoverClient:
         options: dict | None = None,
     ) -> AsyncIterator[str]:
         if self._try_primary():
+            started_under = self._degrades
             self._answered = self._narrated = self._primary
             stream = self._primary.chat_stream(system, messages, options=options)
             yielded = False
@@ -211,7 +221,7 @@ class FailoverClient:
                     async for delta in stream:
                         if not yielded:
                             yielded = True
-                            self._primary_answered()  # a first delta is proof enough of recovery
+                            self._primary_answered(started_under)  # a first delta is proof enough of recovery
                         yield delta
                 finally:
                     # Also reached when OUR consumer closes early (pause / speaker-label abort):
@@ -222,7 +232,7 @@ class FailoverClient:
                 if yielded:
                     raise  # text is out and may be spoken — no second answer on top of it
             else:
-                self._primary_answered()
+                self._primary_answered(started_under)
                 return
         self._answered = self._narrated = self._fallback
         stream = self._fallback.chat_stream(system, messages, options=options)

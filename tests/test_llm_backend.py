@@ -235,6 +235,26 @@ def test_find_claude_cli_honours_the_configured_path(tmp_path, monkeypatch):
     assert preflight._find_claude_cli("") == "/usr/bin/claude"
 
 
+def test_find_claude_cli_prefers_the_native_exe_over_a_shim_on_path(tmp_path, monkeypatch):
+    """Only npm's claude.cmd is on PATH, the native exe sits at the installer's default place
+    (terminal not reopened). The SDK uses the exe — the boot message must not cry 'batch shim'."""
+    native = tmp_path / ".local" / "bin" / "claude.exe"
+    native.parent.mkdir(parents=True)
+    native.write_bytes(b"")
+    monkeypatch.setattr(preflight.sys, "platform", "win32")
+    monkeypatch.setattr(preflight.Path, "home", classmethod(lambda cls: tmp_path))
+    monkeypatch.setattr(preflight.shutil, "which",
+                        lambda name: "C:/npm/claude.CMD" if name == "claude" else None)
+    assert preflight._find_claude_cli("") == str(native)
+    native.unlink()
+    assert preflight._find_claude_cli("") == "C:/npm/claude.CMD"  # only the shim: say so
+
+
+def test_the_ping_carries_the_configured_fallback_model(cli):
+    assert preflight.check_claude(_preflight_config(claude_model_fallback="sonnet")) is True
+    assert {o.fallback_model for o in cli.options} == {"sonnet"}
+
+
 # ---- !backend + the table notice ------------------------------------------------------------------
 
 

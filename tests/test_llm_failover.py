@@ -90,6 +90,30 @@ def test_a_healthy_primary_answers_and_nothing_is_announced():
     assert not pair.degraded and not pair.degraded_event.is_set()
 
 
+def test_a_stream_that_was_already_open_does_not_undo_a_degrade():
+    """Narration is streaming on the primary when a classifier fails there. The stream ending
+    normally proves nothing about that failure: the cooldown stays, and no ✅ is announced."""
+    primary = _Side("opus")
+    pair, fallback, clock = _pair(primary)
+
+    async def go():
+        stream = pair.chat_stream("s", _USER)
+        first = await stream.__anext__()
+        primary.fail = _DOWN
+        await pair.chat("ROUTER", _USER, format={"type": "object"})  # fails over, degrades
+        primary.fail = None
+        rest = [delta async for delta in stream]
+        return [first, *rest]
+
+    assert asyncio.run(go()) == ["Die Tür ", "knarrt."]
+    assert pair.degraded and pair.status().degraded_until == clock.now + 600
+    assert [n[0] for n in pair.take_notices()] == ["⚠"]
+    # After the cooldown a fresh call is what proves recovery.
+    clock.now += 601
+    asyncio.run(pair.chat("s", _USER))
+    assert not pair.degraded and [n[0] for n in pair.take_notices()] == ["✅"]
+
+
 def test_a_schema_call_does_not_move_the_narration_stats_to_the_other_side():
     """A classifier that fails over while the narration ran on the primary must not point the
     turn's stats at the fallback's slot."""

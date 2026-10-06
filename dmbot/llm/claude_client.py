@@ -48,7 +48,12 @@ from .client import LLMBackendError
 log = logging.getLogger(__name__)
 
 _TRANSCRIPT_HEADER = "Setze die Sitzung fort; antworte nur als Spielleitung."
-_ROLE_LABELS = {"user": "[Spieler]", "assistant": "[Spielleitung]"}
+# ``<label>:`` on purpose, and exactly these two words: they are in ``sanitize._ROLE_LABELS``, so
+# when the model echoes the transcript's form — opens with "Spielleitung:" or goes on to write a
+# "Spieler: …" line itself — the speaker-label guards above the seam strip or cut it. Server-side
+# `stop` does not exist here, so those guards are the only ones. A bracketed label was invisible
+# to them.
+_ROLE_LABELS = {"user": "Spieler:", "assistant": "Spielleitung:"}
 
 # Floor for the per-request output cap of a schema call. The callers' ``num_predict`` is sized
 # for Ollama's grammar-constrained JSON (80 for the roll router); Claude delivers structured
@@ -78,7 +83,7 @@ def render_transcript(messages: list[dict[str, str]]) -> str:
     blocks = [_TRANSCRIPT_HEADER]
     for message in messages:
         role = message.get("role", "")
-        label = _ROLE_LABELS.get(role, f"[{role}]")
+        label = _ROLE_LABELS.get(role, f"{role}:")
         blocks.append(f"{label} {message.get('content', '')}")
     return "\n\n".join(blocks)
 
@@ -135,6 +140,7 @@ class _Call:
     started: float
     spawn_ms: int | None = None
     texts: list[str] = field(default_factory=list)
+    deltas: list[str] = field(default_factory=list)  # the same text, as it streamed in
     result: Any = None
     # From the raw stream frames — the only source when the call ends before its result.
     prompt_tokens: int | None = None
@@ -292,15 +298,17 @@ class ClaudeClient:
                     if message.parent_tool_use_id is not None:
                         continue
                     self._note_stream_frame(call, message.event)
+                    delta = _text_delta(message.event)
+                    if delta:
+                        call.deltas.append(delta)
+                    if delta and partial:
+                        deadline = None  # speaking has begun — no failover past this point
+                        yield delta
                     if call.stop_reason == "max_tokens" and call.narration:
                         # The hard cut. Left alone, the CLI would now ask the model to resume and
                         # keep the turn talking past its spoken budget.
                         call.cut = True
                         break
-                    delta = _text_delta(message.event)
-                    if delta and partial:
-                        deadline = None  # speaking has begun — no failover past this point
-                        yield delta
                 elif isinstance(message, sdk.AssistantMessage):
                     if message.error == "max_output_tokens":
                         # A schema call that never got to its structured answer within the cap
@@ -453,10 +461,21 @@ class ClaudeClient:
     def _begin(self, system: str, options: dict | None, format: dict | str | None):
         self._refuse_api_key()
         system_file = self._prompts / f"system-{uuid.uuid4().hex}.md"
-        sdk_options, model, cap = self._options(system_file, options, format)
         if isinstance(format, dict):
             system += _AUX_SYSTEM_SUFFIX
-        system_file.write_text(system, encoding="utf-8")
+        try:
+            sdk_options, model, cap = self._options(system_file, options, format)
+            # The working area can vanish under a long-running bot (a temp cleaner); put it back
+            # rather than fail every call until the next restart.
+            self._cwd.mkdir(parents=True, exist_ok=True)
+            self._prompts.mkdir(parents=True, exist_ok=True)
+            system_file.write_text(system, encoding="utf-8")
+        except LLMBackendError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — same reason as in _run: nothing may bypass the failover
+            raise LLMBackendError(
+                f"Claude call could not be prepared ({exc.__class__.__name__}): {exc}"
+            ) from exc
         call = _Call(model=model, cap=cap, narration=format is None, started=time.monotonic())
         return call, sdk_options, system_file
 
@@ -487,7 +506,9 @@ class ClaudeClient:
             return json.dumps(result.structured_output, ensure_ascii=False)
         text = result.result if result is not None else None
         if text is None:
-            text = "".join(call.texts)
+            # A cut call has no result. The assistant message normally precedes the stop frame,
+            # but the deltas are the same text and do not depend on that order.
+            text = "".join(call.texts) or "".join(call.deltas)
         return text.strip()
 
     async def chat_stream(

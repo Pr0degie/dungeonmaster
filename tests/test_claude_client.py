@@ -134,8 +134,21 @@ def test_render_transcript_labels_in_order_with_the_last_user_line_last():
         {"role": "user", "content": "Timo: Ich trete die Tür ein."},
     ])
     assert text.splitlines()[0] == "Setze die Sitzung fort; antworte nur als Spielleitung."
-    assert text.index("[Spieler] Timo: Ich klopfe.") < text.index("[Spielleitung] Niemand antwortet.")
-    assert text.endswith("[Spieler] Timo: Ich trete die Tür ein.")
+    assert text.index("Spieler: Timo: Ich klopfe.") < text.index("Spielleitung: Niemand antwortet.")
+    assert text.endswith("Spieler: Timo: Ich trete die Tür ein.")
+
+
+def test_the_transcript_labels_are_ones_the_speaker_label_guards_know():
+    """No server-side stop on this backend: if the model echoes the transcript's form, only the
+    guards above the seam can remove it — so the labels must be in their vocabulary."""
+    from dmbot.llm.claude_client import _ROLE_LABELS as transcript_labels
+    from dmbot.llm.sanitize import _ROLE_LABELS as guard_labels, _cut_at_labels, _sanitize
+
+    for label in transcript_labels.values():
+        assert label.endswith(":") and label[:-1] in guard_labels
+    echoed = "Die Tür knarrt.\n\nSpieler: Timo: Ich gehe hinein."
+    assert _cut_at_labels(echoed, guard_labels) == "Die Tür knarrt."
+    assert _sanitize("Spielleitung: Die Tür knarrt.") == "Die Tür knarrt."
 
 
 def test_render_transcript_with_empty_history_is_the_instruction_alone():
@@ -424,7 +437,46 @@ def test_a_schema_call_is_not_cut_mid_way_and_a_spent_cap_is_not_a_backend_error
     assert ["aux call" in r.getMessage() for r in caplog.records] == [True]
 
 
+def test_a_cut_batch_answer_does_not_depend_on_the_assistant_message_coming_first(fake, client):
+    """A truncated recap or rules answer: the stop frame may arrive before (or without) the
+    assistant message — the streamed deltas carry the same text."""
+    fake(_INIT, _start(input_tokens=50), _delta("Die Gruppe "), _delta("erreichte den Pier"),
+         _stop("max_tokens", 220), _assistant(sdk.TextBlock("Die Gruppe erreichte den Pier")))
+    answer = asyncio.run(client.chat("s", _USER, options={"num_predict": 220}))
+    assert answer == "Die Gruppe erreichte den Pier"
+    assert client.last_stats["truncated"] is True
+
+
+def test_a_stream_yields_the_delta_that_arrives_with_the_cut(fake, client):
+    fake(_INIT, _start(input_tokens=50), _delta("Eins. "), _delta("Zwei."), _stop("max_tokens", 220),
+         _delta("Drei."), _result())
+    assert asyncio.run(_drain(client.chat_stream("s", _USER, options={"num_predict": 220}))) == [
+        "Eins. ", "Zwei."]
+
+
 # ---- errors -----------------------------------------------------------------------------------
+
+
+def test_a_call_that_cannot_be_prepared_is_a_backend_error_and_the_workdir_heals(fake):
+    """The working area vanished (a temp cleaner): the call recreates it. If even that fails,
+    the error is the backend error — anything else would bypass the failover as a silent turn."""
+    import shutil
+
+    made = ClaudeClient()
+    shutil.rmtree(made._workdir)
+    fake(_INIT, _result(result="ok"))
+    assert asyncio.run(made.chat("s", _USER)) == "ok"
+
+    shutil.rmtree(made._workdir)
+    made._workdir.write_text("in the way", encoding="utf-8")  # a file where the directory was
+    try:
+        with pytest.raises(LLMBackendError, match="could not be prepared"):
+            asyncio.run(made.chat("s", _USER))
+        with pytest.raises(LLMBackendError, match="could not be prepared"):
+            asyncio.run(_drain(made.chat_stream("s", _USER)))
+    finally:
+        made._workdir.unlink()
+
 
 
 @pytest.mark.parametrize("failure", [
