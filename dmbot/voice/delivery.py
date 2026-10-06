@@ -382,8 +382,12 @@ class DeliveryPipeline:
         if take is None:
             return
         cid = self._rt._brain_channel(channel)
-        reqs = take(cid)
+        reqs = take(cid)  # drained either way, so a request never lingers into a later turn
         if not reqs:
+            return
+        if not getattr(self._rt, "clocks_enabled", True):
+            # DM_CLOCKS=0: the marker is already stripped from the spoken text; nothing ticks.
+            log.info("⏱ %d <<UHR>>-Anfrage(n) ignoriert — Uhren sind aus (DM_CLOCKS=0)", len(reqs))
             return
         state = self._rt._state.get(cid)
         if state is None:

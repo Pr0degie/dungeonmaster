@@ -84,6 +84,8 @@ class Config:
     claude_cli_path: str = ""
     claude_allow_api_key: bool = False
     llm_failover_cooldown_s: int = 600
+    # Consequence clocks (ADR 047/059). Default on = the bot of before.
+    clocks: bool = True
 
     @classmethod
     def load(cls) -> "Config":
@@ -364,4 +366,10 @@ class Config:
             in ("1", "true", "yes", "on"),
             # How long the pair stays on the fallback after the primary failed, before retrying.
             llm_failover_cooldown_s=int(os.environ.get("DM_LLM_FAILOVER_COOLDOWN_S", "600") or "600"),
+            # Consequence clocks (ADR 047/059). ON by default; DM_CLOCKS=0 hides the subsystem:
+            # no seeding from the adventure, no clock line in the prompt or the pressure panel,
+            # <<UHR>> is still stripped but ignored, !uhr answers with a hint. Non-destructive —
+            # clocks already saved in a state.json stay there. Deadlines and in-game time (ADR
+            # 048) are a separate mechanism and keep running.
+            clocks=os.environ.get("DM_CLOCKS", "1").strip().lower() in ("1", "true", "yes", "on"),
         )

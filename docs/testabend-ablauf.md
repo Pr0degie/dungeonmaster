@@ -488,6 +488,7 @@ DM_LOG_FILE=1
 DM_CONSISTENCY_GUARD=0
 DM_NPC_MEMORY=0
 DM_DEBUG_OVERLAY=0
+DM_CLOCKS=0
 
 # Marker-Sonde (Gate-Punkt 7b): ERLEDIGT wird ohne Bestätigungsklick angewendet
 DM_FLAG_CONFIRM=0
@@ -503,12 +504,12 @@ Die drei Klassifikatoren müssen an bleiben, sonst lässt sich Gate-Punkt 3 nich
 ### 9.3 Die vier Schichten: was sie wirklich abschaltet
 
 Das PRD sagt „Uhren, Agenden, Fäden und Overlay aus, über ihre Schalter oder `!automatik`".
-Der Code hat dafür **nicht vier Schalter**. So sieht es tatsächlich aus (Namen aus
-`dmbot/config.py` und den Cogs):
+Der Code hat dafür **nicht vier eigene Schalter**; die Uhren haben seit D118 einen
+(`DM_CLOCKS`). So sieht es tatsächlich aus (Namen aus `dmbot/config.py` und den Cogs):
 
 | Schicht | `.env`-Schalter | Live-Befehl | Was am Abend zu tun ist |
 |---|---|---|---|
-| **Uhren** (ADR 047) | **keiner** | `!uhr weg <id>`, Kontrolle mit `!uhren` | Die Debug-Kampagne bringt zwei Uhren mit. Nach `!j` einmal: `!uhr weg wachsamkeit` und `!uhr weg verladung`. Danach listet der Weltzustand keine Uhr mehr, und der DM hat nichts, was er anticken könnte. |
+| **Uhren** (ADR 047) | `DM_CLOCKS=0` | **keiner nötig** — `!uhr …` und `!uhren` antworten mit „Uhren sind abgeschaltet" | Nichts. Die zwei Uhren der Debug-Kampagne werden gar nicht erst angelegt, im Prompt und im Druck-Panel steht keine Uhr, ein `<<UHR>>` wird aus dem Sprechtext entfernt und ignoriert. Die Bootzeile `⏱ Uhren aus (DM_CLOCKS=0)` bestätigt es. Fristen und Spielzeit laufen weiter. |
 | **Agenden** (ADR 049) | **kein eigener** — hängt an `DM_NPC_MEMORY=0` | `!agenda "<NSC>" weg`, Kontrolle mit `!agenden` | Nichts. Die Debug-Kampagne setzt keine NSC-Ziele, und mit `DM_NPC_MEMORY=0` läuft der Extraktor nicht, der Agenda-Schritte schreibt. Am Abend kein `!agenda` benutzen. |
 | **Fäden** (ADR 050) | **kein eigener** — hängt an `DM_NPC_MEMORY=0` | `!faden weg <id>`, Kontrolle mit `!fäden` | Nichts, wenn die Sandbox geleert ist (9.1 Punkt 3). Die Extraktion läuft nur im `!wrap` und nur mit NPC-Gedächtnis; mit `DM_NPC_MEMORY=0` entsteht kein neuer Faden. `!fäden` muss nach `!j` leer sein. |
 | **Overlay** 🧪 (ADR 052) | `DM_DEBUG_OVERLAY=0` | **keiner** | Nur per `.env`. Die 🧪-Bootzeile und das Panel fehlen dann, das ist an diesem Abend richtig. Die Sandbox (`state.debug.json`) hängt **nicht** am Overlay, sondern an der `testplan.json` neben dem Abenteuer, und bleibt aktiv. |
@@ -532,7 +533,7 @@ Protokoll vermerken.
 
 | Wann | Befehl | Wozu |
 |---|---|---|
-| nach `!j` | `!uhr weg wachsamkeit` · `!uhr weg verladung` · `!uhren` | Uhren aus, Kontrolle |
+| nach `!j` | `!uhren` | Kontrolle: antwortet „Uhren sind abgeschaltet (`DM_CLOCKS=0`)" |
 | nach `!j` | `!fäden` · `!automatik` · `!backend` | Kontrolle: keine Fäden, fünf Schalter an, Primär Claude und nicht degradiert |
 | Gate 5 | `!backend claude` | nach dem erzwungenen Failover sofort zurück auf Opus |
 | Notfall | `!backend ollama` | den Rest des Abends lokal spielen |
@@ -557,7 +558,7 @@ trotzdem starten und aus Nemo antworten — das wäre dann aber der falsche Aben
 Abhaken und die Beweiszeile aus `logs/debug.log` dazulegen. Reihenfolge wie hier; 5 und 7 ändern
 die `.env` und brauchen je einen Neustart, deshalb stehen sie hinten.
 
-- [ ] **0 — Aufbau.** `.env` wie 9.2, Sandbox leer, Uhren entfernt (9.3). `!automatik` zeigt fünf
+- [ ] **0 — Aufbau.** `.env` wie 9.2, Sandbox leer, Uhren per `DM_CLOCKS=0` aus (9.3). `!automatik` zeigt fünf
       Schalter an, `!fäden` ist leer, `!backend` nennt Claude als Primär.
 - [ ] **1 — Boot.** Beide Preflight-Zeilen wie in 9.4. Während des Spiels `nvidia-smi`: XTTS liegt
       auf der GPU, `ollama ps` zeigt **kein** `mistral-nemo` (nur `bge-m3`).

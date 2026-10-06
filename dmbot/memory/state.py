@@ -1300,20 +1300,23 @@ def clocks_panel_de(clocks: list[Clock]) -> str:
     return "\n".join(lines)
 
 
-def pressure_panel_de(state: WorldState) -> str:
+def pressure_panel_de(state: WorldState, *, clocks: bool = True) -> str:
     """The combined pressure-panel body (ADR 048 #11): current time + day phase on top, then
     open deadlines, then the clocks — one edit-in-place panel instead of a second one. The
-    caller shows it whenever clocks OR deadlines exist."""
+    caller shows it whenever clocks OR deadlines exist. ``clocks=False`` (``DM_CLOCKS=0``)
+    leaves the clocks out; time and deadlines stay."""
     lines = [f"🕐 **{render_time_de(state.time_minutes)}** ({day_phase_de(state.time_minutes)})"]
     for dl in state.deadlines:
         line = f"⏳ **{dl.label}** (`{dl.id}`) — {remaining_de(dl.due_minutes, state.time_minutes)}"
         lines.append(line)
-    if state.clocks:
+    if clocks and state.clocks:
         lines.append(clocks_panel_de(state.clocks))
     return "\n".join(lines)
 
 
-def world_state_summary_de(state: WorldState, *, present: "Collection[str] | None" = None) -> str:
+def world_state_summary_de(
+    state: WorldState, *, present: "Collection[str] | None" = None, clocks: bool = True
+) -> str:
     """A compact, *structured* German block for the prompt (docs/conventions.md: 'state as structured data,
     don't boil it into prose'). Only non-empty sections appear. Empty state → ''.
 
@@ -1323,7 +1326,9 @@ def world_state_summary_de(state: WorldState, *, present: "Collection[str] | Non
     "NSCs in der Szene" line was harmless; with registration on, an unscoped line would tell the
     model that the seneschal from scene one is standing in scene four — which is exactly the
     contradiction of 2026-08-22 (the NPC who left in turn 4 led the group through the same room
-    in turn 21). ``None`` keeps the pre-D107 rendering."""
+    in turn 21). ``None`` keeps the pre-D107 rendering.
+
+    ``clocks=False`` (``DM_CLOCKS=0``) leaves the clock line out; the clocks stay in the state."""
     lines: list[str] = []
     if state.location:
         lines.append(f"Ort: {state.location}")
@@ -1378,7 +1383,7 @@ def world_state_summary_de(state: WorldState, *, present: "Collection[str] | Non
     if promises:
         lines.append("Zusagen (gelten weiterhin): "
                      + "; ".join(fact_line_de(f) for f in promises))
-    if state.clocks:  # ADR 047 — visible-to-all first cut: every clock rides in the prompt
+    if clocks and state.clocks:  # ADR 047 — visible-to-all first cut: every clock rides in the prompt
         lines.append("Uhren (Druck/Fortschritt): " + "; ".join(clock_line_de(c) for c in state.clocks))
     if not lines:
         return ""

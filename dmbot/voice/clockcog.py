@@ -19,6 +19,12 @@ from ..runtime import SessionRuntime
 log = logging.getLogger(__name__)
 
 
+CLOCKS_OFF_DE = (
+    "⏱ Uhren sind abgeschaltet (`DM_CLOCKS=0`). Gespeicherte Uhren bleiben erhalten und sind "
+    "nur ausgeblendet. Einschalten: `DM_CLOCKS=1` in der `.env`, dann Neustart."
+)
+
+
 class ClockCog(commands.Cog):
     def __init__(self, bot: commands.Bot, runtime: SessionRuntime) -> None:
         self.bot = bot
@@ -32,9 +38,19 @@ class ClockCog(commands.Cog):
         self._rt._persist_and_refresh(ctx.channel)
         await self._rt.update_clock_panel()
 
+    async def _off(self, ctx: commands.Context) -> bool:
+        """``DM_CLOCKS=0``: every clock command answers with the same hint and does nothing.
+        The clocks in the saved state are left alone — hidden, not deleted."""
+        if getattr(self._rt, "clocks_enabled", True):
+            return False
+        await ctx.send(CLOCKS_OFF_DE)
+        return True
+
     @commands.group(name="uhr", invoke_without_command=True)
     async def uhr(self, ctx: commands.Context) -> None:
         """`!uhr <neu|tick|zurück|weg>` — manage consequence clocks (ADR 047)."""
+        if await self._off(ctx):
+            return
         await ctx.send(
             "Nutzung: `!uhr neu \"<Name>\" <4|6|8>` · `!uhr tick <id>` · "
             "`!uhr zurück <id>` · `!uhr weg <id>` · `!uhren` zeigt alle."
@@ -44,6 +60,8 @@ class ClockCog(commands.Cog):
     async def neu(self, ctx: commands.Context, name: str = "", size: int = 6) -> None:
         """`!uhr neu "<Name>" <4|6|8>` — create a clock. The id is derived from the name and
         echoed back — it's what `<<UHR id>>` and the other subcommands take."""
+        if await self._off(ctx):
+            return
         state = self._state(ctx)
         if state is None:
             await ctx.send("Keine aktive Sitzung — erst `!j`.")
@@ -65,6 +83,8 @@ class ClockCog(commands.Cog):
     async def tick(self, ctx: commands.Context, clock_id: str = "") -> None:
         """`!uhr tick <id>` — advance one segment. Manual = unclamped (ADR 047 #2): the human
         is the authority; only the `<<UHR>>` marker path is limited to +1 per clock per turn."""
+        if await self._off(ctx):
+            return
         state = self._state(ctx)
         if state is None:
             await ctx.send("Keine aktive Sitzung — erst `!j`.")
@@ -93,6 +113,8 @@ class ClockCog(commands.Cog):
     async def zurueck(self, ctx: commands.Context, clock_id: str = "") -> None:
         """`!uhr zurück <id>` — take one segment back (undo an accidental tick; from a full
         clock this also retracts the still-queued consequence note)."""
+        if await self._off(ctx):
+            return
         state = self._state(ctx)
         if state is None:
             await ctx.send("Keine aktive Sitzung — erst `!j`.")
@@ -113,6 +135,8 @@ class ClockCog(commands.Cog):
     @uhr.command(name="weg", aliases=["entfernen", "loeschen"])
     async def weg(self, ctx: commands.Context, clock_id: str = "") -> None:
         """`!uhr weg <id>` — remove a clock (a spent consequence, or a stale one)."""
+        if await self._off(ctx):
+            return
         state = self._state(ctx)
         if state is None:
             await ctx.send("Keine aktive Sitzung — erst `!j`.")
@@ -131,6 +155,8 @@ class ClockCog(commands.Cog):
     @commands.command(name="uhren")
     async def uhren(self, ctx: commands.Context) -> None:
         """`!uhren` — list all clocks (and re-anchor the panel at the bottom)."""
+        if await self._off(ctx):
+            return
         state = self._state(ctx)
         if state is None:
             await ctx.send("Keine aktive Sitzung — erst `!j`.")

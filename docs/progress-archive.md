@@ -9,6 +9,17 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+_Aus `progress.md` rotiert (2026-10-06, D118):_
+
+**Tobis Rechner für den Phase-11-Abend vorbereitet (2026-10-06).** Kein Code geändert; alles unten ist auf dieser Maschine gelaufen, nichts davon am Tisch.
+- **Claude-CLI:** nativ unter `~/.local/bin/claude.exe`, Version 2.1.291, `claude -p "hi"` antwortet. `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL` und die Bedrock/Vertex-Schalter stehen weder in der Benutzer- oder System-Umgebung noch in `.env`.
+- **`.env` nach §9.2:** Sicherung in `.env.bak-2026-10-06`. Geändert: `TTS_DEVICE=cuda`, `DM_ADVENTURE=debug-kampagne`, `DM_FLAG_CONFIRM=0`, `DM_NPC_MEMORY=0`, `DM_CONSISTENCY_GUARD=0`; neu: `DM_LLM_BACKEND=claude`, die sechs `CLAUDE_*`-Zeilen, `DM_LLM_FAILOVER_COOLDOWN_S=600`, `DM_DEBUG_OVERLAY=0`. Nach dem Abend zurück mit `Copy-Item .env.bak-2026-10-06 .env`.
+- **Sandbox:** war schon leer (keine `.debug`-Datei unter `data/sessions/`, keine `session_debug_*`-Zeile im Store); nichts gelöscht, `--wipe-debug` nicht ausgeführt.
+- **Preflight ohne Discord:** `Ollama preflight OK` (`mistral-nemo`, `bge-m3` vorhanden) und `Claude preflight OK — narration opus: OK · aux haiku: OK`. Ollama lief vorher nicht und wurde erst durch `ollama list` gestartet.
+- **Stimme:** XTTS lädt mit den `.env`-Werten auf `cuda:0` (RTX 4070) und spricht einen Probesatz mit rund 3× Echtzeit bei 2,3 GB VRAM. Allein gemessen, nicht neben Nemo und Whisper.
+- **Logs:** die drei Dateien vom 15.06. liegen in `logs/archive/2026-06-15/`, `logs/` ist leer.
+- **Aufgefallen:** für „Preflight ohne Discord" gibt es keinen Einstieg (lief über ein Wegwerf-Skript); `claude -p` aus dem Repo-Ordner lädt die CLAUDE.md und spult das Ritual ab, für den Login-Check besser aus einem neutralen Ordner.
+
 _Aus `progress.md` rotiert (2026-10-06, Abend-Vorbereitung):_
 
 **Phase 11 Schritt 4–6: Reste, Doku, Review, Abend vorbereitet (2026-10-06, D117).** Vier Commits auf `main`: `382c89d`, `07864c2`, `b6a57bd`, `83ba77f`.

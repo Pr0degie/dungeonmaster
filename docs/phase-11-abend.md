@@ -21,7 +21,7 @@ läuft auf Tobis Rechner.
 | Kein API-Key | in `cmd`: `echo %ANTHROPIC_API_KEY%` | es steht wörtlich `%ANTHROPIC_API_KEY%` da |
 | Ollama | `ollama list` | `mistral-nemo` und `bge-m3` sind da |
 | Sandbox leer | in `data/sessions/<channel-id>/` alle Dateien mit `.debug` im Namen löschen, dann `uv run python -m dmbot.rag.ingest_session --wipe-debug <channel-id>` | nichts ohne `.debug` wurde angefasst |
-| `.env` | Block aus [§9.2](testabend-ablauf.md) eintragen | `DM_LLM_BACKEND=claude`, `DM_NPC_MEMORY=0`, `DM_CONSISTENCY_GUARD=0`, `DM_DEBUG_OVERLAY=0`, `DM_FLAG_CONFIRM=0`, `DM_LOG_FILE=1` |
+| `.env` | Block aus [§9.2](testabend-ablauf.md) eintragen | `DM_LLM_BACKEND=claude`, `DM_NPC_MEMORY=0`, `DM_CONSISTENCY_GUARD=0`, `DM_DEBUG_OVERLAY=0`, `DM_CLOCKS=0`, `DM_FLAG_CONFIRM=0`, `DM_LOG_FILE=1` |
 | Verbrauch | claude.ai → Verbrauchsanzeige | Stand notiert: ______ |
 
 ## Beim Start
@@ -41,8 +41,7 @@ Dann im Discord, direkt nach `!j`:
 
 | Befehl | Soll |
 |---|---|
-| `!uhr weg wachsamkeit` und `!uhr weg verladung` | beide bestätigt |
-| `!uhren` | leer |
+| `!uhren` | „Uhren sind abgeschaltet (`DM_CLOCKS=0`)" |
 | `!fäden` | leer |
 | `!automatik` | alle fünf **an** (szene, flaggen, fakten, zeit, panel) |
 | `!backend` | Primär: claude, nicht degradiert |

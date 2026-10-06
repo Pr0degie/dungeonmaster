@@ -241,6 +241,13 @@ class SessionRuntime:
         # Consistency guard (ADR 045): deterministic pre-delivery check (dead/absent NPC
         # speaking) with max one regenerate on the batch path; the streaming path logs only.
         self._consistency_guard = config.consistency_guard
+        # Consequence clocks (ADR 047/059): off = not seeded, not rendered, <<UHR>> ignored, !uhr
+        # answers with a hint. Saved clocks are only hidden, never deleted. Read through
+        # ``clocks_enabled`` everywhere.
+        self._clocks = config.clocks
+        if not self._clocks:
+            log.info("⏱ Uhren aus (DM_CLOCKS=0) — nicht angelegt, nicht angezeigt, <<UHR>> wird "
+                     "ignoriert; gespeicherte Uhren bleiben erhalten.")
         # --- the post-turn machinery of D107 (ADR 057/058/059). Every block below is switchable
         # on its own, live via !automatik, because the evening must survive a misfiring mechanism.
         # Scene-move classifier (ADR 057 #1) + the model-free flag gate (#2): the two movers that
@@ -677,7 +684,8 @@ class SessionRuntime:
         # the roster keeps growing, and an unscoped "NSCs in der Szene" line would hand the model
         # the seneschal from scene one as present in scene four — the contradiction of 2026-08-22.
         summary = world_state_summary_de(
-            state, present=scene.npcs_here if scene is not None else None
+            state, present=scene.npcs_here if scene is not None else None,
+            clocks=self.clocks_enabled,
         )
         chekhov_block = chekhov_mod.chekhov_block_de(self.chekhov_list(cid).top_open())
         for block in (self._psyker_block(state), self._augmetic_block(), chekhov_block):
@@ -950,6 +958,12 @@ class SessionRuntime:
 
     # ----- Consequence clocks (ADR 047) -----------------------------------------------------
 
+    @property
+    def clocks_enabled(self) -> bool:
+        """``DM_CLOCKS`` — the one place the switch is read. Defaults to on for a runtime built
+        without ``__init__`` (the stub runtimes of the test suite)."""
+        return getattr(self, "_clocks", True)
+
     def _tick_clock(self, channel, clock_id: str) -> Clock | None:
         """Deterministically advance a clock one segment (golden rule #3) — the single mutator
         shared by ``!uhr tick`` and the ``<<UHR>>`` confirm/auto path. Rejects unknown ids and
@@ -992,10 +1006,11 @@ class SessionRuntime:
         if self._text_channel is None:
             return
         state = self._state.get(self._active_vc_id) if self._active_vc_id is not None else None
-        if state is None or not (state.clocks or state.deadlines):
+        clocks = self.clocks_enabled
+        if state is None or not ((clocks and state.clocks) or state.deadlines):
             await self.clear_panel("_clock_panel")
             return
-        content = pressure_panel_de(state)
+        content = pressure_panel_de(state, clocks=clocks)
         if self._clock_panel is not None:
             try:
                 await self._clock_panel.edit(content=content)
@@ -1576,8 +1591,9 @@ class SessionRuntime:
             return
         start_time = getattr(adv, "start_time_de", "")
         deadlines = getattr(adv, "deadlines", []) or []
-        clocks = getattr(adv, "clocks", []) or []
-        seed_time = getattr(state, "seed_time_from_adventure", None)
+        # DM_CLOCKS=0: the adventure's clocks are not created at all (start time and deadlines are).
+        clocks = (getattr(adv, "clocks", []) or []) if self.clocks_enabled else []
+        seed_time =getattr(state, "seed_time_from_adventure", None)
         if seed_time is not None and (start_time or deadlines or clocks):
             seed_time(start_time=start_time or None, deadlines=deadlines, clocks=clocks)
         mission = getattr(adv, "mission", None) or {}
