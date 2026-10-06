@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict
 
@@ -827,6 +828,14 @@ class DMBrain:
         self._history[channel_id] = history
         return len(history) // 2
 
+    @staticmethod
+    def _log_classifier(kind: str, started: float, outcome: str) -> None:
+        """One ``[classifier]`` line per side call: how long the verdict took, in ms, and what it
+        was. Logging only. The number is the whole call as the turn experiences it — on the
+        Claude backend that includes the CLI spawn (ADR 061), which is the point: it is the wait
+        before the dice button, the scene change or the fact."""
+        log.info("[classifier] %s %dms → %s", kind, round((time.monotonic() - started) * 1000), outcome)
+
     async def classify_test(
         self, *, action: str, character: str | None, skills: list[str]
     ) -> TestRequest | None:
@@ -842,6 +851,7 @@ class DMBrain:
         system = classifier_system(
             skills, difficulties, self._profile.display_name or self._profile.name
         )
+        started = time.monotonic()
         try:
             raw = await self._client.chat(
                 system,
@@ -857,8 +867,13 @@ class DMBrain:
             data = json.loads(raw)
         except Exception:
             log.exception("roll-router classification failed")
+            self._log_classifier("roll", started, "failed")
             return None
         req = to_test_request(data, character=character)
+        self._log_classifier(
+            "roll", started,
+            f"{req.skill} ({req.difficulty or 'Standard'})" if req is not None else "no test",
+        )
         self.last_router = {"raw": raw, "decision": asdict(req) if req is not None else None}
         return req
 
@@ -870,8 +885,13 @@ class DMBrain:
         scene's reachable exits plus "nein". The brain only lends its client and records the
         verdict for the replay journal; validation and the pointer write live outside
         (``llm/scene_router.py`` and ``rules/scene_flow.py``). Never raises."""
+        started = time.monotonic()
         verdict = await classify_scene_move(
             self._client.chat, turn_text=turn_text, exits=exits, current_title=current_title
+        )
+        self._log_classifier(
+            "scene", started,
+            verdict.failure.value if verdict.failure else (verdict.target_id or "stay"),
         )
         self.last_scene_router = {
             "raw": verdict.raw,
@@ -887,8 +907,14 @@ class DMBrain:
         boundary as :meth:`classify_scene_move` so the two share one latency window. Reports what
         the narration committed to; the world-state write is the caller's, through
         ``WorldState.record_commitment``. Never raises."""
+        started = time.monotonic()
         verdict = await classify_commitment(
             self._client.chat, answer_text=answer_text, recipients=recipients, givers=givers
+        )
+        self._log_classifier(
+            "fact", started,
+            verdict.failure.value if verdict.failure
+            else (verdict.commitment.kind if verdict.commitment is not None else "none"),
         )
         self.last_facts = {
             "raw": verdict.raw,

@@ -444,7 +444,7 @@ gilt der ADR.
 benutzt der Bot Tobis Abo-Login, und der darf auf keinem fremden Rechner liegen. Bot A kann
 auf demselben Rechner laufen (Loopback wie in §2) oder getrennt bleiben.
 
-Stand vor dem Abend: Code, Doku und Review sind fertig, 1189 Tests grün. Live geprüft ist nur
+Stand vor dem Abend: Code, Doku und Review sind fertig, 1192 Tests grün. Live geprüft ist nur
 der Boot-Preflight (Opus und Haiku antworten, ein falscher Modellname fällt auf) und ein kurzer
 Haiku-Smoke (Text, Schema-Antwort, Stream mit Verlauf, Schnitt an der Ausgabegrenze). **Opus mit vollem Systemprompt, ein ganzer Zug mit Stimme und alles unter 9.4 sind
 live unverifiziert.**
@@ -606,16 +606,28 @@ Select-String -Path logs\debug.log -Pattern '\[latency\]' | Select-Object -First
 ```
 
 **B — Klassifikator-Latenz auf Haiku: Zeit bis zum Würfelknopf.**
-Der Router startet, sobald die Erzählung fertig erzeugt ist. Messgröße ist der Abstand zwischen
-der Zeile `⏱ LLM … ms` eines Zuges und der folgenden Zeile `🎲 router: …`. Die Log-Zeitstempel
-haben Sekundenauflösung; das reicht für den erwarteten Bereich (im Smoke 1,5 bis 5 s). Drei Züge
-mit Würfelknopf auswerten und alle drei Werte notieren, nicht den Mittelwert.
+Jeder Klassifikator-Aufruf schreibt eine eigene Zeile mit seiner Dauer in Millisekunden und dem
+Ergebnis:
 
 ```
-Select-String -Path logs\debug.log -Pattern '⏱ LLM|🎲 router:'
+[classifier] roll 1840ms → Überreden (Herausfordernd)
+[classifier] roll 1510ms → no test
+[classifier] scene 2100ms → schrein
+[classifier] fact 1730ms → none
 ```
 
-Diese Zahl entscheidet in Phase 12, ob der Router früher im Zug starten muss.
+`roll` ist die Zeit bis zum Würfelknopf: vom Start des Routers (die Erzählung ist dann fertig
+erzeugt, der DM spricht meist noch) bis zum Urteil. Die Zahl enthält auf Claude den Start der
+CLI. `scene` und `fact` laufen nach dem Zug nebeneinander. Steht hinter dem Pfeil `failed`,
+`timeout` oder ein anderer Fehlername, ging das Urteil verloren. Drei `roll`-Zeilen mit
+Würfelknopf notieren, alle drei Werte, nicht den Mittelwert.
+
+```
+Select-String -Path logs\debug.log -Pattern '\[classifier\]'
+```
+
+Diese Zahl entscheidet in Phase 12, ob der Router früher im Zug starten muss. Züge nach einem
+Failover messen Nemo, nicht Haiku — die Züge aus Gate-Punkt 5 nicht mitzählen.
 
 **C — Anteil ✂ an allen Erzählzügen.**
 Jeder Erzählzug schreibt genau eine `[latency]`-Zeile; ein an der Ausgabegrenze abgeschnittener

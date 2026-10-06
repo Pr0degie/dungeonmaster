@@ -190,6 +190,9 @@ hier (ich schlage `/simplify` vor, wenn ein Batch die Trigger trifft)._
   aux …: OK` line; a failure is one ERROR line whose wording depends on the cause; `!backend` shows which side answered and `!backend
   claude|ollama|auto` pins or releases it for the session. The `[latency]` line gains
   `spawn=…ms cache=…` and `cut` on a truncated answer.
+- **`[classifier]` log line (both backends):** every side call logs `[classifier] roll|scene|fact
+  <N>ms → <verdict>` from `DMBrain` — the wall time of the whole call, so „how long until the
+  dice button" is a grep, not a stopwatch.
 - Keep the latency chain lean (LAN/Tailscale). Streaming TTS is a later optimization, not
   an MVP must.
 - **Two machines drift** — the must-haves that git doesn't carry (`data/adventures/`,

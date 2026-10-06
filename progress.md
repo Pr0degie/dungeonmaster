@@ -14,7 +14,7 @@ is on-demand._
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
 - **Newest round:** D116/D117 — Schritt 4–6: `[latency]` mit `spawn`/`cache`/`cut`, Boot-Ping auf
   beide Modellstufen, getrennte Statistik-Plätze, Doku, Verifier-Review (7 Funde behoben).
-  **1189 Tests grün, `dm-eval` Exit 0, Lint sauber.** Live: Preflight (Opus + Haiku) und ein
+  **1192 Tests grün, `dm-eval` Exit 0, Lint sauber.** Live: Preflight (Opus + Haiku) und ein
   Haiku-Smoke; ein Opus-Zug mit vollem Prompt und Stimme ist **live unverifiziert**.
 - **Next concrete step:** der Phase-11-Abend nach
   [testabend-ablauf.md §9](docs/testabend-ablauf.md) — auf Tobis Rechner, Gate-Punkte 0–9, drei
@@ -26,7 +26,7 @@ is on-demand._
 ## Current focus
 
 **Phase 11 — ein zweites LLM-Backend hinter einer Naht (D116/D117, ADR 061), code-komplett.** Der DM kann statt Mistral Nemo Claude sprechen lassen (Opus erzählt, Haiku übernimmt die Klassifikatoren), über Tobis eigenes Abo und ohne API-Key; fällt Claude aus, antwortet Nemo weiter und im Chat steht genau eine ⚠-Zeile. Mit `DM_LLM_BACKEND=ollama` (Default) ist es der Bot von vorher.
-Belegt: 1189 Tests grün (1090 alte unverändert, 99 neue gegen ein Fake-SDK), `dm-eval` Exit 0, Lint sauber. Live auf dieser Maschine: der Boot-Preflight meldet Opus und Haiku in 2,9 s als erreichbar und einen falschen Modellnamen mit Knopfnamen; ein Haiku-Smoke lieferte Text, Schema-Antwort, Stream mit Verlauf und einen sauberen Schnitt an der Ausgabegrenze.
+Belegt: 1192 Tests grün (1090 alte unverändert, 102 neue), `dm-eval` Exit 0, Lint sauber. Live auf dieser Maschine: der Boot-Preflight meldet Opus und Haiku in 2,9 s als erreichbar und einen falschen Modellnamen mit Knopfnamen; ein Haiku-Smoke lieferte Text, Schema-Antwort, Stream mit Verlauf und einen sauberen Schnitt an der Ausgabegrenze.
 Ein unabhängiger Verifier hat den ganzen Diff gegen ADR 061 und die Golden Rules gelesen. Sieben Funde sind behoben, acht bewusst zurückgestellt; beides steht im ADR, letzter Nachtrag.
 Nicht verifiziert: Opus mit vollem Systemprompt, ein ganzer Zug mit Stimme, alles am Tisch. Das ist der Abend.
 
@@ -38,6 +38,7 @@ _Ältere Current-focus-Blöcke (Charakter-Akten 2026-08-22, Vierter Spieler D105
 - **Code-Reste:** die `[latency]`-Zeile zeigt `spawn`, `cache` und `cut`; `check_claude` pingt beide Modellstufen und nennt beide Ergebnisse; Schema-Aufrufe schreiben auf dem Claude-Pfad nicht mehr in den Statistik-Platz der Erzählung.
 - **Doku:** CLAUDE.md, README, architecture §3 und §10, conventions, SETUP B10 (native Installation, nicht npm), `.env.example`, die drei veralteten PRD-Zeilen, roadmap.
 - **Review:** ein Verifier über den Diff seit `01a8d14`. Behoben: ein offener Stream hob einen frischen Failover wieder auf; die Verlaufs-Etiketten waren für die Etikett-Wächter unsichtbar; Fehler beim Vorbereiten eines Aufrufs umgingen den Failover; dazu vier kleinere. Zurückgestellt und im ADR benannt: acht Punkte, der wichtigste sind Timeouts, die auf Claude rund 5 s länger laufen.
+- **Nachgereicht:** jeder Klassifikator-Aufruf schreibt `[classifier] roll|scene|fact <N>ms → <Urteil>`; die Messung „Zeit bis zum Würfelknopf" ist damit ein Grep.
 - **Abend:** die 17 alten Gates sind im Live-Run-Skript als geparkt markiert; das Ablaufblatt steht in `docs/testabend-ablauf.md` §9.
 - **Aufgefallen:** für Uhren, Agenden und Fäden gibt es keinen eigenen `.env`-Schalter und `!automatik` kennt sie nicht. Das Ablaufblatt nennt den tatsächlichen Weg (`!uhr weg`, `DM_NPC_MEMORY=0`, leere Sandbox).
 
