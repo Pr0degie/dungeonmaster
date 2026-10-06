@@ -20,7 +20,7 @@ import discord
 from discord.ext import commands
 
 from .config import Config
-from .llm.preflight import check_ollama
+from .llm.preflight import check_claude, check_ollama
 from .logsetup import setup_logging
 from .runtime import SessionRuntime
 from .shutdown import disconnect_voice, progress
@@ -167,6 +167,10 @@ def main() -> None:
     # Surface a down/misconfigured LLM host at boot (clear log line) instead of a cryptic
     # httpx.ConnectError mid-game. Best-effort: the bot still starts either way.
     check_ollama(config.ollama_host, config.ollama_model)
+    # Ollama is checked on both backends (embedder + fallback). With the Claude backend on, also
+    # say at boot whether the CLI is found and logged in — or exactly what to fix (ADR 061).
+    if config.llm_backend == "claude":
+        check_claude(config)
     _install_sigint_guard()  # first Ctrl+C asks, second shuts down
     DMBot(config).run(config.discord_token, log_handler=None)
 

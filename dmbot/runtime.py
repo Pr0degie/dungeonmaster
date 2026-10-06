@@ -41,7 +41,7 @@ from .voice.recv import VadSink
 from .voice.preflight import check_static, check_tts_speaker
 from .stt import Transcriber
 from .llm import consistency as consistency_mod
-from .llm.client import OllamaClient
+from .llm import build_llm_client
 from .llm.director_msgs import scene_rejected_note_de
 from .llm.scene_router import SceneExit
 from .orchestrator import DMBrain
@@ -356,13 +356,9 @@ class SessionRuntime:
         else:
             log.info("no RAG store under data/vectordb/ — rule questions run without the book")
         self._brain = DMBrain(
-            OllamaClient(
-                config.ollama_host,
-                config.ollama_model,
-                num_ctx=config.ollama_num_ctx,
-                repeat_penalty=config.ollama_repeat_penalty,
-                repeat_last_n=config.ollama_repeat_last_n,
-            ),
+            # Ollama alone, or Claude with Ollama as the loud fallback (DM_LLM_BACKEND, ADR 061).
+            # The retriever above keeps embedding through Ollama on both.
+            build_llm_client(config),
             profile=self._profile,
             num_predict=config.dm_num_predict,
             max_buffer_lines=config.dm_max_lines,

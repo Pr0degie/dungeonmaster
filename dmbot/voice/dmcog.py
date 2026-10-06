@@ -34,6 +34,73 @@ class DMCog(commands.Cog):
         runtime.run_and_deliver = self._delivery._run_and_deliver  # hook: DiceCog roll callbacks narrate consequence
         runtime.auto_dm_turn = self._delivery._auto_dm_turn        # hook: VoiceCog mic release runs a DM turn
         runtime.speak = self._delivery._speak                      # hook: LoreCog !lore tts reads the compendium aloud
+        self._backend_watch: asyncio.Task | None = None  # posts the failover's table notices (ADR 061)
+
+    async def cog_load(self) -> None:
+        # Only the failover pair has notices to post; the plain Ollama client has no such event.
+        client = self._rt._brain.client
+        if hasattr(client, "degraded_event"):
+            self._backend_watch = asyncio.create_task(self._watch_backend(client))
+
+    async def cog_unload(self) -> None:
+        if self._backend_watch is not None:
+            self._backend_watch.cancel()
+
+    async def _watch_backend(self, client) -> None:
+        """Post each backend switch (⚠ degraded / ✅ recovered) to the game channel — once per
+        switch, because the failover queues one notice per switch, not per turn (ADR 061)."""
+        while True:
+            await client.degraded_event.wait()
+            for notice in client.take_notices():
+                channel = self._rt._text_channel
+                if channel is None:
+                    log.warning("LLM backend notice (no channel joined yet): %s", notice)
+                    continue
+                try:
+                    await channel.send(notice)
+                except Exception:
+                    log.exception("could not post the LLM backend notice: %s", notice)
+
+    @commands.command(name="backend")
+    async def backend(self, ctx: commands.Context, *, arg: str = "") -> None:
+        """`!backend` — which LLM backend answers (ADR 061). Bare: primary/fallback, whether the
+        pair is degraded and until when, and who answered the last call. `!backend claude` /
+        `!backend ollama` pins that side, `!backend auto` follows the failover again. Applies to
+        this session only, nothing is written to `.env`."""
+        client = self._rt._brain.client
+        if not hasattr(client, "force"):
+            await ctx.send(
+                f"🧠 LLM-Backend: **ollama** ({client.model}) — kein zweites Backend aktiv "
+                "(`DM_LLM_BACKEND=ollama`)."
+            )
+            return
+        status = client.status()
+        wanted = arg.strip().lower()
+        modes = {status.primary: "primary", status.fallback: "fallback", "auto": "auto"}
+        if wanted and wanted not in modes:
+            await ctx.send(
+                f"❓ Unbekannt: `{wanted}` — möglich sind `{status.primary}`, `{status.fallback}`, `auto`."
+            )
+            return
+        if wanted:
+            client.force(modes[wanted])
+            status = client.status()
+        mode = {"auto": "auto (Failover aktiv)", "primary": f"fest auf {status.primary}",
+                "fallback": f"fest auf {status.fallback}"}[status.mode]
+        if status.degraded_until is not None:
+            until = time.strftime("%H:%M", time.localtime(status.degraded_until))
+            state = f"⚠ {status.primary} ausgefallen, Ersatz bis etwa {until} — {status.last_error}"
+        else:
+            state = "✅ kein Ausfall"
+        await ctx.send("\n".join([
+            f"🧠 **LLM-Backend** — Modus: {mode}",
+            f"Primär: **{status.primary}** ({status.primary_model}) · Ersatz: **{status.fallback}** "
+            f"({status.fallback_model})",
+            f"Zustand: {state}",
+            f"Letzte Antwort von: {status.last_backend or '—'}",
+            f"Ändern: `!backend {status.primary}` · `!backend {status.fallback}` · `!backend auto` "
+            "(gilt nur für diese Sitzung)",
+        ]))
 
     async def _autosave_turn(self, channel, answer: str, *, user_msg: str | None = None,
                              redo: bool = False) -> None:

@@ -14,6 +14,8 @@ from dotenv import load_dotenv
 
 from .memory.state import TURN_ADVANCE_MINUTES
 
+LLM_BACKENDS = ("ollama", "claude")
+
 
 @dataclass(frozen=True, slots=True)
 class Config:
@@ -73,6 +75,15 @@ class Config:
     speech_mode: str
     speech_punct: str
     speech_prebuffer: int
+    # LLM backend (ADR 061). Defaults keep the pre-round bot: Ollama only, nothing else read.
+    llm_backend: str = "ollama"
+    claude_model_narration: str = "opus"
+    claude_model_aux: str = "haiku"
+    claude_model_fallback: str = ""
+    claude_num_ctx: int = 24576
+    claude_cli_path: str = ""
+    claude_allow_api_key: bool = False
+    llm_failover_cooldown_s: int = 600
 
     @classmethod
     def load(cls) -> "Config":
@@ -91,6 +102,15 @@ class Config:
             )
 
         bot_a_raw = os.environ.get("BOT_A_USER_ID", "").strip()
+
+        # The primary LLM backend (ADR 061). A typo must not silently mean "ollama" — the operator
+        # would play a whole evening on the wrong model without noticing.
+        llm_backend = os.environ.get("DM_LLM_BACKEND", "ollama").strip().lower() or "ollama"
+        if llm_backend not in LLM_BACKENDS:
+            raise RuntimeError(
+                f"DM_LLM_BACKEND={llm_backend!r} is not a known backend — use one of: "
+                f"{', '.join(LLM_BACKENDS)}."
+            )
 
         return cls(
             discord_token=token,
@@ -322,4 +342,26 @@ class Config:
             # Head-start depth for "puffer" mode: how many sentences to synthesise before the first
             # plays. Higher = smoother (gaps later) but a longer start delay. Floor 1 (== "stream").
             speech_prebuffer=max(1, int(os.environ.get("DM_SPEECH_PREBUFFER", "3") or "3")),
+            # LLM backend (ADR 061): "ollama" = the local path alone, exactly as before; "claude" =
+            # Claude via the Agent SDK on the operator's own subscription login, with Ollama as the
+            # loud fallback (and still the embedder). Never an API key.
+            llm_backend=llm_backend,
+            # Model tiers, chosen inside the client: prose (DM turns, !intro, recap, rules/lore
+            # answers) vs schema-constrained side calls (routers + extractors).
+            claude_model_narration=os.environ.get("CLAUDE_MODEL_NARRATION", "opus").strip() or "opus",
+            claude_model_aux=os.environ.get("CLAUDE_MODEL_AUX", "haiku").strip() or "haiku",
+            # Optional Anthropic-side fallback model (e.g. opus → sonnet on an outage) — separate
+            # from our own failover to Ollama. Empty = none.
+            claude_model_fallback=os.environ.get("CLAUDE_MODEL_FALLBACK", "").strip(),
+            # A NOMINAL budget, deliberately equal to OLLAMA_NUM_CTX: auto-recap and the [ctx]
+            # warning key on prompt/num_ctx, and on the real 200k window they would never fire.
+            claude_num_ctx=int(os.environ.get("CLAUDE_NUM_CTX", "24576") or "24576"),
+            # Optional path to a native claude executable; empty = found on PATH.
+            claude_cli_path=os.environ.get("CLAUDE_CLI_PATH", "").strip(),
+            # 1 = permit a set ANTHROPIC_API_KEY. Off by default: the CLI ranks the key above the
+            # subscription login and would bill the API without saying so.
+            claude_allow_api_key=os.environ.get("CLAUDE_ALLOW_API_KEY", "0").strip().lower()
+            in ("1", "true", "yes", "on"),
+            # How long the pair stays on the fallback after the primary failed, before retrying.
+            llm_failover_cooldown_s=int(os.environ.get("DM_LLM_FAILOVER_COOLDOWN_S", "600") or "600"),
         )
