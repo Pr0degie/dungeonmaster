@@ -46,7 +46,7 @@ _Ältere `## Last session`-Einträge (Charakter-Akten `docs/characters.html` + U
 
 ## Next concrete step
 
-**Der Phase-11-Abend, nach [docs/testabend-ablauf.md §9](docs/testabend-ablauf.md).** Auf Tobis Rechner. Vorher einmalig: Sandbox der
+**Der Phase-11-Abend, nach [docs/testabend-ablauf.md §9](docs/testabend-ablauf.md).** Zum Mitlesen am Tisch: [docs/phase-11-abend.md](docs/phase-11-abend.md). Auf Tobis Rechner. Vorher einmalig: Sandbox der
 Debug-Kampagne leeren, `.env` nach §9.2 setzen, Verbrauchsstand notieren. Am Abend: Gate-Punkte 0–9, nach `!j` die zwei Uhren
 entfernen (§9.3), und die drei Messungen aus §9.6 sichern (ein Opus-Zug mit `spawn` und `first_audio`, Zeit bis zum
 Würfelknopf auf Haiku, Anteil `cut`). Danach in einer eigenen Session: Befunde eintragen, ADR 061 annehmen oder begründet

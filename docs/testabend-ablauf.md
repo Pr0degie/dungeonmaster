@@ -434,6 +434,9 @@ auch die Warnung, dass alles **ohne** `.debug` im Namen der echten Kampagne geh�
 
 ## 9. Phase-11-Abend — Claude-Backend, isoliert (Ablaufblatt)
 
+> **Kurzfassung zum Danebenlegen am Abend:** [phase-11-abend.md](phase-11-abend.md) — was geprüft
+> wird, wie, woran man den Erfolg sieht, mit Protokoll zum Ausfüllen.
+
 **Ein Gate, eine Variable.** Der Abend beantwortet eine Frage: klingt der DM mit Opus so viel
 besser, dass sich der Weg lohnt? Alles, was nicht das Modell ist, bleibt gleich oder ist aus.
 Die 17 alten Gates sind geparkt und werden an diesem Abend **nicht** geprüft. Grundlage:
