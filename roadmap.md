@@ -142,6 +142,63 @@ Roughly prioritized, deliberately not fully planned yet:
 
 ---
 
+## Part 2a — The model round (2026-09/10)
+
+Four phases, each with its own PRD and live gate. Target picture for all of them:
+`docs/plans/target-vision.md`. The Ollama path stays complete throughout:
+`DM_LLM_BACKEND=ollama` is the way back at any point. **One variable per live evening.**
+
+### Phase 11 — Claude backend behind one client seam   (PRD: `docs/plans/claude-backend.md`, ADR 061)
+**Goal:** frontier prose at the table without an API key — Opus for narration, Haiku for the
+classifiers, via the Agent SDK on Tobi's own subscription; loud failover to Nemo.
+- `LLMClient` protocol over today's surface; `OllamaClient` untouched; `ClaudeClient` +
+  `FailoverClient`; `DM_LLM_BACKEND`; preflight; `!backend`; truncation detection; docs.
+- Ollama keeps running (bge-m3 + fallback); Nemo leaves VRAM → `TTS_DEVICE=cuda` on the 4070.
+- The 17 gates of the 2026-08-23 WIP override are **parked**; re-triaged after this evening.
+- **Verification:** 0 existing test edits, `dm-eval` green; live (isolated evening, optional
+  layers off): five turns with `[latency]` lines, a Haiku-routed dice button, a scene change, a
+  recap, one forced failover with a single ⚠ line, the `<<TEST>>` + `<<ERLEDIGT>>` marker probe,
+  the truncation count, and the players' verdict on the prose.
+
+### Phase 12 — Story progress + DM tools, non-blocking   (PRD written *after* Phase 11's evening)
+**Goal:** every request the narrator makes goes through a typed SDK tool instead of an inline
+marker, and pressure comes from world events instead of reminders.
+- Tools (enums from the active profile and the current scene card): `request_test`,
+  `manifest_power`, `move_scene`, `resolve_opportunity`, `apply_damage` (any combatant — gives
+  enemy hits on PCs a mechanical path), `tick_clock`, `advance_time`. Tool returns immediately;
+  code validates and applies; button posts as today; click → engine → next turn.
+- `resolve_opportunity` replaces `<<ERLEDIGT>>` + the confirm click; undo like ADR 057's scene
+  change.
+- Persona: drop the "remind the group of the scene goal / the deadline" instructions; pressure
+  only through clock-full and deadline-passed events (ADR 047/048 mechanics). Review NPC
+  roleplay notes that make reminding a character trait.
+- `DM_DICE_MODE=router|marker|tool`; Ollama path keeps `router`/`marker`.
+- Shaped by Phase 11's findings: marker probe, truncation count, stream behaviour at a
+  `tool_use` block, spawn overhead.
+- **Verification:** one evening; every request originates from a tool call, no marker text
+  reaches the sanitizer, a completed opportunity leaves „Möglichkeiten hier" without a click,
+  the group is not reminded of a goal it already met.
+
+### Phase 13 — Blocking tool turn   (PRD after Phase 12)
+**Goal:** one turn instead of two — `request_test` waits for the click, the engine result returns
+as the tool result, Opus narrates the consequence in the same breath; same for attacks.
+- Delivery learns "stream stalls, waits, resumes"; end-of-turn hooks wait for the true end;
+  pause/`!redo` cancel the pending future; timeout → "keine Probe".
+- Go/no-go depends on Phase 11's latency numbers.
+- **Verification:** a test resolved and narrated inside one turn; a timed-out test degrades to
+  the Phase 12 flow; pause mid-wait cancels cleanly.
+
+### Phase 14 — Round mode, enemy turns, zone combat   (PRD after Phase 12)
+**Goal:** close the remaining gaps to the target vision.
+- Two modes: free (today) and rounds (player 1 → DM → player 2 → DM → … → DM advances the
+  story). The DM switches into rounds when danger starts (a tool), the table can override.
+- Enemy turns: enemy statblocks from the adventure, the code rolls their attacks, the LLM picks
+  their tactics; damage via `apply_damage`.
+- Zones (near/medium/far or named areas) in the data model, ready for finer positioning later.
+- A `/bogen`-style sheet view for players.
+
+---
+
 ## Cross-cutting: conventions
 - German as the play language; code/logs in English.
 - **Dice = code, narration = LLM.** Rolling + resolution run through the generic engine

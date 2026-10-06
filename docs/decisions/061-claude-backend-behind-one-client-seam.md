@@ -1,0 +1,119 @@
+# ADR 061 — A second LLM backend behind one client seam: Claude via the Agent SDK, Ollama kept byte-identical
+
+- **Status:** Proposed (Phase 11 of the model round; Accepted when the live gate in
+  `docs/plans/claude-backend.md` is met)
+- **Date:** 2026-09-02 (amended 2026-10-06)
+- **Refs:** decision log D116 in progress.md; `architecture.md` §3 (dependencies, LLM client);
+  ADR 002 (LLM host is one env switch), ADR 014 (roll router), ADR 017 (streaming parity),
+  ADR 027 (context budget), ADR 042 (client-instance sampling defaults), ADR 046 (replay eval),
+  ADR 057 (scene advancement). Lessons: `sampling-defaults-leak-into-aux-calls`,
+  `unwired-knobs-and-silent-fallbacks`, `incidents-become-preflights`, `parity-by-construction`,
+  `isolation-must-enumerate-every-artifact`, `one-variable-per-live-run`.
+  Plan: `docs/plans/claude-backend.md`. Target: `docs/plans/target-vision.md`.
+
+## Context
+
+The table's top complaint after two debug runs is prose quality — generic, repetitive, meta.
+Every guard since ADR 016 is a code fence around a 12B model's tic, and ADR 060 names the
+pattern. A competitor survey (2026-09-02) found feature parity or better on dice, scene state,
+memory and panel; the gap is the narration model. VoxDungeon sells its 8B→70B step as the
+premium tier; Friends & Fables and DungeonsDeep run frontier models.
+
+Tobi's constraints: no API key (per-token pricing is a bad fit for a hobby table); a Claude Max
+5x subscription he already pays for; a wish to keep every local piece so he can return to local
+models at any time. Facts as of this ADR: the Anthropic Help Center (updated 2026-06-16) states
+that the planned separate Agent SDK credit is paused and *"Claude Agent SDK, `claude -p`, and
+third-party app usage still draw from your subscription's usage limits"*; the Claude Code
+legal page says OAuth is for *ordinary individual use* and that products should use API keys.
+DMbot is not a product and runs on Tobi's own machine, but friends' inputs pass through his
+seat and the rule can change without notice.
+
+Technically the brain already has a narrow client surface (`chat`, `chat_stream`,
+`last_stats`, `model`, `aclose`) that the replay harness and every test double already
+imitate, so a second implementation costs no call-site changes. The `claude-agent-sdk` (0.2.x)
+provides everything needed: plain string system prompt (replacing the CLI's own), per-call
+model, partial-message streaming, JSON-schema structured output, rate-limit events, usage
+counters, and an isolation mode that keeps the CLI from loading this repo's `CLAUDE.md`.
+
+## Decision
+
+Add a **`ClaudeClient`** that implements the existing client surface through the Agent SDK on
+the operator's own subscription login, wrap it with a **`FailoverClient`** that degrades loudly
+to the unchanged **`OllamaClient`**, and select the primary with **`DM_LLM_BACKEND`**. Model
+tier is chosen inside the client from the call's shape (schema-constrained call → aux model,
+otherwise narration model). Nothing above the seam changes; Ollama keeps running for `bge-m3`
+embeddings and as the fallback.
+
+## Alternatives
+
+- **Anthropic API key (Messages API directly).** Cleanest technically (real `stop_sequences`,
+  `temperature`, prompt caching control, no subprocess). Rejected by Tobi on price/performance;
+  remains the correct path if the subscription policy ever closes — the seam makes that a
+  third client, not a rewrite.
+- **A bigger local model (Mistral Small 24B / Gemma 4 12B on the 5080).** Stays on the table as
+  the local path's own upgrade (Carry-over #1) and needs nothing from this ADR; it does not reach
+  frontier prose quality, which is the complaint.
+- **Replace Ollama entirely.** Rejected: the retriever embeds through Ollama, the fallback needs
+  it, and "back to local in one env line" is a hard requirement.
+- **SDK session resume (`continue_conversation` / `resume`) instead of rendering history into
+  the prompt.** Rejected: `DMBrain` owns history (redo, echo-guard pair removal, auto-recap
+  compaction, crash restore). Two owners would desync (`parity-by-construction`).
+- **Explicit `tier=` parameter on every call site.** Rejected for now: the JSON-schema `format`
+  already marks exactly the classifier/extractor calls; zero churn wins. Can be added later
+  without breaking anything.
+- **Nominal `num_ctx` = the model's real 200k window.** Rejected: auto-recap and the `[ctx]`
+  warning key on `prompt_eval / num_ctx`; a 200k budget would never compact history and would
+  send the whole campaign every turn. Keeping 24576 preserves recap cadence and bounds usage.
+- **Tool-calling in the same round.** Deferred to Phase 12: two unknowns at once (backend and
+  turn flow) would make a failed evening undiagnosable.
+
+## Consequences
+
+- **"Everything local — no cloud" is no longer strictly true.** `CLAUDE.md` and
+  `architecture.md` are amended: local by default, optional cloud backend via the operator's
+  own subscription, never an API key. The Ollama path remains complete and is the documented way
+  back.
+- **Policy exposure, recorded once.** The subscription route is permitted today for individual
+  use and may change. The failover means a policy change costs quality, not the evening. The bot
+  must run on Tobi's machine when the Claude backend is on (no token on another machine).
+- **Unmappable knobs become no-ops on Claude:** `temperature` (D83 intro temperature),
+  `repeat_penalty`/`repeat_last_n` (ADR 042), `top_p`, and server-side `stop` sequences (D37).
+  The client-side label cut (`_cut_at_labels`, `StreamAssembler.stopped`) remains the guard.
+  Documented in the client and logged once at first use.
+- **VRAM:** Nemo is no longer resident during play (Ollama lazy load / idle unload), so
+  `TTS_DEVICE=cuda` on the 4070 becomes the recommended setting with `DM_LLM_BACKEND=claude`
+  (closes the old Workstream A). Fallback pays a cold load (~10–15 s once).
+- **Concurrency:** classifiers no longer serialise behind narration on one GPU;
+  `OLLAMA_NUM_PARALLEL` is irrelevant on the Claude path. D40's timing rationale weakens — a
+  flow change for Phase 12, not this one.
+- **Two new modules and one dependency** (`claude-agent-sdk`, plus the `claude` CLI + Node on
+  the Windows bot machine, installed and logged in outside the agent — `SETUP.md`). Lazily
+  imported; the Ollama path never touches them.
+- **Latency profile changes** (subprocess spawn + cloud roundtrip vs local inference). The
+  `[latency]` line gains `spawn`/`cache`; the live gate pastes them. This is the input Phase 12
+  needs.
+- **Preflight grows** (`check_claude`): API-key refusal, CLI presence, login ping — every
+  external-state incident becomes a boot check.
+- **The output cap still cuts end-of-answer markers.** `num_predict` maps onto
+  `CLAUDE_CODE_MAX_OUTPUT_TOKENS`, so a long Opus answer loses its trailing `<<ERLEDIGT>>`,
+  `<<UHR>>`, `<<ZEIT>>` or `<<ORT>>` exactly as Nemo's did (ADR 057's root cause). This round
+  only measures it (`truncated` stat, WARNING, gate item 8); Phase 12 removes the dependency by
+  moving those requests into tools.
+
+## Amendment (2026-10-06) — the evening is isolated, the ERLEDIGT path is named
+
+A fresh review of `main` against `docs/plans/target-vision.md` found that opportunity resolution
+(`<<ERLEDIGT>>`, ADR 043) is the last mandatory decision still carried only by an inline
+end-of-answer marker plus a default-on confirm click, and that the 2026-08-22 analysis did not
+cover it. It explains the "the DM keeps reminding us and nothing moves" symptom better than the
+model alone.
+
+Decided, without widening this round's code scope:
+
+- The live evening runs on Claude with the 17 WIP-override gates **parked** and the optional
+  layers off, so the model is the only variable (`one-variable-per-live-run`). The parked gates
+  are re-triaged after the evening.
+- The marker probe covers `<<ERLEDIGT>>` (with `DM_FLAG_CONFIRM=0`) as well as `<<TEST>>`, and
+  truncation is counted, so the probe result is interpretable.
+- Fixing ERLEDIGT and dropping the persona's "remind the group" instructions belong to Phase 12,
+  together with tools for every remaining inline marker and for damage to any combatant.
