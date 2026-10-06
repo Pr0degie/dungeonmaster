@@ -180,12 +180,17 @@ class ClaudeClient:
         self._prompts.mkdir()
         self._warned: set[str] = set()
         self._stderr_tail: list[str] = []
+        # Two slots, one per tier. The brain reads `last_stats` right after a narration call for
+        # the [latency] line and the auto-recap trigger; a classifier that finishes while a
+        # narration stream is still open (they run concurrently on this backend) must not put
+        # its numbers there. Schema calls therefore report into `last_aux_stats` only.
         self.last_stats: dict | None = None
+        self.last_aux_stats: dict | None = None
 
     @property
     def model(self) -> str:
-        """The narration model — what the table hears. ``last_stats["model"]`` names the tier
-        that answered the most recent call."""
+        """The narration model — what the table hears. ``last_stats`` is the most recent prose
+        call's accounting, ``last_aux_stats`` the most recent schema call's."""
         return self._narration_model
 
     # ---- request building --------------------------------------------------------------
@@ -357,12 +362,20 @@ class ClaudeClient:
         if kind == "message_start" and call.prompt_tokens is None:
             usage = (event.get("message") or {}).get("usage") or {}
             call.prompt_tokens, call.cache_read = _prompt_tokens(usage)
-            self.last_stats = self._stats(call, truncated=False)
+            self._store_stats(call, truncated=False)
         elif kind == "message_delta":
             call.stop_reason = (event.get("delta") or {}).get("stop_reason")
             output_tokens = (event.get("usage") or {}).get("output_tokens")
             if output_tokens is not None:
                 call.output_tokens = output_tokens
+
+    def _store_stats(self, call: _Call, *, truncated: bool) -> None:
+        """Put the call's stats into its tier's slot (see ``__init__``)."""
+        stats = self._stats(call, truncated=truncated)
+        if call.narration:
+            self.last_stats = stats
+        else:
+            self.last_aux_stats = stats
 
     def _stats(self, call: _Call, *, truncated: bool) -> dict:
         """The ``last_stats`` dict: Ollama's three keys plus the Claude extras."""
@@ -399,7 +412,7 @@ class ClaudeClient:
             )
 
     def _finish(self, call: _Call) -> None:
-        """Set ``last_stats`` for a completed call and say so when the output cap cut it."""
+        """Set the stats for a completed call and say so when the output cap cut it."""
         result = call.result
         stop_reason = (result.stop_reason if result is not None else None) or call.stop_reason
         output_tokens = (
@@ -414,7 +427,7 @@ class ClaudeClient:
             truncated = stop_reason == "max_tokens"
         else:
             truncated = bool(call.cap and output_tokens is not None and output_tokens >= call.cap)
-        self.last_stats = self._stats(call, truncated=truncated)
+        self._store_stats(call, truncated=truncated)
         if not truncated:
             return
         shown = output_tokens if output_tokens is not None else "?"

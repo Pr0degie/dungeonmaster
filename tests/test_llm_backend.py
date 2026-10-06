@@ -121,18 +121,20 @@ def _preflight_config(**kw):
 
 
 class _Ping:
-    """Fake ``claude_agent_sdk.query`` for the preflight ping."""
+    """Fake ``claude_agent_sdk.query`` for the preflight pings. ``failure`` is raised for every
+    model, or only for the ones in ``failing``."""
 
-    def __init__(self, failure: BaseException | None = None) -> None:
+    def __init__(self, failure: BaseException | None = None, failing: tuple[str, ...] = ()) -> None:
         self.failure = failure
+        self.failing = failing
         self.options: list = []
 
     def __call__(self, *, prompt, options=None, transport=None):
         self.options.append(options)
-        return self._messages()
+        return self._messages(options.model)
 
-    async def _messages(self):
-        if self.failure is not None:
+    async def _messages(self, model):
+        if self.failure is not None and (not self.failing or model in self.failing):
             raise self.failure
         yield sdk.ResultMessage(subtype="success", duration_ms=1, duration_api_ms=1, is_error=False,
                                 num_turns=1, session_id="s", result="OK", stop_reason="end_turn",
@@ -153,13 +155,32 @@ def cli(monkeypatch):
     return ping
 
 
-def test_preflight_ok_names_both_models_and_pings_the_aux_tier(cli, caplog):
+def test_preflight_ok_pings_both_tiers_and_names_both_results(cli, caplog):
     with caplog.at_level(logging.INFO, logger="dmbot.llm.preflight"):
         assert preflight.check_claude(_preflight_config()) is True
-    assert "Claude preflight OK — opus / haiku" in caplog.text
-    assert cli.options[0].model == "haiku"
-    assert cli.options[0].env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "8"
-    assert cli.options[0].tools == [] and cli.options[0].setting_sources == []
+    assert "Claude preflight OK — narration opus: OK · aux haiku: OK" in caplog.text
+    assert sorted(o.model for o in cli.options) == ["haiku", "opus"]
+    for options in cli.options:
+        assert options.env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "8"
+        assert options.tools == [] and options.setting_sources == []
+        assert options.output_format is None  # a prose ping, no tool round trip
+
+
+def test_preflight_catches_a_wrong_narration_model_at_boot(cli, monkeypatch, caplog):
+    """The aux ping alone would pass; the first turn of the evening would then fail over."""
+    monkeypatch.setattr(sdk, "query", _Ping(sdk.ProcessError("model not found"), failing=("opux",)))
+    with caplog.at_level(logging.ERROR, logger="dmbot.llm.preflight"):
+        assert preflight.check_claude(_preflight_config(claude_model_narration="opux")) is False
+    assert "narration opux: FAILED · aux haiku: OK" in caplog.text
+    assert "CLAUDE_MODEL_NARRATION=opux" in caplog.text and "model not found" in caplog.text
+    assert "claude auth status" not in caplog.text  # the login is fine — don't send him there
+
+
+def test_preflight_pings_once_when_both_tiers_share_a_model(cli, caplog):
+    with caplog.at_level(logging.INFO, logger="dmbot.llm.preflight"):
+        assert preflight.check_claude(_preflight_config(claude_model_aux="opus")) is True
+    assert [o.model for o in cli.options] == ["opus"]
+    assert "narration opus: OK · aux opus: OK" in caplog.text
 
 
 def test_preflight_refuses_a_set_api_key_before_anything_runs(cli, monkeypatch, caplog):

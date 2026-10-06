@@ -90,6 +90,21 @@ def test_a_healthy_primary_answers_and_nothing_is_announced():
     assert not pair.degraded and not pair.degraded_event.is_set()
 
 
+def test_a_schema_call_does_not_move_the_narration_stats_to_the_other_side():
+    """A classifier that fails over while the narration ran on the primary must not point the
+    turn's stats at the fallback's slot."""
+    primary = _Side("opus")
+    pair, fallback, _ = _pair(primary)
+    asyncio.run(pair.chat("s", _USER))  # narration on the primary
+    fallback.last_stats = {"prompt_eval_count": 999, "eval_count": 1, "num_ctx": 24576}
+    primary.fail = _DOWN
+    asyncio.run(pair.chat("ROUTER", _USER, format={"type": "object"}))  # the router fails over
+    assert pair.status().last_backend == "ollama"
+    assert pair.last_stats["backend"] == "claude" and pair.last_stats["prompt_eval_count"] == 10
+    asyncio.run(pair.chat("s", _USER))  # the next narration, still degraded
+    assert pair.last_stats["backend"] == "ollama"
+
+
 def test_a_failing_primary_hands_the_same_call_to_the_fallback_and_says_so_once():
     primary = _Side("opus", fail=_DOWN)
     pair, fallback, clock = _pair(primary)
@@ -100,7 +115,8 @@ def test_a_failing_primary_hands_the_same_call_to_the_fallback_and_says_so_once(
     status = pair.status()
     assert status.degraded_until == clock.now + 600
     assert status.last_backend == "ollama" and status.last_error == "Claude CLI failed"
-    assert pair.last_stats["backend"] == "ollama" and pair.model == "mistral-nemo"
+    assert pair.model == "mistral-nemo"
+    assert pair.last_stats is None  # a schema call — it never moves the narration stats
     assert pair.degraded_event.is_set()
     notices = pair.take_notices()
     assert len(notices) == 1 and notices[0].startswith("⚠ Claude antwortet nicht")

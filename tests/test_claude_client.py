@@ -199,7 +199,7 @@ def test_a_schema_call_goes_to_the_aux_tier_with_structured_output(fake, client)
     assert options.model == "haiku"
     assert options.output_format == {"type": "json_schema", "schema": _SCHEMA}
     assert json.loads(raw) == {"probe": "ja"}
-    assert client.last_stats["model"] == "haiku" and client.last_stats["truncated"] is False
+    assert client.last_aux_stats["model"] == "haiku" and client.last_aux_stats["truncated"] is False
     # Sized for Claude's tool-call delivery, not Ollama's grammar (see the module constants).
     assert options.env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "1024"
     assert options.max_turns == 3
@@ -325,6 +325,34 @@ def test_early_close_closes_the_sdk_stream_and_leaves_fresh_stats(fake, client):
     assert client.last_stats["eval_count"] is None
 
 
+def test_a_schema_call_never_writes_the_narration_slot(fake, client):
+    """Classifiers run beside the narration on this backend. One that finishes while a narration
+    stream is open and then aborted (stop label / pause) must not leave ITS numbers where the
+    brain reads the turn's [latency] line and the auto-recap trigger."""
+    fake(_INIT, _start(input_tokens=500), _delta("Eins. "), _delta("Zwei."), _result())
+
+    async def go():
+        agen = client.chat_stream("s", _USER)
+        async for _ in agen:
+            break
+        # The narration stream is open; a router verdict comes and goes meanwhile.
+        fake(_INIT, _start(input_tokens=40), _result(structured_output={"probe": "ja"},
+                                                     usage={"input_tokens": 40, "output_tokens": 9}))
+        await client.chat("ROUTER", _USER, format=_SCHEMA)
+        await agen.aclose()
+
+    asyncio.run(go())
+    assert client.last_stats["prompt_eval_count"] == 500 and client.last_stats["model"] == "opus"
+    assert client.last_aux_stats["prompt_eval_count"] == 40
+    assert client.last_aux_stats["model"] == "haiku"
+
+
+def test_a_schema_call_before_any_narration_leaves_the_narration_slot_empty(fake, client):
+    fake(_INIT, _result(structured_output={"probe": "ja"}))
+    asyncio.run(client.chat("ROUTER", _USER, format=_SCHEMA))
+    assert client.last_stats is None and client.last_aux_stats["model"] == "haiku"
+
+
 # ---- truncation (the output cap) --------------------------------------------------------------
 
 
@@ -384,7 +412,7 @@ def test_a_schema_call_is_not_cut_mid_way_and_a_spent_cap_is_not_a_backend_error
     fake(_INIT, _start(input_tokens=50), _assistant(sdk.TextBlock("Also ")), _stop("max_tokens", 1024),
          _result(structured_output={"probe": "ja"}, stop_reason="tool_use"))
     assert json.loads(asyncio.run(client.chat("s", _USER, format=_SCHEMA))) == {"probe": "ja"}
-    assert client.last_stats["truncated"] is False
+    assert client.last_aux_stats["truncated"] is False
 
     fake(_INIT, _start(input_tokens=50), _assistant(sdk.TextBlock("Also ich denke")),
          _stop("max_tokens", 1024), _assistant(sdk.TextBlock("API Error"), error="max_output_tokens"),
@@ -392,7 +420,7 @@ def test_a_schema_call_is_not_cut_mid_way_and_a_spent_cap_is_not_a_backend_error
     with caplog.at_level(logging.WARNING, logger="dmbot.llm.claude_client"):
         raw = asyncio.run(client.chat("s", _USER, options={"num_predict": 80}, format=_SCHEMA))
     assert raw == "Also ich denke"
-    assert client.last_stats["truncated"] is True
+    assert client.last_aux_stats["truncated"] is True
     assert ["aux call" in r.getMessage() for r in caplog.records] == [True]
 
 
@@ -448,7 +476,7 @@ def test_a_schema_call_out_of_turns_loses_its_verdict_not_the_backend(fake, clie
          _result(is_error=True, subtype="error_max_turns", result=None))
     with caplog.at_level(logging.WARNING, logger="dmbot.llm.claude_client"):
         assert asyncio.run(client.chat("s", _USER, format=_SCHEMA)) == "Ich denke, ja."
-    assert client.last_stats["truncated"] is True and len(caplog.records) == 1
+    assert client.last_aux_stats["truncated"] is True and len(caplog.records) == 1
     # Narration has exactly one turn by design — there the same subtype is a real error.
     fake(_INIT, _result(is_error=True, subtype="error_max_turns", result=None))
     with pytest.raises(LLMBackendError):

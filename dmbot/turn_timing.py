@@ -31,7 +31,9 @@ class _TurnTiming:
 
     Stages: stt (last routed utterance's transcribe ms), trigger→llm_done (turn start → Ollama
     returned, with the autosend ``wait_idle`` portion broken out), tts (synth → WAV), bridge_wait
-    (``/speak`` POST → return), total (trigger → ``/speak`` returned). ctx/gen come from Ollama.
+    (``/speak`` POST → return), total (trigger → ``/speak`` returned). ctx/gen come from the LLM
+    client's ``last_stats``; spawn/cache/cut only appear when the backend reports them (the Claude
+    client does, ADR 061 — Ollama's stats carry none of the three, so its line is unchanged).
     """
 
     turn: int
@@ -45,6 +47,9 @@ class _TurnTiming:
     prompt_eval: int | None = None  # Ollama prompt_eval_count (context tokens)
     eval_count: int | None = None  # Ollama eval_count (generated tokens)
     num_ctx: int | None = None  # the num_ctx cap in effect
+    spawn_ms: int | None = None  # Claude: query() call → first SDK message (subprocess spawn)
+    cache_read: int | None = None  # Claude: prompt tokens served from the prompt cache
+    truncated: bool = False  # Claude: the answer was cut at the output cap (the ✂ WARNING)
     answer_chars: int = 0
     tts_ms: int | None = None  # synth call → WAV ready (streaming: summed over sentences)
     wav_s: float | None = None  # WAV duration (streaming: summed); contextualises tts/bridge_wait
@@ -57,6 +62,9 @@ class _TurnTiming:
         self.prompt_eval = stats.get("prompt_eval_count")
         self.eval_count = stats.get("eval_count")
         self.num_ctx = stats.get("num_ctx")
+        self.spawn_ms = stats.get("spawn_ms")
+        self.cache_read = stats.get("cache_read")
+        self.truncated = bool(stats.get("truncated"))
 
     def respond_ms(self) -> int:
         """The pure LLM-generation time (trigger→llm_done minus the wait_idle portion) — i.e. the
@@ -94,6 +102,12 @@ class _TurnTiming:
                          else f"ctx={self.prompt_eval}")
         if self.eval_count is not None:
             parts.append(f"gen={self.eval_count}")
+        if self.spawn_ms is not None:
+            parts.append(f"spawn={self.spawn_ms}ms")
+        if self.cache_read is not None:
+            parts.append(f"cache={self.cache_read}")
+        if self.truncated:
+            parts.append("cut")
         parts.append(f"chars={self.answer_chars}")
         # Headline metric for streaming (ADR 017): trigger → first audio leaves Bot A.
         if self.first_audio is not None:

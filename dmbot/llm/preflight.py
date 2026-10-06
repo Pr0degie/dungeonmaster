@@ -83,14 +83,16 @@ def _find_claude_cli(cli_path: str) -> str | None:
     return shutil.which("claude")
 
 
-async def _claude_ping(config, timeout: float) -> None:
-    """One minimal call on the aux model, through the real client — so the ping exercises the
-    same options (isolation, system-prompt file) every DM turn will use."""
+async def _claude_ping(config, model: str, timeout: float) -> None:
+    """One minimal call on ``model``, through the real client — so the ping exercises the same
+    options (isolation, system-prompt file) every DM turn will use. Sent as a prose call on a
+    client whose narration model is ``model``: a schema call would cost the aux tier a tool
+    round trip just to say OK."""
     from .claude_client import ClaudeClient
 
     client = ClaudeClient(
-        narration_model=config.claude_model_aux,
-        aux_model=config.claude_model_aux,
+        narration_model=model,
+        aux_model=model,
         cli_path=config.claude_cli_path or None,
         allow_api_key=config.claude_allow_api_key,
         timeout=timeout,
@@ -103,13 +105,27 @@ async def _claude_ping(config, timeout: float) -> None:
         await client.aclose()
 
 
+async def _claude_pings(config, timeout: float) -> list[tuple[str, str, BaseException | None]]:
+    """Ping both tiers side by side → ``[(tier, model, failure or None), …]``. Both, because a
+    mistyped ``CLAUDE_MODEL_NARRATION`` passes an aux-only ping and then fails the first turn of
+    the evening. One ping when both tiers name the same model."""
+    tiers = [("narration", config.claude_model_narration), ("aux", config.claude_model_aux)]
+    models = list(dict.fromkeys(model for _, model in tiers))
+    outcomes = await asyncio.gather(
+        *(_claude_ping(config, model, timeout) for model in models), return_exceptions=True
+    )
+    failure = dict(zip(models, outcomes))
+    return [(tier, model, failure[model]) for tier, model in tiers]
+
+
 def check_claude(config, *, timeout: float = 60.0) -> bool:
     """Is the Claude backend usable? Returns True if all good. Never raises.
 
     Three checks, each with its own actionable message: (1) a set ``ANTHROPIC_API_KEY`` is refused
     unless ``CLAUDE_ALLOW_API_KEY=1`` (the CLI ranks the key above the subscription login and would
-    bill the API silently); (2) the CLI is found and runs; (3) a minimal call completes, i.e. the
-    login works. On False the bot still starts — the failover answers from Ollama, and this
+    bill the API silently); (2) the CLI is found and runs; (3) a minimal call completes on the
+    narration model and on the aux model, i.e. the login works and both names are valid. The
+    boot line names both outcomes. On False the bot still starts — the failover answers from Ollama, and this
     message is why. Call it before the bot's event loop starts (it runs its own for the ping).
     """
     if os.environ.get("ANTHROPIC_API_KEY", "").strip() and not config.claude_allow_api_key:
@@ -147,17 +163,30 @@ def check_claude(config, *, timeout: float = 60.0) -> bool:
         return False
 
     try:
-        asyncio.run(_claude_ping(config, timeout))
+        pings = asyncio.run(_claude_pings(config, timeout))
     except Exception as exc:  # noqa: BLE001 — a preflight must not break boot
+        pings = [("narration", config.claude_model_narration, exc), ("aux", config.claude_model_aux, exc)]
+    outcome = " · ".join(
+        f"{tier} {model}: {'OK' if failure is None else 'FAILED'}" for tier, model, failure in pings
+    )
+    failures = [(tier, model, failure) for tier, model, failure in pings if failure is not None]
+    if failures:
+        causes = "; ".join(dict.fromkeys(f"{model}: {failure}" for _, model, failure in failures))
+        if len(failures) == len(pings):
+            hint = (
+                "Check the login from the shell that starts the bot (`claude auth status`, "
+                "`claude -p \"hi\"`)."
+            )
+        else:
+            names = " / ".join(
+                f"CLAUDE_MODEL_{tier.upper()}={model}" for tier, model, _ in failures
+            )
+            hint = f"The login works, so check the model name ({names})."
         log.error(
-            "Claude CLI %s is installed but the test call failed — DM turns fall back to Ollama. "
-            "Check the login from the shell that starts the bot (`claude auth status`, "
-            "`claude -p \"hi\"`). Cause: %s", version, exc,
+            "Claude preflight FAILED — %s (CLI %s). DM turns fall back to Ollama. %s Cause: %s",
+            outcome, version, hint, causes,
         )
         return False
 
-    log.info(
-        "Claude preflight OK — %s / %s (CLI %s).",
-        config.claude_model_narration, config.claude_model_aux, version,
-    )
+    log.info("Claude preflight OK — %s (CLI %s).", outcome, version)
     return True

@@ -69,6 +69,10 @@ class FailoverClient:
         self._degraded_until: float | None = None
         self._last_error: str | None = None
         self._answered: LLMClient | None = None
+        # The side that answered the most recent PROSE call (no `format`). `last_stats` follows
+        # this one, not `_answered`: a classifier that fails over while a narration stream is open
+        # must not point the turn's [latency] line at the other backend's numbers.
+        self._narrated: LLMClient | None = None
         self._notices: list[str] = []
         #: Set whenever a notice for the table is waiting (degraded / recovered). The DMCog awaits
         #: it, posts :meth:`take_notices` and so clears it.
@@ -82,13 +86,14 @@ class FailoverClient:
 
     @property
     def last_stats(self) -> dict | None:
-        """The answering side's stats plus ``backend`` — a copy, the side's own dict is untouched."""
-        if self._answered is None:
+        """The stats of the side that answered the last prose call, plus ``backend`` — a copy, the
+        side's own dict is untouched. Schema calls don't move it (see ``_narrated``)."""
+        if self._narrated is None:
             return None
-        stats = self._answered.last_stats
+        stats = self._narrated.last_stats
         if stats is None:
             return None
-        return {**stats, "backend": self._names[id(self._answered)]}
+        return {**stats, "backend": self._names[id(self._narrated)]}
 
     # ---- state -----------------------------------------------------------------------------
 
@@ -181,9 +186,14 @@ class FailoverClient:
                 self._degrade(exc)
             else:
                 self._primary_answered()
+                if format is None:
+                    self._narrated = self._primary
                 return answer
         self._answered = self._fallback
-        return await self._fallback.chat(system, messages, options=options, format=format)
+        answer = await self._fallback.chat(system, messages, options=options, format=format)
+        if format is None:
+            self._narrated = self._fallback
+        return answer
 
     async def chat_stream(
         self,
@@ -193,7 +203,7 @@ class FailoverClient:
         options: dict | None = None,
     ) -> AsyncIterator[str]:
         if self._try_primary():
-            self._answered = self._primary
+            self._answered = self._narrated = self._primary
             stream = self._primary.chat_stream(system, messages, options=options)
             yielded = False
             try:
@@ -214,7 +224,7 @@ class FailoverClient:
             else:
                 self._primary_answered()
                 return
-        self._answered = self._fallback
+        self._answered = self._narrated = self._fallback
         stream = self._fallback.chat_stream(system, messages, options=options)
         try:
             async for delta in stream:
