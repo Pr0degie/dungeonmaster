@@ -141,7 +141,9 @@ def test_after_the_cooldown_the_primary_is_retried_and_a_recovery_is_announced_o
     assert pair.take_notices() == []
 
 
-def test_a_failed_retry_extends_the_cooldown_without_a_second_warning():
+def test_a_failed_retry_extends_the_cooldown_and_corrects_the_announced_time_once():
+    """The first notice named a time that has now passed — the table gets the new one, once,
+    and the calls inside the new cooldown stay quiet."""
     primary = _Side("opus", fail=_DOWN)
     pair, _, clock = _pair(primary)
     asyncio.run(pair.chat("s", _USER))
@@ -150,7 +152,17 @@ def test_a_failed_retry_extends_the_cooldown_without_a_second_warning():
     asyncio.run(pair.chat("s", _USER))
     assert len(primary.calls) == 2
     assert pair.status().degraded_until == clock.now + 600
+    assert len(pair.take_notices()) == 1
+    asyncio.run(pair.chat("s", _USER))
     assert pair.take_notices() == []
+
+
+def test_leaving_a_forced_fallback_clears_the_old_error():
+    pair, _, _ = _pair(_Side("opus", fail=_DOWN))
+    asyncio.run(pair.chat("s", _USER))
+    pair.force("auto")
+    status = pair.status()
+    assert status.degraded_until is None and status.last_error is None
 
 
 def test_a_rate_limit_reset_later_than_the_cooldown_wins():

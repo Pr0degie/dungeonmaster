@@ -183,3 +183,18 @@ iex`), not `npm i -g @anthropic-ai/claude-code` as the PRD says. Open for the do
 
 **Measured in the smoke, Haiku only:** spawn-to-first-message about 0.7 s per call. Not yet
 measured: Opus, a full-size system prompt, cache reads.
+
+**From the review of the stream and failover logic (same day):**
+
+- The SDK raises bare `Exception` for a failed or timed-out initialize handshake. The client
+  maps every exception of a call to `LLMBackendError`, otherwise such a turn would bypass the
+  failover and simply be silent.
+- A schema call that runs out of turns (`error_max_turns`) loses its verdict but is not a backend
+  failure, for the same reason as a spent cap: it must not push the narration onto Ollama.
+  A wrong or unavailable aux model still degrades the whole pair — loud, and intended.
+- A retry that fails after the announced time has passed posts a corrected notice, once per
+  cooldown.
+- **Known and not fixed:** `last_stats` is one slot per client. When a classifier call overlaps
+  an aborted narration stream, the turn's `[latency]` line and the auto-recap trigger can read
+  the classifier's numbers. The same holds for `OllamaClient` today; a fix needs per-call stats
+  across the seam and belongs to Phase 12, where the turn flow changes anyway.

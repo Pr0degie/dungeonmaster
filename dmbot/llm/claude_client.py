@@ -313,6 +313,12 @@ class ClaudeClient:
                 elif isinstance(message, sdk.RateLimitEvent):
                     self._on_rate_limit(message.rate_limit_info)
                 elif isinstance(message, sdk.ResultMessage):
+                    if message.is_error and message.subtype == "error_max_turns" and not call.narration:
+                        # A schema call that used up its turns without the tool call. Like the
+                        # spent cap above: this verdict is lost, the backend is not down — an
+                        # error here would push the narration onto the fallback for a cooldown.
+                        call.cut = True
+                        break
                     if message.is_error:
                         detail = "; ".join(message.errors or []) or message.result or message.subtype
                         raise LLMBackendError(f"Claude returned an error result: {detail}")
@@ -323,7 +329,11 @@ class ClaudeClient:
             raise LLMBackendError(
                 f"Claude did not answer within {self._timeout:.0f}s ({call.model})"
             ) from exc
-        except (sdk.ClaudeSDKError, OSError) as exc:
+        except Exception as exc:  # noqa: BLE001 — see below
+            # Deliberately everything: besides its own error types the SDK raises bare
+            # `Exception` (a failed or timed-out initialize handshake), and anything that escaped
+            # here unmapped would bypass the failover and leave the table with a silent turn.
+            # Task cancellation is a BaseException and passes through untouched.
             tail = " | ".join(self._stderr_tail)
             raise LLMBackendError(
                 f"Claude CLI failed ({exc.__class__.__name__}): {exc}" + (f" — {tail}" if tail else "")
@@ -333,8 +343,10 @@ class ClaudeClient:
             # does not close its inner generator on an early exit (PEP 533; the SDK only does so
             # one level down), so the subprocess is ended by the event loop finalising that
             # generator: stdin EOF, up to 5 s grace, then terminate. Measured: the CLI process is
-            # gone about 5 s after this line, and this line itself returns at once — which is what
-            # a turn wants. Recorded in ADR 061's SDK amendment.
+            # gone about 5 s after this line, and on an early close this line returns at once —
+            # which is what a turn wants. On a timeout or a cancelled task the SDK generator has
+            # already run that same shutdown inline, so those two paths do wait for it. Recorded
+            # in ADR 061's SDK amendment.
             await stream.aclose()
 
     def _note_stream_frame(self, call: _Call, event: dict[str, Any]) -> None:

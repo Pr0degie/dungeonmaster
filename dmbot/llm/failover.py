@@ -116,6 +116,7 @@ class FailoverClient:
             raise ValueError(f"unknown failover mode {mode!r}")
         if mode != "fallback":
             self._degraded_until = None
+            self._last_error = None
         self._mode = mode
         log.info("LLM backend mode: %s", mode)
 
@@ -137,15 +138,18 @@ class FailoverClient:
         self.degraded_event.set()
 
     def _degrade(self, exc: LLMBackendError) -> None:
-        """The primary failed: log the cause, start (or extend) the cooldown, tell the table once."""
+        """The primary failed: log the cause, start (or extend) the cooldown, and tell the table
+        once per announced period (not per call)."""
         primary, fallback = self._names[id(self._primary)], self._names[id(self._fallback)]
-        first = self._degraded_until is None
+        # A fresh outage, or a retry that failed after the announced time ran out — either way
+        # what the table was last told is no longer true, so it is told again.
+        announce = self._degraded_until is None or self._clock() >= self._degraded_until
         # A reported rate-limit reset beats the cooldown: retrying before it lifts cannot work.
         self._degraded_until = max(self._clock() + self._cooldown_s, float(exc.resets_at or 0))
         self._last_error = str(exc)
         until = time.strftime("%H:%M", time.localtime(self._degraded_until))
         log.error("LLM backend %s failed — falling back to %s until %s: %s", primary, fallback, until, exc)
-        if first:
+        if announce:
             self._notify(
                 f"⚠ {primary.capitalize()} antwortet nicht — die Spielleitung läuft bis etwa {until} "
                 f"über das lokale Modell ({self._fallback.model}) weiter."

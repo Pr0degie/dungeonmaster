@@ -13,7 +13,7 @@ is on-demand._
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
 - **Newest round:** D116 — `LLMClient`-Naht, `ClaudeClient` über das Agent SDK, `FailoverClient`,
-  `DM_LLM_BACKEND`, `check_claude`, `!backend`. **1168 Tests grün, `dm-eval` Exit 0, 0 geänderte
+  `DM_LLM_BACKEND`, `check_claude`, `!backend`. **1172 Tests grün, `dm-eval` Exit 0, 0 geänderte
   Alttests.** Kurzer Live-Smoke nur gegen Haiku; Opus und ein ganzer Zug sind **live unverifiziert**.
 - **Next concrete step:** Schritt 4–6 in frischer Session — zuerst ADR 061 „Amendment (build)"
   lesen (das SDK weicht an sieben Stellen vom PRD ab), dann `turn_timing` (`spawn`/`cache`/`cut`),
@@ -25,7 +25,7 @@ is on-demand._
 ## Current focus
 
 **Phase 11 — ein zweites LLM-Backend hinter einer Naht (D116, ADR 061), Schritt 1–3 von 6.** Der DM kann jetzt statt Mistral Nemo Claude sprechen lassen (Opus erzählt, Haiku übernimmt die Klassifikatoren), über Tobis eigenes Abo und ohne API-Key; fällt Claude aus, antwortet Nemo weiter und im Chat steht genau eine ⚠-Zeile. Mit `DM_LLM_BACKEND=ollama` (Default) ist es der Bot von vorher.
-Belegt: 1168 Tests grün (1090 alte unverändert, 78 neue gegen ein Fake-SDK), `dm-eval` Exit 0, Lint sauber. Ein kurzer Live-Smoke gegen Haiku lief durch: Preflight OK, Text, Schema-Antwort, Stream, früher Abbruch, Failover bei unsinnigem Modellnamen.
+Belegt: 1172 Tests grün (1090 alte unverändert, 82 neue gegen ein Fake-SDK), `dm-eval` Exit 0, Lint sauber. Ein kurzer Live-Smoke gegen Haiku lief durch: Preflight OK, Text, Schema-Antwort, Stream, früher Abbruch, Failover bei unsinnigem Modellnamen.
 Das installierte SDK verhält sich an sieben Stellen anders als das PRD annahm; die wichtigste: die Ausgabegrenze schneidet nicht hart, die CLI setzt bis zu dreimal fort und bricht dann mit Fehler ab. Der Client schneidet Erzählantworten deshalb selbst. Alles steht in ADR 061, „Amendment (2026-10-06, build)".
 Nicht gebaut und nicht verifiziert: `turn_timing`-Erweiterung, SETUP und Doku, Opus, ein ganzer Zug am Tisch.
 

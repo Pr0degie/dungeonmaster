@@ -414,6 +414,47 @@ def test_sdk_failures_become_the_one_backend_error(fake, client, failure):
         asyncio.run(_drain(client.chat_stream("s", _USER)))
 
 
+def test_the_sdks_bare_exceptions_are_backend_errors_too(fake, client):
+    """The SDK raises plain ``Exception`` for a failed or timed-out initialize handshake; left
+    unmapped it would bypass the failover and the turn would simply be silent."""
+    failure = Exception("Control request timeout: initialize")
+    fake(failure)
+    with pytest.raises(LLMBackendError, match="initialize") as caught:
+        asyncio.run(client.chat("s", _USER))
+    assert caught.value.__cause__ is failure
+    with pytest.raises(LLMBackendError):
+        asyncio.run(_drain(client.chat_stream("s", _USER)))
+
+
+def test_a_cancelled_call_stays_cancelled(fake, client):
+    async def hang():
+        await asyncio.sleep(30)
+
+    query = fake(_INIT, hang)
+
+    async def go():
+        task = asyncio.create_task(client.chat("s", _USER))
+        await asyncio.sleep(0.05)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(go())
+    assert query.closed == 1 and not query.system_paths[0].exists()
+
+
+def test_a_schema_call_out_of_turns_loses_its_verdict_not_the_backend(fake, client, caplog):
+    fake(_INIT, _assistant(sdk.TextBlock("Ich denke, ja.")),
+         _result(is_error=True, subtype="error_max_turns", result=None))
+    with caplog.at_level(logging.WARNING, logger="dmbot.llm.claude_client"):
+        assert asyncio.run(client.chat("s", _USER, format=_SCHEMA)) == "Ich denke, ja."
+    assert client.last_stats["truncated"] is True and len(caplog.records) == 1
+    # Narration has exactly one turn by design — there the same subtype is a real error.
+    fake(_INIT, _result(is_error=True, subtype="error_max_turns", result=None))
+    with pytest.raises(LLMBackendError):
+        asyncio.run(client.chat("s", _USER))
+
+
 def test_an_error_result_raises(fake, client):
     fake(_INIT, _result(is_error=True, subtype="error_during_execution", errors=["model not found"]))
     with pytest.raises(LLMBackendError, match="model not found"):
