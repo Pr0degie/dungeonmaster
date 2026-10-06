@@ -35,7 +35,9 @@ here is its contract, which DMbot calls:
   `OllamaClient` alone; `claude` builds `FailoverClient(ClaudeClient, OllamaClient)`. **Tier
   rule:** a `format` schema → aux model (Haiku), anything else → narration model (Opus); never
   pass a model name from a call site. A new side call that wants Haiku must carry a schema.
-  Claude ignores `temperature`, `stop` and the repeat penalties, cuts narration itself at
+  History goes into the prompt as a transcript labelled `Spieler:` / `Spielleitung:` — those
+  two words must stay in `sanitize._ROLE_LABELS`, the label guards are the only anti-puppeting
+  guard here. Claude ignores `temperature`, `stop` and the repeat penalties, cuts narration itself at
   `num_predict`, and keeps schema-call stats out of `last_stats` (`last_aux_stats`). Everything
   Claude-specific stays in `claude_client.py`; `OllamaClient` is not edited for it. Tests use a
   fake `claude_agent_sdk.query` with the real SDK dataclasses — check field names against the
@@ -184,8 +186,8 @@ hier (ich schlage `/simplify` vor, wenn ein Batch die Trigger trifft)._
 - **Claude backend (`DM_LLM_BACKEND=claude`):** needs the native `claude` CLI installed and
   logged in **on the Windows machine that runs the bot** (SETUP.md „Claude backend"). Ollama
   keeps running — it embeds for RAG and is the fallback. Nemo is then not resident during play,
-  so `TTS_DEVICE=cuda` fits on the 4070. Boot logs one `Claude preflight …` line naming the
-  narration and the aux result; `!backend` shows which side answered and `!backend
+  so `TTS_DEVICE=cuda` fits on the 4070. On success boot logs one `Claude preflight OK — narration …: OK ·
+  aux …: OK` line; a failure is one ERROR line whose wording depends on the cause; `!backend` shows which side answered and `!backend
   claude|ollama|auto` pins or releases it for the session. The `[latency]` line gains
   `spawn=…ms cache=…` and `cut` on a truncated answer.
 - Keep the latency chain lean (LAN/Tailscale). Streaming TTS is a later optimization, not
@@ -202,8 +204,11 @@ The pipeline doesn't lie about itself — but real-time audio and foreign libs d
 - **No sound?** First check: are *both* bots actually connected to the voice channel?
 - **Garbage transcript?** Suspect the sample rate (16 kHz mono?) before the model.
 - **LLM not answering?** `ollama list` + reachability of the host (ping/curl) before the client.
-- **LLM not answering on the Claude backend?** First the boot line: `Claude preflight FAILED`
-  names the tier and the cause. Then, in the **same `cmd` window that starts the bot**:
+- **LLM not answering on the Claude backend?** First the boot log: search it for `Claude` —
+  there is one ERROR line, and its wording is the diagnosis (`Claude backend refused:
+  ANTHROPIC_API_KEY …`, `Claude CLI not found …`, `… is npm's batch shim …`, `… does not run`,
+  or `Claude preflight FAILED — narration …: … · aux …: …` with the failing tier and cause;
+  table in SETUP.md B10). Then, in the **same `cmd` window that starts the bot**:
   `claude -p "hi"` (does the login answer?), `claude auth status` (subscription login, not an
   API key?), `echo %ANTHROPIC_API_KEY%` (must print the name back, i.e. be unset — with a key
   the backend refuses to run). `where claude` must show a native `claude.exe`, not npm's

@@ -300,10 +300,19 @@ bot**, as the Windows user that starts it — the agent cannot do it for you.
       `Claude preflight OK — narration opus: OK · aux haiku: OK (CLI …)`.
       Both models are pinged, so a mistyped model name shows up here and not in the first turn.
 
-**If it does not work.** `Claude preflight FAILED` names what failed: both tiers → the login
-(`claude -p "hi"` in `cmd`); one tier → that model name (`CLAUDE_MODEL_NARRATION` /
-`CLAUDE_MODEL_AUX`); `batch shim` → the npm install is being found instead of the native one;
-`ANTHROPIC_API_KEY is set` → remove the key. In play, one ⚠ line in the chat means Claude
+**If it does not work.** The boot log has exactly one ERROR line about Claude; search it for
+`Claude`. Its wording says what to fix:
+
+| Line starts with | Meaning | Fix |
+|---|---|---|
+| `Claude backend refused: ANTHROPIC_API_KEY is set` | a key is in the environment | remove it (user/system variables and `.env`) |
+| `Claude CLI not found` | no `claude` on PATH or at `CLAUDE_CLI_PATH` | install natively, open a new terminal |
+| `Claude CLI at … is npm's batch shim` | only npm's `claude.cmd` exists | install natively, or point `CLAUDE_CLI_PATH` at a `claude.exe` |
+| `Claude CLI at … does not run` | the executable is broken | reinstall |
+| `Claude preflight FAILED — narration …: FAILED · aux …: FAILED` | both pings failed: the login | `claude -p "hi"` in `cmd`, log in again |
+| `Claude preflight FAILED —` with one tier `OK` | the login works, one model name is wrong | the line names the knob (`CLAUDE_MODEL_NARRATION` / `CLAUDE_MODEL_AUX`); a bad `CLAUDE_MODEL_FALLBACK` shows up here too |
+
+In play, one ⚠ line in the chat means Claude
 failed and Nemo took over (the first local answer pays a cold model load of 10–15 s);
 `!backend` shows why and until when, `!backend claude` retries at once, `!backend ollama` stays
 local for the session. **The way back** is one line: `DM_LLM_BACKEND=ollama`.

@@ -219,3 +219,47 @@ The cost is one eight-token Opus request per boot.
 
 **The `[latency]` line carries `spawn`, `cache` and `cut`** when the stats have them; an Ollama
 turn's line is unchanged.
+
+## Amendment (2026-10-06, review of the whole round) — fixed, and deliberately left
+
+An independent verifier read the diff since `01a8d14` against this ADR, the golden rules and the
+installed SDK. It confirmed: `OllamaClient` untouched, zero edits to tests that existed before,
+isolation complete, no path that spawns the CLI with an API key set. Seven findings were fixed
+with tests:
+
+- **A call that began before a degrade no longer undoes it.** A narration stream that was open
+  when a classifier failed used to clear the cooldown when it ended, so the next call walked
+  into the same error and announced it again. A primary success now ends only a degraded period
+  that already existed when that call started.
+- **The transcript labels are `Spieler:` / `Spielleitung:`,** not the bracketed form of the PRD.
+  The speaker-label guards above the seam match `<label>:` only; with no server-side `stop` they
+  are the sole anti-puppeting guard, and a bracketed label was invisible to them.
+- **A failure while preparing a call is a backend error** (it bypassed the failover as a silent
+  turn), and a vanished working directory is recreated.
+- **A cut batch answer takes its text from the stream deltas** when no assistant message came
+  first. Measured live on Haiku: a recap-style call cut at 30 tokens returns its 30 tokens.
+- **The boot ping passes `CLAUDE_MODEL_FALLBACK`,** so a value the CLI rejects fails at boot.
+- **The CLI search prefers the native exe** at the installer's default location over a shim on
+  PATH, as the SDK does; the boot message no longer announces a fallback that does not happen.
+- **Docs:** the troubleshooting text named a log prefix four of the six failure lines do not carry.
+
+Left as they are, on purpose:
+
+- **Timeouts and cancels run about 5 s long on Claude.** A timed-out or cancelled call waits for
+  the SDK's shielded shutdown (stdin EOF, 5 s grace). The routers' 20 s limit is therefore about
+  25 s here. No turn is lost; the number belongs to the router-timing question of Phase 12.
+- **Only `error_max_turns` counts as a lost verdict.** Any other error result of a schema call
+  degrades the pair. No such subtype exists in the installed SDK; revisit if one appears live.
+- **A rejected rate limit fails over even when paid overage would have served the request.**
+  Intended: no usage beyond the subscription. `overage_status` is ignored.
+- **The table notice shows a time of day only.** A weekly limit that resets days ahead reads as
+  "bis etwa 09:00". Cosmetic.
+- **`spawn=` includes the SDK's own `claude -v` probe** that precedes every spawn. It can be
+  switched off with `CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK` in the bot's environment; measure first.
+- **The CLI inherits the bot's environment,** Discord token included (the SDK merges
+  `os.environ`). No tool is enabled, so the model cannot read it.
+- **Only `ANTHROPIC_API_KEY` is refused.** Other variables that redirect billing
+  (`ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, the Bedrock/Vertex switches) are not checked.
+  Not set on this machine; a candidate for the preflight before anyone else runs the backend.
+- **The stderr tail is one list per client,** so with concurrent calls an error message can carry
+  another call's stderr. It only feeds the error text shown by `!backend`.

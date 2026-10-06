@@ -8,6 +8,11 @@ Debrief-Greps, der Reset) steht im [Runbook](debug-campaign-runbook.md) und wird
 wiederholt. Dieses Dokument beantwortet die andere Hälfte: **in welcher Reihenfolge, woran
 man am Bildschirm erkennt, dass es geklappt hat, und was danach passiert.**
 
+> ⏸ **Stand 2026-10-06: §0–§8 beschreiben den geparkten Nemo-Abend** (zehn Gates plus die
+> sieben aus D107–D115; ADR 061, Nachtrag). **Der nächste Abend ist der Phase-11-Abend und
+> läuft nach §9 ganz unten.** §2 (Topologie), §6 (Übergabe) und §8 (Fehlersuche) gelten dort
+> weiter, soweit §9 nichts anderes sagt.
+
 Die Auflösung der Kampagne steht hier bewusst nicht — wer mitspielt, kann das Dokument lesen.
 
 ---
@@ -424,3 +429,234 @@ nicht. Beenden: **zweimal** Strg+C.
 
 Nach dem Abend zurücksetzen: [Reset für einen Re-Run](debug-campaign-runbook.md) — dort steht
 auch die Warnung, dass alles **ohne** `.debug` im Namen der echten Kampagne gehört.
+
+---
+
+## 9. Phase-11-Abend — Claude-Backend, isoliert (Ablaufblatt)
+
+**Ein Gate, eine Variable.** Der Abend beantwortet eine Frage: klingt der DM mit Opus so viel
+besser, dass sich der Weg lohnt? Alles, was nicht das Modell ist, bleibt gleich oder ist aus.
+Die 17 alten Gates sind geparkt und werden an diesem Abend **nicht** geprüft. Grundlage:
+[PRD „Live gate"](plans/claude-backend.md), Punkte 0–9; wo PRD und ADR 061 sich widersprechen,
+gilt der ADR.
+
+**Der Bot läuft an diesem Abend auf Tobis Rechner**, nicht bei Timo. Mit dem Claude-Backend
+benutzt der Bot Tobis Abo-Login, und der darf auf keinem fremden Rechner liegen. Bot A kann
+auf demselben Rechner laufen (Loopback wie in §2) oder getrennt bleiben.
+
+Stand vor dem Abend: Code, Doku und Review sind fertig, 1189 Tests grün. Live geprüft ist nur
+der Boot-Preflight (Opus und Haiku antworten, ein falscher Modellname fällt auf) und ein kurzer
+Haiku-Smoke (Text, Schema-Antwort, Stream mit Verlauf, Schnitt an der Ausgabegrenze). **Opus mit vollem Systemprompt, ein ganzer Zug mit Stimme und alles unter 9.4 sind
+live unverifiziert.**
+
+### 9.1 Einmalig vorher
+
+1. Claude Code nativ installieren und einloggen: [SETUP.md B10](../SETUP.md). Prüfen in `cmd`:
+   `claude -p "hi"` antwortet, `echo %ANTHROPIC_API_KEY%` gibt den Namen zurück (= nicht gesetzt).
+2. Ollama läuft weiter und hat `mistral-nemo` und `bge-m3` (Rückfall und Embeddings).
+3. Sandbox der Debug-Kampagne leeren, damit kein alter Stand mitspielt
+   ([Runbook „Reset für einen Re-Run"](debug-campaign-runbook.md)): in
+   `data/sessions/<channel-id>/` die vier `.debug`-Dateien und `history.*.debug.jsonl` löschen,
+   dann `uv run python -m dmbot.rag.ingest_session --wipe-debug <channel-id>`. **Nichts ohne
+   `.debug` im Namen anfassen.**
+4. Verbrauchsanzeige auf claude.ai öffnen und den Stand notieren (Gate-Punkt 6).
+
+### 9.2 `.env` für den Abend
+
+Nur diese Zeilen weichen vom Normalbetrieb ab. Alles andere bleibt, wie es ist.
+
+```
+# das Backend — die eine Variable
+DM_LLM_BACKEND=claude
+CLAUDE_MODEL_NARRATION=opus
+CLAUDE_MODEL_AUX=haiku
+CLAUDE_MODEL_FALLBACK=
+CLAUDE_NUM_CTX=24576
+CLAUDE_CLI_PATH=
+CLAUDE_ALLOW_API_KEY=0
+DM_LLM_FAILOVER_COOLDOWN_S=600
+
+# Kampagne, Stimme, Logs
+DM_ADVENTURE=debug-kampagne
+TTS_DEVICE=cuda
+DM_LOG_FILE=1
+
+# optionale Schichten AUS
+DM_CONSISTENCY_GUARD=0
+DM_NPC_MEMORY=0
+DM_DEBUG_OVERLAY=0
+
+# Marker-Sonde (Gate-Punkt 7b): ERLEDIGT wird ohne Bestätigungsklick angewendet
+DM_FLAG_CONFIRM=0
+```
+
+Bewusst auf Default lassen (nicht anfassen): `DM_ROLL_ROUTER=1`, `DM_SCENE_ROUTER=1`,
+`DM_FACT_ROUTER=1`, `DM_SCENE_FLAG_GATE=1`, `DM_PLAYER_PANEL=1`, `DM_STREAMING=1`,
+`DM_SPEECH_MODE=stream`, `DM_NUM_PREDICT=220`, `DM_AUTORECAP=1`, `DM_SESSION_MEMORY=1`.
+Die drei Klassifikatoren müssen an bleiben, sonst lässt sich Gate-Punkt 3 nicht prüfen.
+
+`ANTHROPIC_API_KEY` darf weder in `.env` noch in der Windows-Umgebung stehen.
+
+### 9.3 Die vier Schichten: was sie wirklich abschaltet
+
+Das PRD sagt „Uhren, Agenden, Fäden und Overlay aus, über ihre Schalter oder `!automatik`".
+Der Code hat dafür **nicht vier Schalter**. So sieht es tatsächlich aus (Namen aus
+`dmbot/config.py` und den Cogs):
+
+| Schicht | `.env`-Schalter | Live-Befehl | Was am Abend zu tun ist |
+|---|---|---|---|
+| **Uhren** (ADR 047) | **keiner** | `!uhr weg <id>`, Kontrolle mit `!uhren` | Die Debug-Kampagne bringt zwei Uhren mit. Nach `!j` einmal: `!uhr weg wachsamkeit` und `!uhr weg verladung`. Danach listet der Weltzustand keine Uhr mehr, und der DM hat nichts, was er anticken könnte. |
+| **Agenden** (ADR 049) | **kein eigener** — hängt an `DM_NPC_MEMORY=0` | `!agenda "<NSC>" weg`, Kontrolle mit `!agenden` | Nichts. Die Debug-Kampagne setzt keine NSC-Ziele, und mit `DM_NPC_MEMORY=0` läuft der Extraktor nicht, der Agenda-Schritte schreibt. Am Abend kein `!agenda` benutzen. |
+| **Fäden** (ADR 050) | **kein eigener** — hängt an `DM_NPC_MEMORY=0` | `!faden weg <id>`, Kontrolle mit `!fäden` | Nichts, wenn die Sandbox geleert ist (9.1 Punkt 3). Die Extraktion läuft nur im `!wrap` und nur mit NPC-Gedächtnis; mit `DM_NPC_MEMORY=0` entsteht kein neuer Faden. `!fäden` muss nach `!j` leer sein. |
+| **Overlay** 🧪 (ADR 052) | `DM_DEBUG_OVERLAY=0` | **keiner** | Nur per `.env`. Die 🧪-Bootzeile und das Panel fehlen dann, das ist an diesem Abend richtig. Die Sandbox (`state.debug.json`) hängt **nicht** am Overlay, sondern an der `testplan.json` neben dem Abenteuer, und bleibt aktiv. |
+
+Dazu die zwei Schichten, die das PRD namentlich nennt und die einen echten Schalter haben:
+`DM_CONSISTENCY_GUARD=0` (Konsistenz-Wächter) und `DM_NPC_MEMORY=0` (NPC-Gedächtnis, und damit
+auch Agenda-Schritte und Faden-Extraktion). Beide wirken erst nach einem Neustart.
+
+**`!automatik` schaltet keine der vier.** Es kennt genau fünf Namen: `szene`, `flaggen`,
+`fakten`, `zeit`, `panel` (Defaults `DM_SCENE_ROUTER`, `DM_SCENE_FLAG_GATE`, `DM_FACT_ROUTER`,
+`DM_TURN_TIME_ADVANCE`, `DM_PLAYER_PANEL`). Am Abend bleiben alle fünf **an**. Bares `!automatik`
+zeigt den Stand; das ist der Notgriff, falls einer der Klassifikatoren am Tisch stört
+(`!automatik fakten aus`).
+
+Nicht abgeschaltet, weil das PRD „alles andere Default" sagt: die Spielzeit pro Zug und die
+Frist `mitternachtssirene` aus dem Abenteuer. Verstreicht die Frist, bekommt der DM einen
+Regie-Hinweis. Wer das für den Abend nicht will: `!frist weg mitternachtssirene` — dann aber im
+Protokoll vermerken.
+
+**Live-Befehle des Abends, getrennt von der `.env`:**
+
+| Wann | Befehl | Wozu |
+|---|---|---|
+| nach `!j` | `!uhr weg wachsamkeit` · `!uhr weg verladung` · `!uhren` | Uhren aus, Kontrolle |
+| nach `!j` | `!fäden` · `!automatik` · `!backend` | Kontrolle: keine Fäden, fünf Schalter an, Primär Claude und nicht degradiert |
+| Gate 5 | `!backend claude` | nach dem erzwungenen Failover sofort zurück auf Opus |
+| Notfall | `!backend ollama` | den Rest des Abends lokal spielen |
+| Notfall | `!backend auto` | wieder dem Failover folgen |
+
+### 9.4 Sollbild beim Start
+
+```
+Ollama preflight OK — http://127.0.0.1:11434 reachable, model 'mistral-nemo' available.
+Claude preflight OK — narration opus: OK · aux haiku: OK (CLI 2.1.x (Claude Code)).
+loaded adventure 'Die Mitternachtsfracht' (6 scenes, 8 NPC statblocks)
+rulebook RAG store found — retrieval is on
+```
+
+Die 🧪-Zeile fehlt (Overlay aus). Steht statt der zweiten Zeile `Claude preflight FAILED`, wird
+nicht gespielt, sondern repariert: die Zeile nennt, welche Stufe fehlschlug und warum
+([conventions.md „LLM not answering on the Claude backend?"](conventions.md)). Der Bot würde
+trotzdem starten und aus Nemo antworten — das wäre dann aber der falsche Abend.
+
+### 9.5 Gate-Punkte 0–9
+
+Abhaken und die Beweiszeile aus `logs/debug.log` dazulegen. Reihenfolge wie hier; 5 und 7 ändern
+die `.env` und brauchen je einen Neustart, deshalb stehen sie hinten.
+
+- [ ] **0 — Aufbau.** `.env` wie 9.2, Sandbox leer, Uhren entfernt (9.3). `!automatik` zeigt fünf
+      Schalter an, `!fäden` ist leer, `!backend` nennt Claude als Primär.
+- [ ] **1 — Boot.** Beide Preflight-Zeilen wie in 9.4. Während des Spiels `nvidia-smi`: XTTS liegt
+      auf der GPU, `ollama ps` zeigt **kein** `mistral-nemo` (nur `bge-m3`).
+- [ ] **2 — Fünf Züge.** `!join` → `!start` → fünf gesprochene Spielerzüge. Fünf `[latency]`-Zeilen
+      sichern (`first_audio`, `spawn`, `ctx`, `cache`). Daneben die Nemo-Zeilen vom 22.08. legen.
+- [ ] **3 — Klassifikatoren auf Haiku.** Ein Würfelknopf vom Router (`🎲 router: <Figur> — '…' → …`),
+      ein automatischer Szenenwechsel (`📖 Auto-Szenenwechsel vorgeschlagen → …`), ein harter
+      Fakt (`📌 Fakt aufgenommen (…)`).
+- [ ] **4 — Recap.** `!wrap` → `📜 **Was bisher geschah:**` auf Deutsch, gespeichert
+      (`recap.debug.md` in der Sitzungsmappe).
+- [ ] **5 — Failover.** Bot stoppen, `CLAUDE_MODEL_NARRATION=opus-gibts-nicht`, starten: die
+      Bootzeile meldet `narration opus-gibts-nicht: FAILED · aux haiku: OK`. Ein Zug → **genau
+      eine** ⚠-Zeile im Chat, Nemo antwortet (der erste lokale Zug lädt das Modell, 10–15 s).
+      Zweiter Zug: keine zweite ⚠-Zeile. Dann `.env` zurück auf `opus`, Neustart, ein Zug auf Opus.
+      *Variante ohne Neustart:* Netz kurz trennen, ein Zug, Netz wieder an, `!backend claude`.
+- [ ] **6 — Verbrauch.** Stand der Verbrauchsanzeige auf claude.ai nach dem Abend, Differenz zum
+      Wert aus 9.1 notieren. Steht im Log eine `Claude rate limit warning`-Zeile, mit ablegen.
+- [ ] **7 — Marker-Sonde für Phase 12.** Je ein paar Züge:
+      - **a)** `DM_ROLL_ROUTER=0` (Neustart). Setzt Opus von selbst ein korrektes `<<TEST …>>`, wo
+        eine Probe fällig ist? Ja/Nein und den rohen Marker aus der Zeile `🪵 LLM roh` notieren.
+      - **b)** `DM_FLAG_CONFIRM=0` ist schon gesetzt. Erledigt die Gruppe sichtbar eine Gelegenheit
+        der Szenenkarte: kommt ein korrektes `<<ERLEDIGT id>>` und wird es angewendet? Ja/Nein
+        und den rohen Marker notieren (`🪵 LLM roh`, dazu `✅ Erledigt …` oder `🚫 ERLEDIGT … abgelehnt`).
+- [ ] **8 — Abschnitt-Zähler.** Anteil der abgeschnittenen Erzählzüge, siehe Messung C. Ist das
+      mehr als eine seltene Ausnahme, ist Punkt 7 nicht aussagekräftig — dann stand der Marker
+      dort, wo die Grenze schneidet.
+- [ ] **9 — Das Urteil des Tisches.** Von jedem Spieler drei Sätze zur Erzählqualität, wörtlich,
+      ins Befundprotokoll. **Das ist das eigentliche Gate.**
+
+### 9.6 Drei Messungen
+
+Alle drei lassen sich nach dem Abend aus `logs/debug.log` ziehen. Am Tisch nichts stoppen.
+
+**A — Ein Opus-Zug mit vollem Systemprompt: `spawn` und `first_audio`.**
+Quelle ist die `[latency]`-Zeile, die jeder Erzählzug schreibt:
+
+```
+[latency] turn=3 stream stt=…ms trigger→llm_done=…ms ctx=…/24576 gen=… spawn=…ms cache=… chars=… first_audio=…ms tts=…ms …
+```
+
+`spawn` ist die Zeit vom Aufruf bis zur ersten Nachricht der CLI, `first_audio` die Zeit vom
+Auslöser bis zum ersten Ton, `cache` die Prompt-Tokens aus dem Cache. Zwei Zeilen notieren: den
+**ersten** Spielerzug nach `!start` (kalter Cache) und einen aus der Mitte (warmer Cache). Der
+Systemprompt ist dann echt voll: Persona, Szenenkarte, Weltzustand, Regelwerk-Treffer.
+Bisher gemessen ist nur Haiku mit einem Einzeiler (Spawn rund 0,7 s).
+
+```
+Select-String -Path logs\debug.log -Pattern '\[latency\]' | Select-Object -First 8
+```
+
+**B — Klassifikator-Latenz auf Haiku: Zeit bis zum Würfelknopf.**
+Der Router startet, sobald die Erzählung fertig erzeugt ist. Messgröße ist der Abstand zwischen
+der Zeile `⏱ LLM … ms` eines Zuges und der folgenden Zeile `🎲 router: …`. Die Log-Zeitstempel
+haben Sekundenauflösung; das reicht für den erwarteten Bereich (im Smoke 1,5 bis 5 s). Drei Züge
+mit Würfelknopf auswerten und alle drei Werte notieren, nicht den Mittelwert.
+
+```
+Select-String -Path logs\debug.log -Pattern '⏱ LLM|🎲 router:'
+```
+
+Diese Zahl entscheidet in Phase 12, ob der Router früher im Zug starten muss.
+
+**C — Anteil ✂ an allen Erzählzügen.**
+Jeder Erzählzug schreibt genau eine `[latency]`-Zeile; ein an der Ausgabegrenze abgeschnittener
+Zug trägt dort `cut` und zusätzlich die Warnung `✂ Antwort an der Ausgabegrenze abgeschnitten`.
+
+```
+$alle = (Select-String -Path logs\debug.log -Pattern '\[latency\]').Count
+$cut  = (Select-String -Path logs\debug.log -Pattern '\[latency\].* cut ').Count
+"$cut von $alle"
+```
+
+Beide Zahlen notieren, nicht nur den Quotienten. Züge, die auf Nemo liefen (nach einem Failover),
+tragen nie `cut` — die Züge aus Gate-Punkt 5 deshalb vorher abziehen.
+
+### 9.7 Bekannte Risiken dieses Abends
+
+- **`[latency]` nach einem Failover.** Solange der Rückfall aktiv ist, teilen sich auf dem
+  Ollama-Pfad Erzählung und Klassifikatoren wie bisher einen Statistik-Platz. Eine
+  `[latency]`-Zeile aus dieser Zeit kann die Zahlen eines Klassifikators zeigen. Auf dem
+  Claude-Pfad ist das seit dieser Runde getrennt. Für die Messungen nur Züge auf Opus verwenden.
+- **Zwei Prosa-Aufrufe gleichzeitig** (ein Erzählzug und ein Auto-Recap) teilen sich weiterhin
+  einen Platz, auf beiden Backends. Selten; betrifft höchstens eine `[latency]`-Zeile.
+- **Die CLI läuft nach einem Abbruch bis zu fünf Sekunden nach** (Pause, Sprecher-Etikett,
+  Schnitt an der Ausgabegrenze). Der Zug wartet nicht darauf; im Task-Manager können kurz
+  mehrere `claude.exe` stehen.
+- **Erster Nemo-Zug nach einem Failover ist langsam** (Modell wird geladen). Kein Fehler.
+- **`spawn` enthält einen Versionsaufruf.** Das SDK ruft vor jedem Start `claude -v` auf; die
+  Zeit steckt in `spawn=`. Nichts ändern, nur beim Lesen der Zahl wissen.
+- **Klassifikator-Timeouts dauern auf Claude etwa 5 s länger** als die eingestellten 20 s (das
+  SDK wartet beim Abbruch auf das Ende der CLI). Eine Zeile `scene-router: no verdict within
+  20s` oder `fact-router: no verdict within …` gehört ins Protokoll.
+- **Etikett im gesprochenen Text.** Beginnt eine Antwort hörbar mit „Spielleitung“ oder steht
+  „Spieler“ mitten im Satz, hat Opus das Verlaufsformat nachgeahmt und die Etikett-Wächter
+  haben es nicht erwischt. Zug und Uhrzeit notieren; das ist ein Befund für Phase 12.
+- **Temperatur wirkt nicht.** `DM_INTRO_TEMPERATURE` ist auf Claude ohne Wirkung; im Log steht
+  dazu einmal eine Warnung.
+
+### 9.8 Danach
+
+Übergabe wie §6 (`logs/debug.log`, `logs/transcript.log`, `logs/terminal.log`, das rotierte
+`history.<stamp>.debug.jsonl`). Dann in der nächsten Sitzung: Befunde in `progress.md` (Phase 11
+`VERIFY EVIDENCE`), ADR 061 auf „Accepted" oder mit Begründung zurück, die 17 geparkten Gates
+neu sichten, und erst danach das PRD für Phase 12 — die drei Messungen und die Marker-Sonde sind
+dessen Eingabe.

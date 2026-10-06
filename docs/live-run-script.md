@@ -1,5 +1,15 @@
 # Live-Run-Skript — EIN Abend schließt die Gates (+ kurze Folge-Session)
 
+> ⏸ **GEPARKT seit 2026-10-06 (ADR 061, Nachtrag).** Alle 17 Gates dieses Backlogs — G1–G10 aus
+> dem Register unten und die sieben der Runde D107–D115 ([testabend-ablauf.md](testabend-ablauf.md)
+> §0) — ruhen. Sie wurden gegen Mistral Nemo spezifiziert; sie am selben Abend auf einem anderen
+> Modell zu prüfen, würde jeden Fehlschlag unzuordenbar machen
+> (`docs/lessons/one-variable-per-live-run.md`). **Dieses Skript wird am Phase-11-Abend nicht
+> gespielt.** Der nächste Abend läuft nach [testabend-ablauf.md](testabend-ablauf.md) §9
+> „Phase-11-Abend“ und hat genau ein Gate. Danach wird jedes geparkte Gate neu gesichtet:
+> behalten, für den Werkzeug-Pfad (Phase 12) umschreiben oder streichen. Bis dahin zählt keines
+> davon gegen die WIP-Grenze.
+
 Stand: 2026-07-18 (G10 ergänzt nach D102 / ADR 055; davor 2026-07-11, D98 / ADR 051).
 **Ersetzt `docs/live-test-checklist.md`** — alle offenen Live-Gates (G1–G10), die
 Tuning-Checks und die Sekundär-Prüfungen aus `progress.md` sind hier in EIN geordnetes
@@ -26,23 +36,23 @@ Log-Zeilen sind exakt aus dem Code zitiert und damit direkt in `logs/debug.log` 
 
 ---
 
-## Gate-Register — was dieser Run schließt
+## Gate-Register — was dieser Run schließt  (⏸ alle zehn geparkt, siehe oben)
 
 Sortiert nach Setup-Kosten (billigste zuerst). „Beweis“ = die Zeile/Anzeige, die hinterher
 ins `VERIFY EVIDENCE` wandert.
 
-| # | Gate | Setup | Drehbuch | Beweis (Kurzform) |
-|---|---|---|---|---|
-| G1 | **Phase 10 Hälfte 1 — Regelfrage aus RAG** | keins (1 Frage) | Akt 2 | `📚 rulebook:'…' (d=0.xx)` in debug.log + korrekte Antwort |
-| G2 | **Consequence Clocks** (D94 / ADR 047) | keins (Commands) | Akt 2 + 7 | Panel `⏱ ◉○…` edit-in-place; `⏱ Tick vorgeschlagen: … (0/6)` |
-| G3 | **Ingame-Zeit & Fristen** (D95 / ADR 048) | keins (Commands) | Akt 2 + 7 | `🕐 Zeitfortschritt vorgeschlagen: +N min`; `⏳ Frist '…' … verstrichen …` |
-| G4 | **Stateful Scene Cards** (D87 / ADR 043) | 1 `leads_to`-Edit (Pre-Flight #6) | Akt 6 | `✅ Erledigt vorgeschlagen: …`; `🚫 Ausgang '…' → '…' verriegelt — Bedingung '…' nicht erledigt` |
-| G5 | **NPC-Gedächtnis** (D91 / ADR 044) | 1 Lüge im Spiel | Akt 4 + 6b | `🧠 NPC-Gedächtnis: N neue Erinnerungen (Szene '…')`; `!npcmem` |
-| G6 | **Konsistenz-Wächter** (D92 / ADR 045) | toter NSC (fällt in Akt 5 ab) | Akt 8 | `[consistency] violated (dead:…) — regenerating once` |
-| G7 | **NPC-Agenden** (D96 / ADR 049) | 1 Ziel + zwei Szenenwechsel | Akt 2 + 9 | `NPC-memory: '…' Agenda-Schritt: …`; `!agenden` mit Ingame-Zeitstempel |
-| G8 | **Phase 9 — HP übersteht Neustart + Recap** | 1 Neustart | Akt 10 + 11 → S2 | `loaded world state from …`; `📜 Was bisher geschah` beim nächsten `!j` |
-| G9 | **Chekhov-Fäden** (D97 / ADR 050) — **braucht ZWEI Sessions** | keins | Akt 4 + 11 (Saat) → **Session 2** (Ernte) | `🧵 Chekhov-Liste: N neue Fäden, M aufgelöst`; Callback in S2 |
-| G10 | **Kampagnen-Gedächtnis** (D102 / ADR 054+055) — **reitet auf der G9-Zweitsession** | keins (`DM_SESSION_MEMORY` an = Default) | `!leave` S1 → **Session 2**: eine Erinnerungs-Frage in natürlicher Sprache + eine mit Eigennamen aus S1 (mitten im Satz) | `🗂 session memory: ingested history.<stamp>.jsonl (N chunks)` beim `!leave`; `🗂 session memory: catch-up — N rotated journal(s) pending` beim `!j` von S2; pro Treffer `🗂 Szene '…'/<stamp> (FTS)` bzw. `(d=0.xx)` + Block `## Früher in der Kampagne` |
+| # | Status | Gate | Setup | Drehbuch | Beweis (Kurzform) |
+|---|---|---|---|---|---|
+| G1 | ⏸ geparkt | **Phase 10 Hälfte 1 — Regelfrage aus RAG** | keins (1 Frage) | Akt 2 | `📚 rulebook:'…' (d=0.xx)` in debug.log + korrekte Antwort |
+| G2 | ⏸ geparkt | **Consequence Clocks** (D94 / ADR 047) | keins (Commands) | Akt 2 + 7 | Panel `⏱ ◉○…` edit-in-place; `⏱ Tick vorgeschlagen: … (0/6)` |
+| G3 | ⏸ geparkt | **Ingame-Zeit & Fristen** (D95 / ADR 048) | keins (Commands) | Akt 2 + 7 | `🕐 Zeitfortschritt vorgeschlagen: +N min`; `⏳ Frist '…' … verstrichen …` |
+| G4 | ⏸ geparkt | **Stateful Scene Cards** (D87 / ADR 043) | 1 `leads_to`-Edit (Pre-Flight #6) | Akt 6 | `✅ Erledigt vorgeschlagen: …`; `🚫 Ausgang '…' → '…' verriegelt — Bedingung '…' nicht erledigt` |
+| G5 | ⏸ geparkt | **NPC-Gedächtnis** (D91 / ADR 044) | 1 Lüge im Spiel | Akt 4 + 6b | `🧠 NPC-Gedächtnis: N neue Erinnerungen (Szene '…')`; `!npcmem` |
+| G6 | ⏸ geparkt | **Konsistenz-Wächter** (D92 / ADR 045) | toter NSC (fällt in Akt 5 ab) | Akt 8 | `[consistency] violated (dead:…) — regenerating once` |
+| G7 | ⏸ geparkt | **NPC-Agenden** (D96 / ADR 049) | 1 Ziel + zwei Szenenwechsel | Akt 2 + 9 | `NPC-memory: '…' Agenda-Schritt: …`; `!agenden` mit Ingame-Zeitstempel |
+| G8 | ⏸ geparkt | **Phase 9 — HP übersteht Neustart + Recap** | 1 Neustart | Akt 10 + 11 → S2 | `loaded world state from …`; `📜 Was bisher geschah` beim nächsten `!j` |
+| G9 | ⏸ geparkt | **Chekhov-Fäden** (D97 / ADR 050) — **braucht ZWEI Sessions** | keins | Akt 4 + 11 (Saat) → **Session 2** (Ernte) | `🧵 Chekhov-Liste: N neue Fäden, M aufgelöst`; Callback in S2 |
+| G10 | ⏸ geparkt | **Kampagnen-Gedächtnis** (D102 / ADR 054+055) — **reitet auf der G9-Zweitsession** | keins (`DM_SESSION_MEMORY` an = Default) | `!leave` S1 → **Session 2**: eine Erinnerungs-Frage in natürlicher Sprache + eine mit Eigennamen aus S1 (mitten im Satz) | `🗂 session memory: ingested history.<stamp>.jsonl (N chunks)` beim `!leave`; `🗂 session memory: catch-up — N rotated journal(s) pending` beim `!j` von S2; pro Treffer `🗂 Szene '…'/<stamp> (FTS)` bzw. `(d=0.xx)` + Block `## Früher in der Kampagne` |
 
 **Strukturell zweigeteilt sind nur G9 und G10 — beide auf derselben Zweitsession:** Session 1
 sät (Detail beiläufig fallen lassen + `!wrap`-Extraktion; ihr `!leave` ist zugleich der
@@ -58,6 +68,13 @@ Implantat hatte. Rene Redo (seit 2026-08-22 in der Party) trägt drei —
 mit: eine Wahrnehmungsprobe von Rene muss den `+5 Wahrnehmung` des Augur-Arrays sichtbar
 einrechnen — Zielwert **44** statt der 39 aus dem Bogen (offline gegengerechnet mit
 `resolve_target(..., skill='Wahrnehmung', target_name='Vinnie')`, 2026-08-22).
+
+**⏸ Ebenfalls geparkt (2026-10-06):** die sieben Gates der Runde D107–D115 — automatischer
+Szenenwechsel mit Flag-Zwang, harte Fakten, Uhr und Fristen aus dem Abenteuer, Spieler-Panel
+und die vier Nachzügler D111–D114. Sie stehen nicht in diesem Register, sondern in
+[testabend-ablauf.md](testabend-ablauf.md) §0. Zwei davon laufen am Phase-11-Abend als
+Werkzeug mit (Szenen- und Fakten-Klassifikator auf Haiku, Gate-Punkt 3), ohne dass ihr eigenes
+Gate dort geschlossen wird. Der Augmetik-Check unten ruht mit.
 
 **Ruht (bewusst nicht in diesem Run):** der Profil-Bootstrap (Phase 10b) bleibt
 zurückgestellt, bis das Spielen rund läuft.
