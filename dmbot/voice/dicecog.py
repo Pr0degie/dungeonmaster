@@ -314,8 +314,12 @@ class DiceCog(commands.Cog):
         weapon, notation = self._choose_weapon(attacker_char)
         if not notation:
             return False  # no weapon damage data → can't auto-roll; narrate the hit plainly
-        # Candidates: living NPCs (the usual enemy) first, then other party members (friendly fire).
-        candidates = [n.name for n in state.npcs if n.wounds > 0]
+        # Candidates: the living NPCs PRESENT in this scene (ADR 062) first, then other party
+        # members (friendly fire). Never NPCs elsewhere — on 2026-10-25 the picker offered the
+        # seneschal from two scenes away and both hits landed on the quest-giver.
+        scene_npcs = getattr(self._rt, "_scene_npcs", None)
+        present = scene_npcs(state) if scene_npcs is not None else [n for n in state.npcs if n.wounds > 0]
+        candidates = [n.name for n in present]
         candidates += [
             c.name for c in state.characters if c.name.lower() != (attacker or "").lower()
         ]

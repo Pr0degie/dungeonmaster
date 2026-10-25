@@ -58,3 +58,11 @@ def test_non_integer_ladder_raises() -> None:
 def test_load_unknown_profile_raises() -> None:
     with pytest.raises(ProfileError):
         profile_mod.load("does_not_exist")
+
+
+def test_improvised_npc_numbers_come_from_the_profile_with_a_fallback() -> None:
+    from dmbot.rules.profile import SystemProfile, load
+
+    assert load("imperium_maledictum").improvised_npc() == {"wounds": 10, "toughness_bonus": 3, "armour": 0}
+    bare = SystemProfile.from_dict({"name": "x", "dice": "1d100", "resolution": "roll_under"})
+    assert bare.improvised_npc() == {"wounds": 10, "toughness_bonus": 0, "armour": 0}

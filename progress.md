@@ -12,20 +12,16 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** D123 — vierter Opus-Lauf (2026-10-25 spätabends, Tobi + Sezgin, Zweier-Party). D121/D122
-  halten live (kein Patzer außerhalb des Kampfs, Psi-Doppelprobe zweimal verworfen, Inventarfrage voll beantwortet,
-  7 Erfolge). Neue Fixes: jede Router-Probe einer manifestierenden Figur fällt weg (Dread Presence + „Fel“ wurde
-  doppelt gewürfelt), Puppet-Filter verlangt den Namen als Subjekt, ein `<<ORT>>`-Vorschlag schließt sich beim echten
-  Wechsel, Router-Schwierigkeit standardmäßig Herausfordernd, Fertigkeiten/Talente im Prompt, Persona: NSCs sagen
-  was sie wollen + Möglichkeiten, wenn die Gruppe stockt. **1248 Tests grün, `dm-eval` Exit 0.** Offen und als
-  Nächstes: Fridolins Treffer gingen auf Seneschall Kaad (Zielauswahl kennt erfundene Gegner nicht).
-- **Next concrete step:** vierter Lauf (oder der Phase-11-Abend) nach
-  [testabend-ablauf.md §9](docs/testabend-ablauf.md), diesmal mit `!sprechmodus nahtlos intoniert`
-  (Spieler: Betonung hakt, weil `flach` alle Satzzeichen streicht; XTTS läuft auf cuda) und ohne die nicht
-  spielenden Figuren in der Kanal-`characters.json` (Gellicus/Rene wurden jeden Zug angesprochen). Prüfen: kein
-  „Patzer“ außerhalb von Nah-/Fernkampf, eine Psi-Aktion = ein Wurf, NSC-Zitate mit „sagst du“ vollständig.
-  Neu prüfen: Ausrüstungsfragen werden aus dem Bogen beantwortet, Fridolins Siegel existiert (D122).
-  Offen aus dem Lauf: Ausrüstung/Talente geben keinen Probenbonus; Intro zu lang; Uhrzeit zu genau.
+- **Newest round:** D123 + D124 — vierter Opus-Lauf (2026-10-25 spätabends, Tobi + Sezgin). D121/D122 halten
+  live. D123: sechs kleine Fixes (Psi-Doppelprobe über „Fel“, Puppet-Filter-Subjekt, „Wechseln“ nach Auto-Wechsel,
+  Router-Default Herausfordernd, Fertigkeiten im Prompt, Persona-Richtung). D124/**ADR 062**: erfundene NSCs werden
+  per drittem Nach-Zug-Klassifikator angelegt und als anwesend geführt; Zielauswahl und Prompt kennen nur noch
+  Anwesende (Fridolins Schüsse trafen Kaad, zwei Szenen weiter). **1265 Tests grün, `dm-eval` Exit 0**; Haiku live
+  per Einzelaufruf 3/3 Fälle richtig (nach einer Prompt-Schärfung gegen Doppel-Anlage).
+- **Next concrete step:** fünfter Lauf (Sandbox leeren, Bot neu starten). Prüfen: `👥 anwesend in …`-Zeilen für
+  improvisierte Gegner, Zielauswahl zeigt nur Anwesende, kein Doppelwurf bei Psi, kein „Wechseln“ nach Auto-Wechsel,
+  NSCs sagen, was sie wollen, „Was kann ich?“ wird aus dem Bogen beantwortet. `!sprechmodus nahtlos intoniert`
+  weiter ausprobieren. Danach `characters.json` zurück (`git checkout`), wenn Timo/Vinnie wieder mitspielen.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
   geparkt (ADR 061, im [Live-Run-Skript](docs/live-run-script.md) markiert) und werden nach dem
   Abend neu gesichtet; sie zählen nicht gegen die WIP-Grenze.
@@ -56,9 +52,13 @@ Gehalten: D121/D122 live, `cut` 6/47, erstes Audio ~9,9 s im Schnitt. Neu gefund
 - **„Niemand sagt, was er will“ (Tobi):** Persona — NSCs machen ihr Anliegen deutlich; stockt die Gruppe, nennt der
   DM in einem Satz zwei, drei Möglichkeiten (Tobi: beides).
 - **Belegt:** 1248 Tests grün, `dm-eval` Exit 0, `ruff --select F` sauber. Am Tisch unverifiziert.
-- **Offen, nächste Runde:** beide Laspistolen-Treffer gingen auf Seneschall Kaad (nicht in der Szene, jetzt 0/8 im
-  Debug-Stand), weil die Zielauswahl alle NSCs anbietet und Opus' erfundene Kettenmänner nicht kennt. Tobi wählte
-  „automatisch anlegen“ → eigene Runde mit ADR. Einmal las Opus einen Planungssatz vor („…, also eine Probe.“).
+- **Nachtrag D124 / ADR 062, erfundene Gegner:** beide Laspistolen-Treffer gingen auf Seneschall Kaad (zwei Szenen
+  weiter, danach 0/8 und aus dem Prompt verschwunden), weil die Zielauswahl alle NSCs anbot und Opus' Kettenmänner nie
+  im Spielstand standen. Tobi wählte „automatisch anlegen“. Jetzt: dritter Nach-Zug-Klassifikator (`npc_router`,
+  Haiku, `DM_NPC_ROUTER`, `!automatik nscs`) meldet Neue, Code legt sie mit Abenteuer-Statblock oder
+  `combat.improvised_npc` an (`Combatant.scene`), „anwesend“ = Szenenkarte + dort gesehen, für Prompt,
+  NSC-Gedächtnis und Zielauswahl. Live per Einzelaufruf: 3/3 nach einer Prompt-Schärfung (vorher legte Haiku den
+  Verwundeten doppelt an). 1265 Tests grün, `dm-eval` Exit 0. Offen: einmal las Opus einen Planungssatz vor.
 
 **Dritter Opus-Lauf und vier Regel-/Filter-Fixes (2026-10-25 abends, D121).** Tobi, Sezgin, Timo und BloodyP
 spielten ~45 min „Die Mitternachtsfracht“. Tobi: „ich konnte keine Heimlichkeit machen … alle Skillchecks sind
@@ -118,7 +118,7 @@ Grep one row (`grep -n "| D87 |" docs/decision-log.md`); a new decision gets the
 | 6 — TTS + full loop | **ADR 008** (TTS engine: Piper + XTTS) + ADR 002 (bridge, VRAM, GPU offload) + `architecture.md` §3 (bridge contract) + **ADR 016** (TTS speech-only normalization) + **ADR 017** (streaming pipeline: sentence-chunked TTS, hold-back rules, history parity) + **ADR 033** (global spoken-delivery mode: stream vs nahtlos × flach vs intoniert, `!sprechmodus`) |
 | 6–7 — Full loop, turn-taking, registration | ADR 003 (conversational control, registration, turn-taking) + **ADR 011** (STT latency: push-to-talk gate) + **ADR 013** (pause control) |
 | 8 — Dice engine, IM profile, marker flow | ADR 005 (engine + profile) + ADR 004 (test marker, character data) + ADR 001 (IM specifics) + **ADR 012** (difficulty ladder, character store, marker grammar) + **ADR 014** (roll-detection router; timing now D40 — fires concurrent with playback) + **ADR 018** (router wins the dedupe; echo guard + roll-feedback directive on post-roll turns) + **ADR 040** (committed default party — party loading no longer bound to one voice-channel id) |
-| 9 — Memory (JSON + recaps) | ADR 004 (character/state JSON) + **ADR 015** (sheet/state split, auto-combat damage) + **ADR 027** (rolling auto-recap / context handoff — recap is no longer wrap-up-only) + **ADR 037** (attack/Warp resolution → pure `rules/combat.py`) + **ADR 044** (NPC memory: per-NPC Erinnerungen, clamped attitude drift, faction gossip) + **ADR 049** (NPC agendas: human-set goals, one clamped offscreen step per scene change riding the ADR-044 extractor) + **ADR 050** (Chekhov list: wrap-up-only thread extraction riding the ADR-044 call, code-owned cap/dedupe/status, top-3 callback offer) |
+| 9 — Memory (JSON + recaps) | ADR 004 (character/state JSON) + **ADR 015** (sheet/state split, auto-combat damage) + **ADR 027** (rolling auto-recap / context handoff — recap is no longer wrap-up-only) + **ADR 037** (attack/Warp resolution → pure `rules/combat.py`) + **ADR 044** (NPC memory: per-NPC Erinnerungen, clamped attitude drift, faction gossip) + **ADR 049** (NPC agendas: human-set goals, one clamped offscreen step per scene change riding the ADR-044 extractor) + **ADR 050** (Chekhov list: wrap-up-only thread extraction riding the ADR-044 call, code-owned cap/dedupe/status, top-3 callback offer) + **ADR 062** (improvised NPCs join the scene: presence classifier, `Combatant.scene`, one "present" for prompt + target picker) |
 | 10 — RAG + profile bootstrap | ADR 005 (profile bootstrap) + **ADR 019** (3-stage hybrid: scene tracker + rulebook-only RAG, bge-m3, W4 guard) + **ADR 021** (curated German lore compendium: `lore_imperium`/`lore_chaos` sources) + **ADR 025** (German rules glossary + 0.45 calibration) + **ADR 028** (RAG junk-shape filter) + **ADR 027** (configurable `num_ctx`, context-budget compaction) + **ADR 026** (auto scene transitions, `<<ORT>>`) + **ADR 043** (stateful scene cards: `<<ERLEDIGT>>` element flags, gated exits, dead-NPC render) + **ADR 047** (consequence clocks: `<<UHR>>` ticks, +1/turn clamp, full-clock `[Regie]` injection, clock panel) + **ADR 048** (in-game time: minutes counter, `<<ZEIT>>` advance clamped to first-marker/+12h, deadlines with one-shot expiry `[Regie]`, day phases, shared pressure panel) + **ADR 054** (campaign memory: played-session ingest per scene, hybrid KNN+FTS session retrieval, state wins over memory) + **ADR 055** (debug-run sandbox: `.debug` archives → `session_debug` source, gate G10) + **ADR 056** (the sandbox's other half: `.debug` twins for state/history/chekhov/recap, foreign scene pointer re-seeds) + **ADR 057** (scene advancement belongs to code: exit classifier + flag gate, automatic with undo; the inline `<<ORT>>` marker demoted to a fallback) + **ADR 058** (post-turn fact classifier: narrated commitments become hard facts, retraction manual via `!fakt`) + **ADR 059** (the adventure ships start time, deadlines and clocks; time advances per turn) |
 | 11 — Claude backend | **ADR 061** (client seam, tier rule, failover; read the build amendment first) + ADR 002 + ADR 042 (sampling defaults) + ADR 046 (replay eval) + `docs/plans/claude-backend.md` |
 

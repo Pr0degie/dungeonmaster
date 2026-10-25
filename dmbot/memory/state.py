@@ -258,6 +258,9 @@ class Combatant:
     # narrative timeline of its offscreen moves.
     goal: str = ""
     agenda_log: list[AgendaStep] = field(default_factory=list)
+    # Where an NPC was last seen in person (ADR 062). Presence = on the scene card's
+    # ``npcs_here`` OR seen in that scene — so the people the DM improvises count as "here" too.
+    scene: str = ""
 
     def to_dict(self) -> dict:
         d: dict = {"name": self.name, "wounds": self.wounds, "max_wounds": self.max_wounds}
@@ -283,6 +286,8 @@ class Combatant:
             d["goal"] = self.goal
         if self.agenda_log:
             d["agenda_log"] = [s.to_dict() for s in self.agenda_log]
+        if self.scene:
+            d["scene"] = self.scene
         return d
 
     @classmethod
@@ -304,6 +309,7 @@ class Combatant:
             memories=[NpcMemory.from_dict(m) for m in d.get("memories", []) or []],
             goal=str(d.get("goal", "") or ""),
             agenda_log=[AgendaStep.from_dict(s) for s in d.get("agenda_log", []) or []],
+            scene=str(d.get("scene", "") or ""),
         )
 
     def add_memory(self, memory: NpcMemory) -> None:
@@ -972,6 +978,30 @@ class WorldState:
         if goal:
             existing.goal = goal
         return existing
+
+    def place_npc(
+        self, name: str, scene_id: str, *, wounds: int, toughness_bonus: int = 0, armour: int = 0,
+        faction: str = "", goal: str = "",
+    ) -> tuple[Combatant, bool]:
+        """Put an NPC the narration showed in person into ``scene_id`` (ADR 062): an unknown name
+        is registered (neutral, the given numbers), a known one only moves. Returns ``(npc, new)``.
+        Wounds of a known NPC are never touched — a sighting is not a heal."""
+        known = next((n for n in self.npcs if n.name.lower() == name.strip().lower()), None)
+        if known is not None:
+            known.scene = scene_id
+            return known, False
+        npc = self.add_or_update_npc(
+            name, wounds=wounds, toughness_bonus=toughness_bonus, armour=armour,
+            attitude="neutral", faction=faction, goal=goal,
+        )
+        npc.scene = scene_id
+        return npc, True
+
+    def present_npcs(self, scene_id: str, card_names: "Collection[str]" = ()) -> list[Combatant]:
+        """The living NPCs present in ``scene_id`` (ADR 062): on the scene card or seen there."""
+        card = {str(n).strip().lower() for n in card_names}
+        return [n for n in self.npcs if n.wounds > 0
+                and (n.name.strip().lower() in card or (scene_id and n.scene == scene_id))]
 
     # -- psyker / Warp Charge (ADR 022) ---------------------------------------------------
 

@@ -88,6 +88,8 @@ class Config:
     clocks: bool = True
     # Post each DM-routed player line to the text channel (story readable in Discord).
     post_player_lines: bool = True
+    # Presence classifier (ADR 062): improvised NPCs join the scene. Default on.
+    npc_router: bool = True
 
     @classmethod
     def load(cls) -> "Config":
@@ -376,6 +378,8 @@ class Config:
             clocks=os.environ.get("DM_CLOCKS", "1").strip().lower() in ("1", "true", "yes", "on"),
             # Echo every player line the DM hears into the text channel ("🗣 Figur: …"), so the
             # channel reads as the whole story, not just the DM's half. DM_POST_PLAYER_LINES=0 = off.
+            npc_router=os.environ.get("DM_NPC_ROUTER", "1").strip().lower()
+            in ("1", "true", "yes", "on"),
             post_player_lines=os.environ.get("DM_POST_PLAYER_LINES", "1").strip().lower()
             in ("1", "true", "yes", "on"),
         )

@@ -179,6 +179,17 @@ class SystemProfile:
         match = self._catalog_match(self.combat.get("weapons", {}) or {}, weapon)
         return None if match is None else match[1]
 
+    def improvised_npc(self) -> dict:
+        """Numbers for an NPC the DM improvised and no statblock covers (ADR 062):
+        ``{"wounds", "toughness_bonus", "armour"}`` from ``combat.improvised_npc``, falling back
+        to 10 wounds and no soak when the profile says nothing."""
+        block = self.combat.get("improvised_npc", {}) or {}
+        return {
+            "wounds": int(block.get("wounds", 10) or 10),
+            "toughness_bonus": int(block.get("toughness_bonus", 0) or 0),
+            "armour": int(block.get("armour", 0) or 0),
+        }
+
     def default_damage(self) -> str:
         """Fallback damage notation for an unknown/unspecified weapon (e.g. '1d10')."""
         return self.combat.get("default_damage", "") or ""

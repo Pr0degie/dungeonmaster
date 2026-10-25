@@ -29,6 +29,8 @@ _SWITCHES: dict[str, tuple[str, str]] = {
                                     "weiter, zieht die Sitzung von selbst weiter."),
     "fakten": ("_fact_router", "Übergebene Gegenstände, angenommene Aufträge und Zusagen werden "
                                "als harte Fakten festgehalten (ADR 058)."),
+    "nscs": ("_npc_router", "Wer neu leibhaftig auftritt (auch erfundene Gegner), wird als "
+                            "anwesend geführt und ist im Kampf auswählbar (ADR 062)."),
     "zeit": ("_turn_time_advance", "Jeder Zug kostet ein paar Minuten Spielzeit (ADR 059)."),
     "panel": ("_player_panel_enabled", "Die Übersicht im Kanal: Ort, Ziel, Uhrzeit, Frist, "
                                        "was hier noch offen ist."),

@@ -400,6 +400,14 @@ importance −1, no re-gossip). While an NPC is in the current scene, its top-K 
 `[NPC-Gedächtnis: …]` block between world state and RAG; gossip renders as „Hörensagen".
 `DM_NPC_MEMORY=0` switches the subsystem off; `!npcmem <name>` is the read-only debug view.
 
+> **Who is here (ADR 062).** An NPC counts as present in a scene when it is alive and either on
+> the scene card's `npcs_here` or was last seen there (`Combatant.scene`). A post-turn presence
+> classifier (aux tier, same `gather` as the scene and fact classifiers, `DM_NPC_ROUTER=1`,
+> `!automatik nscs`) lists who newly appears in person — including people the DM improvised — and
+> code places them: a known NPC moves, a new one is registered with its adventure statblock or the
+> profile's `combat.improvised_npc` numbers. The prompt's "NSCs in der Szene" line, the NPC-memory
+> block and the attack target picker all use this one definition; NPCs elsewhere are never targets.
+
 **d) NPC agendas (ADR 049) — the world moves offscreen**
 A few explicitly marked NPCs (2–5 intended) pursue a goal *between* scenes: a non-empty
 `goal` on the NPC (set by humans via `!agenda <npc> "<Ziel>"` / removed with `weg`, or

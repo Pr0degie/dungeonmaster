@@ -495,9 +495,9 @@ DM_FLAG_CONFIRM=0
 ```
 
 Bewusst auf Default lassen (nicht anfassen): `DM_ROLL_ROUTER=1`, `DM_SCENE_ROUTER=1`,
-`DM_FACT_ROUTER=1`, `DM_SCENE_FLAG_GATE=1`, `DM_PLAYER_PANEL=1`, `DM_STREAMING=1`,
+`DM_FACT_ROUTER=1`, `DM_NPC_ROUTER=1`, `DM_SCENE_FLAG_GATE=1`, `DM_PLAYER_PANEL=1`, `DM_STREAMING=1`,
 `DM_SPEECH_MODE=stream`, `DM_NUM_PREDICT=220`, `DM_AUTORECAP=1`, `DM_SESSION_MEMORY=1`.
-Die drei Klassifikatoren müssen an bleiben, sonst lässt sich Gate-Punkt 3 nicht prüfen.
+Die vier Klassifikatoren müssen an bleiben, sonst lässt sich Gate-Punkt 3 nicht prüfen.
 
 `ANTHROPIC_API_KEY` darf weder in `.env` noch in der Windows-Umgebung stehen.
 
@@ -518,9 +518,9 @@ Dazu die zwei Schichten, die das PRD namentlich nennt und die einen echten Schal
 `DM_CONSISTENCY_GUARD=0` (Konsistenz-Wächter) und `DM_NPC_MEMORY=0` (NPC-Gedächtnis, und damit
 auch Agenda-Schritte und Faden-Extraktion). Beide wirken erst nach einem Neustart.
 
-**`!automatik` schaltet keine der vier.** Es kennt genau fünf Namen: `szene`, `flaggen`,
-`fakten`, `zeit`, `panel` (Defaults `DM_SCENE_ROUTER`, `DM_SCENE_FLAG_GATE`, `DM_FACT_ROUTER`,
-`DM_TURN_TIME_ADVANCE`, `DM_PLAYER_PANEL`). Am Abend bleiben alle fünf **an**. Bares `!automatik`
+**`!automatik` schaltet keine der vier.** Es kennt genau sechs Namen: `szene`, `flaggen`,
+`fakten`, `nscs`, `zeit`, `panel` (Defaults `DM_SCENE_ROUTER`, `DM_SCENE_FLAG_GATE`, `DM_FACT_ROUTER`,
+`DM_NPC_ROUTER`, `DM_TURN_TIME_ADVANCE`, `DM_PLAYER_PANEL`). Am Abend bleiben alle sechs **an**. Bares `!automatik`
 zeigt den Stand; das ist der Notgriff, falls einer der Klassifikatoren am Tisch stört
 (`!automatik fakten aus`).
 

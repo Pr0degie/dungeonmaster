@@ -261,6 +261,7 @@ class SessionRuntime:
         # Fact classifier (ADR 058): runs on the SAME turn boundary as the scene one, in one
         # asyncio.gather — one latency window for both, as the ADR requires.
         self._fact_router = config.fact_router
+        self._npc_router = config.npc_router
         # In-game minutes a narrated turn costs (ADR 059 #2); the bigger scene-change advance
         # stays _scene_time_advance above.
         self._turn_time_advance = config.turn_time_advance
@@ -714,8 +715,12 @@ class SessionRuntime:
         # Which registered NPCs are actually HERE (D107). Once scene NPCs are registered on entry
         # the roster keeps growing, and an unscoped "NSCs in der Szene" line would hand the model
         # the seneschal from scene one as present in scene four — the contradiction of 2026-08-22.
+        # Since ADR 062 "here" also counts the people seen in this scene in person, so an
+        # improvised thug is not listed as "anderswo" right after he walked in.
         summary = world_state_summary_de(
-            state, present=scene.npcs_here if scene is not None else None,
+            state,
+            present=([*scene.npcs_here, *(n.name for n in self._scene_npcs(state))]
+                     if scene is not None else None),
             clocks=self.clocks_enabled,
         )
         chekhov_block = chekhov_mod.chekhov_block_de(self.chekhov_list(cid).top_open())
@@ -1219,10 +1224,12 @@ class SessionRuntime:
             await self.advance_turn_time(channel)
             classified_from = state.scene_id     # snapshot: the classifier call takes seconds
             context = self._scene_context(cid, answer)  # snapshot too, before any await
-            scene_verdict, fact_verdict = await self._classify_turn(
+            scene_verdict, fact_verdict, npc_verdict = await self._classify_turn(
                 channel, state, answer, context=context
             )
             self._apply_commitment(channel, state, fact_verdict)
+            # Before the scene move: the people were seen in the scene the answer was narrated in.
+            self._apply_npc_sightings(channel, state, npc_verdict, classified_from)
             if scene_verdict is not None and state.scene_id != classified_from:
                 # Someone moved the pointer while the classifier was thinking (``!ort``, the
                 # ``<<ORT>>`` button, an undo). The verdict was built against the *old* scene's
@@ -1258,11 +1265,12 @@ class SessionRuntime:
         return "\n".join(lines)
 
     async def _classify_turn(self, channel, state: WorldState, answer: str, *, context: str = ""):
-        """Run the scene (ADR 057) and fact (ADR 058) classifiers on the same turn boundary.
+        """Run the scene (ADR 057), fact (ADR 058) and presence (ADR 062) classifiers on the same
+        turn boundary.
 
-        Both are optional layers and fail open: a switched-off block, a missing brain method (a
+        All are optional layers and fail open: a switched-off block, a missing brain method (a
         stub in tests) or a degenerate verdict yields ``None`` and changes nothing. Returns
-        ``(scene_verdict | None, fact_verdict | None)``."""
+        ``(scene_verdict | None, fact_verdict | None, npc_verdict | None)``."""
         scene = self._adventure.get_scene(state.scene_id) if self._adventure is not None else None
         jobs: list[tuple[str, object]] = []
         if self._scene_router and scene is not None:
@@ -1281,8 +1289,17 @@ class SessionRuntime:
                     recipients=self._characters.character_names() if self._characters else [],
                     givers=givers,
                 )))
+        if getattr(self, "_npc_router", False):  # getattr: stub runtimes in tests stay dormant
+            classify = getattr(self._brain, "classify_present_npcs", None)
+            if classify is not None:
+                jobs.append(("npc", classify(
+                    answer_text=answer,
+                    party=self._characters.character_names() if self._characters else [],
+                    roster=self._adventure.statblock_names() if self._adventure is not None else [],
+                    present=[n.name for n in self._scene_npcs(state)],
+                )))
         if not jobs:
-            return None, None
+            return None, None, None
         results = await asyncio.gather(*(coro for _, coro in jobs), return_exceptions=True)
         out: dict[str, object] = {}
         for (kind, _), result in zip(jobs, results):
@@ -1292,11 +1309,41 @@ class SessionRuntime:
                 continue
             out[kind] = result
         # Replay journal (ADR 046): the raw verdicts, exactly like the roll router's.
-        for key, attr in (("scene_router", "last_scene_router"), ("facts", "last_facts")):
+        for key, attr in (("scene_router", "last_scene_router"), ("facts", "last_facts"),
+                          ("npcs", "last_npcs")):
             note = getattr(self._brain, attr, None)
-            if note is not None:
+            if isinstance(note, dict):
                 self.replay_note(channel, key, note)
-        return out.get("scene"), out.get("fact")
+        return out.get("scene"), out.get("fact"), out.get("npc")
+
+    def _apply_npc_sightings(self, channel, state: WorldState, verdict, scene_id: str) -> None:
+        """Place the people the presence classifier saw into ``scene_id`` (ADR 062 #2): a known
+        NPC moves there, a new one is registered with its adventure statblock or the profile's
+        improvised defaults. Code decides the numbers; the verdict only names people."""
+        sightings = getattr(verdict, "sightings", None)
+        if not sightings or not scene_id:
+            return
+        defaults = (self._profile.improvised_npc() if self._profile is not None
+                    else {"wounds": 10, "toughness_bonus": 0, "armour": 0})
+        placed: list[str] = []
+        for sighting in sightings:
+            if state.find(sighting.label) is not None and not state.find(sighting.label).is_npc:
+                continue  # a player character — the verdict gate should already have dropped it
+            block = (self._adventure.npc(sighting.statblock)
+                     if self._adventure is not None and sighting.statblock else None)
+            npc, new = state.place_npc(
+                sighting.label, scene_id,
+                wounds=block.wounds if block else defaults["wounds"],
+                toughness_bonus=block.toughness_bonus if block else defaults["toughness_bonus"],
+                armour=block.armour if block else defaults["armour"],
+                faction=block.faction if block else "",
+            )
+            if new:
+                placed.append(f"{npc.name} (neu, {block.name if block else 'Standardwerte'})")
+            else:
+                placed.append(npc.name)
+        self._persist_and_refresh(channel)
+        log.info("👥 anwesend in '%s': %s", scene_id, ", ".join(placed))
 
     def _exit_labels(self, scene: Scene | None, state: WorldState) -> dict[str, str]:
         """``{scene_id: title}`` for the exits reachable from ``scene`` right now (ADR 057 #6).
@@ -1527,11 +1574,13 @@ class SessionRuntime:
         living = [n for n in state.npcs if n.wounds > 0]
         if self._adventure is None:
             return living
-        scene = self._adventure.get_scene(scene_id if scene_id is not None else state.scene_id)
+        sid = scene_id if scene_id is not None else state.scene_id
+        scene = self._adventure.get_scene(sid)
         if scene is None:
             return living
-        here = {n.strip().lower() for n in scene.npcs_here}
-        return [n for n in living if n.name.lower() in here]
+        # The card's NPCs plus the ones seen here in person (ADR 062) — one definition of "here"
+        # for the prompt, the NPC-memory block and the attack target picker.
+        return state.present_npcs(sid, scene.npcs_here)
 
     def schedule_npc_memory_extraction(self, channel, scene_id: str) -> None:
         """Fire-and-forget NPC-memory extraction for the scene just left (ADR 044) — called by

@@ -1108,3 +1108,69 @@ def test_a_scene_change_refreshes_the_panel() -> None:
     _run(rt.move_scene(channel, "schrein", trigger=MoveTrigger.COMMAND, announce=False))
 
     assert any("Schrein der Aschenheiligen" in e for e in panel.edits)
+
+
+# ---- close_turn: improvised NPCs join the scene (ADR 062) ------------------------------------
+
+def _npc_brain(*labels_and_blocks):
+    """A fake brain whose presence classifier reports the given (label, statblock) pairs."""
+    from dmbot.llm.npc_router import NpcVerdict, Sighting
+
+    brain = _FakeBrain()
+    brain.npc_calls = []
+
+    async def classify_present_npcs(*, answer_text, party=(), roster=(), present=()):
+        brain.npc_calls.append({"answer_text": answer_text, "party": list(party),
+                                "roster": list(roster), "present": list(present)})
+        brain.last_npcs = {"raw": "{}", "verdict": [], "failure": None}
+        return NpcVerdict(sightings=tuple(Sighting(label=l, statblock=b) for l, b in labels_and_blocks))
+
+    brain.classify_present_npcs = classify_present_npcs
+    return brain
+
+
+def test_an_improvised_thug_is_registered_in_the_scene_he_was_narrated_in() -> None:
+    adv = _adventure()
+    state = _state(adv, scene_id="schrein")
+    brain = _npc_brain(("Kettenmann", ""), ("Vall-Double", "Schwester Vall"))
+    rt = _runtime(adv, state, brain, _FakeChannel(), _npc_router=True, _scene_router=False,
+                  _profile=SimpleNamespace(improvised_npc=lambda: {"wounds": 10, "toughness_bonus": 3,
+                                                                   "armour": 0}))
+
+    _run(rt.close_turn(_FakeChannel(), "Vor der Tür lehnt ein Kerl mit einer Kette."))
+
+    call = brain.npc_calls[0]
+    assert call["party"] == ["Fridolin"] and "Seneschall Kaad" in call["roster"]
+    thug = state.find("Kettenmann")
+    assert thug.is_npc and thug.scene == "schrein" and (thug.wounds, thug.toughness_bonus) == (10, 3)
+    double = state.find("Vall-Double")      # mapped onto a statblock → its numbers (default 10 here)
+    assert double.scene == "schrein"
+    assert [n.name for n in rt._scene_npcs(state)] == ["Kettenmann", "Vall-Double"]
+
+
+def test_the_presence_classifier_has_its_own_kill_switch() -> None:
+    adv = _adventure()
+    state = _state(adv)
+    brain = _npc_brain(("Kettenmann", ""))
+    rt = _runtime(adv, state, brain, _FakeChannel(), _npc_router=False)
+
+    _run(rt.close_turn(_FakeChannel(), "Ein Kerl tritt vor."))
+
+    assert brain.npc_calls == [] and state.find("Kettenmann") is None
+
+
+def test_an_npc_elsewhere_is_not_present_and_an_improvised_one_is_in_the_prompt() -> None:
+    from dmbot.memory.state import world_state_summary_de
+
+    adv = _adventure()
+    state = _state(adv, scene_id="")
+    rt = _runtime(adv, state, _FakeBrain(), _FakeChannel())
+    rt._set_scene(state, "zollhaus")      # registers Seneschall Kaad
+    rt._set_scene(state, "schrein")       # registers Schwester Vall
+    state.place_npc("Hakenmann", "schrein", wounds=10)
+
+    present = [n.name for n in rt._scene_npcs(state)]
+    assert present == ["Schwester Vall", "Hakenmann"]          # Kaad is two scenes away
+    summary = world_state_summary_de(state, present=present)
+    assert "NSCs in der Szene: Schwester Vall" in summary and "Hakenmann" in summary
+    assert "Seneschall Kaad" in summary.split("anderswo")[1]

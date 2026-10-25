@@ -357,3 +357,31 @@ def test_summary_without_gear_has_no_gear_line() -> None:
     s = WorldState.seed_from_store(_STORE)
     s.characters[0].inventory.clear()
     assert "Ausrüstung" not in world_state_summary_de(s)
+
+
+# -- presence of improvised NPCs (ADR 062) ---------------------------------------------------------
+
+def test_place_npc_registers_a_newcomer_in_the_scene_and_round_trips() -> None:
+    s = WorldState.seed_from_store(_STORE)
+    npc, new = s.place_npc("Hakenmann", "schrein", wounds=10, toughness_bonus=3)
+    assert new and npc.is_npc and npc.attitude == "neutral" and npc.scene == "schrein"
+    again = WorldState.from_dict(s.to_dict())
+    assert again.find("Hakenmann").scene == "schrein"
+
+
+def test_place_npc_moves_a_known_npc_without_healing_it() -> None:
+    s = WorldState.seed_from_store(_STORE)
+    s.add_or_update_npc("Brenna", wounds=3, max_wounds=8)
+    npc, new = s.place_npc("brenna", "gasse", wounds=10)
+    assert not new and npc.scene == "gasse" and npc.wounds == 3
+
+
+def test_present_npcs_are_the_card_plus_the_ones_seen_here_and_alive() -> None:
+    s = WorldState.seed_from_store(_STORE)
+    s.add_or_update_npc("Seneschall Kaad", wounds=8)           # on another scene's card
+    s.add_or_update_npc("Schwester Vall", wounds=7)            # on this card
+    s.place_npc("Hakenmann", "schrein", wounds=10)             # improvised here
+    s.place_npc("Kettenmann", "schrein", wounds=10)
+    s.apply_damage("Kettenmann", 20)                           # down — no longer a presence
+    names = [n.name for n in s.present_npcs("schrein", ["Schwester Vall"])]
+    assert names == ["Schwester Vall", "Hakenmann"]

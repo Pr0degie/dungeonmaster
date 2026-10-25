@@ -43,6 +43,7 @@
   "combat": {
     "attack_skills": ["Nahkampf", "Fernkampf"],
     "default_damage": "1d10",
+    "improvised_npc": { "wounds": 10, "toughness_bonus": 3, "armour": 0, "_note": "ADR 062: an NPC the DM improvised without a statblock — an average human (Tgh ~30-39)." },
     "soak": { "characteristic": "Tgh", "mode": "tens" },
     "weapons": {
       "Kampfmesser": "1d10+1",

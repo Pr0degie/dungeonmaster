@@ -398,6 +398,12 @@ class Adventure:
                          if n and n not in generic)
         return names
 
+    def statblock_names(self) -> list[str]:
+        """Every statblock's display name, generic mooks included — the roster the presence
+        classifier may map an improvised person onto (ADR 062: "Hakenmann" is Vosk der Haken,
+        a chain-gang thug is a Kettenbund-Schläger)."""
+        return [npc.name for npc in self._npcs.values()]
+
     def npc(self, name: str) -> AdventureNpc | None:
         """Statblock lookup by name, case-insensitive; underscores tolerated (Discord args can't
         carry spaces, so ``!npc add Raguel_der_Rote`` must match 'Raguel der Rote')."""

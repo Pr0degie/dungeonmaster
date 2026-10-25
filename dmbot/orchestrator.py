@@ -60,6 +60,7 @@ from .llm.director_msgs import (  # noqa: F401
     scene_rejected_note_de,
 )
 from .llm.fact_router import FactVerdict, classify_commitment
+from .llm.npc_router import NpcVerdict, classify_present_npcs
 from .llm.scene_router import SceneVerdict, classify_scene_move
 from .llm.consistency import Violation, retry_nudge_de
 from .llm.intro_guard import INTRO_RETRY_NUDGE
@@ -920,6 +921,28 @@ class DMBrain:
         self.last_facts = {
             "raw": verdict.raw,
             "verdict": asdict(verdict.commitment) if verdict.commitment is not None else None,
+            "failure": verdict.failure.value if verdict.failure else None,
+        }
+        return verdict
+
+    async def classify_present_npcs(
+        self, *, answer_text: str, party=(), roster=(), present=()
+    ) -> NpcVerdict:
+        """Presence classifier (ADR 062) — the third post-turn call on the same boundary. Reports
+        who newly appears in person; registering them is the caller's. Never raises."""
+        started = time.monotonic()
+        verdict = await classify_present_npcs(
+            self._client.chat, answer_text=answer_text, party=party, roster=roster,
+            present=present,
+        )
+        self._log_classifier(
+            "npcs", started,
+            verdict.failure.value if verdict.failure
+            else (", ".join(s.label for s in verdict.sightings) or "none"),
+        )
+        self.last_npcs = {
+            "raw": verdict.raw,
+            "verdict": [asdict(s) for s in verdict.sightings],
             "failure": verdict.failure.value if verdict.failure else None,
         }
         return verdict
