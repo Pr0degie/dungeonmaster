@@ -249,10 +249,13 @@ class DeliveryPipeline:
                      req.scene_id, self._rt._scene_mode, state.scene_id)
             return
         log.info("📖 Auto-Szenenwechsel vorgeschlagen → %s (%s)", target.id, target.title_de)
-        await channel.send(
+        message = await channel.send(
             f"📖 Szenenwechsel vorgeschlagen: **{target.title_de}** (Teil {target.part}). Wechseln?",
             view=SceneChangeView(target.title_de, target.part, self._make_scene_confirm(channel, target)),
         )
+        proposals = getattr(self._rt, "_scene_proposals", None)
+        if proposals is not None:  # retired by the next real move (runtime.move_scene)
+            proposals[self._rt._brain_channel(channel)] = (message, target.id)
 
     def _make_scene_confirm(self, channel, scene: Scene):
         """Build the confirm callback for a proposed move to ``scene``: on click, perform the same

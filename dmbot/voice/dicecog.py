@@ -118,10 +118,7 @@ class DiceCog(commands.Cog):
                 self._rt.replay_note(channel, "router", {
                     "action": text, "character": char.name, "skills": skills, **recorded,
                 })
-            if req is not None and superseded_by_manifest(
-                req.skill, char.name, manifesting=manifesting or set(),
-                manifest_skill=self._rt._profile.psyker_test_skill(),
-            ):
+            if req is not None and superseded_by_manifest(char.name, manifesting=manifesting or set()):
                 log.info("🎲 router: %s — %s verworfen, die Manifestation deckt die Handlung ab",
                          char.name, req.skill)
                 continue

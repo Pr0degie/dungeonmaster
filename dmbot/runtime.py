@@ -63,6 +63,7 @@ from .rules.scene_flow import (
 from .discord_ui.panel import render_player_panel_de
 from .discord_ui.transcript import format_player_line
 from .discord_ui.undo import SceneUndoView
+from .discord_ui.scene import retire_scene_proposal
 from .memory import chekhov as chekhov_mod
 from .memory import history as history_store
 from .memory import npc_memory as npc_memory_mod
@@ -270,6 +271,9 @@ class SessionRuntime:
         # the seneschal repeat "die Zeit läuft uns davon" in eight of ten answers.
         self._guidance_every = config.guidance_every
         self._scene_turns: dict[int, int] = {}  # turns narrated since entering the current scene
+        # The open <<ORT>> proposal per channel: (message, proposed scene id). Any real move retires
+        # it, so its "Wechseln" button cannot linger after the classifier already moved (2026-10-25).
+        self._scene_proposals: dict[int, tuple] = {}
         self._last_narration: dict[int, str] = {}  # the previous answer, the scene router's context
         self._npc_mem_marks: dict[int, int] = {}
         self._npc_mem_running: set[int] = set()
@@ -715,7 +719,9 @@ class SessionRuntime:
             clocks=self.clocks_enabled,
         )
         chekhov_block = chekhov_mod.chekhov_block_de(self.chekhov_list(cid).top_open())
-        for block in (self._psyker_block(state), self._augmetic_block(), chekhov_block):
+        characters = getattr(self, "_characters", None)  # stub runtimes in tests have no store
+        sheet_block = characters.sheet_block_de() if characters is not None else ""
+        for block in (sheet_block, self._psyker_block(state), self._augmetic_block(), chekhov_block):
             if block:
                 summary = f"{summary}\n\n{block}" if summary else block
         npc_block = ""
@@ -1434,6 +1440,9 @@ class SessionRuntime:
         self._persist_and_refresh(channel)
         log.info("scene → %s (%s) [%s]", moved.id, moved.title_de,
                  getattr(trigger, "value", trigger) or "auto")
+        proposals = getattr(self, "_scene_proposals", None)  # stub runtimes in tests have none
+        if proposals is not None:
+            await retire_scene_proposal(proposals, cid, moved)
         if old_scene and old_scene != moved.id:
             self.schedule_npc_memory_extraction(channel, old_scene)
             await self.advance_scene_time(channel)

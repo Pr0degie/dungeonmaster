@@ -169,6 +169,28 @@ class CharacterStore:
                 return value
         return None
 
+    def sheet_block_de(self) -> str:
+        """Each character's skills (with values) and talent names for the prompt, so the DM can
+        answer "was kann ich?" from the sheet (2026-10-25: Sezgin "ich weiß mein Skill-Set nicht",
+        Tobi chose to keep it a question to the DM, not a command). Talent effects stay out — they
+        would bloat the prompt; rolls never read this block, the engine reads the sheet itself."""
+        lines: list[str] = []
+        for char in self._by_name.values():
+            parts: list[str] = []
+            if char.skills:
+                parts.append("Fertigkeiten " + ", ".join(f"{k} {v}" for k, v in char.skills.items()))
+            talents = [t.get("name", "") if isinstance(t, dict) else str(t)
+                       for t in (char.raw.get("talents") or [])]
+            talents = [t.strip() for t in talents if t and t.strip()]
+            if talents:
+                parts.append("Talente " + ", ".join(talents))
+            if parts:
+                lines.append(f"{char.name}: " + "; ".join(parts))
+        if not lines:
+            return ""
+        return ("## Bögen der Spielfiguren (Fragen nach Fertigkeiten und Talenten beantwortest du "
+                "hieraus; würfeln tut der Code)\n" + "\n".join(lines))
+
     def alias_hint_de(self, *, with_mapping: bool = True) -> str:
         """The 'who plays whom' block appended **last** to the system prompt (open item F). Besides
         mapping display name → character (so the model stops confusing "SezBoss69" with "Seskin"),

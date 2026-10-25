@@ -79,24 +79,24 @@ def test_a_declared_action_is_not_a_fragment():
     assert not is_continuation_fragment("")
 
 
-def test_a_bare_manifest_skill_test_is_dropped_when_the_psyker_already_manifests():
-    """Live: one psi action posted a Dread Presence Manifest *and* a router "Psi-Meisterschaft
-    (Schwierig)" button; both were rolled, and the second one is what failed with a "Patzer"."""
-    assert superseded_by_manifest(
-        "Psi-Meisterschaft", "Fridolin Feuchtgebietheld",
-        manifesting={"fridolin feuchtgebietheld"}, manifest_skill="Psi-Meisterschaft",
-    )
+def test_any_router_test_is_dropped_when_the_psyker_already_manifests():
+    """Live 2026-10-25, twice: one psi action posted a Manifest *and* a router test — first
+    "Psi-Meisterschaft (Schwierig)", in the next run "Fel (Herausfordernd)" for Dread Presence.
+    Both were rolled and narrated. The Manifest Test is that character's roll for the action."""
+    manifesting = {"fridolin feuchtgebietheld"}
+    assert superseded_by_manifest("Fridolin Feuchtgebietheld", manifesting=manifesting)
+    assert superseded_by_manifest("  fridolin feuchtgebietheld ", manifesting=manifesting)
 
 
-def test_other_tests_and_other_characters_are_not_superseded():
-    kw = {"manifesting": {"fridolin feuchtgebietheld"}, "manifest_skill": "Psi-Meisterschaft"}
-    assert not superseded_by_manifest("Heimlichkeit", "Fridolin Feuchtgebietheld", **kw)
-    assert not superseded_by_manifest("Psi-Meisterschaft", "Rektalus Zerfickus", **kw)
-    assert not superseded_by_manifest(
-        "Psi-Meisterschaft", "Fridolin Feuchtgebietheld", manifesting=set(),
-        manifest_skill="Psi-Meisterschaft",
-    )
-    assert not superseded_by_manifest(
-        "Psi-Meisterschaft", "Fridolin Feuchtgebietheld", manifesting={"fridolin feuchtgebietheld"},
-        manifest_skill="",
-    )
+def test_other_characters_are_not_superseded():
+    assert not superseded_by_manifest("Rektalus Zerfickus", manifesting={"fridolin feuchtgebietheld"})
+    assert not superseded_by_manifest("Fridolin Feuchtgebietheld", manifesting=set())
+    assert not superseded_by_manifest(None, manifesting={"fridolin feuchtgebietheld"})
+
+
+def test_the_classifier_defaults_to_the_middle_difficulty():
+    """Live 2026-10-25: "Ich schieße ihm ins Gesicht" (gun already at his head) came back
+    Fernkampf *Schwierig* with no reason in the action — the prompt now pins the default."""
+    sys = classifier_system(["Fernkampf"], ["Leicht", "Herausfordernd", "Schwierig"], "IM")
+    assert "Standard ist die mittlere" in sys and "Im Zweifel die mittlere" in sys
+    assert "nächster Nähe" in sys

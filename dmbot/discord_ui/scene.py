@@ -48,3 +48,23 @@ class SceneChangeView(discord.ui.View):
         self._confirm_btn.disabled = True  # dismiss — no cog work, just lock + mark it cancelled
         self._cancel_btn.disabled = True
         await interaction.response.edit_message(content="Szenenwechsel abgebrochen.", view=self)
+
+
+async def retire_scene_proposal(proposals: dict, channel_id: int, moved) -> None:
+    """Close a pending ``<<ORT>>`` proposal once the scene has moved by any path (2026-10-25).
+
+    ``proposals`` maps a channel to ``(message, proposed scene id)``. The proposal is edited to say
+    what happened and loses its buttons, so a "Wechseln" never lingers after the classifier already
+    moved. Best effort: a message that can no longer be edited is just forgotten."""
+    record = proposals.pop(channel_id, None)
+    if record is None:
+        return
+    message, proposed = record
+    if moved.id == proposed:
+        content = f"📖 Szene gewechselt: **{moved.title_de}** (Teil {moved.part})."
+    else:
+        content = f"📖 Vorschlag nicht mehr aktuell — ihr seid jetzt in **{moved.title_de}**."
+    try:
+        await message.edit(content=content, view=None)
+    except Exception:  # noqa: BLE001 — a deleted/foreign message must not break the move
+        pass

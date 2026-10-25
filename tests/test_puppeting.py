@@ -172,3 +172,29 @@ def test_an_npc_quote_streams_whole() -> None:
     spoken.extend(result.remaining)
     assert "Inquisition, sagst du?" in " ".join(spoken)
     assert "Inquisition, sagst du?" in result.answer
+
+
+# --- a name in the sentence is not yet the speaker (2026-10-25, second run) ----------------------
+# Live: "Kaad bemerkt, wohin Fridolin schaut, hebt die Datentafel und sagt leise: „…“" was cut
+# because "Fridolin" stood within 40 characters before "sagt". The name has to be the subject:
+# at the start of a clause before the verb, or right after the verb ("sagt Gellicus leise").
+
+def test_a_player_named_in_an_npcs_clause_does_not_make_it_his_speech() -> None:
+    text = ('Auf dem Altar liegt ein Bleisiegel. Kaad bemerkt, wohin Fridolin schaut, hebt die '
+            'Datentafel und sagt leise: „Beschlagnahme vier-sieben-neun. Nicht Ihre Sorge.“')
+    assert _drop_puppet_speech(text, PARTY) == text
+
+
+def test_an_npc_looking_at_a_player_and_speaking_survives() -> None:
+    text = 'Der Regen fällt. Kaad sieht Fridolin an und sagt: „Sie sind spät.“'
+    assert _drop_puppet_speech(text, PARTY) == text
+
+
+def test_an_npc_speaking_to_a_player_survives() -> None:
+    text = 'Die Tür knarrt. „Ihr seid spät“, sagt er zu Fridolin.'
+    assert _drop_puppet_speech(text, PARTY) == text
+
+
+def test_a_player_opening_a_later_clause_still_goes() -> None:
+    text = 'Kaad schweigt. Der Regen fällt, und Fridolin sagt: „Wir gehen.“'
+    assert _drop_puppet_speech(text, PARTY) == "Kaad schweigt."

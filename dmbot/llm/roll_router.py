@@ -50,7 +50,10 @@ def classifier_system(skills: list[str], difficulties: list[str], system_display
         "- KEINE Probe bei trivialen/sicheren Handlungen (gehen, eine offene Tür öffnen, normal reden) "
         "oder bei reinem Tischgespräch.\n"
         f"Fertigkeit nur aus dieser Liste: {skill_list}.\n"
-        f"Schwierigkeit nur aus: {diff_list} (Standard: die mittlere/herausfordernde).\n"
+        f"Schwierigkeit nur aus: {diff_list}. Standard ist die mittlere/herausfordernde. "
+        "Schwerer nur bei einem klaren Nachteil, den die Handlung nennt (Dunkelheit, Deckung, große "
+        "Entfernung, Fesseln, Hast); leichter bei einem klaren Vorteil (aus nächster Nähe, wehrloses "
+        "oder überraschtes Ziel, gute Vorbereitung). Im Zweifel die mittlere.\n"
         "Wenn keine Probe nötig: needs_test=false, skill und difficulty leer. Antworte NUR mit JSON."
     )
 
@@ -87,16 +90,12 @@ def is_continuation_fragment(action: str) -> bool:
     return bool(_CONTINUATION.match(action or ""))
 
 
-def superseded_by_manifest(
-    skill: str | None, character: str | None, *, manifesting: set[str], manifest_skill: str
-) -> bool:
-    """Should the router's test be dropped because the same psyker already manifests this turn?
+def superseded_by_manifest(character: str | None, *, manifesting: set[str]) -> bool:
+    """Should the router's test for ``character`` be dropped because they manifest this turn?
 
-    A power is rolled through its Manifest Test (ADR 022); a second, bare test on the manifest
-    skill for the same action is a duplicate roll (live 2026-10-25: Dread Presence *and*
-    "Psi-Meisterschaft (Schwierig)" for one action — both rolled). ``manifesting`` holds the
-    lower-cased names of the characters with a Manifest request this turn."""
-    if not (skill and character and manifest_skill):
-        return False
-    return (skill.strip().lower() == manifest_skill.strip().lower()
-            and character.strip().lower() in manifesting)
+    A power is rolled through its Manifest Test (ADR 022), and that is the character's roll for
+    the action. Live 2026-10-25 a psi action got a second router test twice — first the bare
+    manifest skill, then "Fel" for Dread Presence — and both were rolled and narrated, so any
+    skill counts, not only the manifest skill. ``manifesting`` holds the lower-cased names of the
+    characters with a Manifest request this turn."""
+    return bool(character) and character.strip().lower() in manifesting

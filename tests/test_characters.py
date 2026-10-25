@@ -107,3 +107,22 @@ def test_gear_dedupes_case_insensitively_and_accepts_plain_weapon_strings() -> N
 
 def test_a_sheet_without_gear_has_an_empty_inventory() -> None:
     assert Character.from_dict({"name": "Mortn"}).inventory == ()
+
+
+# --- the sheet block in the prompt (2026-10-25: "Ich weiß mein Skill-Set nicht") ------------------
+
+def test_sheet_block_lists_skills_and_talent_names_per_character() -> None:
+    store = CharacterStore.from_dict({"characters": [
+        {"name": "Rektalus", "skills": {"Athletik": 50, "Nahkampf": 39},
+         "talents": [{"name": "Zäh", "effect": "lange Erklärung"}, "Schönling"]},
+        {"name": "Mortn"},
+    ]})
+    block = store.sheet_block_de()
+    assert block.startswith("## Bögen der Spielfiguren")
+    assert "Rektalus: Fertigkeiten Athletik 50, Nahkampf 39; Talente Zäh, Schönling" in block
+    assert "lange Erklärung" not in block  # names only — effects would bloat the prompt
+    assert "Mortn" not in block  # nothing on the sheet → no line
+
+
+def test_sheet_block_is_empty_without_sheet_data() -> None:
+    assert CharacterStore.from_dict({"characters": [{"name": "Mortn"}]}).sheet_block_de() == ""

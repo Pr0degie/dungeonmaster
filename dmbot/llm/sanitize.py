@@ -192,14 +192,26 @@ _SECOND_PERSON_SPEECH = re.compile(
 )
 
 
+# A clause opens at the start of the sentence or after , ; : (optionally with a conjunction).
+_CLAUSE_START = r"(?:^|[,;:]\s*(?:(?:und|aber|doch|dann|da|während)\s+)?)"
+# Between "sagt" and the name only lower-case words (adverbs: "sagt dann Fridolin", "ruft leise
+# Timo") — a capitalised word is another noun or name ("fragt Kaad Fridolin"), and a preposition
+# makes the name the addressee ("sagt er zu Fridolin").
+_ADDRESS_PREP = r"(?:zu|zum|an|vor|mit|über|für|gegenüber|hinter|neben)"
+
+
 def _speaks_as(name: str) -> re.Pattern:
     """Pattern for "<name> … <speech verb>" or "<speech verb> <name>" — an attribution of quoted
-    speech to that name, in either German word order."""
+    speech to that name, in either German word order.
+
+    The name must be the subject (2026-10-25: "Kaad bemerkt, wohin Fridolin schaut, … und sagt"
+    was read as Fridolin speaking): before the verb it has to open a clause, and the stretch up to
+    the verb may not cross a clause boundary; after the verb only lower-case non-prepositions may
+    sit in between. Runs on the narration outside quotes (:func:`_outside_quotes`)."""
     escaped = re.escape(name)
     return re.compile(
-        rf"\b{escaped}\b[^\"„“”»«]{{0,40}}?\b(?:{_SPEECH_VERB_3})\b"
-        rf"|\b(?:{_SPEECH_VERB_3})\s+(?:\w+\s+){{0,2}}?{escaped}\b",
-        re.IGNORECASE,
+        rf"{_CLAUSE_START}\s*(?i:{escaped})\b[^,;:.!?]{{0,40}}?\b(?i:{_SPEECH_VERB_3})\b"
+        rf"|\b(?i:{_SPEECH_VERB_3})\s+(?:(?!{_ADDRESS_PREP}\b)[a-zäöüß]+\s+){{0,2}}?(?i:{escaped})\b",
     )
 
 

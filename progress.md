@@ -12,13 +12,13 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** D121 — dritter Opus-Lauf am Tisch (2026-10-25 abends, zu viert). Die Ziele des Laufs
-  halten: Auto-Szenenwechsel → schrein kam, `cut` nur noch 12 von ~32 Zügen (vorher 16/17), das Gedächtnis hielt
-  über zwei Auto-Recaps. Alle 9 Proben scheiterten — Pech (~1:60, Engine per 100k-Simulation fair), aber vier
-  Fehler verschärften es; alle behoben: Pasch-Patzer nur noch im Kampf (`crit_scope`), keine doppelte
-  Psi-Probe neben einer Manifestation, kein Router-Test auf „dass …“-Satzfragmente, Puppet-Filter liest
-  nur noch die Erzählung außerhalb von Zitaten. Danach D122: die Ausrüstung steht jetzt im Prompt.
-  **1238 Tests grün, `dm-eval` Exit 0, `ruff --select F` sauber**; am Tisch unverifiziert.
+- **Newest round:** D123 — vierter Opus-Lauf (2026-10-25 spätabends, Tobi + Sezgin, Zweier-Party). D121/D122
+  halten live (kein Patzer außerhalb des Kampfs, Psi-Doppelprobe zweimal verworfen, Inventarfrage voll beantwortet,
+  7 Erfolge). Neue Fixes: jede Router-Probe einer manifestierenden Figur fällt weg (Dread Presence + „Fel“ wurde
+  doppelt gewürfelt), Puppet-Filter verlangt den Namen als Subjekt, ein `<<ORT>>`-Vorschlag schließt sich beim echten
+  Wechsel, Router-Schwierigkeit standardmäßig Herausfordernd, Fertigkeiten/Talente im Prompt, Persona: NSCs sagen
+  was sie wollen + Möglichkeiten, wenn die Gruppe stockt. **1248 Tests grün, `dm-eval` Exit 0.** Offen und als
+  Nächstes: Fridolins Treffer gingen auf Seneschall Kaad (Zielauswahl kennt erfundene Gegner nicht).
 - **Next concrete step:** vierter Lauf (oder der Phase-11-Abend) nach
   [testabend-ablauf.md §9](docs/testabend-ablauf.md), diesmal mit `!sprechmodus nahtlos intoniert`
   (Spieler: Betonung hakt, weil `flach` alle Satzzeichen streicht; XTTS läuft auf cuda) und ohne die nicht
@@ -40,6 +40,25 @@ Nicht verifiziert: Opus mit vollem Systemprompt, ein ganzer Zug mit Stimme, alle
 _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Current focus (Verlauf)`._
 
 ## Last session
+
+**Vierter Opus-Lauf, sieben Fixes (2026-10-25 spätabends, D123).** Tobi und Sezgin, nur Fridolin + Rektalus.
+Gehalten: D121/D122 live, `cut` 6/47, erstes Audio ~9,9 s im Schnitt. Neu gefunden und behoben:
+- **Psi doppelt, zweiter Anlauf:** Dread Presence bekam neben der Manifestation eine Router-Probe auf „Fel“; der
+  D121-Fix griff nur bei Psi-Meisterschaft. Jetzt fällt jede Router-Probe der manifestierenden Figur weg.
+- **Puppet-Filter (D113) strich Kaads Satz** „Kaad bemerkt, wohin Fridolin schaut, … und sagt: …“. Der Name zählt
+  nur noch als Subjekt: am Teilsatzanfang vor dem Verb oder direkt danach (nur Kleinwörter dazwischen, kein „zu/an“).
+- **„Wechseln“ nach Auto-Wechsel:** Marker-Vorschlag und Szenen-Klassifikator lösten beide aus. Jeder echte Wechsel
+  schließt jetzt den offenen Vorschlag (`retire_scene_proposal`), der Button verschwindet.
+- **Fernkampf „Schwierig“ ohne Grund:** Klassifikator-Regel, Standard Herausfordernd, schwerer/leichter nur mit
+  klarem Grund aus der Handlung (Tobis Wahl).
+- **„Ich weiß mein Skill-Set nicht“ (Sezgin):** Fertigkeiten + Talentnamen stehen als `## Bögen der Spielfiguren`
+  im Prompt (Tobis Wahl: per DM fragen, kein Befehl); ~490 Zeichen.
+- **„Niemand sagt, was er will“ (Tobi):** Persona — NSCs machen ihr Anliegen deutlich; stockt die Gruppe, nennt der
+  DM in einem Satz zwei, drei Möglichkeiten (Tobi: beides).
+- **Belegt:** 1248 Tests grün, `dm-eval` Exit 0, `ruff --select F` sauber. Am Tisch unverifiziert.
+- **Offen, nächste Runde:** beide Laspistolen-Treffer gingen auf Seneschall Kaad (nicht in der Szene, jetzt 0/8 im
+  Debug-Stand), weil die Zielauswahl alle NSCs anbietet und Opus' erfundene Kettenmänner nicht kennt. Tobi wählte
+  „automatisch anlegen“ → eigene Runde mit ADR. Einmal las Opus einen Planungssatz vor („…, also eine Probe.“).
 
 **Dritter Opus-Lauf und vier Regel-/Filter-Fixes (2026-10-25 abends, D121).** Tobi, Sezgin, Timo und BloodyP
 spielten ~45 min „Die Mitternachtsfracht“. Tobi: „ich konnte keine Heimlichkeit machen … alle Skillchecks sind
