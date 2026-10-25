@@ -37,7 +37,8 @@ or an ADR already holds — link there instead.
   guard.
 - [two-silent-budgets-context-and-chars](two-silent-budgets-context-and-chars.md) — Context
   overflow silently truncates the persona; spoken chars ARE the latency — read the
-  `[latency]` line before blaming model or infrastructure.
+  `[latency]` line before blaming model or infrastructure; a token cap doesn't travel between
+  models, and a cap on a recap cuts its newest events.
 
 ### Code structure & async
 - [parity-by-construction](parity-by-construction.md) — The same value computed in two

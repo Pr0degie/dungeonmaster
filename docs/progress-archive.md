@@ -9,6 +9,15 @@ Decision-Log, offene Fragen) steht in [`../progress.md`](../progress.md). Dieses
 
 ## Last session (Verlauf)
 
+_Aus `progress.md` rotiert (2026-10-25, D119/D120):_
+
+**`DM_CLOCKS`: ein `.env`-Schalter für die Uhren (2026-10-06, D118).** Für den Abend müssen die Uhren aus sein; bisher ging das nur von Hand mit `!uhr weg` nach jedem `!j`. Jetzt steht `DM_CLOCKS=0` in der `.env`. Davor am selben Tag: Tobis Rechner für den Abend vorbereitet (CLI, `.env` nach §9.2, Preflight, XTTS auf der GPU, alte Logs wegrotiert) — Einzelheiten im Archiv.
+- **Aus heißt:** die Uhren des Abenteuers werden nicht angelegt, im Prompt und im Druck-Panel steht keine Uhr, `<<UHR>>` wird weiter aus dem Sprechtext entfernt und dann ignoriert, `!uhr …` und `!uhren` antworten mit einem Hinweis. Fristen und Spielzeit laufen weiter.
+- **Nicht-destruktiv:** gespeicherte Uhren bleiben in der `state.json` und sind nur ausgeblendet. Auf diesem Rechner hat weder die Sandbox (es gibt keine `state.debug.json`) noch die Live-Kampagne Uhren gespeichert.
+- **Belegt:** 1203 Tests grün (1192 alte unverändert, 11 neue in `tests/test_clocks_switch.py`, darunter die Kette Umgebung → Config → Laufzeit), `dm-eval` Exit 0, Lint sauber. Am Tisch unverifiziert.
+- **Doku:** `.env.example`, `testabend-ablauf.md` §9.2/9.3/9.5 und der Beipackzettel nennen `DM_CLOCKS=0` statt der `!uhr weg`-Befehle. Tobis `.env` ist kommentiert und trägt den Wert.
+- **Aufgefallen:** wer eine Sitzung mit `DM_CLOCKS=0` beginnt, bekommt die Uhren des Abenteuers später nicht nachgereicht (die Seed-Sperre ist dann schon gesetzt); `!uhr neu` legt sie von Hand an. Die Persona erklärt `<<UHR>>` weiterhin, ein gesetzter Marker kostet nur ein paar Tokens.
+
 _Aus `progress.md` rotiert (2026-10-06, D118):_
 
 **Tobis Rechner für den Phase-11-Abend vorbereitet (2026-10-06).** Kein Code geändert; alles unten ist auf dieser Maschine gelaufen, nichts davon am Tisch.
@@ -2100,6 +2109,13 @@ Gate-Run ist weg.** _(Sezgin könnte Rektalus' Werte noch finalisieren, sonst st
 ---
 
 ## Open questions (erledigt/archiviert)
+
+_Aus `progress.md` rotiert (2026-10-25):_
+- **Identität am Würfelknopf** — ✅ erledigt in D111. Der Knopf bleibt bewusst anonym (jeder darf
+  ihn drücken, damit ein abwesender Spieler den Tisch nicht blockiert), aber die Figur kommt vom
+  Sprecher der Ansage, und seit D111 bekommt JEDE ansagende Figur ihren eigenen Knopf.
+  Anmerkung zur Erstanalyse: der Befund „dreimal würfelt Gellicus, egal wer sprach" war falsch —
+  Timo spielt Gellicus, alle drei Proben am 22.08. waren korrekt zugeordnet.
 
 **Vom Playtest-Fix-Runde (2026-06-16, D82–D84) — live-unverified:**
 - **Klingt `!intro` jetzt zuverlässig wie der 14.06.-Lauf?** Party lädt channel-unabhängig (D82), die drei

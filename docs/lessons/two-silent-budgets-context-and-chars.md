@@ -24,6 +24,13 @@ i.e. the persona — so overflow presents as gradual quality collapse) and spoke
   `num_predict`/persona length or change delivery mode before optimizing infrastructure.
 - Every new always-in-prompt block (adventure summary, NPC memory, clocks, Chekhov) gets
   costed against the context budget when it's added.
+- **A token budget does not travel between models** (2026-10-25, first Opus runs, ADR 061).
+  The same `num_predict=220` was ~750 spoken chars on Nemo and ~440 on Opus (2 vs 3.4 chars
+  per token), and Opus' thinking counted against it until every turn came out empty. When the
+  backend changes, re-derive each cap from what the table hears (chars) and check what else
+  draws on it — then read `chars=`, `cut` and `think=` in the `[latency]` line, not `gen=`.
+- **A cap on a non-spoken call cuts its newest content.** A recap is chronological; cut at
+  the spoken budget it lost exactly the last events, and the next turn denied them.
 
 ## Why it matters
 
