@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -135,10 +136,21 @@ def _state(adv: Adventure, *, scene_id: str = "zollhaus") -> WorldState:
 
 
 def _runtime(adv: Adventure | None, state: WorldState | None, brain: _FakeBrain,
-             channel: _FakeChannel, **over) -> SessionRuntime:
+             channel: _FakeChannel, *, sessions_dir: Path | None = None, **over) -> SessionRuntime:
     """A SessionRuntime with ``__init__`` skipped, wired with exactly what the turn boundary
-    touches. Persistence and the two other panels are recorded, never executed."""
+    touches. Persistence and the two other panels are recorded, never executed.
+
+    Session files (the history journal a scene move appends to with ``_autosave`` on) go to
+    ``sessions_dir``; without one, touching a session file fails the test. Until 2026-10-25 the
+    journal landed in the real ``data/sessions/7/`` on every suite run."""
     rt = SessionRuntime.__new__(SessionRuntime)
+
+    def _session_file(channel_id, stem, ext):
+        if sessions_dir is None:
+            raise AssertionError(f"test runtime touched a session file ({stem}.{ext}) — pass sessions_dir")
+        return sessions_dir / str(channel_id) / f"{stem}.{ext}"
+
+    rt.session_file = _session_file
     rt._brain = brain
     rt._adventure = adv
     rt._adventure_dir = None
@@ -554,14 +566,15 @@ def test_a_scene_change_registers_the_new_scene_s_npcs() -> None:
     assert state.find("Schwester Vall") is not None
 
 
-def test_the_classifier_beats_the_flag_gate_when_both_would_fire() -> None:
+def test_the_classifier_beats_the_flag_gate_when_both_would_fire(tmp_path) -> None:
     adv = _adventure()
     state = _state(adv)
     state.mark_resolved("zollhaus", "zeichen")
     state.mark_resolved("zollhaus", "vollmacht")   # exhausted → the gate would push to schrein
     channel = _FakeChannel()
     brain = _FakeBrain(scene=SceneVerdict(target_id="schrein"))
-    rt = _runtime(adv, state, brain, channel, _autosave=True)  # replay notes need the journal on
+    # replay notes need the journal on
+    rt = _runtime(adv, state, brain, channel, sessions_dir=tmp_path, _autosave=True)
 
     _run(rt.close_turn(channel, "Ihr tretet in den Schrein."))
 
@@ -570,18 +583,20 @@ def test_the_classifier_beats_the_flag_gate_when_both_would_fire() -> None:
     assert note.get("trigger") == MoveTrigger.CLASSIFIER.value
 
 
-def test_the_flag_gate_moves_without_asking_the_model() -> None:
+def test_the_flag_gate_moves_without_asking_the_model(tmp_path) -> None:
     adv = _adventure()
     state = _state(adv)
     state.mark_resolved("zollhaus", "zeichen")
     state.mark_resolved("zollhaus", "vollmacht")
     channel = _FakeChannel()
-    rt = _runtime(adv, state, _FakeBrain(), channel, _autosave=True)
+    rt = _runtime(adv, state, _FakeBrain(), channel, sessions_dir=tmp_path, _autosave=True)
 
     _run(rt.close_turn(channel, "Mehr ist hier nicht zu holen."))
 
     assert state.scene_id == "schrein"
     assert rt.take_replay_notes(channel)["scene_move"]["trigger"] == MoveTrigger.FLAG_GATE.value
+    # the scene event went to the test's own folder, not to data/sessions/
+    assert '"scene_id": "schrein"' in (tmp_path / str(channel.id) / "history.jsonl").read_text("utf-8")
 
 
 def test_the_flag_gate_kill_switch_leaves_an_exhausted_scene_alone() -> None:

@@ -25,3 +25,9 @@ live campaign's files. Two of six artifacts isolated reads exactly like six of s
 - Same shape as [[parity-by-construction]] (two computations of one value desync) and
   [[unwired-knobs-and-silent-fallbacks]] (silent fallbacks hide for weeks): partial mechanisms
   don't announce themselves, so make the invariant structural.
+- **Tests are a second sandbox with the same failure.** A stand-in `SessionRuntime` built with
+  `__new__` keeps the real `session_file`, so any flag that turns persistence on (`_autosave=True`
+  for replay notes) writes into the real `data/sessions/<id>/`. `test_turn_boundary` appended two
+  scene events to `data/sessions/7/` on every suite run for two months (found 2026-10-25). Fix:
+  the stand-in overrides `session_file` and raises unless the test passes `tmp_path`. To check
+  the whole suite, snapshot `find data logs -type f` around one run; the diff must be empty.
