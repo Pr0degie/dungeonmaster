@@ -11,9 +11,25 @@ button on click), all logic lives in the cog callback it's handed. ``timeout=Non
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Awaitable, Callable
 
 import discord
+
+from ..dice_images import EMBED_COLOURS
+
+DICE_FILENAME = "dice.png"
+
+
+def result_embed(text: str, image: Path | None, palette: str) -> tuple[discord.Embed, discord.File | None]:
+    """A dice result as an embed: the unchanged German result line as the description, the die
+    as a small thumbnail (Discord shows thumbnails at message height). ``image=None`` → the embed
+    without a picture, so a failed render never loses the result."""
+    embed = discord.Embed(description=text, colour=discord.Colour(EMBED_COLOURS.get(palette, EMBED_COLOURS["red"])))
+    if image is None:
+        return embed, None
+    embed.set_thumbnail(url=f"attachment://{DICE_FILENAME}")
+    return embed, discord.File(image, filename=DICE_FILENAME)
 
 
 class DiceTestView(discord.ui.View):

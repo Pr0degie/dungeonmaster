@@ -49,6 +49,13 @@ here is its contract, which DMbot calls:
 - **TTS:** Piper outputs a specific WAV format — confirm Bot A can play it.
 - **Discord UI (`discord_ui/`):** buttons via `View`/`Button`. Dice buttons call the rules
   engine, never inline their own dice logic.
+- **Dice result thumbnails (`dmbot/dice_images.py`):** a posted dice result goes through
+  `DiceCog._result_edit` / `discord_ui.dice.result_embed` — the unchanged German line as the
+  embed description, the rolled die as `set_thumbnail` (never `set_image`). Show the **raw**
+  face (`TestResult.roll`), not a modified value; the palette comes only from the engine flags
+  via `palette_for` (the UI decides nothing). Fail-open: a render problem posts the embed without
+  a picture. Stand-in runtimes without `_dice_images` keep plain text, so tests don't render.
+  Cache `data/dice/` (git-ignored); pre-render with `uv run python tools/generate_dice.py`.
 
 ## Rules engine (`dmbot/rules/`)
 
@@ -250,6 +257,7 @@ dmbot/          the DM bot
   orchestrator.py   the DM brain (history + buffer → LLM)
   bridge.py     HTTP client to Bot A's /speak
   logsetup.py   console (green chat) + file logging
+  dice_images.py  dice result thumbnails: render-on-demand cache over tools/generate_dice.py (presentation only)
 data/           committed seed/reference: systems/ (profiles), lore/ + rules_de/ (curated DE setting/rules), party/ (party JSONs), sessions/_example + the live channel's characters.json, adventures/debug-kampagne/ (the gate-run test campaign — original content). Generated/local (git-ignored — see the .gitignore allowlist): pdfs/ (RAG sources), the other adventures/ compendia (scene cards, bought-book derivatives), sessions/<id>/ state+recaps, vectordb/ (rag.db)
 prompts/        dm_core_de.md (generic GM persona) + campaign_tone_de.md (campaign overlay)  — GERMAN, game content
 docs/           decisions/ (ADRs), plans/ (specs written before a build round + the findings they rest on), lessons/ (recurring corrections; README = the skimmed index), how-to-*.html + character-creation-prompt.md (player guides), speech-mode-comparison.md (the at-the-table A/B for the delivery modes). SETUP.md lives in the repo root.

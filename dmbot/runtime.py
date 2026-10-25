@@ -263,6 +263,7 @@ class SessionRuntime:
         self._fact_router = config.fact_router
         self._npc_router = config.npc_router
         self._fate_wait_seconds = config.fate_wait_seconds
+        self._dice_images = config.dice_images  # dice result thumbnails (dmbot/dice_images.py)
         # In-game minutes a narrated turn costs (ADR 059 #2); the bigger scene-change advance
         # stays _scene_time_advance above.
         self._turn_time_advance = config.turn_time_advance

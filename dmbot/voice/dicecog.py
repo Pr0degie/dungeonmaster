@@ -9,8 +9,9 @@ import logging
 import discord
 from discord.ext import commands
 
+from ..dice_images import get_dice_image_async, palette_for, roll_image_value
 from ..llm.roll_router import is_continuation_fragment, roll_button_source, superseded_by_manifest
-from ..discord_ui.dice import DiceTestView
+from ..discord_ui.dice import DiceTestView, result_embed
 from ..discord_ui.fate import FateView
 from ..discord_ui.turnorder import TurnOrderView
 from ..discord_ui.rules import RulesView
@@ -160,7 +161,7 @@ class DiceCog(commands.Cog):
 
         async def _roll(interaction: discord.Interaction) -> None:
             guild_id = channel.guild.id if channel.guild else None
-            result, line = self._roll_test(resolved, skill, who)
+            result, line, face = self._roll_test_face(resolved, skill, who)
             log.info("%s", line)  # `line` already starts with 🎲 (describe_result_de)
             pc = self._fate_holder(channel, who) if result is not None and not result.success else None
             view = None
@@ -171,8 +172,9 @@ class DiceCog(commands.Cog):
                                              skill, who, result, line),
                     timeout=float(getattr(self._rt, "_fate_wait_seconds", 20.0)),
                 )
+            shown = await self._result_edit(line, face, palette_for(result))
             try:
-                await interaction.message.edit(content=line, view=view)  # result (+ Fate choice)
+                await interaction.message.edit(**shown, view=view)  # result (+ Fate choice)
             except discord.HTTPException:
                 await self._rt._send_with_retry(channel, line, view=view)
             if view is not None:
@@ -183,9 +185,15 @@ class DiceCog(commands.Cog):
 
     def _roll_test(self, resolved, skill: str, who: str | None):
         """One roll through the engine → ``(TestResult | None, German line)``."""
+        result, line, _ = self._roll_test_face(resolved, skill, who)
+        return result, line
+
+    def _roll_test_face(self, resolved, skill: str, who: str | None):
+        """:meth:`_roll_test` plus the raw die face rolled (for the result thumbnail):
+        ``(TestResult | None, German line, face)``."""
         if resolved.target is None:  # no character/skill value — roll, ask them to compare
             d = engine.roll(self._rt._profile.dice, self._rt._rng)
-            return None, f"🎲 {skill}: {d.total} — kein hinterlegter Wert, vergleicht mit eurem Bogen."
+            return None, f"🎲 {skill}: {d.total} — kein hinterlegter Wert, vergleicht mit eurem Bogen.", d.total
         result = engine.scope_doubles(
             self._rt._profile,
             engine.resolve_test(self._rt._profile, resolved.target, self._rt._rng),
@@ -193,7 +201,21 @@ class DiceCog(commands.Cog):
         )
         return result, engine.describe_result_de(
             result, skill=skill, character=who, difficulty=resolved.difficulty
-        )
+        ), result.roll
+
+    def _dice_images_on(self) -> bool:
+        """Dice result thumbnails on? Off for stand-in runtimes that don't set the flag."""
+        return bool(getattr(self._rt, "_dice_images", False))
+
+    async def _result_edit(self, text: str, face: int | None, palette: str) -> dict:
+        """The ``message.edit`` arguments that show a dice result: plain text as before, or (dice
+        images on) an embed carrying the same line with the rolled die as a thumbnail. The palette
+        comes from the engine's critical/fumble flags (:func:`palette_for`)."""
+        if not self._dice_images_on():
+            return {"content": text}
+        image = await get_dice_image_async(face, palette)
+        embed, file = result_embed(text, image, palette)
+        return {"content": None, "embed": embed, "attachments": [file] if file else []}
 
     def _fate_holder(self, channel, who: str | None):
         """The player character who may spend Fate on this failed test, or ``None`` (ADR 063)."""
@@ -213,18 +235,25 @@ class DiceCog(commands.Cog):
         async def _decide(interaction, spend: bool) -> None:
             final_result, final_line = result, line
             content = line
+            face = None
             cid = self._rt._brain_channel(channel)
             state = self._rt._state.get(cid)
             if spend and state is not None and state.spend_fate(who):
                 left = state.find(who).fate_available
-                final_result, reroll = self._roll_test(resolved, skill, who)
+                final_result, reroll, face = self._roll_test_face(resolved, skill, who)
                 final_line = (f"🙏 {who} gibt einen Schicksalspunkt aus (noch {left}) und würfelt "
                               f"neu — dieses Ergebnis gilt: {reroll}")
                 content = f"{line}\n{final_line}"
                 log.info("%s", final_line)
                 self._rt._persist_and_refresh(channel)
+            if not self._dice_images_on():
+                shown: dict = {"content": content}
+            elif content == line:
+                shown = {}  # kept: the embed with the first die stays, only the buttons go
+            else:  # rerolled: both lines, and the die of the result that stands
+                shown = await self._result_edit(content, face, palette_for(final_result))
             try:
-                await message.edit(content=content, view=None)
+                await message.edit(**shown, view=None)
             except discord.HTTPException:
                 if content != line:
                     await self._rt._send_with_retry(channel, final_line)
@@ -281,8 +310,10 @@ class DiceCog(commands.Cog):
             cid = self._rt._brain_channel(channel)
             state = self._rt._state.get(cid)
             combatant = state.find(who) if (state and who) else None
+            test_result = None
             if resolved.target is None:  # no Psi-Meisterschaft value on the sheet — roll, ask to compare
                 d = engine.roll(self._rt._profile.dice, self._rt._rng)
+                face = d.total
                 lines = [f"🌀 {power}: {d.total} — kein Psi-Meisterschaft-Wert hinterlegt, "
                          "vergleicht mit eurem Bogen."]
             else:
@@ -293,6 +324,7 @@ class DiceCog(commands.Cog):
                     willpower_bonus=resolved.willpower_bonus, threshold=resolved.threshold,
                     pushed=req.pushed, rng=self._rt._rng,
                 )
+                test_result, face = result.test, result.test.roll
                 lines = [engine.describe_manifest_de(result, character=who)]
                 if state is not None and combatant is not None:
                     state.set_warp_charge(who, result.warp_charge)
@@ -316,8 +348,9 @@ class DiceCog(commands.Cog):
                         )
             line = "\n".join(lines)
             log.info("%s", lines[0])
+            shown = await self._result_edit(line, face, palette_for(test_result))
             try:
-                await interaction.message.edit(content=line, view=None)
+                await interaction.message.edit(**shown, view=None)
             except discord.HTTPException:
                 await self._rt._send_with_retry(channel, line)
             for ln in lines:
@@ -482,7 +515,18 @@ class DiceCog(commands.Cog):
             if result.modifier:
                 parts += f"{result.modifier:+d}"
             detail = f" ({parts})"
-        await ctx.send(f"🎲 `{dice}` → **{result.total}**{detail}")
+        text = f"🎲 `{dice}` → **{result.total}**{detail}"
+        face = roll_image_value(result)  # the total, only if a die image exists for it (≤ 100)
+        if not self._dice_images_on() or face is None:
+            await ctx.send(text)
+            return
+        # A free roll has no test outcome → no critical/fumble → the default palette.
+        image = await get_dice_image_async(face, palette_for(None))
+        embed, file = result_embed(text, image, palette_for(None))
+        if file is None:
+            await ctx.send(embed=embed)
+        else:
+            await ctx.send(embed=embed, file=file)
 
     @commands.command(name="test")
     async def test(self, ctx: commands.Context, *, spec: str = "") -> None:

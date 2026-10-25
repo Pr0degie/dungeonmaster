@@ -92,6 +92,8 @@ class Config:
     npc_router: bool = True
     # Fate choice under a failed test (ADR 063): seconds before "Hinnehmen" applies on its own.
     fate_wait_seconds: float = 20.0
+    # Dice results as an embed with the rolled die as a thumbnail (dmbot/dice_images.py). Default on.
+    dice_images: bool = True
 
     @classmethod
     def load(cls) -> "Config":
@@ -383,6 +385,8 @@ class Config:
             npc_router=os.environ.get("DM_NPC_ROUTER", "1").strip().lower()
             in ("1", "true", "yes", "on"),
             fate_wait_seconds=float(os.environ.get("DM_FATE_WAIT_SECONDS", "20")),
+            dice_images=os.environ.get("DM_DICE_IMAGES", "1").strip().lower()
+            in ("1", "true", "yes", "on"),
             post_player_lines=os.environ.get("DM_POST_PLAYER_LINES", "1").strip().lower()
             in ("1", "true", "yes", "on"),
         )

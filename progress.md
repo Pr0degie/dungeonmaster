@@ -25,7 +25,11 @@ is on-demand._
 - **Nachtrag (D126 / ADR 063):** Schicksalspunkte — eine misslungene Probe zeigt „🙏 Neu würfeln / Hinnehmen“,
   der DM erzählt erst danach (20 s Timeout), Erholung bei `!join`, `Schicksal x/y` im Weltzustand. Persona:
   Fehlschlag echt, aber mit Folge statt Sackgasse, Maß nach EG. 1282 Tests grün, `dm-eval` Exit 0.
-- **Next concrete step:** fünfter Lauf (Sandbox leeren, Bot neu starten). Prüfen: `👥 anwesend in …`-Zeilen für
+- **Nachtrag (D127):** Würfelergebnisse als Embed mit dem gewürfelten W20 als Thumbnail (Gold = kritisch,
+  Grün = Patzer, aus den Engine-Flags), gerendert bei Bedarf nach `data/dice/`; `DM_DICE_IMAGES=0` = Text.
+  Reine Darstellung, Goldens unverändert. 1299 Tests grün, `dm-eval` Exit 0. In Discord live-unverifiziert.
+- **Next concrete step:** fünfter Lauf (Sandbox leeren, Bot neu starten). Prüfen: Würfel-Thumbnail an jedem
+  Ergebnis (auch nach „🙏 Neu würfeln“ der zweite Würfel), `👥 anwesend in …`-Zeilen für
   improvisierte Gegner, Zielauswahl zeigt nur Anwesende, kein Doppelwurf bei Psi, kein „Wechseln“ nach Auto-Wechsel,
   NSCs sagen, was sie wollen, „Was kann ich?“ wird aus dem Bogen beantwortet, Schicksal-Buttons erscheinen
   nach Fehlschlägen und Fehlschläge führen weiter statt in Sackgassen. `!sprechmodus nahtlos intoniert`
@@ -44,6 +48,14 @@ Nicht verifiziert: Opus mit vollem Systemprompt, ein ganzer Zug mit Stimme, alle
 _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Current focus (Verlauf)`._
 
 ## Last session
+
+**Würfel-Thumbnails (2026-10-25 nachts, D127).** Tobis ASCII-W20-Generator liegt jetzt in `tools/generate_dice.py`
+(Font-Auflösung DejaVu → Arial/Consolas, eigener RNG statt `random.seed()`, Ausgabe byte-identisch zum Original).
+`dmbot/dice_images.py` rendert bei Bedarf (~0,1 s, im Thread) nach `data/dice/<palette>/` und fällt bei Fehlern
+auf ein Embed ohne Bild zurück. Button, `!test`, Schicksals-Neuwurf, Manifestation und `!roll` (Summe ≤ 100) zeigen
+den Rohwurf als Thumbnail; die Engine blieb unverändert (`critical`/`fumble` gab es schon). `pillow` deklariert.
+1299 Tests grün (+17), `dm-eval` Exit 0, ruff ohne neue Meldungen. Am Tisch unverifiziert: das Bearbeiten der
+Button-Nachricht mit neuem Anhang.
 
 **Vierter Opus-Lauf, sieben Fixes (2026-10-25 spätabends, D123).** Tobi und Sezgin, nur Fridolin + Rektalus.
 Gehalten: D121/D122 live, `cut` 6/47, erstes Audio ~9,9 s im Schnitt. Neu gefunden und behoben:
