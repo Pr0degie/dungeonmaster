@@ -15,7 +15,13 @@ from pathlib import Path
 import claude_agent_sdk as sdk
 import pytest
 
-from dmbot.llm.claude_client import ClaudeClient, _prompt, render_transcript
+from dmbot.llm.claude_client import (
+    _CHARS_PER_TOKEN,
+    _THINKING_HEADROOM,
+    ClaudeClient,
+    _prompt,
+    render_transcript,
+)
 from dmbot.llm.client import LLMBackendError
 
 _USER = [{"role": "user", "content": "Timo: Ich öffne die Tür."}]
@@ -91,12 +97,15 @@ def _start(**usage) -> sdk.StreamEvent:
     return _event({"type": "message_start", "message": {"usage": usage}})
 
 
-def _stop(reason: str, output_tokens: int) -> sdk.StreamEvent:
-    return _event({
-        "type": "message_delta",
-        "delta": {"stop_reason": reason},
-        "usage": {"output_tokens": output_tokens},
-    })
+def _stop(reason: str, output_tokens: int, thinking: int | None = None) -> sdk.StreamEvent:
+    usage: dict = {"output_tokens": output_tokens}
+    if thinking is not None:
+        usage["output_tokens_details"] = {"thinking_tokens": thinking}
+    return _event({"type": "message_delta", "delta": {"stop_reason": reason}, "usage": usage})
+
+
+def _thinking(text: str = "hm") -> sdk.StreamEvent:
+    return _event({"type": "content_block_delta", "delta": {"type": "thinking_delta", "thinking": text}})
 
 
 def _assistant(*blocks, error=None) -> sdk.AssistantMessage:
@@ -170,7 +179,11 @@ def test_narration_call_maps_onto_the_sdk_options(fake, client):
     options = query.options[0]
     assert options.model == "opus"
     assert options.max_turns == 1
-    assert options.env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "220"
+    # The spoken budget is enforced on the text by the client; the per-request cap gets headroom
+    # for the thinking Opus does even with thinking disabled (measured live, 2026-10-25).
+    assert options.env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == str(220 + _THINKING_HEADROOM)
+    assert options.effort == "low"
+    assert options.thinking == {"type": "disabled"}
     assert options.env["CLAUDE_AGENT_SDK_CLIENT_APP"] == "cogitator-dmbot/1.2.3"
     assert options.output_format is None
     assert options.system_prompt["type"] == "file"
@@ -215,6 +228,7 @@ def test_a_schema_call_goes_to_the_aux_tier_with_structured_output(fake, client)
     assert client.last_aux_stats["model"] == "haiku" and client.last_aux_stats["truncated"] is False
     # Sized for Claude's tool-call delivery, not Ollama's grammar (see the module constants).
     assert options.env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "1024"
+    assert options.effort is None  # effort steers the narration model's thinking only
     assert options.max_turns == 3
     assert query.systems[0].startswith("ROUTER") and "StructuredOutput" in query.systems[0]
 
@@ -452,6 +466,79 @@ def test_a_stream_yields_the_delta_that_arrives_with_the_cut(fake, client):
          _delta("Drei."), _result())
     assert asyncio.run(_drain(client.chat_stream("s", _USER, options={"num_predict": 220}))) == [
         "Eins. ", "Zwei."]
+
+
+# ---- thinking vs. the spoken budget (live 2026-10-25: Opus thinks despite thinking=disabled) ---
+
+
+def test_a_request_that_spent_its_cap_on_thinking_is_not_cut(fake, client, caplog):
+    """The failure seen live: the first request burned every output token on thinking and the
+    turn came out empty. With no text yet, the CLI's resume request is read on, not cut off."""
+    query = fake(
+        _INIT, _start(input_tokens=17000), _thinking(), _stop("max_tokens", 244, thinking=244),
+        _start(input_tokens=17300), _delta("Die Tür "), _delta("knarrt."), _stop("end_turn", 30, thinking=0),
+        _result(result="Die Tür knarrt.", usage={"input_tokens": 17300, "output_tokens": 274}),
+    )
+    with caplog.at_level(logging.WARNING, logger="dmbot.llm.claude_client"):
+        deltas = asyncio.run(_drain(client.chat_stream("s", _USER, options={"num_predict": 220})))
+    assert deltas == ["Die Tür ", "knarrt."]
+    assert client.last_stats["truncated"] is False
+    assert query.closed == 1
+    assert caplog.records == []
+
+
+def test_a_max_tokens_stop_of_an_earlier_request_does_not_cut_the_next_ones_text(fake, client):
+    """The stop reason belongs to one request; the resumed request's first delta must not be
+    mistaken for text that arrived at the cut."""
+    fake(_INIT, _start(input_tokens=50), _thinking(), _stop("max_tokens", 244),
+         _start(input_tokens=60), _delta("Eins. "), _delta("Zwei."), _stop("end_turn", 20), _result())
+    assert asyncio.run(_drain(client.chat_stream("s", _USER, options={"num_predict": 220}))) == [
+        "Eins. ", "Zwei."]
+    assert client.last_stats["truncated"] is False
+
+
+def test_the_spoken_budget_is_cut_on_the_text_itself(fake, client, caplog):
+    """The per-request cap carries thinking headroom, so the client holds the text to
+    ``num_predict`` tokens' worth of characters: the overflowing delta is trimmed, the stream
+    ends there, and the ✂ WARNING names the cap as before."""
+    budget = round(10 * _CHARS_PER_TOKEN)
+    first = "x" * (budget - 4)
+    query = fake(_INIT, _start(input_tokens=50), _delta(first), _delta("abcdefgh"),
+                 _delta("nie gelesen"), _stop("end_turn", 30), _result(result="nie erreicht"))
+    with caplog.at_level(logging.WARNING, logger="dmbot.llm.claude_client"):
+        deltas = asyncio.run(_drain(client.chat_stream("s", _USER, options={"num_predict": 10})))
+    assert deltas == [first, "abcd"]
+    assert len("".join(deltas)) == budget
+    assert client.last_stats["truncated"] is True
+    assert query.yielded == 4  # init, start, two deltas — the rest is never read
+    assert [r.getMessage() for r in caplog.records] == [
+        "✂ Antwort an der Ausgabegrenze abgeschnitten (10/10 Tokens)"]
+
+
+def test_a_batch_narration_over_the_spoken_budget_returns_the_trimmed_text(fake, client):
+    budget = round(10 * _CHARS_PER_TOKEN)
+    fake(_INIT, _start(input_tokens=50), _delta("y" * budget), _delta("zu viel"),
+         _assistant(sdk.TextBlock("y" * budget + "zu viel")), _result(result="nie erreicht"))
+    answer = asyncio.run(client.chat("s", _USER, options={"num_predict": 10}))
+    assert answer == "y" * budget
+    assert client.last_stats["truncated"] is True
+
+
+def test_schema_calls_have_no_text_budget(fake, client):
+    """A classifier's JSON is never spoken; it must not be trimmed into invalid JSON."""
+    fake(_INIT, _start(input_tokens=50), _delta("z" * 5000), _assistant(sdk.TextBlock("z" * 5000)),
+         _result(result="z" * 5000, stop_reason="end_turn"))
+    raw = asyncio.run(client.chat("s", _USER, options={"num_predict": 80}, format=_SCHEMA))
+    assert raw == "z" * 5000
+
+
+def test_thinking_tokens_reach_the_stats(fake, client):
+    fake(_INIT, _start(input_tokens=50), _thinking(), _delta("Kurz."), _stop("end_turn", 40, thinking=31),
+         _result(result="Kurz.", usage={"input_tokens": 50, "output_tokens": 40,
+                                        "output_tokens_details": {"thinking_tokens": 31}}))
+    asyncio.run(_drain(client.chat_stream("s", _USER, options={"num_predict": 220})))
+    assert client.last_stats["thinking"] == 31
+    assert client.last_stats["eval_count"] == 40
 
 
 # ---- errors -----------------------------------------------------------------------------------

@@ -263,3 +263,40 @@ Left as they are, on purpose:
   Not set on this machine; a candidate for the preflight before anyone else runs the backend.
 - **The stderr tail is one list per client,** so with concurrent calls an error message can carry
   another call's stderr. It only feeds the error text shown by `!backend`.
+
+## Amendment (2026-10-25, first Opus turns at the table) — thinking ate the spoken budget
+
+Found on the first live run with Opus and the full DM prompt (CLI 2.1.310): the intro was
+spoken, every player turn after it came out empty (`🪵 LLM roh (stream):` with nothing after it,
+`chars=0`, `220/220 Tokens`). Cause, reproduced with the persona alone: **Opus thinks although
+the client passes `thinking={"type": "disabled"}`** (the SDK correctly sends `--thinking
+disabled`), and the thinking tokens count against `CLAUDE_CODE_MAX_OUTPUT_TOKENS`. The first
+request spent all 220 tokens on thinking; the client cut at that first `max_tokens` stop, before
+any text. `MAX_THINKING_TOKENS=0` does not stop it; `effort="low"` shortens it (persona alone: 93
+thinking tokens in one request instead of 640+ over four).
+
+Decided, narration calls only (schema calls unchanged):
+
+- **`effort="low"`.** Shorter thinking is also the latency fix: first delta ~3.7 s live, against
+  10–27 s for the empty turns before.
+- **The per-request cap is `num_predict` + 1024** (`_THINKING_HEADROOM`), so the thinking
+  fits beside the text.
+- **The spoken budget is held on the text by the client:** `num_predict` × 2 characters
+  (`_CHARS_PER_TOKEN`, measured on German Opus text: 1192 chars / 592 tokens, 1153 / 586). The
+  overflowing delta is trimmed and the stream ends there. `num_predict` stays a token budget,
+  as on Ollama; it is held as characters because the stream has no per-delta token count.
+- **A `max_tokens` stop cuts only after text has begun.** A request that ended in thinking is
+  read on — the CLI's resume brings the text. The stop reason is reset at each `message_start`,
+  so a resumed request's first delta is not taken for text arriving at the cut.
+- **`think=` in the `[latency]` line** (`thinking` in the stats). `gen=` still counts thinking
+  in, as billed.
+
+Rejected: a larger context window — the context was not full (`ctx=17617/24576`) and the budget
+is nominal on purpose (recap cadence equal to Ollama's); the variable of the evening stays the
+model. A thinking budget (`{"type": "enabled", "budget_tokens": N}`) — the API minimum is 1024,
+more than the spoken budget itself.
+
+Live-verified this session: the boot preflight with the new options (`narration opus: OK · aux
+haiku: OK` — Haiku accepts `effort`), and two streamed persona turns at `num_predict=220` (250 and
+365 chars, `think=70`/`68`, not truncated). A turn with the full table prompt and voice is
+live-unverified.

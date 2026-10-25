@@ -46,6 +46,7 @@ class _TurnTiming:
     first_audio: float | None = None  # monotonic at the first /speak POST (streaming time-to-first-audio)
     prompt_eval: int | None = None  # Ollama prompt_eval_count (context tokens)
     eval_count: int | None = None  # Ollama eval_count (generated tokens)
+    thinking: int | None = None  # Claude: the part of eval_count spent on thinking
     num_ctx: int | None = None  # the num_ctx cap in effect
     spawn_ms: int | None = None  # Claude: query() call → first SDK message (subprocess spawn)
     cache_read: int | None = None  # Claude: prompt tokens served from the prompt cache
@@ -61,6 +62,7 @@ class _TurnTiming:
             return
         self.prompt_eval = stats.get("prompt_eval_count")
         self.eval_count = stats.get("eval_count")
+        self.thinking = stats.get("thinking")
         self.num_ctx = stats.get("num_ctx")
         self.spawn_ms = stats.get("spawn_ms")
         self.cache_read = stats.get("cache_read")
@@ -102,6 +104,8 @@ class _TurnTiming:
                          else f"ctx={self.prompt_eval}")
         if self.eval_count is not None:
             parts.append(f"gen={self.eval_count}")
+        if self.thinking is not None:
+            parts.append(f"think={self.thinking}")
         if self.spawn_ms is not None:
             parts.append(f"spawn={self.spawn_ms}ms")
         if self.cache_read is not None:

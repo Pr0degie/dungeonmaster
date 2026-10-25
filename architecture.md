@@ -624,10 +624,14 @@ the replay harness do not know which one answers.
   `stop` sequences, `repeat_penalty` / `repeat_last_n` / `top_p`. The client-side speaker-label
   cut stays the anti-puppeting guard. `num_ctx` is a *nominal* budget (`CLAUDE_NUM_CTX`, equal to
   Ollama's) so auto-recap and the `[ctx]` warning keep their cadence.
-- **`num_predict` is enforced by the client.** The CLI's own cap is per request and it resumes up
-  to three times; the client cuts narration at the first `max_tokens` stop and reports
-  `truncated` (the `✂` WARNING, `cut` in the `[latency]` line). End-of-answer markers still sit
-  where the cap cuts — measured this phase, removed in Phase 12.
+- **`num_predict` is enforced by the client, on the text.** Opus thinks even with thinking
+  disabled, and thinking counts against the CLI's per-request cap. Narration therefore runs with
+  `effort="low"`, the per-request cap gets 1024 tokens of thinking headroom, and the client holds
+  the spoken text to `num_predict` tokens' worth of characters (2 per token, measured). A
+  `max_tokens` stop cuts only once text has begun; before that the CLI's resume is read on. A cut
+  reports `truncated` (the `✂` WARNING, `cut` in the `[latency]` line; `think=` shows the thinking
+  tokens). End-of-answer markers still sit where the cap cuts — measured this phase, removed in
+  Phase 12. (ADR 061, amendment 2026-10-25.)
 - **Structured output is a tool call**, not a constrained decode: schema calls get three turns
   and a floor of 1024 output tokens, and a verdict that does not arrive is a lost verdict
   (callers fail open), not a backend failure.

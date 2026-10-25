@@ -21,8 +21,11 @@ servers into the DM's context. Every source is switched off explicitly in :meth:
 
 **The output cap is enforced here, not by the CLI.** ``CLAUDE_CODE_MAX_OUTPUT_TOKENS`` caps one
 API request, but the CLI then asks the model to resume (up to three times) and finally fails the
-run — measured live, not what the PRD assumed. So a narration answer is cut by this client at the
-first ``max_tokens`` stop, which restores the hard cut ``num_predict`` means everywhere else.
+run — measured live, not what the PRD assumed. So a narration answer is cut by this client: on
+its text, at ``num_predict`` tokens' worth of characters, or at a ``max_tokens`` stop once text has
+begun. That restores the hard cut ``num_predict`` means everywhere else. Opus thinks despite
+``thinking`` disabled, so narration runs at low effort with thinking headroom on the per-request
+cap (ADR 061, amendment 2026-10-25).
 
 Where the installed SDK (checked against 0.2.163, CLI 2.1.291) differs from what the PRD assumed,
 the code says so at the spot and ADR 061's SDK amendment records it.
@@ -72,6 +75,19 @@ _AUX_MAX_TURNS = 3
 _AUX_SYSTEM_SUFFIX = (
     "\n\nGib deine Antwort ausschließlich über das Werkzeug StructuredOutput ab, ohne Begleittext."
 )
+
+# Opus thinks even with ``thinking={"type": "disabled"}`` (CLI 2.1.310, measured live 2026-10-25),
+# and thinking counts against ``CLAUDE_CODE_MAX_OUTPUT_TOKENS``. Under the full DM prompt the first
+# request spent all 220 tokens on thinking, and every player turn came out empty. Three things
+# follow, for narration only: ``effort="low"`` keeps the thinking short (and the turn fast); the
+# per-request cap gets this headroom on top of ``num_predict``; and the spoken budget is enforced
+# on the text itself by this client (``_CHARS_PER_TOKEN``).
+_NARRATION_EFFORT = "low"
+_THINKING_HEADROOM = 1024
+# Characters of German Opus text per output token, measured live (1192 chars / 592 tokens,
+# 1153 / 586). ``num_predict`` stays a token budget, as on Ollama; it is enforced as characters
+# because the stream carries no per-delta token count.
+_CHARS_PER_TOKEN = 2.0
 
 
 def render_transcript(messages: list[dict[str, str]]) -> str:
@@ -146,8 +162,12 @@ class _Call:
     prompt_tokens: int | None = None
     cache_read: int = 0
     output_tokens: int | None = None
-    stop_reason: str | None = None
+    thinking_tokens: int | None = None
+    stop_reason: str | None = None  # of the current API request (reset at each message_start)
     cut: bool = False  # ended by this client at the output cap
+    text_budget: int | None = None  # narration: the spoken budget in characters
+    text_chars: int = 0
+    budget_cut: bool = False  # the cut came from the text budget, not a max_tokens stop
 
 
 class ClaudeClient:
@@ -227,15 +247,18 @@ class ClaudeClient:
                 "Claude backend: server-side `stop` sequences are not available through the Agent "
                 "SDK — ignored (the client-side speaker-label cut stays the anti-puppeting guard).",
             )
-        model = self._narration_model if format is None else self._aux_model
+        narration = format is None
+        model = self._narration_model if narration else self._aux_model
         env = {"CLAUDE_AGENT_SDK_CLIENT_APP": self._app}
         cap = int(options["num_predict"]) if options.get("num_predict") else None
-        if cap and format is not None:
+        if cap and not narration:
             cap = max(cap, _AUX_MIN_OUTPUT_TOKENS)
         if cap:
             # The SDK has no max_tokens field; the CLI reads this env var, per API request. The
             # cut itself (and with it the loss of end-of-answer markers) happens in _run().
-            env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(cap)
+            # Narration gets thinking headroom; its spoken budget is held on the text instead.
+            request_cap = cap + _THINKING_HEADROOM if narration else cap
+            env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(request_cap)
         sdk_options = sdk.ClaudeAgentOptions(
             # A system prompt of ours REPLACES the CLI's coding prompt (never the preset). Passed as
             # a file, not the plain string the PRD assumed: the SDK puts a string on the command
@@ -247,7 +270,10 @@ class ClaudeClient:
             # Always on, also for batch calls: the raw frames carry the per-request stop reason
             # and usage, which is how the output cap is detected.
             include_partial_messages=True,
+            # Not honoured by Opus on CLI 2.1.310 (see _NARRATION_EFFORT); kept for the models
+            # that do honour it.
             thinking={"type": "disabled"},
+            effort=_NARRATION_EFFORT if narration else None,
             # No tools this round (Phase 12).
             tools=[],
             allowed_tools=[],
@@ -299,14 +325,25 @@ class ClaudeClient:
                         continue
                     self._note_stream_frame(call, message.event)
                     delta = _text_delta(message.event)
+                    if delta and call.text_budget is not None:
+                        room = call.text_budget - call.text_chars
+                        if len(delta) > room:
+                            # The spoken budget: trim the overflowing delta and end the turn here.
+                            delta = delta[:max(room, 0)]
+                            call.cut = call.budget_cut = True
                     if delta:
+                        call.text_chars += len(delta)
                         call.deltas.append(delta)
                     if delta and partial:
                         deadline = None  # speaking has begun — no failover past this point
                         yield delta
-                    if call.stop_reason == "max_tokens" and call.narration:
+                    if call.budget_cut:
+                        break
+                    if (call.stop_reason == "max_tokens" and call.narration
+                            and (call.deltas or call.texts)):
                         # The hard cut. Left alone, the CLI would now ask the model to resume and
-                        # keep the turn talking past its spoken budget.
+                        # keep the turn talking past its spoken budget. A request that ended
+                        # before any text (all thinking) is not cut: the resume brings the text.
                         call.cut = True
                         break
                 elif isinstance(message, sdk.AssistantMessage):
@@ -367,15 +404,21 @@ class ClaudeClient:
         provisional ``last_stats``, so an aborted stream (which never reaches its result) doesn't
         leave the previous call's numbers behind."""
         kind = event.get("type")
-        if kind == "message_start" and call.prompt_tokens is None:
-            usage = (event.get("message") or {}).get("usage") or {}
-            call.prompt_tokens, call.cache_read = _prompt_tokens(usage)
-            self._store_stats(call, truncated=False)
+        if kind == "message_start":
+            call.stop_reason = None  # a new API request (the CLI's resume after a cap)
+            if call.prompt_tokens is None:
+                usage = (event.get("message") or {}).get("usage") or {}
+                call.prompt_tokens, call.cache_read = _prompt_tokens(usage)
+                self._store_stats(call, truncated=False)
         elif kind == "message_delta":
             call.stop_reason = (event.get("delta") or {}).get("stop_reason")
-            output_tokens = (event.get("usage") or {}).get("output_tokens")
+            usage = event.get("usage") or {}
+            output_tokens = usage.get("output_tokens")
             if output_tokens is not None:
                 call.output_tokens = output_tokens
+            thinking = (usage.get("output_tokens_details") or {}).get("thinking_tokens")
+            if thinking is not None:
+                call.thinking_tokens = thinking
 
     def _store_stats(self, call: _Call, *, truncated: bool) -> None:
         """Put the call's stats into its tier's slot (see ``__init__``)."""
@@ -391,12 +434,15 @@ class ClaudeClient:
         if result is not None and result.usage:
             prompt_tokens, cache_read = _prompt_tokens(result.usage)
             output_tokens = result.usage.get("output_tokens")
+            thinking = (result.usage.get("output_tokens_details") or {}).get("thinking_tokens")
         else:
             prompt_tokens, cache_read = call.prompt_tokens, call.cache_read
             output_tokens = call.output_tokens
+            thinking = call.thinking_tokens
         return {
             "prompt_eval_count": prompt_tokens,
-            "eval_count": output_tokens,
+            "eval_count": output_tokens,  # thinking included, as billed
+            "thinking": thinking,
             "num_ctx": self._num_ctx,
             "cache_read": cache_read,
             "spawn_ms": call.spawn_ms,
@@ -434,11 +480,20 @@ class ClaudeClient:
         elif stop_reason is not None:
             truncated = stop_reason == "max_tokens"
         else:
-            truncated = bool(call.cap and output_tokens is not None and output_tokens >= call.cap)
+            text_tokens = (
+                output_tokens - (call.thinking_tokens or 0)
+                if output_tokens is not None and call.narration else output_tokens
+            )
+            truncated = bool(call.cap and text_tokens is not None and text_tokens >= call.cap)
         self._store_stats(call, truncated=truncated)
         if not truncated:
             return
-        shown = output_tokens if output_tokens is not None else "?"
+        if call.budget_cut:
+            shown = call.cap  # cut exactly at the spoken budget
+        elif output_tokens is not None:
+            shown = output_tokens - (call.thinking_tokens or 0) if call.narration else output_tokens
+        else:
+            shown = "?"
         if call.narration:
             # Measured, not fixed (ADR 061): every end-of-answer marker sits where the cap cuts.
             log.warning("✂ Antwort an der Ausgabegrenze abgeschnitten (%s/%s Tokens)", shown, call.cap or "?")
@@ -477,6 +532,8 @@ class ClaudeClient:
                 f"Claude call could not be prepared ({exc.__class__.__name__}): {exc}"
             ) from exc
         call = _Call(model=model, cap=cap, narration=format is None, started=time.monotonic())
+        if call.narration and cap:
+            call.text_budget = round(cap * _CHARS_PER_TOKEN)
         return call, sdk_options, system_file
 
     # ---- the seam ----------------------------------------------------------------------
@@ -505,6 +562,9 @@ class ClaudeClient:
         if isinstance(format, dict) and result is not None and result.structured_output is not None:
             return json.dumps(result.structured_output, ensure_ascii=False)
         text = result.result if result is not None else None
+        if call.budget_cut:
+            # Only the deltas are trimmed to the spoken budget; an assistant block may hold more.
+            text = "".join(call.deltas)
         if text is None:
             # A cut call has no result. The assistant message normally precedes the stop frame,
             # but the deltas are the same text and do not depend on that order.

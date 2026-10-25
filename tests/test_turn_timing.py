@@ -31,6 +31,11 @@ def test_a_claude_turn_shows_spawn_and_cache_after_gen(caplog):
     assert "cut" not in line
 
 
+def test_a_claude_turn_shows_its_thinking_tokens_after_gen(caplog):
+    line = _line({**_OLLAMA, "thinking": 31, "spawn_ms": 700, "cache_read": 0}, caplog)
+    assert "gen=180 think=31 spawn=700ms" in line
+
+
 def test_a_truncated_turn_is_marked_cut(caplog):
     line = _line({**_OLLAMA, "spawn_ms": 650, "cache_read": 0, "truncated": True}, caplog)
     assert "spawn=650ms cache=0 cut chars=400" in line

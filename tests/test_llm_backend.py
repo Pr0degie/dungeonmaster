@@ -16,7 +16,7 @@ import pytest
 from dmbot import config as config_mod
 from dmbot.config import Config
 from dmbot.llm import build_llm_client, preflight
-from dmbot.llm.claude_client import ClaudeClient
+from dmbot.llm.claude_client import _THINKING_HEADROOM, ClaudeClient
 from dmbot.llm.client import LLMBackendError, OllamaClient
 from dmbot.llm.failover import FailoverClient
 from dmbot.voice.dmcog import DMCog
@@ -161,7 +161,7 @@ def test_preflight_ok_pings_both_tiers_and_names_both_results(cli, caplog):
     assert "Claude preflight OK — narration opus: OK · aux haiku: OK" in caplog.text
     assert sorted(o.model for o in cli.options) == ["haiku", "opus"]
     for options in cli.options:
-        assert options.env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "8"
+        assert options.env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == str(8 + _THINKING_HEADROOM)
         assert options.tools == [] and options.setting_sources == []
         assert options.output_format is None  # a prose ping, no tool round trip
 
