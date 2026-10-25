@@ -18,6 +18,10 @@ is on-demand._
   per drittem Nach-Zug-Klassifikator angelegt und als anwesend geführt; Zielauswahl und Prompt kennen nur noch
   Anwesende (Fridolins Schüsse trafen Kaad, zwei Szenen weiter). **1265 Tests grün, `dm-eval` Exit 0**; Haiku live
   per Einzelaufruf 3/3 Fälle richtig (nach einer Prompt-Schärfung gegen Doppel-Anlage).
+- **Nachtrag (D125):** am Ende von Lauf 4 starben TTS und STT: zwei Erzählungen (Psi-Doppelwurf) ließen XTTS
+  parallel laufen → `device-side assert`, CUDA-Kontext des Prozesses kaputt, Whisper mit. Jetzt: Sperre um jede
+  XTTS-Synthese, `dmbot/gpu_health` meldet den ersten CUDA-Fehler einmal im Kanal („Bot neu starten“), danach
+  kurze Logzeilen statt Tracebacks. 1272 Tests grün, `dm-eval` Exit 0.
 - **Next concrete step:** fünfter Lauf (Sandbox leeren, Bot neu starten). Prüfen: `👥 anwesend in …`-Zeilen für
   improvisierte Gegner, Zielauswahl zeigt nur Anwesende, kein Doppelwurf bei Psi, kein „Wechseln“ nach Auto-Wechsel,
   NSCs sagen, was sie wollen, „Was kann ich?“ wird aus dem Bogen beantwortet. `!sprechmodus nahtlos intoniert`

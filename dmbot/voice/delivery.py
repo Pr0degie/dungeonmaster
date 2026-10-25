@@ -29,6 +29,7 @@ import discord
 from ..tts.textsplit import has_speakable_content, split_completed
 from ..tts.wavio import concat_wavs
 from ..shutdown import to_daemon_thread
+from ..gpu_health import health as gpu_health
 from ..discord_ui.clock import ClockView
 from ..discord_ui.flag import FlagView
 from ..discord_ui.scene import SceneChangeView
@@ -137,8 +138,8 @@ class DeliveryPipeline:
                 return False
             tts_ms = round((time.perf_counter() - t0) * 1000)
             log.info("🔊 TTS %d ms → speaking", tts_ms)
-        except Exception:
-            log.exception("TTS synthesis failed")
+        except Exception as exc:
+            gpu_health.log_failure(log, exc, "Sprachausgabe", "TTS synthesis failed")
             return False
         if timing is not None:
             timing.tts_ms = tts_ms
@@ -700,8 +701,9 @@ class DeliveryPipeline:
                     wav = await to_daemon_thread(self._synthesize, text)
                     if wav is None:
                         continue
-                except Exception:
-                    log.exception("TTS synthesis failed (streamed sentence) — skipping it")
+                except Exception as exc:
+                    gpu_health.log_failure(log, exc, "Sprachausgabe",
+                                           "TTS synthesis failed (streamed sentence) — skipping it")
                     continue
                 timing.tts_ms = (timing.tts_ms or 0) + round((time.perf_counter() - t0) * 1000)
                 dur = _wav_duration_s(wav)
@@ -846,8 +848,9 @@ class DeliveryPipeline:
                 try:
                     t0 = time.perf_counter()
                     wav = await to_daemon_thread(self._synthesize, speech)
-                except Exception:
-                    log.exception("TTS synthesis failed (seamless sentence) — skipping it")
+                except Exception as exc:
+                    gpu_health.log_failure(log, exc, "Sprachausgabe",
+                                           "TTS synthesis failed (seamless sentence) — skipping it")
                     continue
                 if wav is None:
                     continue

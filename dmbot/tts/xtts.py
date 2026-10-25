@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
+import threading
 
 os.environ.setdefault("COQUI_TOS_AGREED", "1")  # accept the model licence non-interactively
 
@@ -90,6 +91,9 @@ class XttsTTS:
         language: str = "de",
     ) -> None:
         self._language = language
+        # One synthesis at a time (2026-10-25): two streamed narrations ran XTTS concurrently on
+        # the same CUDA model and hit a sticky "device-side assert" that took Whisper down with it.
+        self._lock = threading.Lock()
         device = _resolve_device(device)
         try:
             self._tts = TTS(_MODEL).to(device)
@@ -140,6 +144,16 @@ class XttsTTS:
 
     def synthesize(self, text: str) -> str:
         """Render ``text`` in the active speaker's voice to a fresh WAV; return its path.
+
+        Serialised: the model is not safe to run from two threads at once (see ``__init__``), and
+        overlapping narrations — two dice results each starting one — would do exactly that.
+        A second caller waits for the first; on one GPU that costs nothing, the work is serial anyway.
+        """
+        with self._lock:
+            return self._synthesize(text)
+
+    def _synthesize(self, text: str) -> str:
+        """The unlocked body of :meth:`synthesize`.
 
         Long answers are split into <240-char chunks (XTTS truncates a longer single chunk for
         German) — each chunk is synthesised separately and the WAVs are concatenated. XTTS's own

@@ -13,6 +13,7 @@ from datetime import datetime
 
 from discord.ext import commands
 
+from ..gpu_health import health as gpu_health
 from ..orchestrator import build_intro_director_msg, build_opening_director_msg
 from ..llm.intro_guard import is_weak_intro
 from ..tts.textsplit import has_speakable_content, strip_speech_punctuation
@@ -35,16 +36,44 @@ class DMCog(commands.Cog):
         runtime.auto_dm_turn = self._delivery._auto_dm_turn        # hook: VoiceCog mic release runs a DM turn
         runtime.speak = self._delivery._speak                      # hook: LoreCog !lore tts reads the compendium aloud
         self._backend_watch: asyncio.Task | None = None  # posts the failover's table notices (ADR 061)
+        self._gpu_watch: asyncio.Task | None = None      # posts the one GPU-fault notice (2026-10-25)
 
     async def cog_load(self) -> None:
         # Only the failover pair has notices to post; the plain Ollama client has no such event.
         client = self._rt._brain.client
         if hasattr(client, "degraded_event"):
             self._backend_watch = asyncio.create_task(self._watch_backend(client))
+        self._start_gpu_watch()
 
     async def cog_unload(self) -> None:
         if self._backend_watch is not None:
             self._backend_watch.cancel()
+        if self._gpu_watch is not None:
+            self._gpu_watch.cancel()
+            gpu_health.set_listener(None)
+
+    def _start_gpu_watch(self) -> None:
+        """Hook the process-wide GPU latch to the channel: the first CUDA fault in a worker thread
+        sets an event on this loop, and one notice tells the table to restart (2026-10-25: the
+        bot went deaf and mute with nothing but tracebacks in the log)."""
+        loop = asyncio.get_running_loop()
+        event = asyncio.Event()
+        gpu_health.set_listener(lambda _source: loop.call_soon_threadsafe(event.set))
+        if gpu_health.broken:  # the fault came before the cog was loaded
+            event.set()
+        self._gpu_watch = asyncio.create_task(self._watch_gpu(event))
+
+    async def _watch_gpu(self, event: asyncio.Event) -> None:
+        await event.wait()
+        notice = gpu_health.notice_de()
+        channel = self._rt._text_channel
+        if channel is None:
+            log.warning("GPU fault (no channel joined yet): %s", notice)
+            return
+        try:
+            await channel.send(notice)
+        except Exception:
+            log.exception("could not post the GPU fault notice")
 
     async def _watch_backend(self, client) -> None:
         """Post each backend switch (⚠ degraded / ✅ recovered) to the game channel — once per

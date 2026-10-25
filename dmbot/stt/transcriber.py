@@ -30,6 +30,7 @@ from typing import Callable
 
 import numpy as np
 
+from ..gpu_health import health as gpu_health
 from .segments import confident_text, is_stock_phrase_only
 
 log = logging.getLogger(__name__)
@@ -207,8 +208,8 @@ class Transcriber:
             name, pcm, clip_s, for_dm = item
             try:
                 self._transcribe_one(name, pcm, clip_s, for_dm)
-            except Exception:
-                log.exception("transcription failed for %s", name)
+            except Exception as exc:
+                gpu_health.log_failure(log, exc, "Spracherkennung", f"transcription failed for {name}")
             finally:
                 with self._idle:
                     self._pending = max(0, self._pending - 1)
