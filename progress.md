@@ -16,7 +16,7 @@ is on-demand._
   Spielerzug leer (Opus' Denken fraß das 220er-Budget). Lauf 2: Text in allen 17 Zügen, aber 16
   abgeschnitten, Recap abgeschnitten (Gedächtnis weg), Szenen-Router 17× „bleiben“. Alles behoben,
   **1215 Tests grün, `dm-eval` Exit 0, Lint sauber**; live per Einzelaufruf geprüft, ein dritter
-  Lauf am Tisch steht aus.
+  Lauf am Tisch steht aus. Danach: Spielerzeilen stehen jetzt im Kanal (`5722ef7`, 1218 grün).
 - **Next concrete step:** dritter Opus-Lauf mit leerer Sandbox (ist geleert) nach
   [testabend-ablauf.md §9](docs/testabend-ablauf.md): zählen, wie viele Züge `cut` sind, ob
   `📖 Auto-Szenenwechsel → schrein` kommt und ob das Gedächtnis nach dem Auto-Recap hält. Vorher
