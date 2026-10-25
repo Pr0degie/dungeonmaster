@@ -38,6 +38,9 @@ class SystemProfile:
     difficulty_ladder: dict[str, int] = field(default_factory=dict)
     difficulty_aliases: dict[str, str] = field(default_factory=dict)
     crit: str = ""
+    # Which tests a double counts on: "all" (default) or "attack" — only the profile's combat
+    # attack skills (IM p.213: crit/fumble on doubles is the combat rule, not every test).
+    crit_scope: str = "all"
     auto_success_max: int = 0   # rolls <= this always succeed (0 = no band). IM: 5.
     auto_fail_min: int = 0      # rolls >= this always fail (0 = no band). IM: 96.
     damage: "str | dict" = ""   # free-text ("weapon_damage + SL") or structured, per architecture §9
@@ -66,6 +69,7 @@ class SystemProfile:
             difficulty_ladder=dict(ladder),
             difficulty_aliases={k.lower(): v for k, v in (data.get("difficulty_aliases", {}) or {}).items()},
             crit=data.get("crit", ""),
+            crit_scope=(data.get("crit_scope") or "all").strip().lower(),
             auto_success_max=int(data.get("auto_success_max", 0)),
             auto_fail_min=int(data.get("auto_fail_min", 0)),
             damage=data.get("damage", "") or "",
@@ -160,6 +164,12 @@ class SystemProfile:
             return False
         key = skill.strip().lower()
         return any(key == s.strip().lower() for s in self.combat.get("attack_skills", []))
+
+    def crit_applies(self, skill: str | None) -> bool:
+        """Does a double on a ``skill`` test count as critical/fumble under this profile?"""
+        if self.crit_scope == "attack":
+            return self.is_attack_skill(skill)
+        return True
 
     def weapon_damage(self, weapon: str | None) -> str | None:
         """Damage notation for a named weapon from the profile's weapon table (case-insensitive),

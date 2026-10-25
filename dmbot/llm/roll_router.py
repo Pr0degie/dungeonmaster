@@ -14,7 +14,14 @@ inline ``<<TEST>>`` marker stays as a fallback.
 
 from __future__ import annotations
 
+import re
+
 from ..rules.marker import TestRequest
+
+# A turn that opens with a subordinating "dass"/"weil" is the tail of something the player said in
+# character ("[sag ihnen,] dass wir das Ossarium suchen."), not a declared action. Deliberately
+# narrow: "wenn"/"ob" can open a real conditional action ("Wenn er sich umdreht, schleiche ich …").
+_CONTINUATION = re.compile(r"^\s*(?:dass|daß|weil)\b", re.IGNORECASE)
 
 
 def classifier_schema(skills: list[str], difficulties: list[str]) -> dict:
@@ -70,3 +77,26 @@ def to_test_request(data: object, *, character: str | None) -> TestRequest | Non
     return TestRequest(
         skill=skill, difficulty=difficulty, target_name=character, raw="[router]", parsed=True
     )
+
+
+def is_continuation_fragment(action: str) -> bool:
+    """Is ``action`` only a reported-speech / reasoning fragment (no test to classify)?
+
+    Live 2026-10-25: Sezgin's whole turn was "dass wir das Osadium suchen." and the classifier
+    read "suchen" as a search — a Wahrnehmung test for a sentence that was talk."""
+    return bool(_CONTINUATION.match(action or ""))
+
+
+def superseded_by_manifest(
+    skill: str | None, character: str | None, *, manifesting: set[str], manifest_skill: str
+) -> bool:
+    """Should the router's test be dropped because the same psyker already manifests this turn?
+
+    A power is rolled through its Manifest Test (ADR 022); a second, bare test on the manifest
+    skill for the same action is a duplicate roll (live 2026-10-25: Dread Presence *and*
+    "Psi-Meisterschaft (Schwierig)" for one action — both rolled). ``manifesting`` holds the
+    lower-cased names of the characters with a Manifest request this turn."""
+    if not (skill and character and manifest_skill):
+        return False
+    return (skill.strip().lower() == manifest_skill.strip().lower()
+            and character.strip().lower() in manifesting)

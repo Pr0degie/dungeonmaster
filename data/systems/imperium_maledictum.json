@@ -36,6 +36,7 @@
     "brutal": "Sehr schwer"
   },
   "crit": "doubles",
+  "crit_scope": "attack",
   "auto_success_max": 5,
   "auto_fail_min": 96,
   "damage": "Waffenschaden + EG (reduziert durch Rüstung an der Trefferzone)",
@@ -211,6 +212,6 @@
     "psyker": ["psyker", "disciplines", "known_powers"],
     "augmetics": ["augmetics"]
   },
-  "_note": "VERIFIED against the Imperium Maledictum Core Rulebook (Cubicle 7), Rules chapter: the Difficulty Table (p.188; Very Easy +60 / Easy +40 / Routine +20 / Challenging +0 / Difficult -10 / Hard -20 / Very Hard -30 — the ladder labels here are the German play-language names mapping to those rungs, with the English names + synonyms as aliases), Success Levels (SL = tens digit of the Skill incl. difficulty minus tens digit of the result), and Automatic Success/Failure (01-05 always succeed, 96-00 always fail, both Marginal). NOTE: crit/fumble on doubles is IM's COMBAT rule (a double on a Melee/Ranged attack Test with positive SL = Critical; on a failure = Fumble) — the engine flags doubles on every test, the GM applies it in combat. Damage = weapon Damage + SL, not a die roll.",
+  "_note": "VERIFIED against the Imperium Maledictum Core Rulebook (Cubicle 7), Rules chapter: the Difficulty Table (p.188; Very Easy +60 / Easy +40 / Routine +20 / Challenging +0 / Difficult -10 / Hard -20 / Very Hard -30 — the ladder labels here are the German play-language names mapping to those rungs, with the English names + synonyms as aliases), Success Levels (SL = tens digit of the Skill incl. difficulty minus tens digit of the result), and Automatic Success/Failure (01-05 always succeed, 96-00 always fail, both Marginal). NOTE: crit/fumble on doubles is IM's COMBAT rule (a double on a Melee/Ranged attack Test with positive SL = Critical; on a failure = Fumble) — crit_scope 'attack' makes the engine flag doubles only on the combat attack skills (Nahkampf/Fernkampf); the Manifest Test keeps its own double rules (psyker block). Damage = weapon Damage + SL, not a die roll.",
   "_source": "Imperium Maledictum Core Rulebook (Cubicle 7) — Rules: Difficulty Table p.188, Success Levels p.187, Automatic Success and Failure p.188, Criticals/Fumbles p.213, Dealing Damage p.214"
 }

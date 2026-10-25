@@ -130,3 +130,45 @@ def test_a_puppeted_sentence_is_never_spoken_while_streaming() -> None:
     assert "Draußen heult die Sirene ein zweites Mal auf." in everything
     # the stored answer agrees with what was spoken (parity, ADR 017)
     assert "illegalen Waffen" not in result.answer
+
+
+# --- an NSC echoing the player is not the player speaking (2026-10-25 run) -----------------------
+# Live: the Arbites leader asked „Inquisition, sagst du? Dann zeig mir das Siegel …“ — the filter
+# read "sagst du" as the DM putting words in Fridolin's mouth and cut the sentence, so the line
+# came out starting mid-quote. Only the attribution *outside* the quotes says who speaks.
+
+def test_second_person_inside_an_npc_quote_survives() -> None:
+    text = ('Die drei Visiere wenden sich ihm zu. '
+            'Dann knistert die Helmstimme des Vordersten: „Inquisition, sagst du? '
+            'Dann zeig mir das Siegel, bevor ich dich in Ketten lege.“ '
+            'Schwester Vall betet.')
+    assert _drop_puppet_speech(text, PARTY) == text
+
+
+def test_a_player_name_inside_an_npc_quote_survives() -> None:
+    text = 'Kaad nickt langsam. „Fridolin Feuchtgebietheld sagt also, er sei Interrogator?“'
+    assert _drop_puppet_speech(text, PARTY) == text
+
+
+def test_german_quotes_with_an_outside_attribution_still_go() -> None:
+    text = 'Der Kran quietscht. „Wir gehen weiter“, sagst du entschlossen.'
+    assert _drop_puppet_speech(text, PARTY) == "Der Kran quietscht."
+
+
+def test_an_npc_quote_streams_whole() -> None:
+    from dmbot.llm.stream_assembler import StreamAssembler
+
+    deltas = [
+        "Die drei Visiere wenden sich ihm zu. ",
+        "Dann knistert die Helmstimme: „Inquisition, sagst du? ",
+        "Dann zeig mir das Siegel.“ ",
+        "Schwester Vall betet.",
+    ]
+    assembler = StreamAssembler(PARTY, None)
+    spoken: list[str] = []
+    for delta in deltas:
+        spoken.extend(assembler.feed(delta))
+    result = assembler.finish()
+    spoken.extend(result.remaining)
+    assert "Inquisition, sagst du?" in " ".join(spoken)
+    assert "Inquisition, sagst du?" in result.answer

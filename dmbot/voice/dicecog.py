@@ -9,7 +9,7 @@ import logging
 import discord
 from discord.ext import commands
 
-from ..llm.roll_router import roll_button_source
+from ..llm.roll_router import is_continuation_fragment, roll_button_source, superseded_by_manifest
 from ..discord_ui.dice import DiceTestView
 from ..discord_ui.turnorder import TurnOrderView
 from ..discord_ui.rules import RulesView
@@ -42,25 +42,42 @@ class DiceCog(commands.Cog):
         for an attack). Markers post only as the fallback when the router is off. Runs
         concurrently with playback (D40) so the button appears while the DM still speaks."""
         markers = self._rt._brain.take_pending_tests(self._rt._brain_channel(channel))
+        # Psychic Manifest requests (ADR 022) are independent of the skill-roll router: each gets
+        # a button so the engine rolls the Manifest Test + bookkeeps Warp Charge. Taken first so
+        # the router can drop a bare manifest-skill test for the same psyker (2026-10-25 run).
+        manifests = self._rt._brain.take_pending_manifests(self._rt._brain_channel(channel))
+        manifesting = self._manifesting(manifests)
         source = roll_button_source(self._rt._roll_router, len(markers))
         if source == "router":
             if markers:
                 log.info("🎲 %d Inline-Marker verworfen — der Router entscheidet (D43)", len(markers))
-            await self._post_router_dice(channel)
+            await self._post_router_dice(channel, manifesting=manifesting)
         elif source == "marker":
             for req in markers:
                 await self._post_dice_button(channel, req)
-        # Psychic Manifest requests (ADR 022) are independent of the skill-roll router: post a
-        # button for each so the engine rolls the Manifest Test + bookkeeps Warp Charge.
-        for m in self._rt._brain.take_pending_manifests(self._rt._brain_channel(channel)):
+        for m in manifests:
             await self._post_manifest_button(channel, m)
+
+    def _manifesting(self, manifests: list[ManifestRequest]) -> set[str]:
+        """Lower-cased names of the characters a Manifest request this turn resolves to."""
+        names: set[str] = set()
+        if self._rt._profile is None:
+            return names
+        for m in manifests:
+            resolved = resolve_manifest_request(
+                self._rt._profile, self._rt._characters, power=m.power, target_name=m.target_name,
+            )
+            name = (resolved.character.name if resolved and resolved.character else m.target_name) or ""
+            if name.strip():
+                names.add(name.strip().lower())
+        return names
 
     def _toughness_bonus(self, target: Character | None) -> int:
         """Toughness Bonus for a player from the sheet: the profile's soak characteristic (IM: Tgh),
         rendered per soak mode (IM: tens digit). 0 if no profile/character/characteristic."""
         return combat.toughness_bonus(self._rt._profile, self._rt._characters, target)
 
-    async def _post_router_dice(self, channel) -> None:
+    async def _post_router_dice(self, channel, *, manifesting: set[str] | None = None) -> None:
         """Roll-detection router (ADR 014): classify each player action of the turn in a separate
         constrained-JSON call and post a dice button per action that needs a test. Skips silently
         when there's no player action this turn (e.g. a post-roll narration) or no matching
@@ -86,6 +103,10 @@ class DiceCog(commands.Cog):
             char = self._rt._characters.get(name)
             if char is None:
                 continue
+            if is_continuation_fragment(text):  # talk, not a declared action (2026-10-25 run)
+                log.info("🎲 router: %s — '%s' übersprungen (Satzfragment, keine Handlung)",
+                         char.name, text[:50])
+                continue
             # Constrain the classifier to this character's sheet: skills first, then any same-named
             # governing characteristic (skill_value falls back to those).
             skills = list(char.skills) + [c for c in char.characteristics if c not in char.skills]
@@ -97,6 +118,13 @@ class DiceCog(commands.Cog):
                 self._rt.replay_note(channel, "router", {
                     "action": text, "character": char.name, "skills": skills, **recorded,
                 })
+            if req is not None and superseded_by_manifest(
+                req.skill, char.name, manifesting=manifesting or set(),
+                manifest_skill=self._rt._profile.psyker_test_skill(),
+            ):
+                log.info("🎲 router: %s — %s verworfen, die Manifestation deckt die Handlung ab",
+                         char.name, req.skill)
+                continue
             if req is not None:
                 log.info("🎲 router: %s — '%s' → %s (%s)",
                          char.name, text[:50], req.skill, req.difficulty or "Standard")
@@ -136,7 +164,11 @@ class DiceCog(commands.Cog):
                 d = engine.roll(self._rt._profile.dice, self._rt._rng)
                 line = f"🎲 {skill}: {d.total} — kein hinterlegter Wert, vergleicht mit eurem Bogen."
             else:
-                result = engine.resolve_test(self._rt._profile, resolved.target, self._rt._rng)
+                result = engine.scope_doubles(
+                    self._rt._profile,
+                    engine.resolve_test(self._rt._profile, resolved.target, self._rt._rng),
+                    skill,
+                )
                 line = engine.describe_result_de(
                     result, skill=skill, character=who, difficulty=resolved.difficulty
                 )

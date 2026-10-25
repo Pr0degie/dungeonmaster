@@ -94,7 +94,8 @@ def resolve_warp_consequences(
     if not immediate_perils:  # over threshold → containment Test first
         # The containment Test rolls against Disziplin (Psi), not Psi-Meisterschaft (IM p.163).
         contain_target = (contain_base or 0) + (profile.difficulty_modifier("Herausfordernd") or 0)
-        contain = engine.resolve_test(profile, contain_target, rng)
+        contain = engine.scope_doubles(
+            profile, engine.resolve_test(profile, contain_target, rng), "Warp-Kontrolle")
         lines.append(engine.describe_result_de(
             contain, skill="Warp-Kontrolle", character=character, difficulty="Herausfordernd"))
         if contain.success:

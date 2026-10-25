@@ -5,7 +5,9 @@ mapping, which is what makes the verdict safe to trust without re-checking the m
 from dmbot.llm.roll_router import (
     classifier_schema,
     classifier_system,
+    is_continuation_fragment,
     roll_button_source,
+    superseded_by_manifest,
     to_test_request,
 )
 
@@ -59,3 +61,42 @@ def test_roll_button_source_router_wins_the_dedupe():
     # router off → inline <<TEST>> markers are the only trigger
     assert roll_button_source(False, 2) == "marker"
     assert roll_button_source(False, 0) == "none"
+
+
+# --- 2026-10-25 run --------------------------------------------------------------------------------
+
+def test_a_reported_speech_fragment_is_not_an_action():
+    """Live: Sezgin's whole turn was "dass wir das Osadium suchen." — the tail of what he told the
+    Arbites. The classifier read "suchen" as a search and asked Rektalus for Wahrnehmung."""
+    assert is_continuation_fragment("dass wir das Osadium suchen.")
+    assert is_continuation_fragment("  Daß wir nichts Böses wollen")
+    assert is_continuation_fragment("weil sie etwas verbirgt.")
+
+
+def test_a_declared_action_is_not_a_fragment():
+    assert not is_continuation_fragment("Ich untersuche den Schrein nach Spuren.")
+    assert not is_continuation_fragment("Wenn er sich umdreht, schleiche ich vorbei.")
+    assert not is_continuation_fragment("")
+
+
+def test_a_bare_manifest_skill_test_is_dropped_when_the_psyker_already_manifests():
+    """Live: one psi action posted a Dread Presence Manifest *and* a router "Psi-Meisterschaft
+    (Schwierig)" button; both were rolled, and the second one is what failed with a "Patzer"."""
+    assert superseded_by_manifest(
+        "Psi-Meisterschaft", "Fridolin Feuchtgebietheld",
+        manifesting={"fridolin feuchtgebietheld"}, manifest_skill="Psi-Meisterschaft",
+    )
+
+
+def test_other_tests_and_other_characters_are_not_superseded():
+    kw = {"manifesting": {"fridolin feuchtgebietheld"}, "manifest_skill": "Psi-Meisterschaft"}
+    assert not superseded_by_manifest("Heimlichkeit", "Fridolin Feuchtgebietheld", **kw)
+    assert not superseded_by_manifest("Psi-Meisterschaft", "Rektalus Zerfickus", **kw)
+    assert not superseded_by_manifest(
+        "Psi-Meisterschaft", "Fridolin Feuchtgebietheld", manifesting=set(),
+        manifest_skill="Psi-Meisterschaft",
+    )
+    assert not superseded_by_manifest(
+        "Psi-Meisterschaft", "Fridolin Feuchtgebietheld", manifesting={"fridolin feuchtgebietheld"},
+        manifest_skill="",
+    )

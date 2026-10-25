@@ -12,16 +12,20 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** D119/D120 — die ersten zwei Opus-Läufe am Tisch (2026-10-25). Lauf 1: jeder
-  Spielerzug leer (Opus' Denken fraß das 220er-Budget). Lauf 2: Text in allen 17 Zügen, aber 16
-  abgeschnitten, Recap abgeschnitten (Gedächtnis weg), Szenen-Router 17× „bleiben“. Alles behoben,
-  **1215 Tests grün, `dm-eval` Exit 0, Lint sauber**; live per Einzelaufruf geprüft, ein dritter
-  Lauf am Tisch steht aus. Danach: Spielerzeilen stehen jetzt im Kanal (`5722ef7`, 1218 grün).
-- **Next concrete step:** dritter Opus-Lauf mit leerer Sandbox (ist geleert) nach
-  [testabend-ablauf.md §9](docs/testabend-ablauf.md): zählen, wie viele Züge `cut` sind, ob
-  `📖 Auto-Szenenwechsel → schrein` kommt und ob das Gedächtnis nach dem Auto-Recap hält. Vorher
-  Verbrauchsstand notieren; ggf. die drei nicht spielenden Figuren aus der Kanal-`characters.json`.
-  Neu dabei: Spielerzeilen erscheinen als `🗣 **Figur:** …` im Kanal (`DM_POST_PLAYER_LINES`) — mitprüfen.
+- **Newest round:** D121 — dritter Opus-Lauf am Tisch (2026-10-25 abends, zu viert). Die Ziele des Laufs
+  halten: Auto-Szenenwechsel → schrein kam, `cut` nur noch 12 von ~32 Zügen (vorher 16/17), das Gedächtnis hielt
+  über zwei Auto-Recaps. Alle 9 Proben scheiterten — Pech (~1:60, Engine per 100k-Simulation fair), aber vier
+  Fehler verschärften es; alle behoben: Pasch-Patzer nur noch im Kampf (`crit_scope`), keine doppelte
+  Psi-Probe neben einer Manifestation, kein Router-Test auf „dass …“-Satzfragmente, Puppet-Filter liest
+  nur noch die Erzählung außerhalb von Zitaten. **1232 Tests grün, `dm-eval` Exit 0, `ruff --select F` sauber**;
+  am Tisch unverifiziert.
+- **Next concrete step:** vierter Lauf (oder der Phase-11-Abend) nach
+  [testabend-ablauf.md §9](docs/testabend-ablauf.md), diesmal mit `!sprechmodus nahtlos intoniert`
+  (Spieler: Betonung hakt, weil `flach` alle Satzzeichen streicht; XTTS läuft auf cuda) und ohne die nicht
+  spielenden Figuren in der Kanal-`characters.json` (Gellicus/Rene wurden jeden Zug angesprochen). Prüfen: kein
+  „Patzer“ außerhalb von Nah-/Fernkampf, eine Psi-Aktion = ein Wurf, NSC-Zitate mit „sagst du“ vollständig.
+  Offen aus dem Lauf: „Was habe ich dabei?“ beantwortete der DM nicht aus dem Bogen (ungeprüft, ob das Inventar
+  im Prompt steht); Ausrüstung/Talente geben keinen Probenbonus; Intro zu lang; Uhrzeit zu genau.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
   geparkt (ADR 061, im [Live-Run-Skript](docs/live-run-script.md) markiert) und werden nach dem
   Abend neu gesichtet; sie zählen nicht gegen die WIP-Grenze.
@@ -36,6 +40,28 @@ Nicht verifiziert: Opus mit vollem Systemprompt, ein ganzer Zug mit Stimme, alle
 _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Current focus (Verlauf)`._
 
 ## Last session
+
+**Dritter Opus-Lauf und vier Regel-/Filter-Fixes (2026-10-25 abends, D121).** Tobi, Sezgin, Timo und BloodyP
+spielten ~45 min „Die Mitternachtsfracht“. Tobi: „ich konnte keine Heimlichkeit machen … alle Skillchecks sind
+fehlgeschlagen.“ Diagnose aus `terminal.log`/`debug.log`: 9/9 Proben verfehlt bei Zielen 12–51 (P ≈ 1,7 %); die
+Engine ist fair (100k-Simulation trifft die Quoten), Fridolins Heimlichkeit 48 −10 (Schwierig) = 38 ist korrekt.
+- **Patzer überall:** die Engine markierte jeden Pasch als Patzer/kritisch, IM kennt das nur bei Angriffen
+  (S. 213; stand schon im Profil-`_note`). Opus erzählte aus „Heimlichkeit 66 — Patzer“ und „Psi 44 — Patzer“
+  Katastrophen, einen Warp-Unfall ohne Perils-Wurf. Jetzt: Profil-Schlüssel `crit_scope: "attack"`,
+  `engine.scope_doubles()` am Würfel-Button und an der Warp-Kontrollprobe; Manifestationen behalten ihre Pasch-Regel.
+- **Doppelte Psi-Probe:** eine Psi-Aktion bekam einen Dread-Presence-Manifest-Button *und* einen Router-Button
+  „Psi-Meisterschaft (Schwierig)“; beide wurden gewürfelt. Jetzt verwirft der Router eine Probe auf die
+  Manifest-Fertigkeit, wenn dieselbe Figur in dem Zug manifestiert (`superseded_by_manifest`).
+- **Router auf Satzfragment:** Sezgins ganzer Zug „dass wir das Osadium suchen.“ wurde zu Wahrnehmung.
+  Jetzt überspringt der Router Züge, die mit „dass/daß/weil“ beginnen (`is_continuation_fragment`, bewusst eng).
+- **Puppet-Filter (D113) zu scharf:** „…Helmstimme: „Inquisition, sagst du? Dann zeig mir das Siegel …““ — der
+  Satz flog raus, die Antwort begann mitten im Zitat. Jetzt zählt nur die Erzählung außerhalb von Anführungszeichen
+  (Zustand über Sätze hinweg, auch im Stream); „„…“, sagst du.“ wird weiter gestrichen.
+- **Belegt:** 1232 Tests grün (14 neue), `dm-eval` Exit 0, `ruff --select F` sauber; Live-Fälle mit echtem
+  IM-Profil nachgerechnet. Am Tisch unverifiziert.
+- **Spieler-Feedback ohne Fix:** TTS-Betonung über Satzgrenzen (Modus `flach`), Intro zu lang, Uhrzeit zu genau,
+  Codewort für Regelfragen gewünscht, „Was habe ich dabei?“ unbeantwortet. Inhaltlich: die Spieler spielten
+  sexuelle Gewalt an; der DM schilderte nichts davon und ließ die Welt reagieren — so gewollt.
 
 **Die ersten Opus-Züge am Tisch, und drei Fixes (2026-10-25, D119/D120).** Tobi hat zweimal mit Opus gespielt (allein, Debug-Kampagne). Ergebnis: Opus erzählt, nachdem drei Fehler raus sind, die erst am Tisch sichtbar wurden; alles steht in ADR 061 (Nachtrag 2026-10-25) und ADR 057 (Nachtrag).
 - **Lauf 1, leere Züge:** Opus denkt trotz `thinking=disabled`, und das Denken zählt gegen das Ausgabelimit; bei 220 Tokens blieb für Text nichts. Jetzt: `effort="low"` für Erzählung, 1024 Tokens Puffer pro Anfrage, die Sprechgrenze hält der Client selbst am Text. Live: erstes Wort nach ~3,7 s, `think=` ~70.

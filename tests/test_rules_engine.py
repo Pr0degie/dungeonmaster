@@ -104,3 +104,58 @@ def test_unknown_resolution_raises() -> None:
     pool = SystemProfile.from_dict({"name": "x", "dice": "5d6", "resolution": "pool"})
     with pytest.raises(NotImplementedError):
         engine.resolve_test(pool, 10, _Seq(3))
+
+
+# --- Crit/fumble scope (2026-10-25 run: "Patzer" on a stealth test) --------------------------------
+# IM only reads doubles as Critical/Fumble on a combat attack (p.213). A profile can say so with
+# ``crit_scope: "attack"``; the engine still rolls the same face, it just stops calling a failed
+# stealth 66 a fumble — the DM narrated that label as a catastrophe the rules never grant.
+
+_IM_ATTACK_CRITS = SystemProfile.from_dict(
+    {
+        "name": "test",
+        "dice": "1d100",
+        "resolution": "roll_under",
+        "degrees": "tens_difference",
+        "crit": "doubles",
+        "crit_scope": "attack",
+        "auto_success_max": 5,
+        "auto_fail_min": 96,
+        "combat": {"attack_skills": ["Nahkampf", "Fernkampf"]},
+    }
+)
+
+
+def test_crit_scope_defaults_to_every_test() -> None:
+    assert _IM.crit_applies("Heimlichkeit") and _IM.crit_applies(None)
+
+
+def test_crit_scope_attack_only_counts_attack_skills() -> None:
+    assert _IM_ATTACK_CRITS.crit_applies("Nahkampf")
+    assert _IM_ATTACK_CRITS.crit_applies("fernkampf")
+    assert not _IM_ATTACK_CRITS.crit_applies("Heimlichkeit")
+    assert not _IM_ATTACK_CRITS.crit_applies(None)
+
+
+def test_scoped_doubles_drop_the_fumble_outside_combat() -> None:
+    raw = engine.resolve_test(_IM_ATTACK_CRITS, 38, _Seq(66))
+    assert raw.fumble  # the raw roll still sees the double
+    r = engine.scope_doubles(_IM_ATTACK_CRITS, raw, "Heimlichkeit")
+    assert not r.success and not r.fumble and not r.critical and r.degrees == -3 and r.roll == 66
+    line = engine.describe_result_de(r, skill="Heimlichkeit", character="Fridolin")
+    assert "Patzer" not in line and "Fehlschlag, 3 EG" in line
+
+
+def test_scoped_doubles_drop_the_critical_outside_combat() -> None:
+    r = engine.scope_doubles(_IM_ATTACK_CRITS, engine.resolve_test(_IM_ATTACK_CRITS, 45, _Seq(22)), "Wahrnehmung")
+    assert r.success and not r.critical and r.degrees == 2
+
+
+def test_scoped_doubles_keep_the_fumble_on_an_attack() -> None:
+    r = engine.scope_doubles(_IM_ATTACK_CRITS, engine.resolve_test(_IM_ATTACK_CRITS, 20, _Seq(33)), "Nahkampf")
+    assert r.fumble
+
+
+def test_scoped_doubles_is_a_no_op_for_an_unscoped_profile() -> None:
+    raw = engine.resolve_test(_IM, 20, _Seq(33))
+    assert engine.scope_doubles(_IM, raw, "Heimlichkeit") is raw

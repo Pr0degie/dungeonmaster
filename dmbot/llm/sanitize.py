@@ -219,6 +219,27 @@ def _party_variants(labels: list[str]) -> list[str]:
     return out
 
 
+# Double quotes open and close a spoken line in every convention the model uses („…“, "…", “…”,
+# »…«), so toggling on each one tracks whether a position is inside a quote. Apostrophes are left
+# out on purpose: "wär's" would flip the state for the rest of the answer.
+_SPEECH_QUOTES = "\"„“”»«"
+
+
+def _outside_quotes(sentence: str, inside: bool) -> tuple[str, bool]:
+    """The part of ``sentence`` that is narration, not quoted speech, plus the quote state after it.
+
+    ``inside`` is the state the sentence starts in — a quote can span sentences („Inquisition,
+    sagst du? Dann zeig mir das Siegel.“), so the caller carries it from one sentence to the next."""
+    out: list[str] = []
+    for ch in sentence:
+        if ch in _SPEECH_QUOTES:
+            inside = not inside
+            out.append(" ")
+        elif not inside:
+            out.append(ch)
+    return "".join(out), inside
+
+
 def _drop_puppet_speech(text: str, labels: list[str], *, allow_empty: bool = False) -> str:
     """Drop sentences in which the DM speaks *as* a player character (D113).
 
@@ -241,14 +262,18 @@ def _drop_puppet_speech(text: str, labels: list[str], *, allow_empty: bool = Fal
     speakers = [_speaks_as(name) for name in _party_variants(labels)]
     kept: list[str] = []
     dropped = False
+    inside = False
     for sentence in _sentences(text):
         stripped = sentence.strip()
         if not stripped:
             continue
-        quoted = any(ch in stripped for ch in _QUOTE_CHARS)
+        quoted = inside or any(ch in stripped for ch in _QUOTE_CHARS)
+        # Only the narration around a quote attributes it: an NSC asking „…, sagst du?“ is the
+        # NSC speaking (2026-10-25 run), "„…“, sagst du." is the DM speaking for the player.
+        narration, inside = _outside_quotes(stripped, inside)
         if quoted and (
-            _SECOND_PERSON_SPEECH.search(stripped)
-            or any(pattern.search(stripped) for pattern in speakers)
+            _SECOND_PERSON_SPEECH.search(narration)
+            or any(pattern.search(narration) for pattern in speakers)
         ):
             dropped = True
             continue

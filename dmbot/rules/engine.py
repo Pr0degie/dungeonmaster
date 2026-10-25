@@ -16,7 +16,7 @@ from __future__ import annotations
 import inspect
 import random
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from typing import Callable
 
@@ -132,6 +132,15 @@ def resolve_roll_under(
         critical=double and success, fumble=double and not success,
         auto=auto, resolution="roll_under",
     )
+
+
+def scope_doubles(profile: SystemProfile, result: TestResult, skill: str | None) -> TestResult:
+    """Drop the critical/fumble flag where the profile says a double doesn't count for ``skill``
+    (``crit_scope``). The roll, success and SL stay as rolled; returns ``result`` itself when
+    nothing changes."""
+    if not (result.critical or result.fumble) or profile.crit_applies(skill):
+        return result
+    return replace(result, critical=False, fumble=False)
 
 
 # Resolution registry — other systems (roll-over vs DC, pools, sum_vs_target) plug in here.
