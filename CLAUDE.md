@@ -44,6 +44,11 @@ next session is a live-verification session; say so in the handshake. Details an
 - When Tobi describes a problem or thinks out loud, the deliverable is your assessment —
   report and stop; don't build until asked. Pause only for: destructive actions, real
   scope changes, a live gate only a human can run, or a design fork worth an ADR.
+- **Test-first only where it pays.** Deterministic-core rules with real logic or an
+  invariant get their tests first; writing them in a block is fine. A trivial addition (a
+  clamp, one more field read) gets a test alongside — no stubs just to watch it fail. Persona,
+  prompts, recaps, RAG and Discord glue get no red-green ritual; they are verified by the
+  suite staying green, dm-eval and a live run. Details in the `tdd` skill.
 - **Record lessons as they happen.** When a correction recurs or an approach is confirmed
   the hard way, write it to `docs/lessons/` (one file per lesson, one-line summary into the
   README index) in the same round. Update the existing lesson rather than creating a
