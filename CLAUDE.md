@@ -4,61 +4,44 @@ Instructions for Claude Code in this repository. Read first, every session.
 
 ## Session ritual
 
-This project runs over many sessions, across different models and effort levels. To
-survive context clears and model switches, state lives on disk.
+This project runs over many sessions and models; state lives on disk. The procedure is in the
+`session-ritual` skill — this is the short form.
 
-**At the start of every session, read in this order:**
-1. This file (`CLAUDE.md`) — conventions
-2. ONLY the `## State header` at the top of `progress.md`
-3. The highest-numbered file in `docs/decisions/` — the most recent decision
-4. `docs/lessons/README.md` — skim the one-line lesson summaries; open a full lesson only
-   when its summary touches the task
+**Start, scaled to the task:**
+- **Always:** this file + ONLY the `## State header` of `progress.md` (`sed -n '/^## State header/,/^## Current focus/p' progress.md`).
+  Then say in two or three sentences where we are and what's next; don't touch files before that.
+- **Small task** (one feature, a fix, a doc edit, a question): that's all.
+- **Subsystem or phase work:** also the governing ADR(s) from the **phase → ADR map** in
+  `progress.md` (mandatory there), and skim `docs/lessons/README.md`. Read an ADR's
+  `## Decision` and its newest amendment first (grep the headings), the rest only if needed.
+- Don't re-derive established facts or re-litigate decided ADRs.
 
-Then state in two or three sentences: where we are, what we're about to do. Don't touch
-files until that handshake is done. When you have enough to act, act — don't re-derive
-established facts or re-litigate decided ADRs.
+**WIP limit: max 3 open live gates.** A round that would open a fourth doesn't start; the next
+session is a live-verification session. "WIP-Override" exception: see the skill.
 
-**Before touching a subsystem or starting a phase:** the decision log and the
-**phase → ADR map** in `progress.md` say which ADR(s) govern it — read those **before**
-implementing. On-demand, but mandatory for that case.
-
-**WIP limit: max 3 open live gates.** A round that would open a fourth doesn't start — the
-next session is a live-verification session; say so in the handshake. Details and the
-"WIP-Override" exception are in the `session-ritual` skill.
-
-**Read on demand, NOT every session:**
-- `architecture.md` — only when the task touches design; skim the relevant section
-- `roadmap.md` — at a phase transition, or when asked "what's the goal of Phase X?"
-- `SETUP.md` — when a setup/install step comes up; point Tobi at the open items there, the
-  agent cannot do them itself
-- `docs/conventions.md` — when working in a module (rules/memory/rag/tts/voice) or on
-  testing/runtime/troubleshooting/commit-style details; also holds the **repo layout** with
-  the governing ADR per module
-- Older ADRs in `docs/decisions/` — when working in the area they cover
-- `docs/progress-archive.md` — only for history; never needed for normal work
-- Individual files in `docs/lessons/` — when their summary in the lessons README matches the task
+**Read on demand, never eagerly:** `architecture.md` (design), `roadmap.md` (phase goals),
+`SETUP.md` (install steps; point Tobi at its open items), `docs/conventions.md` (module how-tos,
+repo layout, testing/runtime/commit-style), `docs/decision-log.md` (grep one `| D## |` row),
+older ADRs, single lessons, `docs/progress-archive.md` (history only).
 
 **While working:**
-- Label anything not live-verified as live-unverified; a done-claim rests on a tool result
-  from this session (pytest, ruff, dm-eval exit code).
-- When Tobi describes a problem or thinks out loud, the deliverable is your assessment —
-  report and stop; don't build until asked. Pause only for: destructive actions, real
-  scope changes, a live gate only a human can run, or a design fork worth an ADR.
-- **Test-first only where it pays.** Deterministic-core rules with real logic or an
-  invariant get their tests first; writing them in a block is fine. A trivial addition (a
-  clamp, one more field read) gets a test alongside — no stubs just to watch it fail. Persona,
-  prompts, recaps, RAG and Discord glue get no red-green ritual; they are verified by the
-  suite staying green, dm-eval and a live run. Details in the `tdd` skill.
-- **Record lessons as they happen.** When a correction recurs or an approach is confirmed
-  the hard way, write it to `docs/lessons/` (one file per lesson, one-line summary into the
-  README index) in the same round. Update the existing lesson rather than creating a
-  duplicate; delete lessons proven wrong. Don't record what CLAUDE.md, `docs/conventions.md`,
-  or an ADR already holds — link there instead.
+- Label anything not live-verified as live-unverified; a done-claim rests on a tool result from
+  this session (pytest, ruff, dm-eval exit code).
+- When Tobi describes a problem or thinks out loud, the deliverable is your assessment — report
+  and stop. Pause only for destructive actions, real scope changes, a human-only live gate, or a
+  design fork worth an ADR.
+- **Test-first only where it pays:** deterministic-core rules with real logic get tests first;
+  trivial additions get a test alongside; persona/prompts/recaps/RAG/Discord glue are verified by
+  the suite, dm-eval and a live run. Details in the `tdd` skill.
+- **Search at the data's origin, narrowly.** Grep the specific symbol (`_on_transcript`,
+  `_send_with_retry`), not a broad pattern like `.send(` across the package.
+- **Record lessons as they happen** in `docs/lessons/` (one file each, one-line summary in the
+  README). Update rather than duplicate; don't repeat what this file, conventions or an ADR hold.
 
-**At the end of every working session, without being asked** (and on `wrap up` /
-`update progress`): run the `session-ritual` skill. It holds the wrap-up procedure —
-`progress.md` update, rotation caps, WIP check, ADR scaffold. If a session ends without a
-hint, do it anyway: silence here is what breaks continuity across sessions.
+**End of every working session, without being asked** (and on `wrap up`): keep `progress.md`
+current. A small round updates it **in the same commit as the change** (one `Last session`
+bullet + the State header line) — then `wrap up` is only a check. Bigger rounds run the `session-ritual` skill
+(rotation, size caps, WIP check, ADR scaffold). Silence here breaks continuity.
 
 ## What this project is
 

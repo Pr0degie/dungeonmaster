@@ -32,8 +32,8 @@ testable). This runs at whole-codebase altitude; for cleaning up a diff use `/si
 ## Process
 
 ### 1. Explore
-Read `architecture.md` and the ADRs governing the area first — the decision log + phase→ADR map
-in `progress.md` say which (e.g. ADR 029 for `runtime.py` injection, 034/035 for the
+Read `architecture.md` and the ADRs governing the area first — the phase→ADR map in
+`progress.md` (and `docs/decision-log.md`) say which (e.g. ADR 029 for `runtime.py` injection, 034/035 for the
 orchestrator/delivery split). Then use the **Explore** subagent to walk the code and note where
 *you* feel friction — don't follow rigid heuristics:
 - Understanding one concept requires bouncing between many small modules.

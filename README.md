@@ -206,7 +206,8 @@ Everything is env-driven (never hardcoded). Highlights — see [`.env.example`](
 |---|---|
 | [`architecture.md`](architecture.md) | full design — pipeline, components, memory, RAG, rules engine |
 | [`roadmap.md`](roadmap.md) | phased plan + model/effort recommendations |
-| [`progress.md`](progress.md) | live status, decision log, what's next |
+| [`progress.md`](progress.md) | live status, phase → ADR map, what's next |
+| [`docs/decision-log.md`](docs/decision-log.md) | the `D##` decision index to the ADRs |
 | [`docs/progress-archive.md`](docs/progress-archive.md) | history — old session logs, completed-phase evidence, resolved questions |
 | [`docs/conventions.md`](docs/conventions.md) | per-module dev conventions (rules/memory/rag/voice), testing, runtime, troubleshooting |
 | [`docs/decisions/`](docs/decisions/) | Architecture Decision Records (ADRs) |

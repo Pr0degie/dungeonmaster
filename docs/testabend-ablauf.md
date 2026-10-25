@@ -396,7 +396,7 @@ Gate nicht ausgelöst): [Debrief in 5 Minuten](debug-campaign-runbook.md).
    kürzen, `uv run dm-eval tests/golden/live_<datum>.jsonl` muss sofort Exit 0 sein. Ein
    Golden aus der Debug-Kampagne ist committierbar, weil das Abenteuer im Repo liegt.
 4. **ADR nur, wenn wirklich abgewogen wurde.** Ein reiner Gate-Nachweis geht in
-   `VERIFY EVIDENCE` und ins Decision-Log, nicht in einen ADR. Nächste freie Nummer: 057.
+   `VERIFY EVIDENCE` und ins Decision-Log (`docs/decision-log.md`), nicht in einen ADR. Nächste freie Nummer: 057.
 5. **Setup-Pannen werden Preflights.** Was an Timos Rechner schiefging, wird zu einer
    Boot-Prüfung oder einer `dm-sync`-Zeile, nicht nur zu einem Einzelfix.
 6. **Gates, die zufielen, heben die WIP-Sperre** — erst danach dürfen wieder Feature-Runden

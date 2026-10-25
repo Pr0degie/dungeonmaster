@@ -12,8 +12,8 @@ choice — the kind that would otherwise become an ADR.
 
 1. **Answer it yourself first.** Before asking Tobi anything, check whether the docs or code
    already decide it: `architecture.md` (design wins, per CLAUDE.md), the ADRs in
-   `docs/decisions/` (the decision log + phase→ADR map in `progress.md` point to the governing
-   one), `progress.md` itself, then the code. Only ask what genuinely needs his call.
+   `docs/decisions/` (the phase→ADR map in `progress.md` and `docs/decision-log.md` point to the
+   governing one), `progress.md` itself, then the code. Only ask what genuinely needs his call.
 2. **One fork at a time.** Walk the decision tree branch by branch, resolving dependencies in
    order — never dump a list. Each answer narrows the next question.
 3. **Always recommend.** For every question, give your recommended answer with a one-line why.

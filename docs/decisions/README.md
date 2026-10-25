@@ -1,7 +1,7 @@
 # Architecture Decision Records (ADRs)
 
 This is where decisions live that weighed a real trade-off — not every little thing.
-Trivia stays in the decision log in `progress.md`.
+Trivia stays a row in [`../decision-log.md`](../decision-log.md).
 
 ## When an ADR?
 
@@ -15,8 +15,9 @@ another?", it belongs here.
   (e.g. `001-ruleset-imperium-maledictum.md`).
 - Numbers are never reused. If an ADR is superseded, the old one gets the status
   `Superseded by ADR NNN` and stays (history rather than deletion).
-- The highest-numbered file is mandatory reading at session start (session ritual in
-  `CLAUDE.md`).
+- ADRs are read on demand: the ones the phase → ADR map in `progress.md` names when work
+  touches their phase or subsystem (session ritual in `CLAUDE.md`). A long ADR keeps a short
+  `## Current state` under `## Decision` so the reader can stop there.
 
 ## Format
 
@@ -25,7 +26,7 @@ another?", it belongs here.
 
 - **Status:** Proposed | Accepted | Superseded by ADR NNN
 - **Date:** YYYY-MM-DD
-- **Refs:** decision log DX in progress.md, optionally architecture.md §Y
+- **Refs:** decision log DX (docs/decision-log.md), optionally architecture.md §Y
 
 ## Context
 What problem was at hand? What constraints (hardware, style, effort)?

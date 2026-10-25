@@ -12,7 +12,7 @@ codebase. If the context is thin (no grilling happened), say so and suggest `/gr
 ## Process
 
 1. **Explore.** Read the current state of the area in code, plus `architecture.md` and the
-   ADRs in `docs/decisions/` governing it (decision log + phase→ADR map in `progress.md`). Use
+   ADRs in `docs/decisions/` governing it (phase→ADR map in `progress.md`, `docs/decision-log.md`). Use
    `architecture.md`'s domain vocabulary throughout the PRD; respect the ADRs — don't
    re-decide what they settled.
 2. **Sketch the test seams.** Name the seams the feature will be tested at. Prefer existing

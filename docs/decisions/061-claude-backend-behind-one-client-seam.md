@@ -44,6 +44,18 @@ tier is chosen inside the client from the call's shape (schema-constrained call 
 otherwise narration model). Nothing above the seam changes; Ollama keeps running for `bge-m3`
 embeddings and as the fallback.
 
+## Current state (2026-10-25) — read this first; the amendments below are the history
+
+- Status **Proposed** until the Phase-11 live gate; `DM_LLM_BACKEND=ollama` (default) is the bot
+  of before. On `claude`, Opus narrates, Haiku answers every JSON-schema call, Nemo is the loud
+  fallback (one ⚠ line in chat). Subscription login only, never an API key.
+- Narration calls: `effort="low"`, per-request cap `num_predict` + 1024 thinking headroom, the
+  spoken budget held on the text at Nemo's 3.4 chars/token, **streamed calls only**; batch prose
+  (recap, `!rules`) is held only by the request cap.
+- Stats: separate slots for prose and schema calls; the boot ping checks both models.
+- The live evening is isolated (17 old gates parked, optional layers off — one variable). Known
+  gaps and the deliberately deferred review findings: the "review of the whole round" amendment.
+
 ## Alternatives
 
 - **Anthropic API key (Messages API directly).** Cleanest technically (real `stop_sequences`,

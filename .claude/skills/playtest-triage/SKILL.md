@@ -21,7 +21,7 @@ Golden rules #2 (dice = code), #3 (hard state = code), #4 (feedback protection s
    - `logs/debug.log` (opt-in verbose), `logs/transcript.log` (STT → narration → TTS)
    - the live state under `data/sessions/<id>/state.json` (wounds, NPCs, scene, recap)
 2. **Classify each complaint → root cause.** Past diagnoses to pattern-match against
-   (`progress.md` decision log):
+   (`docs/decision-log.md`):
    - **D43 / ADR 018** — wrong channel → silent example-party fallback → echoed player line
      read aloud (a failure *chain*, not regression).
    - **D57 / ADR 027** — silent `num_ctx` truncation (8192 hardcoded) dropped persona +

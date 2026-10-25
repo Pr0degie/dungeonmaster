@@ -137,8 +137,8 @@ D16). Check the items off.
       `DISCORD_TOKEN_DMBOT=…`, `BOT_A_USER_ID=…`, `OLLAMA_HOST=http://localhost:11434`.
       **Bot A's token lives in the music bot's own repo** (two-bot isolation).
 
-> From here the session ritual applies: the agent reads `CLAUDE.md` → `progress.md` →
-> the latest ADR and does the handshake.
+> From here the session ritual applies: the agent reads `CLAUDE.md` and the State header of
+> `progress.md` and does the handshake (more only for subsystem or phase work).
 
 ### B. Phase 0 setup (the actual install work)
 
