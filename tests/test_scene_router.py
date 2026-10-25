@@ -113,6 +113,25 @@ def test_call_pins_its_own_sampling_and_the_constrained_schema():
     assert "Ihr tretet in den Schrein." in call["messages"][0]["content"]
 
 
+def test_context_goes_before_the_turn_and_is_marked_as_context_only():
+    chat = _Chat('{"ziel": "schrein"}')
+    asyncio.run(classify_scene_move(
+        chat, turn_text="Du drückst die Tür auf.", exits=EXITS,
+        context="Spielleitung: Vor dir liegt der Schrein.\nTobi: Ich gehe rein.",
+    ))
+    content = chat.calls[0]["messages"][0]["content"]
+    assert content.index("Vor dir liegt der Schrein.") < content.index("Ich gehe rein.") < content.index(
+        "Zuletzt erzählter Zug:\nDu drückst die Tür auf.")
+    assert "nur zur Einordnung" in content
+    assert len(chat.calls[0]["messages"]) == 1  # still one stateless message
+
+
+def test_without_context_the_message_is_the_turn_alone():
+    chat = _Chat('{"ziel": "nein"}')
+    asyncio.run(classify_scene_move(chat, turn_text="Ihr redet weiter.", exits=EXITS, context="  "))
+    assert chat.calls[0]["messages"][0]["content"] == "Zuletzt erzählter Zug:\nIhr redet weiter."
+
+
 def test_call_returns_no_move_on_a_negative_verdict():
     chat = _Chat('{"ziel": "nein"}')
     v = asyncio.run(classify_scene_move(chat, turn_text="Ihr redet weiter.", exits=EXITS))

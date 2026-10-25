@@ -268,6 +268,7 @@ class SessionRuntime:
         # the seneschal repeat "die Zeit läuft uns davon" in eight of ten answers.
         self._guidance_every = config.guidance_every
         self._scene_turns: dict[int, int] = {}  # turns narrated since entering the current scene
+        self._last_narration: dict[int, str] = {}  # the previous answer, the scene router's context
         self._npc_mem_marks: dict[int, int] = {}
         self._npc_mem_running: set[int] = set()
         # Chekhov list (ADR 050): per-channel unresolved threads, extracted at wrap-up inside
@@ -1185,7 +1186,10 @@ class SessionRuntime:
             self._scene_turns[cid] = self._scene_turns.get(cid, 0) + 1
             await self.advance_turn_time(channel)
             classified_from = state.scene_id     # snapshot: the classifier call takes seconds
-            scene_verdict, fact_verdict = await self._classify_turn(channel, state, answer)
+            context = self._scene_context(cid, answer)  # snapshot too, before any await
+            scene_verdict, fact_verdict = await self._classify_turn(
+                channel, state, answer, context=context
+            )
             self._apply_commitment(channel, state, fact_verdict)
             if scene_verdict is not None and state.scene_id != classified_from:
                 # Someone moved the pointer while the classifier was thinking (``!ort``, the
@@ -1202,7 +1206,26 @@ class SessionRuntime:
         except Exception:
             log.exception("post-turn boundary failed — the turn itself is unaffected")
 
-    async def _classify_turn(self, channel, state: WorldState, answer: str):
+    def _scene_context(self, cid: int, answer: str) -> str:
+        """The scene router's context for this turn: the previous narration and this turn's
+        player lines, as ``Speaker: text`` lines. The narration is kept here, not read back from
+        the brain's history, so it does not depend on when the history is written. Then this
+        turn's answer becomes the next turn's previous narration."""
+        narrations = getattr(self, "_last_narration", None)  # getattr: stub runtimes
+        if narrations is None:
+            narrations = self._last_narration = {}
+        lines = []
+        previous = narrations.get(cid, "").strip()
+        if previous:
+            lines.append(f"Spielleitung: {previous}")
+        last_actions = getattr(self._brain, "last_actions", None)
+        for name, text in (last_actions(cid) if last_actions is not None else None) or ():
+            if str(text).strip():
+                lines.append(f"{name}: {str(text).strip()}")
+        narrations[cid] = answer
+        return "\n".join(lines)
+
+    async def _classify_turn(self, channel, state: WorldState, answer: str, *, context: str = ""):
         """Run the scene (ADR 057) and fact (ADR 058) classifiers on the same turn boundary.
 
         Both are optional layers and fail open: a switched-off block, a missing brain method (a
@@ -1215,7 +1238,7 @@ class SessionRuntime:
             exits = self._exit_labels(scene, state)
             if classify is not None and exits:
                 jobs.append(("scene", classify(
-                    turn_text=answer, exits=exits, current_title=scene.title_de,
+                    turn_text=answer, exits=exits, current_title=scene.title_de, context=context,
                 )))
         if self._fact_router:
             classify = getattr(self._brain, "classify_commitment", None)

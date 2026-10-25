@@ -281,10 +281,10 @@ Decided, narration calls only (schema calls unchanged):
   10–27 s for the empty turns before.
 - **The per-request cap is `num_predict` + 1024** (`_THINKING_HEADROOM`), so the thinking
   fits beside the text.
-- **The spoken budget is held on the text by the client:** `num_predict` × 2 characters
-  (`_CHARS_PER_TOKEN`, measured on German Opus text: 1192 chars / 592 tokens, 1153 / 586). The
-  overflowing delta is trimmed and the stream ends there. `num_predict` stays a token budget,
-  as on Ollama; it is held as characters because the stream has no per-delta token count.
+- **The spoken budget is held on the text by the client:** the overflowing delta is trimmed
+  and the stream ends there. It is held as characters because the stream has no per-delta
+  token count. *(Revised the same night, second run — see below: 3.4 characters per token, and
+  streamed turns only.)*
 - **A `max_tokens` stop cuts only after text has begun.** A request that ended in thinking is
   read on — the CLI's resume brings the text. The stop reason is reset at each `message_start`,
   so a resumed request's first delta is not taken for text arriving at the cut.
@@ -300,3 +300,24 @@ Live-verified this session: the boot preflight with the new options (`narration 
 haiku: OK` — Haiku accepts `effort`), and two streamed persona turns at `num_predict=220` (250 and
 365 chars, `think=70`/`68`, not truncated). A turn with the full table prompt and voice is
 live-unverified.
+
+**Revised after the second run the same night (02:25–02:38).** Every turn had text, 5.5–8.6 s to
+the end of generation. Two consequences of the first version showed:
+
+- **The cap cut 16 of 17 turns.** At 2 characters per token (Opus' real rate), 220 tokens are
+  ~440 characters; Nemo's 220 tokens were ~750 (its 2026-06-15 turns: median 224, p90 741
+  characters). The same token number was a much shorter leash, and the last thought of a turn —
+  often the hook — went unspoken. Tobi's verdict: a GM talks sometimes a lot, sometimes little;
+  no sentence quota. So `_CHARS_PER_TOKEN` is **3.4, Nemo's rate**: the budget is parity in
+  *spoken length*, and the cap is again a brake on monologues that rarely engages. The persona's
+  "zwei bis vier Sätze" stays untouched tonight (it is shared with Nemo; changing it would be a
+  second variable).
+- **The auto-recap was cut at the spoken budget.** It is a batch call with `num_predict` 400;
+  cut at 800 characters mid-sentence, it lost its newest events (a docker had just named
+  "Dockmeister Kessel"; the next turn denied anyone had). The spoken budget now applies to
+  **streamed calls only** — the only ones spoken as they arrive. Batch prose (recap, `!rules`,
+  a batch-mode turn with `DM_STREAMING=0`) is held only by the per-request cap with its
+  headroom and the `max_tokens` cut. Live: the recap over the same 15 turns came out at 1275
+  characters, uncut, ending with Kessel. Known gap: with `DM_STREAMING=0` a Claude turn has no
+  spoken budget below ~1244 tokens; not the evening's configuration.
+

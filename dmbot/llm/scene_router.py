@@ -176,9 +176,18 @@ def scene_system(exits: ExitsArg, *, current_title: str = "") -> str:
     )
 
 
-def scene_user_msg(turn_text: str) -> str:
-    """The single user message: the turn that was just narrated."""
-    return f"Zuletzt erzählter Zug:\n{turn_text.strip()}"
+def scene_user_msg(turn_text: str, context: str = "") -> str:
+    """The single user message: the turn that was just narrated, after the ``context`` (the
+    previous narration and this turn's player lines) when there is any. The context names the
+    place a turn like "Du drückst die Tür auf." means; whether the group arrives is still judged
+    on the narrated turn alone (live 2026-10-25: without it, an entry that named no place was a
+    "nein" three times out of three)."""
+    head = (
+        "Davor (nur zur Einordnung, welcher Ort gemeint ist — ob die Gruppe ihn betritt, "
+        f"entscheidet allein der zuletzt erzählte Zug):\n{context.strip()}\n\n"
+        if context.strip() else ""
+    )
+    return f"{head}Zuletzt erzählter Zug:\n{turn_text.strip()}"
 
 
 def to_scene_verdict(data: object, *, exits: ExitsArg, raw: str = "") -> SceneVerdict:
@@ -215,13 +224,15 @@ async def classify_scene_move(
     turn_text: str,
     exits: ExitsArg,
     current_title: str = "",
+    context: str = "",
     timeout: float | None = SCENE_ROUTER_TIMEOUT,
 ) -> SceneVerdict:
     """Ask the one question and return a validated verdict. Never raises.
 
     ``chat`` is :meth:`dmbot.llm.client.LLMClient.chat` (injected so the contract is testable
     without a model). ``turn_text`` is the answer that was just narrated — the DM's own words are
-    the authority on where the group is; the caller may prefix the player lines.
+    the authority on where the group is. ``context`` (the previous narration and this turn's
+    player lines) only tells the model which place is meant; see :func:`scene_user_msg`.
     """
     offered = normalize_exits(exits)
     if not offered:
@@ -234,7 +245,7 @@ async def classify_scene_move(
     system = scene_system(offered, current_title=current_title)
     coro = chat(
         system,
-        [{"role": "user", "content": scene_user_msg(turn_text)}],
+        [{"role": "user", "content": scene_user_msg(turn_text, context)}],
         options=dict(SCENE_ROUTER_OPTIONS),
         format=schema,
     )

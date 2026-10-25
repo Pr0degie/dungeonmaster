@@ -627,8 +627,10 @@ the replay harness do not know which one answers.
 - **`num_predict` is enforced by the client, on the text.** Opus thinks even with thinking
   disabled, and thinking counts against the CLI's per-request cap. Narration therefore runs with
   `effort="low"`, the per-request cap gets 1024 tokens of thinking headroom, and the client holds
-  the spoken text to `num_predict` tokens' worth of characters (2 per token, measured). A
-  `max_tokens` stop cuts only once text has begun; before that the CLI's resume is read on. A cut
+  a *streamed* turn to `num_predict` × 3.4 characters — Nemo's spoken length for the same budget
+  (Opus writes ~2 characters per token). Batch prose (the recap) has no spoken budget, only the
+  per-request cap. A `max_tokens` stop cuts only once text has begun; before that the CLI's
+  resume is read on. A cut
   reports `truncated` (the `✂` WARNING, `cut` in the `[latency]` line; `think=` shows the thinking
   tokens). End-of-answer markers still sit where the cap cuts — measured this phase, removed in
   Phase 12. (ADR 061, amendment 2026-10-25.)

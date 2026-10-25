@@ -84,10 +84,14 @@ _AUX_SYSTEM_SUFFIX = (
 # on the text itself by this client (``_CHARS_PER_TOKEN``).
 _NARRATION_EFFORT = "low"
 _THINKING_HEADROOM = 1024
-# Characters of German Opus text per output token, measured live (1192 chars / 592 tokens,
-# 1153 / 586). ``num_predict`` stays a token budget, as on Ollama; it is enforced as characters
-# because the stream carries no per-delta token count.
-_CHARS_PER_TOKEN = 2.0
+# The spoken budget of a streamed turn, in characters per ``num_predict`` token — sized so a
+# turn may run as long as it could on Nemo, not as long as the same token count is on Opus.
+# Opus writes German at ~2 chars/token (1192 chars / 592 tokens, 1153 / 586, measured live), Nemo
+# at ~3.4 (220 tokens ≈ the 741-char p90 of its turns on 2026-06-15). At 2.0 the cap cut 16 of 17
+# Opus turns on 2026-10-25 and the last thought of a turn (often the hook) went unspoken; the cap
+# is meant as a brake on monologues that rarely engages. Enforced as characters because the
+# stream carries no per-delta token count.
+_CHARS_PER_TOKEN = 3.4
 
 
 def render_transcript(messages: list[dict[str, str]]) -> str:
@@ -165,7 +169,7 @@ class _Call:
     thinking_tokens: int | None = None
     stop_reason: str | None = None  # of the current API request (reset at each message_start)
     cut: bool = False  # ended by this client at the output cap
-    text_budget: int | None = None  # narration: the spoken budget in characters
+    text_budget: int | None = None  # streamed narration: the spoken budget in characters
     text_chars: int = 0
     budget_cut: bool = False  # the cut came from the text budget, not a max_tokens stop
 
@@ -513,7 +517,8 @@ class ClaudeClient:
                 "API instead of the subscription (unset it, or CLAUDE_ALLOW_API_KEY=1)."
             )
 
-    def _begin(self, system: str, options: dict | None, format: dict | str | None):
+    def _begin(self, system: str, options: dict | None, format: dict | str | None, *,
+               spoken: bool = False):
         self._refuse_api_key()
         system_file = self._prompts / f"system-{uuid.uuid4().hex}.md"
         if isinstance(format, dict):
@@ -532,7 +537,11 @@ class ClaudeClient:
                 f"Claude call could not be prepared ({exc.__class__.__name__}): {exc}"
             ) from exc
         call = _Call(model=model, cap=cap, narration=format is None, started=time.monotonic())
-        if call.narration and cap:
+        if spoken and cap:
+            # Only a streamed turn is spoken as it arrives. Batch prose — the recap above all —
+            # is held only by the per-request cap: a recap cut at the spoken budget lost exactly
+            # its newest events (live 2026-10-25: "Kessel" was named, the recap ended before him,
+            # and the next turn denied he had ever been mentioned).
             call.text_budget = round(cap * _CHARS_PER_TOKEN)
         return call, sdk_options, system_file
 
@@ -562,9 +571,6 @@ class ClaudeClient:
         if isinstance(format, dict) and result is not None and result.structured_output is not None:
             return json.dumps(result.structured_output, ensure_ascii=False)
         text = result.result if result is not None else None
-        if call.budget_cut:
-            # Only the deltas are trimmed to the spoken budget; an assistant block may hold more.
-            text = "".join(call.deltas)
         if text is None:
             # A cut call has no result. The assistant message normally precedes the stop frame,
             # but the deltas are the same text and do not depend on that order.
@@ -582,7 +588,7 @@ class ClaudeClient:
         iteration / ``aclose()`` ends the generation (the client-side stop-label abort). An error
         before the first delta raises :class:`LLMBackendError` with nothing yielded, which is
         what lets the failover re-issue the turn; ``last_stats`` is final once the stream ends."""
-        call, sdk_options, system_file = self._begin(system, options, None)
+        call, sdk_options, system_file = self._begin(system, options, None, spoken=True)
         run = self._run(call, sdk_options, _prompt(messages), partial=True)
         try:
             async for delta in run:

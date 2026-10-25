@@ -87,9 +87,9 @@ class _FakeBrain:
     def add_gm_note(self, channel_id: int, note: str) -> None:
         self.notes.append(note)
 
-    async def classify_scene_move(self, *, turn_text, exits, current_title=""):
+    async def classify_scene_move(self, *, turn_text, exits, current_title="", context=""):
         self.scene_calls.append({"turn_text": turn_text, "exits": dict(exits),
-                                 "current_title": current_title})
+                                 "current_title": current_title, "context": context})
         self.last_scene_router = {"raw": "{}", "verdict": "", "failure": None}
         return self._scene if self._scene is not None else SceneVerdict()
 
@@ -436,6 +436,39 @@ def test_the_scene_classifier_is_offered_exits_with_their_titles() -> None:
 
     assert brain.scene_calls[0]["exits"] == {"schrein": "Schrein der Aschenheiligen"}
     assert brain.scene_calls[0]["current_title"] == "Die Zoll-Sakristei"
+
+
+def test_the_scene_classifier_sees_the_previous_narration_and_the_player_lines() -> None:
+    """Live 2026-10-25: "Fridolin drückt die Tür auf … Drinnen ist es eng" names no place — the
+    shrine was named one turn earlier and in the player's "Ich gehe rein". Judged on the current
+    narration alone, Haiku answered "nein" three times out of three; with the place in view it
+    answered "schrein" three out of three. The router gets both as context."""
+    adv = _adventure()
+    state = _state(adv)
+    brain = _FakeBrain()
+    actions = [[("Tobi", "Ich gehe zum Schrein.")], [("Tobi", "Ich gehe rein.")]]
+    brain.last_actions = lambda cid: actions.pop(0)
+    rt = _runtime(adv, state, brain, _FakeChannel())
+
+    _run(rt.close_turn(_FakeChannel(), "Vor dir liegt der Schrein, die Tür steht offen."))
+    _run(rt.close_turn(_FakeChannel(), "Du drückst die Tür auf. Drinnen ist es kalt."))
+
+    first, second = brain.scene_calls
+    assert first["context"] == "Tobi: Ich gehe zum Schrein."  # nothing narrated before
+    assert second["context"] == (
+        "Spielleitung: Vor dir liegt der Schrein, die Tür steht offen.\nTobi: Ich gehe rein.")
+    assert second["turn_text"] == "Du drückst die Tür auf. Drinnen ist es kalt."
+
+
+def test_the_scene_classifier_context_is_empty_without_history_or_actions() -> None:
+    adv = _adventure()
+    state = _state(adv)
+    brain = _FakeBrain()
+    rt = _runtime(adv, state, brain, _FakeChannel())
+
+    _run(rt.close_turn(_FakeChannel(), "Ihr geht los."))
+
+    assert brain.scene_calls[0]["context"] == ""
 
 
 def test_a_locked_exit_is_not_offered_to_the_classifier() -> None:

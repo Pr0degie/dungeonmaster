@@ -515,13 +515,20 @@ def test_the_spoken_budget_is_cut_on_the_text_itself(fake, client, caplog):
         "✂ Antwort an der Ausgabegrenze abgeschnitten (10/10 Tokens)"]
 
 
-def test_a_batch_narration_over_the_spoken_budget_returns_the_trimmed_text(fake, client):
-    budget = round(10 * _CHARS_PER_TOKEN)
-    fake(_INIT, _start(input_tokens=50), _delta("y" * budget), _delta("zu viel"),
-         _assistant(sdk.TextBlock("y" * budget + "zu viel")), _result(result="nie erreicht"))
-    answer = asyncio.run(client.chat("s", _USER, options={"num_predict": 10}))
-    assert answer == "y" * budget
-    assert client.last_stats["truncated"] is True
+def test_batch_prose_has_no_spoken_budget(fake, client):
+    """A recap is not spoken; cut at the spoken budget it lost exactly its newest events (live
+    2026-10-25). Batch prose is held only by the per-request cap."""
+    long_recap = "Was bisher geschah. " * 100  # far past 400 tokens' worth of spoken characters
+    fake(_INIT, _start(input_tokens=50), _delta(long_recap), _assistant(sdk.TextBlock(long_recap)),
+         _stop("end_turn", 600), _result(result=long_recap))
+    answer = asyncio.run(client.chat("s", _USER, options={"num_predict": 400}))
+    assert answer == long_recap.strip()
+    assert client.last_stats["truncated"] is False
+
+
+def test_the_spoken_budget_matches_nemos_spoken_length():
+    """220 budget tokens let a turn run ~750 chars — Nemo's length, not 220 Opus tokens' (~440)."""
+    assert 700 <= round(220 * _CHARS_PER_TOKEN) <= 800
 
 
 def test_schema_calls_have_no_text_budget(fake, client):

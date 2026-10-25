@@ -878,7 +878,7 @@ class DMBrain:
         return req
 
     async def classify_scene_move(
-        self, *, turn_text: str, exits, current_title: str = ""
+        self, *, turn_text: str, exits, current_title: str = "", context: str = ""
     ) -> SceneVerdict:
         """Scene-move classifier (ADR 057 #1) — the same shape as :meth:`classify_test`: a
         separate, stateless, constrained-JSON call whose answer space is exactly the current
@@ -887,7 +887,8 @@ class DMBrain:
         (``llm/scene_router.py`` and ``rules/scene_flow.py``). Never raises."""
         started = time.monotonic()
         verdict = await classify_scene_move(
-            self._client.chat, turn_text=turn_text, exits=exits, current_title=current_title
+            self._client.chat, turn_text=turn_text, exits=exits, current_title=current_title,
+            context=context,
         )
         self._log_classifier(
             "scene", started,

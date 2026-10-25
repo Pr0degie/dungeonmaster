@@ -118,3 +118,19 @@ that a half-migrated campaign is caught before play; the warning has to be read.
 
 The PRD's testing decision that named the negative case as "fails to load" is superseded by this
 amendment: the tested negative case is that an id-less scene never counts as exhausted.
+
+## Amendment (2026-10-25) — the scene router sees the turn before
+
+First live run on Claude (Haiku as the classifier): the router answered "stay" in all 17
+turns, though Fridolin walked to the shrine and went in. Replayed against Haiku: "Fridolin
+drückt die Tür auf … Drinnen ist es eng und kalt" names no place — the shrine was named in the
+narration before and in the player's "Ich gehe rein". On the current narration alone: "nein"
+3/3; with the place named: "schrein" 3/3.
+
+So the call now carries **context**: the previous narration (kept by the runtime itself, not
+read back from the brain's history, whose write order varies) and this turn's player lines, as
+`Speaker: text` lines in the one user message, marked "nur zur Einordnung". The question is
+unchanged — did the group arrive *in the narrated turn* — and the answer space is unchanged.
+Live with context: the entry 3/3 "schrein", a conversation at the customs desk 3/3 "nein", the
+approach to the open door 2/3 "schrein" (an arrival at the place; acceptable).
+
