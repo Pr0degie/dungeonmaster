@@ -86,6 +86,8 @@ class Config:
     llm_failover_cooldown_s: int = 600
     # Consequence clocks (ADR 047/059). Default on = the bot of before.
     clocks: bool = True
+    # Post each DM-routed player line to the text channel (story readable in Discord).
+    post_player_lines: bool = True
 
     @classmethod
     def load(cls) -> "Config":
@@ -372,4 +374,8 @@ class Config:
             # clocks already saved in a state.json stay there. Deadlines and in-game time (ADR
             # 048) are a separate mechanism and keep running.
             clocks=os.environ.get("DM_CLOCKS", "1").strip().lower() in ("1", "true", "yes", "on"),
+            # Echo every player line the DM hears into the text channel ("🗣 Figur: …"), so the
+            # channel reads as the whole story, not just the DM's half. DM_POST_PLAYER_LINES=0 = off.
+            post_player_lines=os.environ.get("DM_POST_PLAYER_LINES", "1").strip().lower()
+            in ("1", "true", "yes", "on"),
         )

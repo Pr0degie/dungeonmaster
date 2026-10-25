@@ -153,6 +153,8 @@ silero-vad cuts utterances ──► faster-whisper ──► transcript
    │
    ▼
 transcripts are BUFFERED per player (DM does NOT answer yet)
+   │            └─► each DM-routed line is also posted to the text channel as
+   │                "🗣 **Figur:** …" (DM_POST_PLAYER_LINES), so the channel reads as the story
    │
    ▼
 Button "End turn" / "DM, respond"  ◄── triggers the DM turn

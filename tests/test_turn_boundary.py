@@ -967,6 +967,49 @@ def test_a_player_line_enters_the_prompt_under_the_character_name() -> None:
     assert lines == [("Rektalus Zerfickus", "Ich frage nach der Vollmacht.")]
 
 
+def _echo_runtime(channel: _FakeChannel) -> SessionRuntime:
+    rt = _runtime(None, None, _FakeBrain(), channel)
+    rt._brain.add_player_line = lambda cid, name, text: None
+    rt._last_stt_ms = {}
+    rt._char_by_user = {42: "Rektalus Zerfickus"}
+    rt._speaker_names["SezBoss69"] = rt.character_name_for(42, "SezBoss69")
+    return rt
+
+
+def test_a_routed_player_line_is_posted_under_the_character_name() -> None:
+    channel = _FakeChannel()
+    rt = _echo_runtime(channel)
+
+    async def run() -> None:
+        rt._loop = asyncio.get_running_loop()
+        # The STT thread calls back off the loop — exactly the cross-thread hand-off under test.
+        await asyncio.to_thread(rt._on_transcript, "SezBoss69", "Ich *frage* nach @everyone.",
+                                1.0, 200.0, True)
+        for _ in range(20):
+            if channel.sent:
+                break
+            await asyncio.sleep(0.01)
+
+    asyncio.run(run())
+    # Markdown escaped (no stray bold from STT), @everyone defused with a zero-width space.
+    assert channel.sent == [r"🗣 **Rektalus Zerfickus:** Ich \*frage\* nach @" + "​everyone."]
+
+
+@pytest.mark.parametrize("for_dm, enabled", [(False, True), (True, False)])
+def test_table_talk_and_the_kill_switch_post_nothing(for_dm: bool, enabled: bool) -> None:
+    channel = _FakeChannel()
+    rt = _echo_runtime(channel)
+    rt._post_player_lines = enabled
+
+    async def run() -> None:
+        rt._loop = asyncio.get_running_loop()
+        await asyncio.to_thread(rt._on_transcript, "SezBoss69", "Pizza?", 1.0, 200.0, for_dm)
+        await asyncio.sleep(0.05)
+
+    asyncio.run(run())
+    assert channel.sent == []
+
+
 def test_a_renamed_player_is_still_resolved_by_user_id() -> None:
     rt = _runtime(None, None, _FakeBrain(), _FakeChannel())
     rt._char_by_user = {42: "Rektalus Zerfickus"}

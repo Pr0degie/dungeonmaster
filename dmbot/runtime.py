@@ -61,6 +61,7 @@ from .rules.scene_flow import (
     resolve_exit,
 )
 from .discord_ui.panel import render_player_panel_de
+from .discord_ui.transcript import format_player_line
 from .discord_ui.undo import SceneUndoView
 from .memory import chekhov as chekhov_mod
 from .memory import history as history_store
@@ -245,6 +246,7 @@ class SessionRuntime:
         # answers with a hint. Saved clocks are only hidden, never deleted. Read through
         # ``clocks_enabled`` everywhere.
         self._clocks = config.clocks
+        self._post_player_lines = config.post_player_lines
         if not self._clocks:
             log.info("⏱ Uhren aus (DM_CLOCKS=0) — nicht angelegt, nicht angezeigt, <<UHR>> wird "
                      "ignoriert; gespeicherte Uhren bleiben erhalten.")
@@ -468,10 +470,34 @@ class SessionRuntime:
             # the prompt used to read "Sezgin: …", so the DM answered "Sezgin, ich kann leider
             # nicht …" and treated four players as one. The log line above keeps the Discord name
             # — that is the operator's record of who actually spoke.
-            self._brain.add_player_line(self._active_vc_id, self.prompt_speaker_name(name), text)
+            speaker = self.prompt_speaker_name(name)
+            self._brain.add_player_line(self._active_vc_id, speaker, text)
             # Remember this utterance's transcribe ms as the turn's stt stage (reuse, don't
             # re-measure). A plain int write; the consuming turn pops it on the event loop.
             self._last_stt_ms[self._active_vc_id] = round(latency_ms)
+            self._echo_player_line(speaker, text)
+
+    def _echo_player_line(self, speaker: str, text: str) -> None:
+        """Post a DM-routed player line to the text channel (``DM_POST_PLAYER_LINES``), so the
+        channel holds both halves of the story. Called on the STT thread: the send is handed to
+        the event loop captured at ``seed_session``. Fire-and-forget — a failed post is logged,
+        never blocks the turn. The line lands before the DM's answer because the turn waits for
+        STT to go idle and then spends seconds in the LLM."""
+        loop = getattr(self, "_loop", None)
+        channel = getattr(self, "_text_channel", None)
+        if not getattr(self, "_post_player_lines", True) or loop is None or channel is None:
+            return
+        if not text.strip() or loop.is_closed():
+            return
+        content = format_player_line(speaker, text)
+
+        async def _post() -> None:
+            try:
+                await self._send_with_retry(channel, content)
+            except Exception:
+                log.exception("posting the player line failed")
+
+        asyncio.run_coroutine_threadsafe(_post(), loop)
 
     # ----- Shared Discord send util --------------------------------------------------------------
 
@@ -1638,6 +1664,11 @@ class SessionRuntime:
         cid = voice_channel.id
         self._active_vc_id = cid  # buffer transcripts + answer for this channel
         self._text_channel = text_channel  # where the pause panel (and other panels) are posted
+        # The STT thread posts player lines through this loop (_echo_player_line).
+        try:
+            self._loop = asyncio.get_running_loop()
+        except RuntimeError:  # seeded outside a loop (tests) — no echo
+            self._loop = None
         # Phase 8: load this channel's party (else the example), wire the "who plays whom" alias
         # hint into the prompt (open item F), and seed the turn order from the voice members.
         self._characters, char_fallback = self._load_characters(cid)
