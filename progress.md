@@ -53,8 +53,8 @@ _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-a
 Szenen-Events in das echte `data/sessions/7/history.jsonl` (seit 2026-08-23, 124 Zeilen; zwei Tests mit
 `_autosave=True`). Der Test-Runtime leitet `session_file` jetzt nach `tmp_path` um und schlägt ohne ihn fehl;
 der Ordner ist gelöscht. Ein Datei-Schnappschuss um die volle Suite zeigt: nichts unter `data/`/`logs/`
-ändert sich mehr. Die zwei `session_fixture`-Zeilen im `rag.db` sind ein älteres, schon behobenes Leck
-(Datei seit Juli unverändert) und erreichen den DM nicht. Lesson `isolation-must-enumerate-every-artifact`
+ändert sich mehr. Die zwei `session_fixture`-Chunks im `rag.db` (älteres, schon behobenes Leck vom Juli) sind samt
+Vektor-, FTS- und `meta`-Zeile gelöscht; `integrity_check` ok, `dm-sync` zeigt nur die sieben Wissensquellen. Lesson `isolation-must-enumerate-every-artifact`
 ergänzt. Sandbox für Lauf 5 geprüft: leer.
 
 **Würfel-Thumbnails (2026-10-25 nachts, D127).** Tobis ASCII-W20-Generator liegt jetzt in `tools/generate_dice.py`
