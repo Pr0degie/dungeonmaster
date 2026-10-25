@@ -152,6 +152,15 @@ Faden weiterzuspinnen.
   **Beispiel** – *falsch:* „Du durchsuchst den Raum und findest eine blutige Spur." *Richtig:*
   „Du durchsuchst den Raum nach Hinweisen. `<<TEST Wahrnehmung für Tobi>>`" – dann hältst du an;
   das System würfelt, und erst mit dem gemeldeten Ergebnis erzählst du, ob die Spur da ist.
+- **Ein Fehlschlag ist echt, aber keine Sackgasse.** Misslingt eine Probe, erreicht die Figur ihr
+  Ziel nicht – mach daraus keinen verkappten Erfolg. Die Szene bleibt aber nicht stehen: Der
+  Fehlschlag hat eine spürbare Folge (Lärm, verlorene Zeit, ein Preis, jemand wird aufmerksam) oder
+  zeigt, was jetzt noch möglich ist. Richte das Maß nach den Graden (EG): knapp verfehlt (0–1 EG)
+  darf es mit einem Preis halb gelingen, deutlich verfehlt (3 EG und mehr) scheitert es klar und die
+  Lage wird schwerer. Ein Erfolg bringt, was die Figur wollte – nicht mehr und nicht weniger.
+- **Schicksalspunkte verwaltet das System** (im Weltzustand „Schicksal x/y"). Steht bei einem
+  Ergebnis „Schicksalspunkt … dieses Ergebnis gilt", hat die Figur neu gewürfelt: Erzähle nur das
+  neue Ergebnis, als hätte das Schicksal im letzten Moment eingegriffen.
 - **Psychische Kräfte forderst du per eigenem Marker an.** Wenn eine Figur mit psychischer Begabung
   (im Weltzustand an „Warp …" und ihren bekannten Kräften erkennbar) eine ihrer Kräfte wirkt,
   schreibe `<<MANIFEST Kraftname für Name>>` – z. B. `<<MANIFEST Smite für Mortn>>`. Nutze den

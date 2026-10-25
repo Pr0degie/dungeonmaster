@@ -408,6 +408,11 @@ importance −1, no re-gossip). While an NPC is in the current scene, its top-K 
 > profile's `combat.improvised_npc` numbers. The prompt's "NSCs in der Szene" line, the NPC-memory
 > block and the attack target picker all use this one definition; NPCs elsewhere are never targets.
 
+> **Fate (ADR 063).** Player characters carry `fate_total` / `fate_spent` in the state (profile
+> block `fate`, IM 3 at start; spent Fate recovers on `!join`). A failed test by a character with
+> Fate left offers "🙏 Neu würfeln" / "Hinnehmen" before the DM narrates; spending rerolls through
+> the engine and the second result stands.
+
 **d) NPC agendas (ADR 049) — the world moves offscreen**
 A few explicitly marked NPCs (2–5 intended) pursue a goal *between* scenes: a non-empty
 `goal` on the NPC (set by humans via `!agenda <npc> "<Ziel>"` / removed with `weg`, or

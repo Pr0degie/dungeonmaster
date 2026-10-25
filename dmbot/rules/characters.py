@@ -32,6 +32,16 @@ def _gear_key(item: str) -> str:
     return " ".join(_PAREN.sub("", item).split()).casefold()
 
 
+def _sheet_int(value: object) -> int | None:
+    """A sheet number that may arrive as text ("3") — ``None`` when absent or not a number."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return int(str(value).strip())
+    except ValueError:
+        return None
+
+
 def merge_gear(data: dict) -> tuple[str, ...]:
     """Everything a sheet says the character carries: ``inventory``, then ``equipment``, then the
     ``weapons`` names (dicts with a ``name`` or plain strings), deduped, first spelling wins.
@@ -70,6 +80,9 @@ class Character:
     # Augmetics (ADR 023) — names that index the active profile's augmetics catalog (the effects
     # live there, not here). Passive: no roll; the engine reads their armour/characteristic effects.
     augmetics: tuple[str, ...] = ()
+    # Fate (ADR 063): the sheet's total Fate, ``None`` when the sheet says nothing (the profile's
+    # start value then applies). Spent Fate is session state and lives on the Combatant.
+    fate_total: int | None = None
     raw: dict = field(default_factory=dict)
 
     @classmethod
@@ -86,6 +99,7 @@ class Character:
             disciplines=tuple(data.get("disciplines", []) or []),
             known_powers=tuple(data.get("known_powers", []) or []),
             augmetics=tuple(data.get("augmetics", []) or []),
+            fate_total=_sheet_int(data.get("fate_total", data.get("fate"))),
             raw=dict(data),
         )
 

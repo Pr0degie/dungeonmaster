@@ -179,6 +179,20 @@ class SystemProfile:
         match = self._catalog_match(self.combat.get("weapons", {}) or {}, weapon)
         return None if match is None else match[1]
 
+    # -- fate (ADR 063) -----------------------------------------------------------------------
+    # Optional ``fate`` block: a per-character resource spent to reroll a failed Test. A profile
+    # without it simply has no Fate flow, like ``combat`` / ``psyker``.
+
+    def fate_enabled(self) -> bool:
+        return bool((self.raw.get("fate") or {}).get("start"))
+
+    def fate_start(self) -> int:
+        """Fate a character begins with when the sheet says nothing (IM p.220: 3)."""
+        try:
+            return int((self.raw.get("fate") or {}).get("start", 0) or 0)
+        except (TypeError, ValueError):
+            return 0
+
     def improvised_npc(self) -> dict:
         """Numbers for an NPC the DM improvised and no statblock covers (ADR 062):
         ``{"wounds", "toughness_bonus", "armour"}`` from ``combat.improvised_npc``, falling back

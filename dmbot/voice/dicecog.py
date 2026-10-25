@@ -11,6 +11,7 @@ from discord.ext import commands
 
 from ..llm.roll_router import is_continuation_fragment, roll_button_source, superseded_by_manifest
 from ..discord_ui.dice import DiceTestView
+from ..discord_ui.fate import FateView
 from ..discord_ui.turnorder import TurnOrderView
 from ..discord_ui.rules import RulesView
 from ..discord_ui.target import TargetSelectView
@@ -150,46 +151,102 @@ class DiceCog(commands.Cog):
 
     def _make_dice_roll(self, channel, req: TestRequest, resolved):
         """Build the roll callback for a dice button: the engine rolls + resolves, the message is
-        replaced with the result, and it's fed back so the DM narrates the consequence."""
+        replaced with the result, and it's fed back so the DM narrates the consequence.
+
+        A failed test by a character with Fate left (ADR 063) first gets the Fate choice; the
+        narration waits for it, so each test is narrated exactly once."""
         skill = req.skill or "Probe"
         who = resolved.character.name if resolved.character else req.target_name
 
         async def _roll(interaction: discord.Interaction) -> None:
             guild_id = channel.guild.id if channel.guild else None
-            result = None
-            if resolved.target is None:  # no character/skill value — roll, ask them to compare
-                d = engine.roll(self._rt._profile.dice, self._rt._rng)
-                line = f"🎲 {skill}: {d.total} — kein hinterlegter Wert, vergleicht mit eurem Bogen."
-            else:
-                result = engine.scope_doubles(
-                    self._rt._profile,
-                    engine.resolve_test(self._rt._profile, resolved.target, self._rt._rng),
-                    skill,
-                )
-                line = engine.describe_result_de(
-                    result, skill=skill, character=who, difficulty=resolved.difficulty
-                )
+            result, line = self._roll_test(resolved, skill, who)
             log.info("%s", line)  # `line` already starts with 🎲 (describe_result_de)
+            pc = self._fate_holder(channel, who) if result is not None and not result.success else None
+            view = None
+            if pc is not None:
+                view = FateView(
+                    pc.fate_available,
+                    self._make_fate_decision(channel, guild_id, interaction.message, resolved,
+                                             skill, who, result, line),
+                    timeout=float(getattr(self._rt, "_fate_wait_seconds", 20.0)),
+                )
             try:
-                await interaction.message.edit(content=line, view=None)  # show result, drop button
+                await interaction.message.edit(content=line, view=view)  # result (+ Fate choice)
             except discord.HTTPException:
-                await self._rt._send_with_retry(channel, line)
-            self._rt._brain.add_test_result(self._rt._brain_channel(channel), line)
-            # Auto-combat (Phase 9): a successful attack rolls & applies weapon damage to a target
-            # before the DM narrates, so the narration carries the consequence. Non-attacks, misses
-            # and value-less rolls fall through to the normal immediate narration.
-            if (
-                result is not None
-                and result.success
-                and self._rt._profile is not None
-                and self._rt._profile.combat_enabled()
-                and self._rt._profile.is_attack_skill(skill)
-            ):
-                if await self._begin_attack_damage(channel, attacker=who, result=result):
-                    return  # the damage flow narrates once a target is chosen/auto-applied
-            await self._rt.run_and_deliver(channel, guild_id)
+                await self._rt._send_with_retry(channel, line, view=view)
+            if view is not None:
+                return  # the Fate decision narrates
+            await self._finish_roll(channel, guild_id, result, line, skill, who)
 
         return _roll
+
+    def _roll_test(self, resolved, skill: str, who: str | None):
+        """One roll through the engine → ``(TestResult | None, German line)``."""
+        if resolved.target is None:  # no character/skill value — roll, ask them to compare
+            d = engine.roll(self._rt._profile.dice, self._rt._rng)
+            return None, f"🎲 {skill}: {d.total} — kein hinterlegter Wert, vergleicht mit eurem Bogen."
+        result = engine.scope_doubles(
+            self._rt._profile,
+            engine.resolve_test(self._rt._profile, resolved.target, self._rt._rng),
+            skill,
+        )
+        return result, engine.describe_result_de(
+            result, skill=skill, character=who, difficulty=resolved.difficulty
+        )
+
+    def _fate_holder(self, channel, who: str | None):
+        """The player character who may spend Fate on this failed test, or ``None`` (ADR 063)."""
+        profile = self._rt._profile
+        if profile is None or not profile.fate_enabled() or not who:
+            return None
+        state = self._rt._state.get(self._rt._brain_channel(channel))
+        pc = state.find(who) if state is not None else None
+        if pc is None or pc.is_npc or pc.fate_available <= 0:
+            return None
+        return pc
+
+    def _make_fate_decision(self, channel, guild_id, message, resolved, skill, who, result, line):
+        """The Fate choice's callback: spend → the state books the point, the engine rerolls and
+        the second result stands (IM p.220); keep / timeout → the first result stands. Then the
+        normal finish — narration, or the damage flow for a hit."""
+        async def _decide(interaction, spend: bool) -> None:
+            final_result, final_line = result, line
+            content = line
+            cid = self._rt._brain_channel(channel)
+            state = self._rt._state.get(cid)
+            if spend and state is not None and state.spend_fate(who):
+                left = state.find(who).fate_available
+                final_result, reroll = self._roll_test(resolved, skill, who)
+                final_line = (f"🙏 {who} gibt einen Schicksalspunkt aus (noch {left}) und würfelt "
+                              f"neu — dieses Ergebnis gilt: {reroll}")
+                content = f"{line}\n{final_line}"
+                log.info("%s", final_line)
+                self._rt._persist_and_refresh(channel)
+            try:
+                await message.edit(content=content, view=None)
+            except discord.HTTPException:
+                if content != line:
+                    await self._rt._send_with_retry(channel, final_line)
+            await self._finish_roll(channel, guild_id, final_result, final_line, skill, who)
+        return _decide
+
+    async def _finish_roll(self, channel, guild_id, result, line: str, skill: str, who) -> None:
+        """Feed the final result to the DM and narrate it (or hand a hit to the damage flow)."""
+        self._rt._brain.add_test_result(self._rt._brain_channel(channel), line)
+        # Auto-combat (Phase 9): a successful attack rolls & applies weapon damage to a target
+        # before the DM narrates, so the narration carries the consequence. Non-attacks, misses
+        # and value-less rolls fall through to the normal immediate narration.
+        if (
+            result is not None
+            and result.success
+            and self._rt._profile is not None
+            and self._rt._profile.combat_enabled()
+            and self._rt._profile.is_attack_skill(skill)
+        ):
+            if await self._begin_attack_damage(channel, attacker=who, result=result):
+                return  # the damage flow narrates once a target is chosen/auto-applied
+        await self._rt.run_and_deliver(channel, guild_id)
 
     async def _post_manifest_button(self, channel, req: ManifestRequest) -> None:
         """Resolve a Manifest request (power → Warp Rating + Difficulty + the psyker's Psi-Meisterschaft

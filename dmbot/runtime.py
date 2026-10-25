@@ -262,6 +262,7 @@ class SessionRuntime:
         # asyncio.gather — one latency window for both, as the ADR requires.
         self._fact_router = config.fact_router
         self._npc_router = config.npc_router
+        self._fate_wait_seconds = config.fate_wait_seconds
         # In-game minutes a narrated turn costs (ADR 059 #2); the bigger scene-change advance
         # stays _scene_time_advance above.
         self._turn_time_advance = config.turn_time_advance
@@ -1746,6 +1747,11 @@ class SessionRuntime:
         # then inject the stored recap + current state into the prompt so the DM picks up where it
         # left off — the "next session opens with a correct recap" half of the gate.
         self._state[cid] = self._load_or_seed_state(cid)
+        # Fate (ADR 063, IM p.220): a !join starts a session — unset totals come from the profile,
+        # Fate spent last time is recovered.
+        profile = getattr(self, "_profile", None)  # stub runtimes in tests have none
+        if profile is not None and profile.fate_enabled():
+            self._state[cid].start_fate_session(default=profile.fate_start())
         # Adventure (Phase 10a): point a fresh session at the start scene; a loaded state keeps
         # its stored pointer (the plot position survives restarts like HP does) — unless that
         # pointer names a scene the loaded adventure doesn't have. That happened live (2026-08-15,

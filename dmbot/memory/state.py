@@ -261,6 +261,14 @@ class Combatant:
     # Where an NPC was last seen in person (ADR 062). Presence = on the scene card's
     # ``npcs_here`` OR seen in that scene — so the people the DM improvises count as "here" too.
     scene: str = ""
+    # Fate (ADR 063, IM p.220): ``fate_total`` from the sheet or the profile (``None`` = not set
+    # up yet), ``fate_spent`` this session. Code-owned like Warp Charge; recovered per session.
+    fate_total: int | None = None
+    fate_spent: int = 0
+
+    @property
+    def fate_available(self) -> int:
+        return max(0, (self.fate_total or 0) - self.fate_spent)
 
     def to_dict(self) -> dict:
         d: dict = {"name": self.name, "wounds": self.wounds, "max_wounds": self.max_wounds}
@@ -288,6 +296,10 @@ class Combatant:
             d["agenda_log"] = [s.to_dict() for s in self.agenda_log]
         if self.scene:
             d["scene"] = self.scene
+        if self.fate_total is not None:
+            d["fate_total"] = self.fate_total
+        if self.fate_spent:
+            d["fate_spent"] = self.fate_spent
         return d
 
     @classmethod
@@ -310,6 +322,8 @@ class Combatant:
             goal=str(d.get("goal", "") or ""),
             agenda_log=[AgendaStep.from_dict(s) for s in d.get("agenda_log", []) or []],
             scene=str(d.get("scene", "") or ""),
+            fate_total=int(d["fate_total"]) if d.get("fate_total") is not None else None,
+            fate_spent=int(d.get("fate_spent", 0) or 0),
         )
 
     def add_memory(self, memory: NpcMemory) -> None:
@@ -665,6 +679,7 @@ class WorldState:
                 max_wounds=c.max_wounds if c.max_wounds is not None else (c.wounds or 0),
                 conditions=list(c.conditions),
                 inventory=list(c.inventory),
+                fate_total=c.fate_total,
             )
             for c in store.characters()
         ]
@@ -997,6 +1012,22 @@ class WorldState:
         npc.scene = scene_id
         return npc, True
 
+    def start_fate_session(self, *, default: int) -> None:
+        """A new session (ADR 063): characters without a Fate total get the profile's ``default``,
+        and every character recovers the Fate spent last session (IM p.220)."""
+        for c in self.characters:
+            if c.fate_total is None:
+                c.fate_total = default
+            c.fate_spent = 0
+
+    def spend_fate(self, name: str) -> bool:
+        """Spend one Fate of player character ``name``; False if none is left or no such PC."""
+        c = next((x for x in self.characters if x.name.lower() == (name or "").strip().lower()), None)
+        if c is None or c.fate_available <= 0:
+            return False
+        c.fate_spent += 1
+        return True
+
     def present_npcs(self, scene_id: str, card_names: "Collection[str]" = ()) -> list[Combatant]:
         """The living NPCs present in ``scene_id`` (ADR 062): on the scene card or seen there."""
         card = {str(n).strip().lower() for n in card_names}
@@ -1246,6 +1277,8 @@ def _combatant_line_de(c: Combatant) -> str:
     elif c.wounds < c.max_wounds:
         tags.append("verwundet")
     tags.extend(c.conditions)
+    if not c.is_npc and c.fate_total is not None:
+        tags.append(f"Schicksal {c.fate_available}/{c.fate_total}")
     if c.warp_charge or c.sustained_powers:
         warp = f"Warp {c.warp_charge}"
         if c.sustained_powers:

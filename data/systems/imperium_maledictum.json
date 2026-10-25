@@ -37,6 +37,11 @@
   },
   "crit": "doubles",
   "crit_scope": "attack",
+  "fate": {
+    "start": 3,
+    "_note": "ADR 063, IM Core p.220. Spend 1 Fate: reroll a failed Test, the second result stands (other Spend effects narrative). Spent Fate recovers at the start of each session. Burning Fate (permanent) is not modelled.",
+    "_source": "Imperium Maledictum Core Rulebook (Cubicle 7) — Fate, Spending Fate, Burning Fate, p.220"
+  },
   "auto_success_max": 5,
   "auto_fail_min": 96,
   "damage": "Waffenschaden + EG (reduziert durch Rüstung an der Trefferzone)",

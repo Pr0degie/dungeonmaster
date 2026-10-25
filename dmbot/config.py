@@ -90,6 +90,8 @@ class Config:
     post_player_lines: bool = True
     # Presence classifier (ADR 062): improvised NPCs join the scene. Default on.
     npc_router: bool = True
+    # Fate choice under a failed test (ADR 063): seconds before "Hinnehmen" applies on its own.
+    fate_wait_seconds: float = 20.0
 
     @classmethod
     def load(cls) -> "Config":
@@ -380,6 +382,7 @@ class Config:
             # channel reads as the whole story, not just the DM's half. DM_POST_PLAYER_LINES=0 = off.
             npc_router=os.environ.get("DM_NPC_ROUTER", "1").strip().lower()
             in ("1", "true", "yes", "on"),
+            fate_wait_seconds=float(os.environ.get("DM_FATE_WAIT_SECONDS", "20")),
             post_player_lines=os.environ.get("DM_POST_PLAYER_LINES", "1").strip().lower()
             in ("1", "true", "yes", "on"),
         )
