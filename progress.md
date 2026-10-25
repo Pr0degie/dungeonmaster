@@ -17,15 +17,15 @@ is on-demand._
   über zwei Auto-Recaps. Alle 9 Proben scheiterten — Pech (~1:60, Engine per 100k-Simulation fair), aber vier
   Fehler verschärften es; alle behoben: Pasch-Patzer nur noch im Kampf (`crit_scope`), keine doppelte
   Psi-Probe neben einer Manifestation, kein Router-Test auf „dass …“-Satzfragmente, Puppet-Filter liest
-  nur noch die Erzählung außerhalb von Zitaten. **1232 Tests grün, `dm-eval` Exit 0, `ruff --select F` sauber**;
-  am Tisch unverifiziert.
+  nur noch die Erzählung außerhalb von Zitaten. Danach D122: die Ausrüstung steht jetzt im Prompt.
+  **1238 Tests grün, `dm-eval` Exit 0, `ruff --select F` sauber**; am Tisch unverifiziert.
 - **Next concrete step:** vierter Lauf (oder der Phase-11-Abend) nach
   [testabend-ablauf.md §9](docs/testabend-ablauf.md), diesmal mit `!sprechmodus nahtlos intoniert`
   (Spieler: Betonung hakt, weil `flach` alle Satzzeichen streicht; XTTS läuft auf cuda) und ohne die nicht
   spielenden Figuren in der Kanal-`characters.json` (Gellicus/Rene wurden jeden Zug angesprochen). Prüfen: kein
   „Patzer“ außerhalb von Nah-/Fernkampf, eine Psi-Aktion = ein Wurf, NSC-Zitate mit „sagst du“ vollständig.
-  Offen aus dem Lauf: „Was habe ich dabei?“ beantwortete der DM nicht aus dem Bogen (ungeprüft, ob das Inventar
-  im Prompt steht); Ausrüstung/Talente geben keinen Probenbonus; Intro zu lang; Uhrzeit zu genau.
+  Neu prüfen: Ausrüstungsfragen werden aus dem Bogen beantwortet, Fridolins Siegel existiert (D122).
+  Offen aus dem Lauf: Ausrüstung/Talente geben keinen Probenbonus; Intro zu lang; Uhrzeit zu genau.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
   geparkt (ADR 061, im [Live-Run-Skript](docs/live-run-script.md) markiert) und werden nach dem
   Abend neu gesichtet; sie zählen nicht gegen die WIP-Grenze.
@@ -59,8 +59,13 @@ Engine ist fair (100k-Simulation trifft die Quoten), Fridolins Heimlichkeit 48 �
   (Zustand über Sätze hinweg, auch im Stream); „„…“, sagst du.“ wird weiter gestrichen.
 - **Belegt:** 1232 Tests grün (14 neue), `dm-eval` Exit 0, `ruff --select F` sauber; Live-Fälle mit echtem
   IM-Profil nachgerechnet. Am Tisch unverifiziert.
+- **Nachtrag D122, Inventar nie im Prompt:** „Was habe ich dabei?“ → „das weißt nur du“, und die Arbites fanden
+  Fridolins Siegel nicht, das auf seinem Bogen steht. Ursache: `world_state_summary_de` rendert seit Phase 9 nur
+  Wunden/Zustände; `equipment`/`weapons` kamen nicht mal in den Zustand. Jetzt: `Ausrüstung`-Zeile pro Figur,
+  Seed führt `inventory` + `equipment` + Waffennamen zusammen (`merge_gear`). 1238 Tests grün, `dm-eval` Exit 0.
+  Alte `state.json` behalten ihre Liste (Seed nur beim ersten `!join`) — die Debug-Sandbox wird ohnehin geleert.
 - **Spieler-Feedback ohne Fix:** TTS-Betonung über Satzgrenzen (Modus `flach`), Intro zu lang, Uhrzeit zu genau,
-  Codewort für Regelfragen gewünscht, „Was habe ich dabei?“ unbeantwortet. Inhaltlich: die Spieler spielten
+  Codewort für Regelfragen gewünscht. Inhaltlich: die Spieler spielten
   sexuelle Gewalt an; der DM schilderte nichts davon und ließ die Welt reagieren — so gewollt.
 
 **Die ersten Opus-Züge am Tisch, und drei Fixes (2026-10-25, D119/D120).** Tobi hat zweimal mit Opus gespielt (allein, Debug-Kampagne). Ergebnis: Opus erzählt, nachdem drei Fehler raus sind, die erst am Tisch sichtbar wurden; alles steht in ADR 061 (Nachtrag 2026-10-25) und ADR 057 (Nachtrag).

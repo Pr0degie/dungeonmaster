@@ -16,10 +16,39 @@ Pure data + pure functions, unit-tested without Discord or the LLM.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from .profile import SystemProfile
+
+
+_PAREN = re.compile(r"\s*\([^)]*\)")
+
+
+def _gear_key(item: str) -> str:
+    """Dedupe key for one gear entry: case-folded, a trailing "(…)" note ignored, so
+    "Inquisitorisches Siegel (verdeckt)" and "Inquisitorisches Siegel" are one item."""
+    return " ".join(_PAREN.sub("", item).split()).casefold()
+
+
+def merge_gear(data: dict) -> tuple[str, ...]:
+    """Everything a sheet says the character carries: ``inventory``, then ``equipment``, then the
+    ``weapons`` names (dicts with a ``name`` or plain strings), deduped, first spelling wins.
+
+    Sheets put gear in all three places (Fridolin's Dietrich-Set and Schattenbrille live only
+    under ``equipment``); the world state used to seed from ``inventory`` alone, so the DM never
+    learned about the rest (2026-10-25 run)."""
+    items: list[str] = []
+    seen: set[str] = set()
+    weapons = [w.get("name", "") if isinstance(w, dict) else w for w in (data.get("weapons") or [])]
+    for entry in [*(data.get("inventory") or []), *(data.get("equipment") or []), *weapons]:
+        text = " ".join(str(entry or "").split())
+        key = _gear_key(text)
+        if key and key not in seen:
+            seen.add(key)
+            items.append(text)
+    return tuple(items)
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,7 +80,7 @@ class Character:
             skills={k: int(v) for k, v in (data.get("skills", {}) or {}).items()},
             wounds=data.get("wounds"),
             max_wounds=data.get("max_wounds"),
-            inventory=tuple(data.get("inventory", []) or []),
+            inventory=merge_gear(data),
             conditions=tuple(data.get("conditions", []) or []),
             psyker=bool(data.get("psyker", False)),
             disciplines=tuple(data.get("disciplines", []) or []),

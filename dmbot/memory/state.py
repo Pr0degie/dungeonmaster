@@ -1342,6 +1342,15 @@ def world_state_summary_de(
         ))
     if state.characters:
         lines.append("Gruppe: " + "; ".join(_combatant_line_de(c) for c in state.characters))
+    # The gear each player character carries (sheet inventory + equipment + weapons, then advanced
+    # by code). Missing until 2026-10-25: the DM answered "Was habe ich dabei?" with "das weißt nur
+    # du" and had the Arbites find no seal on a character whose sheet lists one.
+    carried = [c for c in state.characters if c.inventory]
+    if carried:
+        lines.append(
+            "Ausrüstung (tragen die Spielfiguren bei sich — Fragen danach beantwortest du hieraus): "
+            + "; ".join(f"{c.name}: {', '.join(c.inventory)}" for c in carried)
+        )
     living_npcs = [n for n in state.npcs if n.wounds > 0]
     here, elsewhere = living_npcs, []
     if present is not None:

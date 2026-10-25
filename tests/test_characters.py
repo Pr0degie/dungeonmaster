@@ -4,7 +4,7 @@ player' (open item K): target = skill value (JSON) + difficulty modifier (profil
 from __future__ import annotations
 
 from dmbot.rules import profile as profile_mod
-from dmbot.rules.characters import CharacterStore, resolve_target
+from dmbot.rules.characters import Character, CharacterStore, resolve_target
 
 _IM = profile_mod.load("imperium_maledictum")
 
@@ -76,3 +76,34 @@ def test_speaker_labels_lists_every_character_and_player() -> None:
     assert "Seskin" in labels and "Mortn" in labels        # character names
     assert "SezBoss69" in labels and "Tobi" in labels      # player display names
     assert len(labels) == len(set(labels))                 # deduped
+
+
+# --- gear: inventory + equipment + weapons (2026-10-25 run) ----------------------------------------
+# Live: Fridolin's sheet lists an "Inquisitorisches Siegel" and Dietrich-Set/Schattenbrille sit only
+# under "equipment"; the DM never saw any of it and had the Arbites find "only mud" in his pocket.
+
+def test_gear_merges_equipment_and_weapon_names_after_the_inventory() -> None:
+    c = Character.from_dict({
+        "name": "Fridolin",
+        "inventory": ["Laspistole", "Kampfmesser", "Inquisitorisches Siegel"],
+        "equipment": ["Inquisitorisches Siegel (verdeckt)", "Dietrich-Set", "Schattenbrille (Dämmerungssicht)"],
+        "weapons": [{"name": "Laspistole", "damage": "1W10+3"}, {"name": "Boltpistole"}],
+    })
+    assert c.inventory == (
+        "Laspistole", "Kampfmesser", "Inquisitorisches Siegel",
+        "Dietrich-Set", "Schattenbrille (Dämmerungssicht)", "Boltpistole",
+    )
+
+
+def test_gear_dedupes_case_insensitively_and_accepts_plain_weapon_strings() -> None:
+    c = Character.from_dict({
+        "name": "Rektalus",
+        "inventory": ["Kampfmesser"],
+        "weapons": ["kampfmesser", "Handgranate", ""],
+        "equipment": None,
+    })
+    assert c.inventory == ("Kampfmesser", "Handgranate")
+
+
+def test_a_sheet_without_gear_has_an_empty_inventory() -> None:
+    assert Character.from_dict({"name": "Mortn"}).inventory == ()

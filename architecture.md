@@ -336,7 +336,9 @@ after the recap and before the history.
 > - **`data/sessions/<channel>/state.json`** — the **code-owned mutable layer** (`dmbot/memory/state.py`):
 >   current `wounds`/`conditions`/`inventory` per character, the `npcs`, `quests`, `location`,
 >   `time_minutes`/`time_ingame`/`deadlines` (ADR 048), and the stored `recap`. **Seeded once**
->   from the sheet on the first `!join`,
+>   from the sheet on the first `!join` (the seeded `inventory` merges the sheet's `inventory`,
+>   `equipment` and `weapons` names, deduped; the prompt's state block lists it per character as
+>   `Ausrüstung`, D122),
 >   then written by code on **every** change (atomic temp + `os.replace`) so an HP change survives
 >   a restart. Reset a session by deleting it. Per-channel and git-ignored (only the `_example`
 >   party is checked in).

@@ -333,3 +333,27 @@ def test_a_pre_058_state_file_defaults_the_new_fields(tmp_path) -> None:
     assert "Übergeben" not in world_state_summary_de(s)
     s.save(path)  # and the migrated file round-trips cleanly
     assert WorldState.load(path).facts == []
+
+
+# -- gear in the prompt (2026-10-25 run: "Was habe ich alles dabei?" went unanswered) ------------
+
+def test_summary_lists_each_characters_gear() -> None:
+    out = world_state_summary_de(WorldState.seed_from_store(_STORE))
+    gear = [line for line in out.splitlines() if line.startswith("Ausrüstung")]
+    assert len(gear) == 1
+    assert "Seskin: Kettenschwert" in gear[0]
+    assert "Mortn" not in gear[0]  # nothing carried → not listed
+
+
+def test_summary_gear_follows_the_state_not_the_sheet() -> None:
+    s = WorldState.seed_from_store(_STORE)
+    s.characters[0].inventory.append("Inquisitorisches Siegel")
+    s.characters[0].inventory.remove("Kettenschwert")
+    out = world_state_summary_de(s)
+    assert "Seskin: Inquisitorisches Siegel" in out and "Kettenschwert" not in out
+
+
+def test_summary_without_gear_has_no_gear_line() -> None:
+    s = WorldState.seed_from_store(_STORE)
+    s.characters[0].inventory.clear()
+    assert "Ausrüstung" not in world_state_summary_de(s)
