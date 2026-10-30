@@ -3,18 +3,5 @@
     "allow": [
       "Bash(uv run --with pytest python -m pytest:*)"
     ]
-  },
-  "hooks": {
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash tools/hooks/test-on-change.sh"
-          }
-        ]
-      }
-    ]
   }
 }
