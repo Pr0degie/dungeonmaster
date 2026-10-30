@@ -15,7 +15,8 @@ is on-demand._
 - **Newest round:** D128 + D129 / **ADR 064** (2026-10-30) — Würfel-Wurfanimation. Der Probe-Post zeigt den
   Zielwürfel „≤Ziel“ groß, der Klick ein Wurf-GIF, dann das Ergebnisbild; Engine und DM warten nicht darauf.
   Die 75 Flug-GIFs liegen einmal in `#botcommands` (`DM_DICE_ASSET_CHANNEL`), der Klick zeigt nur auf den Link.
-  **1333 Tests grün, `dm-eval` Exit 0.** Am Tisch gesehen: Zielwürfel, GIF, Ergebnis; ADR 064 noch nicht live.
+  **1336 Tests grün, `dm-eval` Exit 0.** Am Tisch gesehen: Zielwürfel, GIF, Ergebnis; ADR 064 noch nicht live.
+  31.10.: Zahlen auf allen W20-Seitenflächen (neuer Look → Flug-GIFs beim nächsten Start einmal neu hochladen).
 - **Davor (2026-10-25):** D123/D124 (ADR 062, improvisierte NSCs anwesend), D125 (XTTS-Sperre + `gpu_health`),
   D126 (ADR 063, Schicksalspunkte), D127 (Würfel-Thumbnails) — alle code-komplett, Details im Archiv/Log.
 - **Next concrete step:** Bot neu starten und im Log `dice assets: 75/75 throw GIFs ready` prüfen; ein paar
@@ -43,6 +44,8 @@ Am Tisch nachgeschärft: Zielzahl größer, GIF ohne Startbild, 32 Farben, Flug 
 Ergebnis 1 s nach der Landung. Gemessen blieben ~1,2 s Upload im Edit → ADR 064: 75 Flug-GIFs einmal in
 `#botcommands`, der Klick zeigt nur auf den Link, das Ergebnisbild bleibt ein echter Anhang (startet früher).
 1333 Tests grün (+34), `dm-eval` Exit 0, `render()` byte-identisch. Lesson: Discord-Seite zuerst messen.
+31.10.: Zahlen auf allen Seitenflächen wie bei einem echten W20 (Tobis Variante B, nach außen gedreht, fest pro
+Wert); `FRAME_SET_VERSION` 3 → Pool neu, die Flug-GIFs gehen beim nächsten Start einmal neu nach `#botcommands`.
 
 **Test-Leck geschlossen (2026-10-25 nachts).** `tests/test_turn_boundary.py` schrieb bei jedem Suite-Lauf zwei
 Szenen-Events in das echte `data/sessions/7/history.jsonl` (seit 2026-08-23, 124 Zeilen; zwei Tests mit

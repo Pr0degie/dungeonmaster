@@ -61,6 +61,22 @@ def test_a_blank_face_draws_no_number() -> None:
     assert blank.tobytes() != numbered.tobytes()
 
 
+def test_the_side_faces_carry_fixed_numbers_never_the_shown_value() -> None:
+    for value in (1, 23, 88, 100):
+        numbers = _renderer.face_numbers(value)
+        assert numbers == _renderer.face_numbers(value)          # same value → same picture
+        assert len(set(numbers)) == 9 and value not in numbers
+        assert all(1 <= n <= 100 for n in numbers)
+    assert _renderer.face_numbers(23) != _renderer.face_numbers(24)
+
+
+def test_the_side_numbers_are_drawn_on_the_die(monkeypatch) -> None:
+    with_faces = _renderer.shaded_die(23, random.Random(7))
+    monkeypatch.setattr(_renderer, "face_numbers", lambda number: [])
+    without = _renderer.shaded_die(23, random.Random(7))
+    assert with_faces.tobytes() != without.tobytes()
+
+
 # --- the store -----------------------------------------------------------------------------------
 
 class _Msg:

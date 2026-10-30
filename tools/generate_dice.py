@@ -73,6 +73,13 @@ NUMBER_SIZES = {1: 0.14, 2: 0.125, 3: 0.09, 4: 0.075}
 PREFIXED_SIZES = {2: 0.22, 3: 0.175, 4: 0.135}
 PREFIXED_Y = 0.02
 
+# Numbers on the other nine faces, like a real d20 seen from above (2026-10-31, Tobi: variant B).
+# Each reads outward from the die's centre; the three faces touching the centre triangle get the
+# bigger size. Fixed per shown value (never the value itself), so a picture is stable and cacheable.
+FACE_SIZE_NEAR = 0.095
+FACE_SIZE_FAR = 0.08
+FACE_CLEAR = 0.72  # share of a face's inradius cleared of texture blotches behind its number
+
 
 def resolve_font(candidates: tuple[Path, ...], role: str) -> str:
     """The first existing font file of ``candidates``; a clear error naming them all otherwise."""
@@ -141,6 +148,11 @@ def shaded_die(number: int | None, rng: random.Random, prefix: str = "") -> Imag
     for p, q in edges:
         ed.line([p, q], fill=25, width=16)
 
+    near = {id(faces[2][0]), id(faces[3][0]), id(faces[9][0])}  # the faces touching the centre
+    others = [(poly, val) for poly, val in faces if poly is not centre_poly]
+    for (poly, val), face_num in zip(others, face_numbers(number)):
+        _face_number(src, poly, val, face_num, FACE_SIZE_NEAR if id(poly) in near else FACE_SIZE_FAR)
+
     # adaptive font size: smaller + centred in triangle
     num = prefix if number is None else f"{prefix}{number}"
     if not num:
@@ -154,6 +166,34 @@ def shaded_die(number: int | None, rng: random.Random, prefix: str = "") -> Imag
     ed.text((CX - tw/2 - bb[0], ty - th/2 - bb[1]), num, font=fnt,
             fill=12, stroke_width=5, stroke_fill=12)
     return src
+
+
+def face_numbers(number: int | None) -> list[int]:
+    """The nine numbers on the faces around the centre: fixed per shown value, never the value."""
+    rng = random.Random(1_000_003 * (number or 0) + 17)
+    return rng.sample([n for n in range(1, MAX_VALUE + 1) if n != number], 9)
+
+
+def _face_number(src: Image.Image, poly, base: int, value: int, size: float) -> None:
+    """Draw ``value`` on one side face: clear its centre of blotches, then the number, turned so it
+    reads outward from the die's centre (the bottom face's stands on its head, as on a real d20)."""
+    (ax, ay), (bx, by), (cx_, cy_) = poly
+    fx, fy = (ax + bx + cx_)/3, (ay + by + cy_)/3
+    sides = [math.dist(poly[i], poly[(i + 1) % 3]) for i in range(3)]
+    area = abs((bx - ax)*(cy_ - ay) - (cx_ - ax)*(by - ay)) / 2
+    clear = FACE_CLEAR * 2*area / sum(sides)
+    ImageDraw.Draw(src).ellipse([fx - clear, fy - clear, fx + clear, fy + clear], fill=base)
+    angle = math.degrees(math.atan2(-(fx - CX), -(fy - CY)))
+    fnt = _font("bold", int(S*size))
+    box = S // 3
+    layer = Image.new("L", (box, box), 0)
+    ld = ImageDraw.Draw(layer)
+    text = str(value)
+    bb = ld.textbbox((0, 0), text, font=fnt, stroke_width=4)
+    ld.text((box/2 - (bb[2]-bb[0])/2 - bb[0], box/2 - (bb[3]-bb[1])/2 - bb[1]), text, font=fnt,
+            fill=255, stroke_width=4, stroke_fill=255)
+    layer = layer.rotate(angle, resample=Image.BICUBIC)
+    src.paste(Image.new("L", layer.size, 12), (round(fx - box/2), round(fy - box/2)), layer)
 
 
 def ascii_pass(src: Image.Image, palette: str) -> Image.Image:
@@ -208,7 +248,7 @@ def render(number: int, path: str | os.PathLike, seed: int = 7, palette: str = "
 
 THUMB = 360  # GIF frame size in px
 GIF_COLOURS = 32  # per frame — the ASCII dice have few tones; halves the upload vs. 256
-FRAME_SET_VERSION = 2  # bump when the frame plan changes, so stale pool frames aren't reused
+FRAME_SET_VERSION = 3  # bump when the frame plan or the die's look changes (stale pool frames)
 
 _throw_module: ModuleType | None = None
 _throw_lock = threading.Lock()
