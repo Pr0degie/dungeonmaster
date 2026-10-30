@@ -157,16 +157,18 @@ class CharacterStore:
         return list(self._by_name.values())
 
     def get(self, name: str | None) -> Character | None:
-        """Find a character by character name or by a player's display-name alias."""
+        """Find a character by character name, by a player's display-name alias, or by a first
+        name that only one character has ("Fridolin" → Fridolin Feuchtgebietheld, D131)."""
         if not name:
             return None
-        key = name.lower()
+        key = name.strip().lower()
         if key in self._by_name:
             return self._by_name[key]
         alias = self._aliases.get(key)
         if alias and alias.lower() in self._by_name:
             return self._by_name[alias.lower()]
-        return None
+        first = [c for full, c in self._by_name.items() if full.split()[:1] == [key]]
+        return first[0] if len(first) == 1 else None
 
     def skill_value(self, character: Character | None, skill: str) -> int | None:
         """Skill value for ``skill`` (case-insensitive). Falls back to a same-named

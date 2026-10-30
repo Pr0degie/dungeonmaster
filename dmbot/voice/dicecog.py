@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 
 import discord
@@ -36,6 +37,9 @@ from ..rules.summary import rules_pages_de
 from ..runtime import SessionRuntime
 
 log = logging.getLogger(__name__)
+
+# "für"/"fuer"/"for" as a word — the marker grammar's name separator (rules/marker.py).
+_FUER_WORD_RE = re.compile(r"\b(?:für|fuer|for)\b", re.IGNORECASE)
 
 # Seconds after the throw GIF has landed before the static result replaces it (D128).
 REVEAL_GRACE_S = 1.0
@@ -684,15 +688,34 @@ class DiceCog(commands.Cog):
         else:
             await ctx.send(embed=embed, file=file)
 
+    def _test_spec_with_name(self, spec: str, author) -> str:
+        """``!test`` without "für" (D131): a character named at the end ("… Sezgin") becomes the
+        roller, otherwise the caller's own character does. With "für" the spec stays as typed."""
+        if _FUER_WORD_RE.search(spec):
+            return spec
+        store = self._rt._characters
+        words = spec.split()
+        if store is not None:
+            for n in (2, 1):  # "Fridolin Feuchtgebietheld" before "Fridolin"
+                if len(words) > n and store.get(" ".join(words[-n:])) is not None:
+                    return f"{' '.join(words[:-n])} für {' '.join(words[-n:])}"
+            name_for = getattr(self._rt, "character_name_for", None)
+            own = name_for(getattr(author, "id", None), getattr(author, "display_name", "")) if name_for else None
+            if own and store.get(own) is not None:
+                return f"{spec} für {own}"
+        return spec
+
     @commands.command(name="test")
     async def test(self, ctx: commands.Context, *, spec: str = "") -> None:
-        """Manually request a test: `!test Wahrnehmung Schwer für Tobi`. Posts a dice button."""
+        """Manually request a test: `!test Wahrnehmung Schwer` rolls for your own character,
+        `!test Wahrnehmung Sezgin` (or `für Sezgin`) for someone else's. Posts a dice button."""
         if self._rt._profile is None:
             await ctx.send("Keine Würfel-Engine geladen (Systemprofil fehlt) — siehe Log.")
             return
         if not spec.strip():
-            await ctx.send("Nutzung: `!test <Fertigkeit> [Schwierigkeit] [für <Name>]`.")
+            await ctx.send("Nutzung: `!test <Fertigkeit> [Schwierigkeit] [Name]` — ohne Name für deine Figur.")
             return
+        spec = self._test_spec_with_name(spec, ctx.author)
         _, reqs = extract_tests(f"<<TEST {spec}>>", self._rt._profile)
         if not reqs:
             await ctx.send("Konnte daraus keine Probe lesen.")

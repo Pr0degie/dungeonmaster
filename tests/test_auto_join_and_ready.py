@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import threading
 from types import SimpleNamespace
 
 from dmbot.ready_sound import ReadySound
@@ -82,13 +81,9 @@ def test_two_quick_commands_join_only_once() -> None:
 # --- ready sound ------------------------------------------------------------------------------
 
 
-def test_it_pops_once_after_login_and_the_loaded_voice() -> None:
+def test_it_pops_once_at_login_not_again_on_reconnects() -> None:
     played: list[int] = []
-    tts = threading.Event()
-    sound = ReadySound(tts, play=lambda: played.append(1))
-    thread = sound.logged_in()
+    sound = ReadySound(play=lambda: played.append(1))
+    sound.logged_in().join(timeout=5)
     assert sound.logged_in() is None                  # a reconnect's on_ready: no second pop
-    assert played == []                               # still waiting for the voice
-    tts.set()
-    thread.join(timeout=5)
     assert played == [1]

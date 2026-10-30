@@ -102,7 +102,7 @@ class Config:
     dice_asset_channel: str = ""
     # Any DMbot command while the bot is in no voice channel joins the caller's channel first (D130).
     auto_join: bool = True
-    # A soft pop on this machine once the bot is logged in and its voice is loaded (D130).
+    # A soft pop on this machine the moment the bot is logged in to Discord (D130).
     ready_sound: bool = True
 
     @classmethod

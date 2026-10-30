@@ -1,10 +1,10 @@
-"""A soft "pop" on the bot's own machine once it is ready to play (2026-10-31, Tobi's wish).
+"""A soft "pop" on the bot's own machine the moment it is logged in (2026-10-31, Tobi's wish).
 
-Ready = logged in to Discord **and** the TTS voice loaded (the slowest start step, ~17 s for XTTS),
-so the sound means "you can !j and talk now". Played once per process, never again on reconnects.
+It sounds with the "logged in as DungeonMaster" line — Tobi found waiting for the TTS voice as
+well (~17 s more) far too late. Played once per process, never again on reconnects.
 The pop is synthesised (a quiet sine sweeping up with a fast decay, like a bubble) — no sound file,
 no new dependency. Windows only (``winsound``); elsewhere, and on any error, it stays silent: the
-log line "ready" is the record either way.
+"logged in as" log line is the record either way.
 """
 
 from __future__ import annotations
@@ -24,7 +24,6 @@ RATE = 44_100
 POP_SECONDS = 0.09
 POP_VOLUME = 0.28            # of full scale — soft on purpose
 POP_FROM_HZ, POP_TO_HZ = 380.0, 1150.0
-TTS_WAIT_SECONDS = 180.0     # play anyway after this, even if the voice never finished loading
 
 
 def pop_samples() -> list[int]:
@@ -63,30 +62,26 @@ def play_pop() -> None:
 
 
 class ReadySound:
-    """Plays the pop once: when Discord is logged in and the TTS load has finished."""
+    """Plays the pop once, when Discord is logged in."""
 
-    def __init__(self, tts_ready: threading.Event | None, *, enabled: bool = True, play=play_pop) -> None:
-        self._tts_ready = tts_ready
+    def __init__(self, *, enabled: bool = True, play=play_pop) -> None:
         self._enabled = enabled
         self._play = play
         self._started = False
         self._lock = threading.Lock()
 
     def logged_in(self) -> threading.Thread | None:
-        """Call from ``on_ready``. Starts the wait-then-pop thread the first time only."""
+        """Call from ``on_ready``. Plays the pop (in a thread) the first time only."""
         with self._lock:
             if not self._enabled or self._started:
                 return None
             self._started = True
-        thread = threading.Thread(target=self._wait_and_play, name="ready-sound", daemon=True)
+        thread = threading.Thread(target=self._play_once, name="ready-sound", daemon=True)
         thread.start()
         return thread
 
-    def _wait_and_play(self) -> None:
-        if self._tts_ready is not None and not self._tts_ready.wait(TTS_WAIT_SECONDS):
-            log.warning("voice still loading after %.0f s — ready sound anyway", TTS_WAIT_SECONDS)
+    def _play_once(self) -> None:
         try:
             self._play()
-            log.info("🫧 ready — DMbot is logged in and its voice is loaded")
         except Exception:  # cosmetic: a broken sound device must never disturb the bot
             log.warning("could not play the ready sound", exc_info=True)
