@@ -172,7 +172,7 @@ def _click(cog, *, face_skill: str, target: int | None = 50):
     return interaction.message
 
 
-def test_a_dice_button_result_carries_the_raw_face_as_a_thumbnail(monkeypatch, tmp_path) -> None:
+def test_a_dice_button_result_shows_the_raw_face_as_the_big_image(monkeypatch, tmp_path) -> None:
     asked = _fake_images(monkeypatch, tmp_path)
     cog, fed = _cog(_Seq(22))  # a double on an attack: critical
     msg = _click(cog, face_skill="Fernkampf", target=50)
@@ -180,8 +180,8 @@ def test_a_dice_button_result_carries_the_raw_face_as_a_thumbnail(monkeypatch, t
     (edit,) = msg.edits
     embed = edit["embed"]
     assert edit["content"] is None
-    assert embed.thumbnail.url == f"attachment://{DICE_FILENAME}"
-    assert embed.image.url is None                      # thumbnail, never the big image slot
+    assert embed.image.url == f"attachment://{DICE_FILENAME}"
+    assert embed.thumbnail.url is None                  # a button test is big: target, throw, result
     (file,) = edit["attachments"]
     assert file.filename == DICE_FILENAME
     assert embed.description == fed[0]                  # the same line the DM is fed
@@ -199,7 +199,7 @@ def test_a_failed_render_posts_the_result_without_a_thumbnail(monkeypatch, tmp_p
     _fake_images(monkeypatch, tmp_path, broken=True)
     cog, fed = _cog(_Seq(23))
     (edit,) = _click(cog, face_skill="Wahrnehmung").edits
-    assert edit["attachments"] == [] and edit["embed"].thumbnail.url is None
+    assert edit["attachments"] == [] and edit["embed"].image.url is None
     assert edit["embed"].description == fed[0]
 
 
@@ -217,7 +217,8 @@ def test_bang_roll_shows_the_total_as_a_thumbnail_up_to_100(monkeypatch, tmp_pat
     asyncio.run(DiceCog.roll.callback(cog, ctx, dice="2d10+3"))
     (_, kwargs), = ctx.sent
     assert asked == [(16, "red")]
-    assert kwargs["embed"].thumbnail.url == f"attachment://{DICE_FILENAME}"
+    assert kwargs["embed"].thumbnail.url == f"attachment://{DICE_FILENAME}"  # !roll stays small
+    assert kwargs["embed"].image.url is None
     assert kwargs["embed"].description == "🎲 `2d10+3` → **16** (4+9+3)"
 
 
@@ -267,6 +268,7 @@ def test_a_fate_reroll_shows_the_die_of_the_result_that_stands(monkeypatch, tmp_
     assert asked == [(12, "red")]
     assert "75" in edit["embed"].description and "12 — Erfolg" in edit["embed"].description
     assert len(edit["attachments"]) == 1 and edit["view"] is None
+    assert edit["embed"].image.url == f"attachment://{DICE_FILENAME}"  # same message, still big
 
 
 def test_accepting_the_failure_keeps_the_first_die_and_only_drops_the_buttons(monkeypatch, tmp_path) -> None:

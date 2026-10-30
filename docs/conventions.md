@@ -51,11 +51,28 @@ here is its contract, which DMbot calls:
   engine, never inline their own dice logic.
 - **Dice result thumbnails (`dmbot/dice_images.py`):** a posted dice result goes through
   `DiceCog._result_edit` / `discord_ui.dice.result_embed` — the unchanged German line as the
-  embed description, the rolled die as `set_thumbnail` (never `set_image`). Show the **raw**
+  embed description, the rolled die as `set_thumbnail` — except a dice-button test, where target, throw and result are all `set_image` (big, `large=True`; button below). Show the **raw**
   face (`TestResult.roll`), not a modified value; the palette comes only from the engine flags
   via `palette_for` (the UI decides nothing). Fail-open: a render problem posts the embed without
   a picture. Stand-in runtimes without `_dice_images` keep plain text, so tests don't render.
   Cache `data/dice/` (git-ignored); pre-render with `uv run python tools/generate_dice.py`.
+- **Target die + throw animation (D128):** `DiceCog._post_dice_button` attaches the steel
+  "≤target" die big (`set_image`; an embed picture can't be the button, so 🎲 sits below it) (`get_target_image_async`, `discord_ui.dice.target_embed`) when the test has a
+  target 1–100. With `DM_DICE_ANIMATION` on, the click resolves and feeds the DM **at once**; only
+  the two cosmetic edits (throw GIF via `get_dice_gif_async`, then `_result_edit`) run in a task
+  (`_animate_result`). The throw is picked and pre-rendered when the button is posted
+  (`prepare_throw_async`; the click then needs ~0.5 s instead of ~3 s). The GIF starts mid-throw
+  (the posted PNG is the target picture), has 32 colours (~300 KB), and the result replaces it
+  `REVEAL_GRACE_S` after the landing; the log line `🎲 throw gif: built … in Discord …` times it.
+  Changing the frame plan → bump `FRAME_SET_VERSION` (stale pool frames) and re-run `--throw-pool`.
+  **Stored GIFs (ADR 064):** with `DM_DICE_ASSET_CHANNEL` set, `dmbot/dice_assets.py` uploads the 75
+  flight-only GIFs once (`on_ready`; message ids in `data/dice/anim/assets.json`, links refreshed by
+  re-fetching, never re-uploading) and `DiceCog._animate_stored` points edit 1 at the link; the
+  result stays an uploaded attachment, started early by the learnt `_upload_lead_s`, and a Fate choice rides on edit 2. The trajectory comes from
+  `dice_images._THROW_RNG`, never `self._rt._rng`. Renderer stages live in `tools/generate_dice.py`
+  (`shaded_die` → `transform` → `ascii_pass`; move the *shaded* die, never the ASCII image); the
+  physics + frame plan in `tools/dice_throw.py` is a tuned prototype — keep it verbatim. Pool:
+  `--throw-pool`; look at one: `--preview-throw <seed>` → `data/dice/anim/preview_s<seed>.gif`.
 
 ## Rules engine (`dmbot/rules/`)
 
@@ -141,7 +158,9 @@ nicht Qualität.** Exit 0 grün / 1 Abweichung / 2 unbrauchbares Transcript.
 
 Zwei Ebenen, bewusst getrennt — die billige läuft von selbst, die teure nach Urteil.
 
-**Automatisch, nach jeder Antwort** (Stop-Hook `tools/hooks/test-on-change.sh`): wenn etwas
+**Von Hand, vor dem Commit** (`bash tools/hooks/test-on-change.sh`; der Stop-Hook dafür ist seit
+2026-10-31 auf Tobis Wunsch aus — er ließ die ganze Suite nach jeder Antwort laufen, solange etwas
+uncommittet war): wenn etwas
 unter `dmbot/` `tests/` `data/systems/` geändert wurde, laufen **`ruff --select F`** (pyflakes:
 ungenutzte Importe/Namen, undefinierte Namen — fängt den Dead-Import-Cruft, den eine
 Auslagerung hinterlässt) **+ die Test-Suite**. Still bei grün, Ausgabe nur bei Fehler

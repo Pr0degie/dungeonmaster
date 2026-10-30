@@ -264,6 +264,8 @@ class SessionRuntime:
         self._npc_router = config.npc_router
         self._fate_wait_seconds = config.fate_wait_seconds
         self._dice_images = config.dice_images  # dice result thumbnails (dmbot/dice_images.py)
+        self._dice_animation = config.dice_animation  # throw GIF between click and result
+        self._dice_asset_channel = config.dice_asset_channel  # stored throw GIFs (ADR 064)
         # In-game minutes a narrated turn costs (ADR 059 #2); the bigger scene-change advance
         # stays _scene_time_advance above.
         self._turn_time_advance = config.turn_time_advance
@@ -522,11 +524,12 @@ class SessionRuntime:
 
     async def _send_with_retry(self, channel, content: str | None = None, *,
                                view: discord.ui.View | None = None,
-                               embed: discord.Embed | None = None):
+                               embed: discord.Embed | None = None,
+                               file: discord.File | None = None):
         """Send a message, retrying once on a transient Discord 5xx (e.g. the 503 seen mid-session).
         Discord caps message ``content`` at 2000 chars (HTTP 400, code 50035), so a longer answer
-        (the `!intro` monologue, a long DM turn) is split into several messages; any ``view``/``embed``
-        rides on the **last** one so the dice button / turn-order view sits after the full text.
+        (the `!intro` monologue, a long DM turn) is split into several messages; any ``view``/``embed``/
+        ``file`` rides on the **last** one so the dice button / turn-order view sits after the full text.
         Returns the last message sent."""
         pieces = split_for_discord(content) if content else [None]
         last = None
@@ -537,6 +540,8 @@ class SessionRuntime:
                 kwargs["view"] = view
             if on_last and embed is not None:
                 kwargs["embed"] = embed
+            if on_last and file is not None:
+                kwargs["file"] = file
             last = await self._send_once(channel, piece, kwargs)
         return last
 
@@ -546,8 +551,8 @@ class SessionRuntime:
         try:
             return await channel.send(content, **kwargs)
         except discord.HTTPException as exc:
-            if (getattr(exc, "status", 0) or 0) < 500:
-                raise
+            if (getattr(exc, "status", 0) or 0) < 500 or "file" in kwargs:
+                raise  # (a sent discord.File is closed — it can't ride a retry; the caller falls back)
             log.warning("Discord send failed (HTTP %s) — retrying once", getattr(exc, "status", "?"))
             await asyncio.sleep(1.0)
             try:

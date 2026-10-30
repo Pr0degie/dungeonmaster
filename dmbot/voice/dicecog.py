@@ -4,14 +4,25 @@ cross-cog flow goes through its hooks (ADR 029). Bot replies are German; logs En
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 
 import discord
 from discord.ext import commands
 
-from ..dice_images import get_dice_image_async, palette_for, roll_image_value
+from ..dice_assets import DiceAssetStore
+from ..dice_images import (
+    flight_seconds,
+    get_dice_gif_async,
+    get_dice_image_async,
+    get_target_image_async,
+    palette_for,
+    prepare_throw_async,
+    roll_image_value,
+)
 from ..llm.roll_router import is_continuation_fragment, roll_button_source, superseded_by_manifest
-from ..discord_ui.dice import DiceTestView, result_embed
+from ..discord_ui.dice import DiceTestView, result_embed, target_embed, throw_embed, throw_link_embed
 from ..discord_ui.fate import FateView
 from ..discord_ui.turnorder import TurnOrderView
 from ..discord_ui.rules import RulesView
@@ -26,6 +37,11 @@ from ..runtime import SessionRuntime
 
 log = logging.getLogger(__name__)
 
+# Seconds after the throw GIF has landed before the static result replaces it (D128).
+REVEAL_GRACE_S = 1.0
+# Stored flight GIF (ADR 064): clients start it a little after the edit lands (download).
+CLIENT_START_S = 0.3
+
 
 class DiceCog(commands.Cog):
     def __init__(self, bot: commands.Bot, runtime: SessionRuntime) -> None:
@@ -36,6 +52,21 @@ class DiceCog(commands.Cog):
         # (cid, name) pairs already warned about an untracked party psyker — keep it one-time so the
         # channel isn't spammed every Manifest Test (finding #2).
         self._warp_untracked_warned: set[tuple[int, str]] = set()
+        # Running throw animations (cosmetic message edits) — referenced so they aren't collected.
+        self._presentations: set[asyncio.Task] = set()
+        # Throw GIFs stored once in Discord (ADR 064); None = upload per roll.
+        spec = str(getattr(runtime, "_dice_asset_channel", "") or "")
+        self._assets: DiceAssetStore | None = DiceAssetStore(spec) if spec else None
+        # How long the result edit (an upload) takes — learnt per roll, so it starts early enough.
+        self._upload_lead_s = 1.0
+
+    @commands.Cog.listener()
+    async def on_ready(self) -> None:
+        """Store the throw GIFs in each guild's storage channel (once; later starts only re-fetch)."""
+        if self._assets is None or not self._dice_animation_on():
+            return
+        for guild in self.bot.guilds:
+            self._spawn_presentation(self._assets.ensure(guild))
 
     async def _handle_dice(self, channel) -> None:
         """Post the turn's dice button. The router wins when it's on (D43, flips D40's dedupe):
@@ -145,12 +176,23 @@ class DiceCog(commands.Cog):
             diff = ""
         label = f"{who} würfelt: {skill}" + (f" ({diff})" if diff else "")
         note = "" if req.parsed else " (unklarer Marker — manuell prüfen)"
-        await self._rt._send_with_retry(
-            channel, f"🎲 Probe angefordert{note}:",
-            view=DiceTestView(label, self._make_dice_roll(channel, req, resolved)),
-        )
+        text = f"🎲 Probe angefordert{note}:"
+        # Pick the throw now and render its groundwork, so the click only renders the landing.
+        # Cosmetic, in the background: the button does not wait for it.
+        prep = (self._spawn_presentation(prepare_throw_async())
+                if self._dice_animation_on() and resolved.target is not None else None)
+        view = DiceTestView(label, self._make_dice_roll(channel, req, resolved, prep=prep))
+        image = await get_target_image_async(resolved.target) if self._dice_images_on() else None
+        if image is not None:  # the steel "≤target" die; a free !roll / no sheet value has none
+            embed, file = target_embed(resolved.target, image)
+            try:
+                await self._rt._send_with_retry(channel, text, view=view, embed=embed, file=file)
+                return
+            except Exception:  # cosmetic — never lose the dice button over its picture
+                log.warning("dice button with target die failed — posting it without", exc_info=True)
+        await self._rt._send_with_retry(channel, text, view=view)
 
-    def _make_dice_roll(self, channel, req: TestRequest, resolved):
+    def _make_dice_roll(self, channel, req: TestRequest, resolved, *, prep=None):
         """Build the roll callback for a dice button: the engine rolls + resolves, the message is
         replaced with the result, and it's fed back so the DM narrates the consequence.
 
@@ -172,11 +214,16 @@ class DiceCog(commands.Cog):
                                              skill, who, result, line),
                     timeout=float(getattr(self._rt, "_fate_wait_seconds", 20.0)),
                 )
-            shown = await self._result_edit(line, face, palette_for(result))
-            try:
-                await interaction.message.edit(**shown, view=view)  # result (+ Fate choice)
-            except discord.HTTPException:
-                await self._rt._send_with_retry(channel, line, view=view)
+            if self._dice_animation_on() and resolved.target is not None:
+                # Cosmetic, in its own task: the throw GIF, then the result (+ Fate choice). The
+                # engine has resolved already, and the DM is fed below without waiting for it.
+                self._spawn_presentation(self._animate_result(
+                    channel, interaction.message, target=resolved.target, line=line, face=face,
+                    palette=palette_for(result), view=view, prep=prep,
+                ))
+            else:
+                await self._show_result(channel, interaction.message, line, face,
+                                        palette_for(result), view)  # result (+ Fate choice)
             if view is not None:
                 return  # the Fate decision narrates
             await self._finish_roll(channel, guild_id, result, line, skill, who)
@@ -207,14 +254,123 @@ class DiceCog(commands.Cog):
         """Dice result thumbnails on? Off for stand-in runtimes that don't set the flag."""
         return bool(getattr(self._rt, "_dice_images", False))
 
-    async def _result_edit(self, text: str, face: int | None, palette: str) -> dict:
+    def _dice_animation_on(self) -> bool:
+        """Throw animation on? Needs dice images; off for stand-in runtimes without the flag."""
+        return self._dice_images_on() and bool(getattr(self._rt, "_dice_animation", False))
+
+    async def _show_result(self, channel, message, line: str, face: int | None, palette: str,
+                           view) -> None:
+        """Edit the button message into the result (+ ``view``, the Fate choice); if it can't be
+        edited, post the line (and the view) as a new message."""
+        shown = await self._result_edit(line, face, palette, large=True)
+        try:
+            await message.edit(**shown, view=view)
+        except discord.HTTPException:
+            await self._rt._send_with_retry(channel, line, view=view)
+
+    def _spawn_presentation(self, coro) -> asyncio.Task:
+        task = asyncio.create_task(coro)
+        self._presentations.add(task)
+
+        def _done(t: asyncio.Task) -> None:
+            self._presentations.discard(t)
+            if not t.cancelled() and t.exception() is not None:
+                log.error("dice presentation failed", exc_info=t.exception())
+
+        task.add_done_callback(_done)
+        return task
+
+    async def _animate_result(self, channel, message, *, target: int, line: str, face: int | None,
+                              palette: str, view, prep=None) -> None:
+        """Presentation only, exactly two edits: the throw GIF, then — once it has played — the
+        static result (+ ``view``). No GIF (render failed, value outside 1–100) → straight to the result. A
+        deleted message ends it quietly, unless a Fate choice still needs a home (it carries the
+        narration, so it is posted anew)."""
+        started = time.monotonic()
+        seed = await prep if prep is not None else None  # the throw prepared at post time
+        assets = getattr(self, "_assets", None)
+        link = (assets.url(getattr(channel, "guild", None), seed, palette)
+                if assets is not None and seed is not None and face is not None else None)
+        if link is not None:
+            await self._animate_stored(channel, message, link=link, seed=seed, line=line, face=face,
+                                       palette=palette, view=view, started=started)
+            return
+        anim = await get_dice_gif_async(target, face, palette, seed)
+        if anim is not None:
+            gif, landed = anim
+            built = time.monotonic()
+            embed, file = throw_embed(gif)
+            try:
+                await message.edit(content=None, embed=embed, attachments=[file])  # edit 1
+            except discord.NotFound:
+                await self._message_gone(channel, line, view)
+                return
+            except discord.HTTPException:
+                log.warning("dice throw edit failed — showing the result directly", exc_info=True)
+            else:
+                log.info("🎲 throw gif: built %d ms, in Discord %d ms after the click (%d KiB)",
+                         (built - started) * 1000, (time.monotonic() - started) * 1000,
+                         gif.stat().st_size // 1024)
+                # Reveal once the die has landed, plus a grace second: clients start the GIF a
+                # moment late (download), and the landing should be seen before it's swapped.
+                await asyncio.sleep(landed + REVEAL_GRACE_S)
+        shown = await self._result_edit(line, face, palette, large=True)
+        try:
+            await message.edit(**shown, view=view)  # edit 2
+        except discord.NotFound:
+            await self._message_gone(channel, line, view)
+        except discord.HTTPException:
+            await self._rt._send_with_retry(channel, line, view=view)
+
+    async def _animate_stored(self, channel, message, *, link: str, seed: int, line: str, face: int,
+                              palette: str, view, started: float) -> None:
+        """:meth:`_animate_result` with a flight GIF stored in Discord (ADR 064): edit 1 only
+        points at it (no upload), and edit 2 — the result picture, which is uploaded so it stays
+        in the history — starts early by the learnt upload time, to land with the die."""
+        try:
+            await message.edit(content=None, embed=throw_link_embed(link), attachments=[])  # edit 1
+        except discord.NotFound:
+            await self._message_gone(channel, line, view)
+            return
+        except discord.HTTPException:
+            log.warning("dice throw edit failed — showing the result directly", exc_info=True)
+            await self._show_result(channel, message, line, face, palette, view)
+            return
+        shown_at = time.monotonic()
+        shown = await self._result_edit(line, face, palette, large=True)  # ready before the wait
+        lead = self._upload_lead_s
+        await asyncio.sleep(max(0.0, flight_seconds(seed, palette) + CLIENT_START_S - lead))
+        sent = time.monotonic()
+        try:
+            await message.edit(**shown, view=view)  # edit 2
+        except discord.NotFound:
+            await self._message_gone(channel, line, view)
+            return
+        except discord.HTTPException:
+            await self._rt._send_with_retry(channel, line, view=view)
+            return
+        took = time.monotonic() - sent
+        self._upload_lead_s = min(3.0, max(0.2, 0.7 * lead + 0.3 * took))
+        log.info("🎲 throw gif (stored): in Discord %d ms after the click; result upload %d ms "
+                 "(lead %.1f → %.1f s)", (shown_at - started) * 1000, took * 1000, lead,
+                 self._upload_lead_s)
+
+    async def _message_gone(self, channel, line: str, view) -> None:
+        if view is None:
+            log.info("dice message deleted during the throw animation — result stays unshown there")
+            return
+        await self._rt._send_with_retry(channel, line, view=view)
+
+    async def _result_edit(self, text: str, face: int | None, palette: str, *,
+                           large: bool = False) -> dict:
         """The ``message.edit`` arguments that show a dice result: plain text as before, or (dice
-        images on) an embed carrying the same line with the rolled die as a thumbnail. The palette
-        comes from the engine's critical/fumble flags (:func:`palette_for`)."""
+        images on) an embed carrying the same line with the rolled die as a thumbnail — ``large``
+        for a dice-button test, whose target and throw are big too. The palette comes from the
+        engine's critical/fumble flags (:func:`palette_for`)."""
         if not self._dice_images_on():
             return {"content": text}
         image = await get_dice_image_async(face, palette)
-        embed, file = result_embed(text, image, palette)
+        embed, file = result_embed(text, image, palette, large=large)
         return {"content": None, "embed": embed, "attachments": [file] if file else []}
 
     def _fate_holder(self, channel, who: str | None):
@@ -251,7 +407,7 @@ class DiceCog(commands.Cog):
             elif content == line:
                 shown = {}  # kept: the embed with the first die stays, only the buttons go
             else:  # rerolled: both lines, and the die of the result that stands
-                shown = await self._result_edit(content, face, palette_for(final_result))
+                shown = await self._result_edit(content, face, palette_for(final_result), large=True)
             try:
                 await message.edit(**shown, view=None)
             except discord.HTTPException:

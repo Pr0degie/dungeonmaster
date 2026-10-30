@@ -12,6 +12,77 @@ offene Fragen) steht in [`../progress.md`](../progress.md), das Decision-Log in
 
 _Index, aus `progress.md` verschoben (2026-10-25):_ Ältere `## Last session`-Einträge (`DM_CLOCKS`-Schalter D118 2026-10-06, Charakter-Akten `docs/characters.html` + Umbenennung Rene Redo 2026-08-22, Vierter Charakter Vinzentius Kabelbrand D105 2026-08-22 [90-Punkte-Bogen gegen das Profil gerechnet, Deployment in beide `characters.json`, Augmetik-Check reaktiviert], Playtest-Triage nach dem ersten Debug-Abend 2026-08-15 [Fehlstart in der Live-Kampagne, `session_file()`-Naht, Sanitize, Testabend-Doku, Kommando-Fehlermeldung → ADR 056], Doku-Drift-Sweep 2026-07-18 [5 Drift-Funde, alle gefixt; ADR-Renumber 019/020], Debug-Sandbox + Gate G10 2026-07-17 [`.debug`-Archive → `session_debug`-Source, `--wipe-debug` → ADR 055], Session-RAG-Runde D101 2026-07-17 [Ingest + Hybrid-Retrieval + Kalibrierung, Verifier-Fund `session_chunks_vec` → ADR 054], Journal-Runde D100 2026-07-17 [Scene-Events + `time_minutes` im Journal → ADR 053], Content-Runde Debug-Kampagne „Die Mitternachtsfracht“ 2026-07-11 [adventure/npcs/testplan lokal, `validate.py` RESULT: OK, Gate-Abdeckung G1–G9 → Runbook], D99 🧪-Debug-Overlay-Runde 2026-07-11 [Sidecar-Loader `testplan.py`, edit-in-place-Panel, Invisibility-Pin → ADR 052], Live-Gate-Triage 2026-07-11 [alle 8 Gates + Tuning-Checks in EIN Abend-Drehbuch gemerged, `docs/live-run-script.md`; Checklisten-Korrekturen per Code-Sweep], Workflow-Migration Runde 4/5 2026-07-11 [roadmap-Modell-Tabelle → Effort-first-Block + konservativer Skill-Sweep], Doc-Diet-Runde 2026-07-11 [State header + Rotation + Decision-Log-Diät], D98 Marker-Registry-Konsolidierung [`MarkerSpec`-Tabelle + eine generische Naht, marker-weise migriert → ADR 051], D97 Chekhov-Liste [Fäden-Schema + Wrap-up-Extraktion + Top-3-Injektion + ChekhovCog → ADR 050], D96 NPC-Agenden [`goal` + `agenda_log` + Extraktor-Erweiterung → ADR 049], D95 Ingame-Zeit [Minuten-Zähler + `<<ZEIT>>`-Marker + Fristen + Druck-Panel → ADR 048], D94 Consequence Clocks [`<<UHR id>>`-Marker + ClockCog + Druck-Panel + Voll-Uhr-`[Regie]`-Note → ADR 047], D93 Replay-Eval-Harness [Replay-Journal + `uv run dm-eval`, 6 Diff-Kategorien, synthetische Goldens → ADR 046], D92 Konsistenz-Wächter [deterministischer Pre-Delivery-Check, Regenerate-once, fail-open → ADR 045], D91 NPC-Gedächtnis [NpcMemory-Schema + Extraktor + Lügen-Flip/Gossip + Prompt-Block → ADR 044], D90 `dm-sync`-Entry-Point [Package-Move + hatchling, byte-identischer `[sync]`-Block], D89 Sync-Check-Fingerprint-Tool [`[sync]`-Block, Ingest-Stempel, SETUP.md-Sync-Sektion], D88 `/author-adventure`-Authoring-Skill [5-Pass-Workflow + `validate.py`, Dry-Run-Abnahme gegen Chemical Burn], D87 Stateful Scene Cards [`<<ERLEDIGT>>`-Flags, tote NSCs, gated Exits → ADR 043], D85+D86 Spielbarkeits-Tuning [repeat_penalty + Roll-Router-Carve-out, `intro_guard`-Retry], D84 `!intro`-Meta-Auftakt-Strip + Temp 0.7, D83 `!intro`-Temperatur + Direktive, D82 Default-Party-Fix, D81 Scene-/Lore-Sub-Cogs, D80 Deepening #4–#6 [prompt_assembly/seed_session/clear_panel], D79 Deepening #1+#2 [`combat.py`-Auslagerung + `segments.py`-Verdrahtung], D78 Skill-Tooling-Runde [4 Claude-Code-Skills: /tdd, /grill-me, /improve-architecture, /to-prd], D77 Dev-Gates [Lint-Stop-Hook + blockierender git-pre-commit + Review/Simplify-Checkliste], D76 `disconnect_voice`-Kontrakt + neuer Delivery-Test, D75 One-Shot-Setup, D74
 
+_Aus `progress.md` rotiert (2026-10-30, Wrap-up D128/D129):_
+
+**Würfel-Thumbnails (2026-10-25 nachts, D127).** Tobis ASCII-W20-Generator liegt jetzt in `tools/generate_dice.py`
+(Font-Auflösung DejaVu → Arial/Consolas, eigener RNG statt `random.seed()`, Ausgabe byte-identisch zum Original).
+`dmbot/dice_images.py` rendert bei Bedarf (~0,1 s, im Thread) nach `data/dice/<palette>/` und fällt bei Fehlern
+auf ein Embed ohne Bild zurück. Button, `!test`, Schicksals-Neuwurf, Manifestation und `!roll` (Summe ≤ 100) zeigen
+den Rohwurf als Thumbnail; die Engine blieb unverändert (`critical`/`fumble` gab es schon). `pillow` deklariert.
+1299 Tests grün (+17), `dm-eval` Exit 0, ruff ohne neue Meldungen. Am Tisch unverifiziert: das Bearbeiten der
+Button-Nachricht mit neuem Anhang.
+
+**Vierter Opus-Lauf, sieben Fixes (2026-10-25 spätabends, D123).** Tobi und Sezgin, nur Fridolin + Rektalus.
+Gehalten: D121/D122 live, `cut` 6/47, erstes Audio ~9,9 s im Schnitt. Neu gefunden und behoben:
+- **Psi doppelt, zweiter Anlauf:** Dread Presence bekam neben der Manifestation eine Router-Probe auf „Fel“; der
+  D121-Fix griff nur bei Psi-Meisterschaft. Jetzt fällt jede Router-Probe der manifestierenden Figur weg.
+- **Puppet-Filter (D113) strich Kaads Satz** „Kaad bemerkt, wohin Fridolin schaut, … und sagt: …“. Der Name zählt
+  nur noch als Subjekt: am Teilsatzanfang vor dem Verb oder direkt danach (nur Kleinwörter dazwischen, kein „zu/an“).
+- **„Wechseln“ nach Auto-Wechsel:** Marker-Vorschlag und Szenen-Klassifikator lösten beide aus. Jeder echte Wechsel
+  schließt jetzt den offenen Vorschlag (`retire_scene_proposal`), der Button verschwindet.
+- **Fernkampf „Schwierig“ ohne Grund:** Klassifikator-Regel, Standard Herausfordernd, schwerer/leichter nur mit
+  klarem Grund aus der Handlung (Tobis Wahl).
+- **„Ich weiß mein Skill-Set nicht“ (Sezgin):** Fertigkeiten + Talentnamen stehen als `## Bögen der Spielfiguren`
+  im Prompt (Tobis Wahl: per DM fragen, kein Befehl); ~490 Zeichen.
+- **„Niemand sagt, was er will“ (Tobi):** Persona — NSCs machen ihr Anliegen deutlich; stockt die Gruppe, nennt der
+  DM in einem Satz zwei, drei Möglichkeiten (Tobi: beides).
+- **Belegt:** 1248 Tests grün, `dm-eval` Exit 0, `ruff --select F` sauber. Am Tisch unverifiziert.
+- **Nachtrag D124 / ADR 062, erfundene Gegner:** beide Laspistolen-Treffer gingen auf Seneschall Kaad (zwei Szenen
+  weiter, danach 0/8 und aus dem Prompt verschwunden), weil die Zielauswahl alle NSCs anbot und Opus' Kettenmänner nie
+  im Spielstand standen. Tobi wählte „automatisch anlegen“. Jetzt: dritter Nach-Zug-Klassifikator (`npc_router`,
+  Haiku, `DM_NPC_ROUTER`, `!automatik nscs`) meldet Neue, Code legt sie mit Abenteuer-Statblock oder
+  `combat.improvised_npc` an (`Combatant.scene`), „anwesend“ = Szenenkarte + dort gesehen, für Prompt,
+  NSC-Gedächtnis und Zielauswahl. Live per Einzelaufruf: 3/3 nach einer Prompt-Schärfung (vorher legte Haiku den
+  Verwundeten doppelt an). 1265 Tests grün, `dm-eval` Exit 0. Offen: einmal las Opus einen Planungssatz vor.
+
+**Dritter Opus-Lauf und vier Regel-/Filter-Fixes (2026-10-25 abends, D121).** Tobi, Sezgin, Timo und BloodyP
+spielten ~45 min „Die Mitternachtsfracht“. Tobi: „ich konnte keine Heimlichkeit machen … alle Skillchecks sind
+fehlgeschlagen.“ Diagnose aus `terminal.log`/`debug.log`: 9/9 Proben verfehlt bei Zielen 12–51 (P ≈ 1,7 %); die
+Engine ist fair (100k-Simulation trifft die Quoten), Fridolins Heimlichkeit 48 −10 (Schwierig) = 38 ist korrekt.
+- **Patzer überall:** die Engine markierte jeden Pasch als Patzer/kritisch, IM kennt das nur bei Angriffen
+  (S. 213; stand schon im Profil-`_note`). Opus erzählte aus „Heimlichkeit 66 — Patzer“ und „Psi 44 — Patzer“
+  Katastrophen, einen Warp-Unfall ohne Perils-Wurf. Jetzt: Profil-Schlüssel `crit_scope: "attack"`,
+  `engine.scope_doubles()` am Würfel-Button und an der Warp-Kontrollprobe; Manifestationen behalten ihre Pasch-Regel.
+- **Doppelte Psi-Probe:** eine Psi-Aktion bekam einen Dread-Presence-Manifest-Button *und* einen Router-Button
+  „Psi-Meisterschaft (Schwierig)“; beide wurden gewürfelt. Jetzt verwirft der Router eine Probe auf die
+  Manifest-Fertigkeit, wenn dieselbe Figur in dem Zug manifestiert (`superseded_by_manifest`).
+- **Router auf Satzfragment:** Sezgins ganzer Zug „dass wir das Osadium suchen.“ wurde zu Wahrnehmung.
+  Jetzt überspringt der Router Züge, die mit „dass/daß/weil“ beginnen (`is_continuation_fragment`, bewusst eng).
+- **Puppet-Filter (D113) zu scharf:** „…Helmstimme: „Inquisition, sagst du? Dann zeig mir das Siegel …““ — der
+  Satz flog raus, die Antwort begann mitten im Zitat. Jetzt zählt nur die Erzählung außerhalb von Anführungszeichen
+  (Zustand über Sätze hinweg, auch im Stream); „„…“, sagst du.“ wird weiter gestrichen.
+- **Belegt:** 1232 Tests grün (14 neue), `dm-eval` Exit 0, `ruff --select F` sauber; Live-Fälle mit echtem
+  IM-Profil nachgerechnet. Am Tisch unverifiziert.
+- **Nachtrag D122, Inventar nie im Prompt:** „Was habe ich dabei?“ → „das weißt nur du“, und die Arbites fanden
+  Fridolins Siegel nicht, das auf seinem Bogen steht. Ursache: `world_state_summary_de` rendert seit Phase 9 nur
+  Wunden/Zustände; `equipment`/`weapons` kamen nicht mal in den Zustand. Jetzt: `Ausrüstung`-Zeile pro Figur,
+  Seed führt `inventory` + `equipment` + Waffennamen zusammen (`merge_gear`). 1238 Tests grün, `dm-eval` Exit 0.
+  Alte `state.json` behalten ihre Liste (Seed nur beim ersten `!join`) — die Debug-Sandbox wird ohnehin geleert.
+- **Spieler-Feedback ohne Fix:** TTS-Betonung über Satzgrenzen (Modus `flach`), Intro zu lang, Uhrzeit zu genau,
+  Codewort für Regelfragen gewünscht. Inhaltlich: die Spieler spielten
+  sexuelle Gewalt an; der DM schilderte nichts davon und ließ die Welt reagieren — so gewollt.
+
+_Aus `progress.md` rotiert (2026-10-30, D128):_
+
+**Die ersten Opus-Züge am Tisch, und drei Fixes (2026-10-25, D119/D120).** Tobi hat zweimal mit Opus gespielt (allein, Debug-Kampagne). Ergebnis: Opus erzählt, nachdem drei Fehler raus sind, die erst am Tisch sichtbar wurden; alles steht in ADR 061 (Nachtrag 2026-10-25) und ADR 057 (Nachtrag).
+- **Lauf 1, leere Züge:** Opus denkt trotz `thinking=disabled`, und das Denken zählt gegen das Ausgabelimit; bei 220 Tokens blieb für Text nichts. Jetzt: `effort="low"` für Erzählung, 1024 Tokens Puffer pro Anfrage, die Sprechgrenze hält der Client selbst am Text. Live: erstes Wort nach ~3,7 s, `think=` ~70.
+- **Lauf 2, abgeschnitten:** 16 von 17 Zügen gekappt, weil 220 Tokens bei Opus nur ~440 Zeichen sind (Nemo ~750). Tobi will keine Satzquote, „ein GM redet mal viel, mal wenig“ — also gilt jetzt Nemos Sprechlänge (3,4 Zeichen pro Token); die Persona bleibt heute unverändert.
+- **Lauf 2, Gedächtnis weg:** der Auto-Recap wurde bei 807 Zeichen mitten im Satz gekappt, „Dockmeister Kessel“ fiel raus, der nächste Zug leugnete ihn. Die Sprechgrenze gilt jetzt nur für gestreamte Züge; live über dieselben 15 Züge: 1275 Zeichen, vollständig.
+- **Lauf 2, kein Szenenwechsel:** der Router sah nur den aktuellen Zug, der den Ort oft nicht nennt. Er bekommt jetzt den vorigen Zug und die Spielerzeile als Kontext; Haiku-Replay: Betreten 3/3, Gespräch 0/3.
+- **Belegt:** 1215 Tests grün (12 neue), `dm-eval` Exit 0, Lint sauber, Preflight live OK. Sandbox danach geleert. Commits `6959481`, `ab25cad`. Am Tisch unverifiziert: alle drei Fixes zusammen.
+- **Nachtrag, Spielerzeilen im Kanal:** Tobi: „im Discord soll auch stehen, was die Player gesagt haben, sonst kann man die Geschichte nicht lesen.“ Jede an den DM geroutete Zeile wird jetzt direkt nach der Transkription als `🗣 **Figur:** …` gepostet (Markdown/@everyone entschärft); Tischgespräch ohne Push-to-talk bleibt im Log. Schalter `DM_POST_PLAYER_LINES=0`. 1218 Tests grün, Lint sauber; live unverifiziert.
+- **Nachtrag, schlankerer Arbeitsablauf:** Tobi fand, das Ritual verbrauche zu viel Kontext. Gemessen: Pflicht-Lektüre ~41 KB, davon 23 KB die neueste ADR; `progress.md` 85 KB, davon 60 KB Decision-Log. Jetzt: der Start liest nur `CLAUDE.md` + State header, ADRs und Lessons nur bei Subsystem- oder Phasenarbeit (ADR 061 hat dafür einen `## Current state`); das Decision-Log liegt in [docs/decision-log.md](docs/decision-log.md) (`D##` unverändert); `progress.md` ist auf 40 KB gedeckelt (jetzt ~27 KB); kleine Runden tragen ihren Fortschritt im selben Commit ein. Lokal abgeschaltet: Plugins engineering, pdf-viewer, csharp-lsp.
+
 _Aus `progress.md` rotiert (2026-10-25, D119/D120):_
 
 **`DM_CLOCKS`: ein `.env`-Schalter für die Uhren (2026-10-06, D118).** Für den Abend müssen die Uhren aus sein; bisher ging das nur von Hand mit `!uhr weg` nach jedem `!j`. Jetzt steht `DM_CLOCKS=0` in der `.env`. Davor am selben Tag: Tobis Rechner für den Abend vorbereitet (CLI, `.env` nach §9.2, Preflight, XTTS auf der GPU, alte Logs wegrotiert) — Einzelheiten im Archiv.

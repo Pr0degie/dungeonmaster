@@ -94,6 +94,12 @@ class Config:
     fate_wait_seconds: float = 20.0
     # Dice results as an embed with the rolled die as a thumbnail (dmbot/dice_images.py). Default on.
     dice_images: bool = True
+    # A test's button shows the target die; the click plays a throw GIF before the result (needs
+    # dice_images). Presentation only — the engine resolves and the DM is fed right away.
+    dice_animation: bool = True
+    # Storage channel for the pre-uploaded throw GIFs (ADR 064): a channel name ("botcommands") or
+    # id. The GIFs are uploaded there once; a click then only points at them. Empty = upload per roll.
+    dice_asset_channel: str = ""
 
     @classmethod
     def load(cls) -> "Config":
@@ -387,6 +393,9 @@ class Config:
             fate_wait_seconds=float(os.environ.get("DM_FATE_WAIT_SECONDS", "20")),
             dice_images=os.environ.get("DM_DICE_IMAGES", "1").strip().lower()
             in ("1", "true", "yes", "on"),
+            dice_animation=os.environ.get("DM_DICE_ANIMATION", "1").strip().lower()
+            in ("1", "true", "yes", "on"),
+            dice_asset_channel=os.environ.get("DM_DICE_ASSET_CHANNEL", "").strip(),
             post_player_lines=os.environ.get("DM_POST_PLAYER_LINES", "1").strip().lower()
             in ("1", "true", "yes", "on"),
         )

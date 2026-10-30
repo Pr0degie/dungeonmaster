@@ -12,28 +12,15 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** D123 + D124 — vierter Opus-Lauf (2026-10-25 spätabends, Tobi + Sezgin). D121/D122 halten
-  live. D123: sechs kleine Fixes (Psi-Doppelprobe über „Fel“, Puppet-Filter-Subjekt, „Wechseln“ nach Auto-Wechsel,
-  Router-Default Herausfordernd, Fertigkeiten im Prompt, Persona-Richtung). D124/**ADR 062**: erfundene NSCs werden
-  per drittem Nach-Zug-Klassifikator angelegt und als anwesend geführt; Zielauswahl und Prompt kennen nur noch
-  Anwesende (Fridolins Schüsse trafen Kaad, zwei Szenen weiter). **1265 Tests grün, `dm-eval` Exit 0**; Haiku live
-  per Einzelaufruf 3/3 Fälle richtig (nach einer Prompt-Schärfung gegen Doppel-Anlage).
-- **Nachtrag (D125):** am Ende von Lauf 4 starben TTS und STT: zwei Erzählungen (Psi-Doppelwurf) ließen XTTS
-  parallel laufen → `device-side assert`, CUDA-Kontext des Prozesses kaputt, Whisper mit. Jetzt: Sperre um jede
-  XTTS-Synthese, `dmbot/gpu_health` meldet den ersten CUDA-Fehler einmal im Kanal („Bot neu starten“), danach
-  kurze Logzeilen statt Tracebacks. 1272 Tests grün, `dm-eval` Exit 0.
-- **Nachtrag (D126 / ADR 063):** Schicksalspunkte — eine misslungene Probe zeigt „🙏 Neu würfeln / Hinnehmen“,
-  der DM erzählt erst danach (20 s Timeout), Erholung bei `!join`, `Schicksal x/y` im Weltzustand. Persona:
-  Fehlschlag echt, aber mit Folge statt Sackgasse, Maß nach EG. 1282 Tests grün, `dm-eval` Exit 0.
-- **Nachtrag (D127):** Würfelergebnisse als Embed mit dem gewürfelten W20 als Thumbnail (Gold = kritisch,
-  Grün = Patzer, aus den Engine-Flags), gerendert bei Bedarf nach `data/dice/`; `DM_DICE_IMAGES=0` = Text.
-  Reine Darstellung, Goldens unverändert. 1299 Tests grün, `dm-eval` Exit 0. In Discord live-unverifiziert.
-- **Next concrete step:** fünfter Lauf (Sandbox leeren, Bot neu starten). Prüfen: Würfel-Thumbnail an jedem
-  Ergebnis (auch nach „🙏 Neu würfeln“ der zweite Würfel), `👥 anwesend in …`-Zeilen für
-  improvisierte Gegner, Zielauswahl zeigt nur Anwesende, kein Doppelwurf bei Psi, kein „Wechseln“ nach Auto-Wechsel,
-  NSCs sagen, was sie wollen, „Was kann ich?“ wird aus dem Bogen beantwortet, Schicksal-Buttons erscheinen
-  nach Fehlschlägen und Fehlschläge führen weiter statt in Sackgassen. `!sprechmodus nahtlos intoniert`
-  weiter ausprobieren. Danach `characters.json` zurück (`git checkout`), wenn Timo/Vinnie wieder mitspielen.
+- **Newest round:** D128 + D129 / **ADR 064** (2026-10-30) — Würfel-Wurfanimation. Der Probe-Post zeigt den
+  Zielwürfel „≤Ziel“ groß, der Klick ein Wurf-GIF, dann das Ergebnisbild; Engine und DM warten nicht darauf.
+  Die 75 Flug-GIFs liegen einmal in `#botcommands` (`DM_DICE_ASSET_CHANNEL`), der Klick zeigt nur auf den Link.
+  **1333 Tests grün, `dm-eval` Exit 0.** Am Tisch gesehen: Zielwürfel, GIF, Ergebnis; ADR 064 noch nicht live.
+- **Davor (2026-10-25):** D123/D124 (ADR 062, improvisierte NSCs anwesend), D125 (XTTS-Sperre + `gpu_health`),
+  D126 (ADR 063, Schicksalspunkte), D127 (Würfel-Thumbnails) — alle code-komplett, Details im Archiv/Log.
+- **Next concrete step:** Bot neu starten und im Log `dice assets: 75/75 throw GIFs ready` prüfen; ein paar
+  `!test Wahrnehmung für Tobi` — GIF in ~0,5 s? spielt es einmal und landet mit dem Ergebnisbild? Dann der
+  fünfte Lauf (Sandbox leeren, Bot A starten!) mit der Prüfliste im Abschnitt „Next concrete step“ unten.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
   geparkt (ADR 061, im [Live-Run-Skript](docs/live-run-script.md) markiert) und werden nach dem
   Abend neu gesichtet; sie zählen nicht gegen die WIP-Grenze.
@@ -49,6 +36,14 @@ _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-a
 
 ## Last session
 
+**Würfel-Wurfanimation (2026-10-30, D128/D129, ADR 064).** Eine Probe zeigt jetzt vor dem Klick groß, was man
+erreichen muss („≤37“, Steel), nach dem Klick fliegt der Würfel (Flipper-Physik aus Tobis Prototyp, 25 Bahnen) und
+landet auf dem Wurf; das Ergebnis steht groß mit Text. Engine und DM-Zeile laufen sofort, nur die zwei Edits warten.
+Am Tisch nachgeschärft: Zielzahl größer, GIF ohne Startbild, 32 Farben, Flug 60 ms (604 → 304 KB, 7,2 → 5,4 s),
+Ergebnis 1 s nach der Landung. Gemessen blieben ~1,2 s Upload im Edit → ADR 064: 75 Flug-GIFs einmal in
+`#botcommands`, der Klick zeigt nur auf den Link, das Ergebnisbild bleibt ein echter Anhang (startet früher).
+1333 Tests grün (+34), `dm-eval` Exit 0, `render()` byte-identisch. Lesson: Discord-Seite zuerst messen.
+
 **Test-Leck geschlossen (2026-10-25 nachts).** `tests/test_turn_boundary.py` schrieb bei jedem Suite-Lauf zwei
 Szenen-Events in das echte `data/sessions/7/history.jsonl` (seit 2026-08-23, 124 Zeilen; zwei Tests mit
 `_autosave=True`). Der Test-Runtime leitet `session_file` jetzt nach `tmp_path` um und schlägt ohne ihn fehl;
@@ -57,78 +52,17 @@ der Ordner ist gelöscht. Ein Datei-Schnappschuss um die volle Suite zeigt: nich
 Vektor-, FTS- und `meta`-Zeile gelöscht; `integrity_check` ok, `dm-sync` zeigt nur die sieben Wissensquellen. Lesson `isolation-must-enumerate-every-artifact`
 ergänzt. Sandbox für Lauf 5 geprüft: leer.
 
-**Würfel-Thumbnails (2026-10-25 nachts, D127).** Tobis ASCII-W20-Generator liegt jetzt in `tools/generate_dice.py`
-(Font-Auflösung DejaVu → Arial/Consolas, eigener RNG statt `random.seed()`, Ausgabe byte-identisch zum Original).
-`dmbot/dice_images.py` rendert bei Bedarf (~0,1 s, im Thread) nach `data/dice/<palette>/` und fällt bei Fehlern
-auf ein Embed ohne Bild zurück. Button, `!test`, Schicksals-Neuwurf, Manifestation und `!roll` (Summe ≤ 100) zeigen
-den Rohwurf als Thumbnail; die Engine blieb unverändert (`critical`/`fumble` gab es schon). `pillow` deklariert.
-1299 Tests grün (+17), `dm-eval` Exit 0, ruff ohne neue Meldungen. Am Tisch unverifiziert: das Bearbeiten der
-Button-Nachricht mit neuem Anhang.
-
-**Vierter Opus-Lauf, sieben Fixes (2026-10-25 spätabends, D123).** Tobi und Sezgin, nur Fridolin + Rektalus.
-Gehalten: D121/D122 live, `cut` 6/47, erstes Audio ~9,9 s im Schnitt. Neu gefunden und behoben:
-- **Psi doppelt, zweiter Anlauf:** Dread Presence bekam neben der Manifestation eine Router-Probe auf „Fel“; der
-  D121-Fix griff nur bei Psi-Meisterschaft. Jetzt fällt jede Router-Probe der manifestierenden Figur weg.
-- **Puppet-Filter (D113) strich Kaads Satz** „Kaad bemerkt, wohin Fridolin schaut, … und sagt: …“. Der Name zählt
-  nur noch als Subjekt: am Teilsatzanfang vor dem Verb oder direkt danach (nur Kleinwörter dazwischen, kein „zu/an“).
-- **„Wechseln“ nach Auto-Wechsel:** Marker-Vorschlag und Szenen-Klassifikator lösten beide aus. Jeder echte Wechsel
-  schließt jetzt den offenen Vorschlag (`retire_scene_proposal`), der Button verschwindet.
-- **Fernkampf „Schwierig“ ohne Grund:** Klassifikator-Regel, Standard Herausfordernd, schwerer/leichter nur mit
-  klarem Grund aus der Handlung (Tobis Wahl).
-- **„Ich weiß mein Skill-Set nicht“ (Sezgin):** Fertigkeiten + Talentnamen stehen als `## Bögen der Spielfiguren`
-  im Prompt (Tobis Wahl: per DM fragen, kein Befehl); ~490 Zeichen.
-- **„Niemand sagt, was er will“ (Tobi):** Persona — NSCs machen ihr Anliegen deutlich; stockt die Gruppe, nennt der
-  DM in einem Satz zwei, drei Möglichkeiten (Tobi: beides).
-- **Belegt:** 1248 Tests grün, `dm-eval` Exit 0, `ruff --select F` sauber. Am Tisch unverifiziert.
-- **Nachtrag D124 / ADR 062, erfundene Gegner:** beide Laspistolen-Treffer gingen auf Seneschall Kaad (zwei Szenen
-  weiter, danach 0/8 und aus dem Prompt verschwunden), weil die Zielauswahl alle NSCs anbot und Opus' Kettenmänner nie
-  im Spielstand standen. Tobi wählte „automatisch anlegen“. Jetzt: dritter Nach-Zug-Klassifikator (`npc_router`,
-  Haiku, `DM_NPC_ROUTER`, `!automatik nscs`) meldet Neue, Code legt sie mit Abenteuer-Statblock oder
-  `combat.improvised_npc` an (`Combatant.scene`), „anwesend“ = Szenenkarte + dort gesehen, für Prompt,
-  NSC-Gedächtnis und Zielauswahl. Live per Einzelaufruf: 3/3 nach einer Prompt-Schärfung (vorher legte Haiku den
-  Verwundeten doppelt an). 1265 Tests grün, `dm-eval` Exit 0. Offen: einmal las Opus einen Planungssatz vor.
-
-**Dritter Opus-Lauf und vier Regel-/Filter-Fixes (2026-10-25 abends, D121).** Tobi, Sezgin, Timo und BloodyP
-spielten ~45 min „Die Mitternachtsfracht“. Tobi: „ich konnte keine Heimlichkeit machen … alle Skillchecks sind
-fehlgeschlagen.“ Diagnose aus `terminal.log`/`debug.log`: 9/9 Proben verfehlt bei Zielen 12–51 (P ≈ 1,7 %); die
-Engine ist fair (100k-Simulation trifft die Quoten), Fridolins Heimlichkeit 48 −10 (Schwierig) = 38 ist korrekt.
-- **Patzer überall:** die Engine markierte jeden Pasch als Patzer/kritisch, IM kennt das nur bei Angriffen
-  (S. 213; stand schon im Profil-`_note`). Opus erzählte aus „Heimlichkeit 66 — Patzer“ und „Psi 44 — Patzer“
-  Katastrophen, einen Warp-Unfall ohne Perils-Wurf. Jetzt: Profil-Schlüssel `crit_scope: "attack"`,
-  `engine.scope_doubles()` am Würfel-Button und an der Warp-Kontrollprobe; Manifestationen behalten ihre Pasch-Regel.
-- **Doppelte Psi-Probe:** eine Psi-Aktion bekam einen Dread-Presence-Manifest-Button *und* einen Router-Button
-  „Psi-Meisterschaft (Schwierig)“; beide wurden gewürfelt. Jetzt verwirft der Router eine Probe auf die
-  Manifest-Fertigkeit, wenn dieselbe Figur in dem Zug manifestiert (`superseded_by_manifest`).
-- **Router auf Satzfragment:** Sezgins ganzer Zug „dass wir das Osadium suchen.“ wurde zu Wahrnehmung.
-  Jetzt überspringt der Router Züge, die mit „dass/daß/weil“ beginnen (`is_continuation_fragment`, bewusst eng).
-- **Puppet-Filter (D113) zu scharf:** „…Helmstimme: „Inquisition, sagst du? Dann zeig mir das Siegel …““ — der
-  Satz flog raus, die Antwort begann mitten im Zitat. Jetzt zählt nur die Erzählung außerhalb von Anführungszeichen
-  (Zustand über Sätze hinweg, auch im Stream); „„…“, sagst du.“ wird weiter gestrichen.
-- **Belegt:** 1232 Tests grün (14 neue), `dm-eval` Exit 0, `ruff --select F` sauber; Live-Fälle mit echtem
-  IM-Profil nachgerechnet. Am Tisch unverifiziert.
-- **Nachtrag D122, Inventar nie im Prompt:** „Was habe ich dabei?“ → „das weißt nur du“, und die Arbites fanden
-  Fridolins Siegel nicht, das auf seinem Bogen steht. Ursache: `world_state_summary_de` rendert seit Phase 9 nur
-  Wunden/Zustände; `equipment`/`weapons` kamen nicht mal in den Zustand. Jetzt: `Ausrüstung`-Zeile pro Figur,
-  Seed führt `inventory` + `equipment` + Waffennamen zusammen (`merge_gear`). 1238 Tests grün, `dm-eval` Exit 0.
-  Alte `state.json` behalten ihre Liste (Seed nur beim ersten `!join`) — die Debug-Sandbox wird ohnehin geleert.
-- **Spieler-Feedback ohne Fix:** TTS-Betonung über Satzgrenzen (Modus `flach`), Intro zu lang, Uhrzeit zu genau,
-  Codewort für Regelfragen gewünscht. Inhaltlich: die Spieler spielten
-  sexuelle Gewalt an; der DM schilderte nichts davon und ließ die Welt reagieren — so gewollt.
-
-**Die ersten Opus-Züge am Tisch, und drei Fixes (2026-10-25, D119/D120).** Tobi hat zweimal mit Opus gespielt (allein, Debug-Kampagne). Ergebnis: Opus erzählt, nachdem drei Fehler raus sind, die erst am Tisch sichtbar wurden; alles steht in ADR 061 (Nachtrag 2026-10-25) und ADR 057 (Nachtrag).
-- **Lauf 1, leere Züge:** Opus denkt trotz `thinking=disabled`, und das Denken zählt gegen das Ausgabelimit; bei 220 Tokens blieb für Text nichts. Jetzt: `effort="low"` für Erzählung, 1024 Tokens Puffer pro Anfrage, die Sprechgrenze hält der Client selbst am Text. Live: erstes Wort nach ~3,7 s, `think=` ~70.
-- **Lauf 2, abgeschnitten:** 16 von 17 Zügen gekappt, weil 220 Tokens bei Opus nur ~440 Zeichen sind (Nemo ~750). Tobi will keine Satzquote, „ein GM redet mal viel, mal wenig“ — also gilt jetzt Nemos Sprechlänge (3,4 Zeichen pro Token); die Persona bleibt heute unverändert.
-- **Lauf 2, Gedächtnis weg:** der Auto-Recap wurde bei 807 Zeichen mitten im Satz gekappt, „Dockmeister Kessel“ fiel raus, der nächste Zug leugnete ihn. Die Sprechgrenze gilt jetzt nur für gestreamte Züge; live über dieselben 15 Züge: 1275 Zeichen, vollständig.
-- **Lauf 2, kein Szenenwechsel:** der Router sah nur den aktuellen Zug, der den Ort oft nicht nennt. Er bekommt jetzt den vorigen Zug und die Spielerzeile als Kontext; Haiku-Replay: Betreten 3/3, Gespräch 0/3.
-- **Belegt:** 1215 Tests grün (12 neue), `dm-eval` Exit 0, Lint sauber, Preflight live OK. Sandbox danach geleert. Commits `6959481`, `ab25cad`. Am Tisch unverifiziert: alle drei Fixes zusammen.
-- **Nachtrag, Spielerzeilen im Kanal:** Tobi: „im Discord soll auch stehen, was die Player gesagt haben, sonst kann man die Geschichte nicht lesen.“ Jede an den DM geroutete Zeile wird jetzt direkt nach der Transkription als `🗣 **Figur:** …` gepostet (Markdown/@everyone entschärft); Tischgespräch ohne Push-to-talk bleibt im Log. Schalter `DM_POST_PLAYER_LINES=0`. 1218 Tests grün, Lint sauber; live unverifiziert.
-- **Nachtrag, schlankerer Arbeitsablauf:** Tobi fand, das Ritual verbrauche zu viel Kontext. Gemessen: Pflicht-Lektüre ~41 KB, davon 23 KB die neueste ADR; `progress.md` 85 KB, davon 60 KB Decision-Log. Jetzt: der Start liest nur `CLAUDE.md` + State header, ADRs und Lessons nur bei Subsystem- oder Phasenarbeit (ADR 061 hat dafür einen `## Current state`); das Decision-Log liegt in [docs/decision-log.md](docs/decision-log.md) (`D##` unverändert); `progress.md` ist auf 40 KB gedeckelt (jetzt ~27 KB); kleine Runden tragen ihren Fortschritt im selben Commit ein. Lokal abgeschaltet: Plugins engineering, pdf-viewer, csharp-lsp.
-
 _Ältere `## Last session`-Einträge: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Last session (Verlauf)`._
 
 ## Next concrete step
 
-**Ein dritter Opus-Lauf, dann der Phase-11-Abend nach [docs/testabend-ablauf.md §9](docs/testabend-ablauf.md).** Sandbox ist leer (2026-10-25). Vorher: Verbrauchsstand auf claude.ai notieren (die zwei Läufe vom 25.10. stecken schon drin), entscheiden, ob Gellicus/Rektalus/Rene in der Kanal-`characters.json` bleiben. Im Log prüfen: Anteil `cut` (soll die Ausnahme sein), `📖 Auto-Szenenwechsel vorgeschlagen → schrein` beim Betreten, Gedächtnis nach dem ersten `🧵 Auto-Recap`, `think=` pro Zug, und ob jede Spielerzeile als `🗣` vor der DM-Antwort im Kanal steht. Hält das, die Gate-Punkte 0–9 und die drei Messungen aus §9.6; danach in einer eigenen Session: Befunde eintragen, ADR 061 annehmen oder begründet zurücknehmen, die 17 geparkten Gates neu sichten, erst dann das PRD für Phase 12.
+**Erst die Würfel-Ablage live, dann der fünfte Lauf.** Bot neu starten (Bot A auch — am 30.10. lief er nicht,
+der DM blieb stumm), im Log `dice assets: 75/75 throw GIFs ready in #botcommands` und beim Würfeln
+`🎲 throw gif (stored): in Discord … ms` ansehen: Ziel ~0,5 s bis zum GIF; spielt Discord das GIF einmal und
+trifft das Ergebnisbild die Landung? Dann Lauf 5 (Sandbox leeren) und prüfen: Würfelbild an jedem Ergebnis (auch
+nach „🙏 Neu würfeln“), `👥 anwesend in …` für improvisierte Gegner, Zielauswahl nur Anwesende, kein Psi-Doppelwurf,
+kein „Wechseln“ nach Auto-Wechsel, „Was kann ich?“ aus dem Bogen, Schicksal-Buttons nach Fehlschlägen. Danach
+`characters.json` zurück (`git checkout`), wenn Timo/Vinnie wieder mitspielen.
 
 ## Decision log
 
@@ -145,7 +79,7 @@ Grep one row (`grep -n "| D87 |" docs/decision-log.md`); a new decision gets the
 | 5 — LLM wiring + persona | ADR 002 + ADR 005 (persona = generic core + campaign overlay) + **ADR 016** (anti-puppeting backstop, length cap, output cleanup) + **ADR 038** (single owner for the system-prompt assembly order) + **ADR 031** (`!intro` opening monologue) + **ADR 041** (`!intro` reliability: fixed low temperature + hardened director brief; add. 2 = deterministic weak-intro retry) + **ADR 042** (anti-repetition sampling `repeat_penalty`, with a deterministic carve-out for the roll router) + **ADR 045** (deterministic consistency guard: dead/absent NPC speech → regenerate once, fail-open; streaming logs only) + **ADR 060** (deterministic guards on the spoken text: two signals must coincide, whole sentences only, a quote is sanctuary, negative cases written first — the shape D112/D113/D114 all follow) |
 | 6 — TTS + full loop | **ADR 008** (TTS engine: Piper + XTTS) + ADR 002 (bridge, VRAM, GPU offload) + `architecture.md` §3 (bridge contract) + **ADR 016** (TTS speech-only normalization) + **ADR 017** (streaming pipeline: sentence-chunked TTS, hold-back rules, history parity) + **ADR 033** (global spoken-delivery mode: stream vs nahtlos × flach vs intoniert, `!sprechmodus`) |
 | 6–7 — Full loop, turn-taking, registration | ADR 003 (conversational control, registration, turn-taking) + **ADR 011** (STT latency: push-to-talk gate) + **ADR 013** (pause control) |
-| 8 — Dice engine, IM profile, marker flow | ADR 005 (engine + profile) + ADR 004 (test marker, character data) + ADR 001 (IM specifics) + **ADR 012** (difficulty ladder, character store, marker grammar) + **ADR 014** (roll-detection router; timing now D40 — fires concurrent with playback) + **ADR 018** (router wins the dedupe; echo guard + roll-feedback directive on post-roll turns) + **ADR 040** (committed default party — party loading no longer bound to one voice-channel id) + **ADR 063** (Fate: spend to reroll a failed test, recovered on `!join`) |
+| 8 — Dice engine, IM profile, marker flow | ADR 005 (engine + profile) + ADR 004 (test marker, character data) + ADR 001 (IM specifics) + **ADR 012** (difficulty ladder, character store, marker grammar) + **ADR 014** (roll-detection router; timing now D40 — fires concurrent with playback) + **ADR 018** (router wins the dedupe; echo guard + roll-feedback directive on post-roll turns) + **ADR 040** (committed default party — party loading no longer bound to one voice-channel id) + **ADR 063** (Fate: spend to reroll a failed test, recovered on `!join`) + **ADR 064** (throw GIFs stored once in Discord, clicks point at them) |
 | 9 — Memory (JSON + recaps) | ADR 004 (character/state JSON) + **ADR 015** (sheet/state split, auto-combat damage) + **ADR 027** (rolling auto-recap / context handoff — recap is no longer wrap-up-only) + **ADR 037** (attack/Warp resolution → pure `rules/combat.py`) + **ADR 044** (NPC memory: per-NPC Erinnerungen, clamped attitude drift, faction gossip) + **ADR 049** (NPC agendas: human-set goals, one clamped offscreen step per scene change riding the ADR-044 extractor) + **ADR 050** (Chekhov list: wrap-up-only thread extraction riding the ADR-044 call, code-owned cap/dedupe/status, top-3 callback offer) + **ADR 062** (improvised NPCs join the scene: presence classifier, `Combatant.scene`, one "present" for prompt + target picker) |
 | 10 — RAG + profile bootstrap | ADR 005 (profile bootstrap) + **ADR 019** (3-stage hybrid: scene tracker + rulebook-only RAG, bge-m3, W4 guard) + **ADR 021** (curated German lore compendium: `lore_imperium`/`lore_chaos` sources) + **ADR 025** (German rules glossary + 0.45 calibration) + **ADR 028** (RAG junk-shape filter) + **ADR 027** (configurable `num_ctx`, context-budget compaction) + **ADR 026** (auto scene transitions, `<<ORT>>`) + **ADR 043** (stateful scene cards: `<<ERLEDIGT>>` element flags, gated exits, dead-NPC render) + **ADR 047** (consequence clocks: `<<UHR>>` ticks, +1/turn clamp, full-clock `[Regie]` injection, clock panel) + **ADR 048** (in-game time: minutes counter, `<<ZEIT>>` advance clamped to first-marker/+12h, deadlines with one-shot expiry `[Regie]`, day phases, shared pressure panel) + **ADR 054** (campaign memory: played-session ingest per scene, hybrid KNN+FTS session retrieval, state wins over memory) + **ADR 055** (debug-run sandbox: `.debug` archives → `session_debug` source, gate G10) + **ADR 056** (the sandbox's other half: `.debug` twins for state/history/chekhov/recap, foreign scene pointer re-seeds) + **ADR 057** (scene advancement belongs to code: exit classifier + flag gate, automatic with undo; the inline `<<ORT>>` marker demoted to a fallback) + **ADR 058** (post-turn fact classifier: narrated commitments become hard facts, retraction manual via `!fakt`) + **ADR 059** (the adventure ships start time, deadlines and clocks; time advances per turn) |
 | 11 — Claude backend | **ADR 061** (client seam, tier rule, failover; read the build amendment first) + ADR 002 + ADR 042 (sampling defaults) + ADR 046 (replay eval) + `docs/plans/claude-backend.md` |
@@ -269,6 +203,14 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 
 ## Open questions / to clarify
 
+
+**Aus der Würfel-Animation (2026-10-30) — offen:**
+- **Würfel dreht sich nicht:** Tobis Prototyp integriert `angle` nie (`w` wird berechnet, `angle += w*dt`
+  fehlt); wörtlich übernommen. Eine Zeile, ändert nur das Bild, nicht die Seed-Auswahl — Tobi fragen.
+- **`!test` findet Figuren nur über vollen Namen oder Spielernamen** (`für Fridolin` → kein Ziel → kein
+  Zielwürfel, kein GIF). Vorschlag offen: eindeutige Vornamen, ohne `für` die eigene Figur, Tippfehler bei
+  Fertigkeiten korrigieren. Prüfen, ob DM-Marker mit Vornamen dasselbe Problem haben.
+- **GIF-Cache wächst** (`data/dice/anim/s*_r*.gif`, ~300 KB je Ergebnis/Bahn/Farbe, ohne Aufräumen).
 
 **Aus den Opus-Läufen (2026-10-25) — offen:**
 - **Größeres `CLAUDE_NUM_CTX`** (z. B. 65536) als eigener Versuch nach dem Abend: Gedächtnis vs. Verbrauch und Antwortzeit. Heute bewusst gleich wie Nemo.

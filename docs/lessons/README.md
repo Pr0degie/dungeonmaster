@@ -39,6 +39,9 @@ or an ADR already holds — link there instead.
   overflow silently truncates the persona; spoken chars ARE the latency — read the
   `[latency]` line before blaming model or infrastructure; a token cap doesn't travel between
   models, and a cap on a recap cuts its newest events.
+- [time-the-discord-side-before-optimising](time-the-discord-side-before-optimising.md) — An
+  edit with an attachment costs ~1 s at Discord however fast the bot renders; log a timestamp
+  around the call first, then optimise the larger share.
 
 ### Code structure & async
 - [parity-by-construction](parity-by-construction.md) — The same value computed in two
