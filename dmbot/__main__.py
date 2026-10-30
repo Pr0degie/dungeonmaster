@@ -22,6 +22,7 @@ from discord.ext import commands
 from .config import Config
 from .llm.preflight import check_claude, check_ollama
 from .logsetup import setup_logging
+from .ready_sound import ReadySound
 from .runtime import SessionRuntime
 from .shutdown import disconnect_voice, progress
 from .voice.command_errors import argument_error_de
@@ -64,6 +65,7 @@ class DMBot(commands.Bot):
         intents.voice_states = True
         super().__init__(command_prefix="!", intents=intents)
         self._config = config
+        self._ready_sound: ReadySound | None = None
 
     async def setup_hook(self) -> None:
         # Build the shared session state/services once from the config, then register the cogs that
@@ -73,7 +75,11 @@ class DMBot(commands.Bot):
         # the shared services) runs first on shutdown. DMCog is added before LoreCog so the
         # runtime.speak hook LoreCog uses is wired (hooks fire only after !join anyway).
         runtime = SessionRuntime(self._config)
-        await self.add_cog(VoiceCog(self, runtime))
+        voice = VoiceCog(self, runtime)
+        await self.add_cog(voice)
+        self.before_invoke(voice.auto_join)  # any command joins voice first if needed (D130)
+        # A soft pop once Discord is logged in and the voice is loaded (D130).
+        self._ready_sound = ReadySound(runtime._tts_ready, enabled=self._config.ready_sound)
         await self.add_cog(DiceCog(self, runtime))
         await self.add_cog(DMCog(self, runtime))
         await self.add_cog(SceneCog(self, runtime))
@@ -84,6 +90,8 @@ class DMBot(commands.Bot):
 
     async def on_ready(self) -> None:
         log.info("logged in as %s (id=%s)", self.user, self.user and self.user.id)
+        if self._ready_sound is not None:
+            self._ready_sound.logged_in()  # once per process; waits for the voice in a thread
 
     async def on_command_error(self, ctx: commands.Context, error: commands.CommandError) -> None:
         # DMbot shares the "!" prefix with the music bot; silently ignore commands it doesn't

@@ -15,8 +15,9 @@ is on-demand._
 - **Newest round:** D128 + D129 / **ADR 064** (2026-10-30) — Würfel-Wurfanimation. Der Probe-Post zeigt den
   Zielwürfel „≤Ziel“ groß, der Klick ein Wurf-GIF, dann das Ergebnisbild; Engine und DM warten nicht darauf.
   Die 75 Flug-GIFs liegen einmal in `#botcommands` (`DM_DICE_ASSET_CHANNEL`), der Klick zeigt nur auf den Link.
-  **1336 Tests grün, `dm-eval` Exit 0.** Am Tisch gesehen: Zielwürfel, GIF, Ergebnis; ADR 064 noch nicht live.
-  31.10.: Zahlen auf allen W20-Seitenflächen (neuer Look → Flug-GIFs beim nächsten Start einmal neu hochladen).
+  **1342 Tests grün, `dm-eval` Exit 0.** Am Tisch gesehen: Zielwürfel, GIF, Ergebnis; ADR 064 noch nicht live.
+  31.10.: Zahlen auf allen W20-Seitenflächen (Flug-GIFs gehen beim nächsten Start einmal neu hoch); D130: jeder
+  DMbot-Befehl tritt vorher dem Voice-Kanal bei (`DM_AUTO_JOIN`), sanftes Plopp, wenn der Bot bereit ist.
 - **Davor (2026-10-25):** D123/D124 (ADR 062, improvisierte NSCs anwesend), D125 (XTTS-Sperre + `gpu_health`),
   D126 (ADR 063, Schicksalspunkte), D127 (Würfel-Thumbnails) — alle code-komplett, Details im Archiv/Log.
 - **Next concrete step:** Bot neu starten und im Log `dice assets: 75/75 throw GIFs ready` prüfen; ein paar

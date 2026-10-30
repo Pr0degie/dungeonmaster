@@ -266,6 +266,7 @@ class SessionRuntime:
         self._dice_images = config.dice_images  # dice result thumbnails (dmbot/dice_images.py)
         self._dice_animation = config.dice_animation  # throw GIF between click and result
         self._dice_asset_channel = config.dice_asset_channel  # stored throw GIFs (ADR 064)
+        self._auto_join = config.auto_join  # any command joins voice first (D130)
         # In-game minutes a narrated turn costs (ADR 059 #2); the bigger scene-change advance
         # stays _scene_time_advance above.
         self._turn_time_advance = config.turn_time_advance

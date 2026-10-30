@@ -100,6 +100,10 @@ class Config:
     # Storage channel for the pre-uploaded throw GIFs (ADR 064): a channel name ("botcommands") or
     # id. The GIFs are uploaded there once; a click then only points at them. Empty = upload per roll.
     dice_asset_channel: str = ""
+    # Any DMbot command while the bot is in no voice channel joins the caller's channel first (D130).
+    auto_join: bool = True
+    # A soft pop on this machine once the bot is logged in and its voice is loaded (D130).
+    ready_sound: bool = True
 
     @classmethod
     def load(cls) -> "Config":
@@ -396,6 +400,8 @@ class Config:
             dice_animation=os.environ.get("DM_DICE_ANIMATION", "1").strip().lower()
             in ("1", "true", "yes", "on"),
             dice_asset_channel=os.environ.get("DM_DICE_ASSET_CHANNEL", "").strip(),
+            auto_join=os.environ.get("DM_AUTO_JOIN", "1").strip().lower() in ("1", "true", "yes", "on"),
+            ready_sound=os.environ.get("DM_READY_SOUND", "1").strip().lower() in ("1", "true", "yes", "on"),
             post_player_lines=os.environ.get("DM_POST_PLAYER_LINES", "1").strip().lower()
             in ("1", "true", "yes", "on"),
         )

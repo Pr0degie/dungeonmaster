@@ -22,6 +22,9 @@ from ..runtime import SessionRuntime
 
 log = logging.getLogger(__name__)
 
+# Commands that never pull the bot into voice on their own (D130).
+NO_AUTO_JOIN = frozenset({"join", "leave", "vstatus", "help"})
+
 
 class VoiceCog(commands.Cog):
     # Number of progress.step() calls in cog_unload — DMBot.close() sums this across cogs to
@@ -34,6 +37,7 @@ class VoiceCog(commands.Cog):
         self._esc_task: asyncio.Task | None = None    # terminal Esc listener (Windows)
         self._anim_task: asyncio.Task | None = None   # the animated "paused" box (rich)
         runtime.reanchor_mic = self._post_mic_button  # hook: DMCog re-anchors the mic after a turn
+        self._auto_join_lock = asyncio.Lock()  # two quick commands must not both try to connect
 
     async def cog_load(self) -> None:
         # Terminal Esc → pause/resume (Variante A). Windows-only (msvcrt); on other platforms the
@@ -165,6 +169,29 @@ class VoiceCog(commands.Cog):
         self._rt._text_channel = ctx.channel
         await self._rt.clear_panel("_pause_message")
         await self._refresh_pause_panel()
+
+    async def auto_join(self, ctx: commands.Context) -> None:
+        """Global before-invoke hook (D130): any DMbot command while the bot is in no voice channel
+        yet joins the caller's channel first, like ``!j``. Commands DMbot doesn't own (the music
+        bot's ``!play``) never get here. Never blocks the command: a failed join is only logged."""
+        if not getattr(self._rt, "_auto_join", False):
+            return
+        command = getattr(ctx, "command", None)
+        if command is None or command.name in NO_AUTO_JOIN or ctx.guild is None:
+            return
+        voice = getattr(ctx.author, "voice", None)
+        if voice is None or voice.channel is None:
+            return  # the caller sits in no voice channel — just run the command
+        async with self._auto_join_lock:
+            if ctx.voice_client is not None:
+                return
+            log.info("auto-join before !%s (%s is in '%s')", command.name,
+                     getattr(ctx.author, "display_name", ctx.author), voice.channel.name)
+            try:
+                await self.join.callback(self, ctx)
+            except Exception:  # the command itself must still run
+                log.warning("auto-join before !%s failed — running the command anyway",
+                            command.name, exc_info=True)
 
     @commands.command(name="join", aliases=["j"])
     async def join(self, ctx: commands.Context) -> None:
