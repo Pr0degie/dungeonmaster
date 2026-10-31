@@ -91,6 +91,10 @@ _DATA_DIR = profile_mod.systems_dir().parent
 
 log = logging.getLogger(__name__)
 
+# The player panel's first line (discord_ui/panel.py) — how old panels of this bot are recognised.
+PANEL_MARK = "📍 **Wo ihr seid:**"
+PANEL_SWEEP_LIMIT = 100  # recent messages searched for this bot's panel after a restart
+
 _SR_16K = 16_000
 
 # Ceiling for the first spoken line to wait on the background TTS load before degrading to
@@ -1149,10 +1153,10 @@ class SessionRuntime:
     async def update_player_panel(self, *, reanchor: bool = False) -> None:
         """(Re)render the player panel in the session's text channel.
 
-        Edit-in-place by default (the clock-panel pattern, no spam); ``reanchor=True`` deletes and
-        re-posts it so it sits at the BOTTOM again — story 17, the same treatment the mic button
-        gets after every turn. On 2026-08-22 the only comparable message was posted once and
-        scrolled away, because its single refresh trigger was a scene change that never came.
+        Posted once at the bottom, then only ever edited in place — it is never re-posted, so it
+        drifts up as the table plays (Tobi's choice, D132). One per channel: after a restart the
+        bot adopts its newest panel from the channel instead of posting another, and deletes
+        older duplicates. ``reanchor=True`` (tests, a manual reset) deletes and posts it anew.
         Best-effort: a send/edit failure logs and never breaks a turn."""
         # getattr: a partially-built runtime (tests) stays dormant, like the 🧪 overlay above.
         if not getattr(self, "_player_panel_enabled", False) or self._text_channel is None:
@@ -1160,18 +1164,50 @@ class SessionRuntime:
         content = self._panel_text()
         if not content:
             return
-        if reanchor:
-            await self.clear_panel("_player_panel")
-        elif self._player_panel is not None:
+        lock = self.__dict__.setdefault("_player_panel_lock", asyncio.Lock())
+        async with lock:  # two quick updates must not post two panels
+            if reanchor:
+                await self.clear_panel("_player_panel")
+            elif self._player_panel is None:
+                self._player_panel = await self._adopt_old_panel()
+            if self._player_panel is not None:
+                try:
+                    await self._player_panel.edit(content=content)
+                    return
+                except discord.HTTPException:
+                    self._player_panel = None  # message gone — fall through and post anew
             try:
-                await self._player_panel.edit(content=content)
-                return
+                self._player_panel = await self._text_channel.send(content)
             except discord.HTTPException:
-                self._player_panel = None  # message gone — fall through and re-post
+                log.warning("could not post the player panel", exc_info=True)
+
+    async def _adopt_old_panel(self):
+        """This bot's newest player panel in the text channel, to edit instead of posting another
+        (a restart forgets the handle); older duplicates are deleted. Once per channel and run,
+        recent history only; best-effort — no permission / no history → ``None``."""
+        channel = self._text_channel
+        seen = self.__dict__.setdefault("_panel_swept_channels", set())
+        if getattr(channel, "id", None) in seen:
+            return None
+        seen.add(getattr(channel, "id", None))
+        me = getattr(getattr(channel, "guild", None), "me", None)
+        history = getattr(channel, "history", None)
+        if me is None or history is None:
+            return None
+        found = []
         try:
-            self._player_panel = await self._text_channel.send(content)
+            async for msg in history(limit=PANEL_SWEEP_LIMIT):  # newest first
+                if getattr(msg.author, "id", None) == me.id and (msg.content or "").startswith(PANEL_MARK):
+                    found.append(msg)
         except discord.HTTPException:
-            log.warning("could not post the player panel", exc_info=True)
+            log.info("could not read the channel history to find the player panel")
+            return None
+        for dupe in found[1:]:
+            try:
+                await dupe.delete()
+            except discord.HTTPException:
+                pass
+        return found[0] if found else None
 
     # ----- In-game time + deadlines (ADR 048) -----------------------------------------------
 
@@ -1249,7 +1285,7 @@ class SessionRuntime:
                          getattr(scene_verdict, "target_id", ""), classified_from, state.scene_id)
                 scene_verdict = None
             await self._apply_scene_verdict(channel, state, scene_verdict)
-            await self.update_player_panel(reanchor=True)
+            await self.update_player_panel()  # edited in place, never re-posted (D132)
         except Exception:
             log.exception("post-turn boundary failed — the turn itself is unaffected")
 

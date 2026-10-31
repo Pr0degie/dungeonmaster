@@ -1073,7 +1073,43 @@ def test_the_panel_posts_once_and_is_edited_in_place() -> None:
     assert first.edits  # the second call edited instead of posting again
 
 
-def test_the_panel_is_re_anchored_after_a_turn() -> None:
+def test_after_a_restart_the_newest_panel_is_adopted_not_posted_again() -> None:
+    """D132: posted once, then only edited — after a restart the bot edits its newest panel in the
+    channel instead of posting another; older duplicates go, other people's messages stay."""
+    adv = _adventure()
+    me = type("Me", (), {"id": 99})()
+
+    class _HistoryChannel(_FakeChannel):
+        guild = type("G", (), {"me": me})()
+        reads = 0
+
+        def history(self, limit=100):
+            self.reads += 1
+            old = list(self.messages)
+
+            async def gen():
+                for m in reversed(old):  # newest first, like Discord
+                    yield m
+            return gen()
+
+    channel = _HistoryChannel()
+    older = _FakeMessage("📍 **Wo ihr seid:** ganz alt")
+    newest = _FakeMessage("📍 **Wo ihr seid:** alt")
+    quoted = _FakeMessage("📍 **Wo ihr seid:** von einem Spieler zitiert")
+    older.author = newest.author = me
+    quoted.author = type("P", (), {"id": 1})()
+    channel.messages += [older, newest, quoted]
+    rt = _runtime(adv, _state(adv), _FakeBrain(), channel)
+
+    _run(rt.update_player_panel())
+    _run(rt.update_player_panel())
+
+    assert rt._player_panel is newest and len(newest.edits) == 2
+    assert older.deleted and not quoted.deleted
+    assert len(channel.sent) == 0 and channel.reads == 1
+
+
+def test_the_panel_can_be_re_posted() -> None:
     adv = _adventure()
     state = _state(adv)
     channel = _FakeChannel()
