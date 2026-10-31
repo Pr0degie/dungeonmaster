@@ -62,6 +62,8 @@ PALETTES = {
     "steel": lambda v: (int(70 + v*0.28), int(85 + v*0.32), int(110 + v*0.38)),
 }
 RESULT_PALETTES = ("red", "gold", "green")
+PNG_SIZE = 600     # static dice pictures (2026-10-31: was 1200 px, ~290 KB; now ~42 KB)
+PNG_COLOURS = 64
 TARGET_PALETTE = "steel"
 TARGET_PREFIX = "≤"  # Imperium Maledictum is roll-under
 
@@ -241,13 +243,16 @@ def render(number: int, path: str | os.PathLike, seed: int = 7, palette: str = "
         raise ValueError(f"dice value must be 1..{MAX_VALUE}, got {number}")
     # A private RNG, not random.seed(): the bot renders in a worker thread and must not reseed the
     # process-wide generator. Same seed → the same sequence, so the texture is unchanged.
-    ascii_pass(shaded_die(number, random.Random(seed), prefix), palette).save(path)
+    picture = ascii_pass(shaded_die(number, random.Random(seed), prefix), palette)
+    # Discord shows it at ~400 px: 600 px and 64 colours look the same and are ~42 instead of ~290 KB.
+    small = picture.resize((PNG_SIZE, PNG_SIZE), Image.LANCZOS)
+    small.quantize(colors=PNG_COLOURS, dither=Image.Dither.NONE).save(path, optimize=True)
 
 
 # --- throw animation -------------------------------------------------------------------------
 
 THUMB = 360  # GIF frame size in px
-GIF_COLOURS = 32  # per frame — the ASCII dice have few tones; halves the upload vs. 256
+GIF_COLOURS = 16  # per frame — the ASCII dice have few tones (16: −25 % vs 32, looks the same)
 FRAME_SET_VERSION = 4  # bump when the frame plan or the die's look changes (stale pool frames)
 
 _throw_module: ModuleType | None = None
@@ -298,6 +303,12 @@ def render_frame(frame) -> Image.Image:
     die = shaded_die(frame.value or None, random.Random(frame.texture_seed), frame.prefix)
     moved = transform(die, frame.angle, frame.scale, frame.dx, frame.dy)
     return ascii_pass(moved, frame.palette).resize((THUMB, THUMB), Image.LANCZOS)
+
+
+def gif_version() -> str:
+    """Names the built GIFs: the frame plan's version plus the colour count, so a change to either
+    gives new file names (and the stored copies in Discord get replaced, ADR 064)."""
+    return f"{FRAME_SET_VERSION}c{GIF_COLOURS}"
 
 
 def frame_set_dir(anim_dir: Path, seed: int, palette: str) -> Path:

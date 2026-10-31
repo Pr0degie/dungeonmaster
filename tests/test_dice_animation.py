@@ -118,7 +118,7 @@ def test_the_gif_has_every_planned_frame_and_the_planned_play_time(monkeypatch, 
 
     monkeypatch.setattr(_renderer, "render_frame", fake_frame)
     path, landed = dice_images.get_dice_gif(23, "red", 528, cache_dir=tmp_path)
-    assert path == tmp_path / "s528_red_r23.gif"           # no target in it: the post shows that
+    assert path == tmp_path / f"s528_red_r23_v{_renderer.gif_version()}.gif"  # no target in it
     plan = throw.throw_frames(528, 23, "red")
     with Image.open(path) as gif:
         assert len(gif.getpalette()) // 3 <= _renderer.GIF_COLOURS  # first frame, before seeking

@@ -40,8 +40,7 @@ def _norm(name: str) -> str:
 
 
 def asset_name(seed: int, palette: str) -> str:
-    version = dice_images._load_renderer().FRAME_SET_VERSION
-    return f"flight_v{version}_s{seed}_{palette}.gif"
+    return f"flight_v{dice_images._load_renderer().gif_version()}_s{seed}_{palette}.gif"
 
 
 class DiceAssetStore:
@@ -121,7 +120,7 @@ class DiceAssetStore:
                 return False
 
     async def _ensure(self, guild, channel) -> bool:
-        version = dice_images._load_renderer().FRAME_SET_VERSION
+        version = dice_images._load_renderer().gif_version()
         entry = self._load_state().get(str(guild.id), {})
         if entry.get("channel_id") != channel.id or entry.get("version") != version:
             entry = {"channel_id": channel.id, "version": version, "messages": {}}

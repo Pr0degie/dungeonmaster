@@ -173,7 +173,7 @@ def get_dice_gif(result: int, palette: str, seed: int, *,
     renderer = _load_renderer()
     throw = renderer.throw_module()
     anim_dir = cache_dir or ANIM_DIR
-    path = anim_dir / f"s{seed}_{palette}_r{result}.gif"
+    path = anim_dir / f"s{seed}_{palette}_r{result}_v{renderer.gif_version()}.gif"
     if not path.is_file():
         renderer.build_throw_gif(seed, result, palette, anim_dir, path)
     return path, throw.landed_ms(throw.throw_frames(seed, result, palette)) / 1000
@@ -186,7 +186,7 @@ def get_flight_gif(seed: int, palette: str, *, cache_dir: Path | None = None) ->
         raise ValueError(f"unknown result palette {palette!r} (known: {', '.join(RESULT_PALETTES)})")
     renderer = _load_renderer()
     anim_dir = cache_dir or ANIM_DIR
-    path = anim_dir / f"flight_v{renderer.FRAME_SET_VERSION}_s{seed}_{palette}.gif"
+    path = anim_dir / f"flight_v{renderer.gif_version()}_s{seed}_{palette}.gif"
     if not path.is_file():
         renderer.build_flight_gif(seed, palette, anim_dir, path)
     return path, flight_seconds(seed, palette)
