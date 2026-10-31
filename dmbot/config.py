@@ -104,6 +104,10 @@ class Config:
     auto_join: bool = True
     # A soft pop on this machine the moment the bot is logged in to Discord (D130).
     ready_sound: bool = True
+    # "Der Timo war ein sehr böser Junge." said in voice disconnects Timo from the channel.
+    # kick_master: Discord user id or display name of the only person who may say it; empty = anyone.
+    kick_phrase: bool = True
+    kick_master: str = ""
 
     @classmethod
     def load(cls) -> "Config":
@@ -402,6 +406,8 @@ class Config:
             dice_asset_channel=os.environ.get("DM_DICE_ASSET_CHANNEL", "").strip(),
             auto_join=os.environ.get("DM_AUTO_JOIN", "1").strip().lower() in ("1", "true", "yes", "on"),
             ready_sound=os.environ.get("DM_READY_SOUND", "1").strip().lower() in ("1", "true", "yes", "on"),
+            kick_phrase=os.environ.get("DM_KICK_PHRASE", "1").strip().lower() in ("1", "true", "yes", "on"),
+            kick_master=os.environ.get("DM_KICK_MASTER", "").strip(),
             post_player_lines=os.environ.get("DM_POST_PLAYER_LINES", "1").strip().lower()
             in ("1", "true", "yes", "on"),
         )

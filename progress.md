@@ -12,7 +12,9 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** D128–D133 / **ADR 064** (30./31.10.) — Würfel am Tisch: der Post zeigt groß „Zielwert ≤37“
+- **Newest round:** D134 (31.10.) — Sprachbefehl „Der Timo war ein sehr böser Junge.“ trennt Timo vom Voice-Kanal
+  (`DM_KICK_MASTER=Pr0degie`, braucht „Mitglieder verschieben“; **live-unverifiziert**, 1369 Tests grün).
+  Davor D128–D133 / **ADR 064** (30./31.10.) — Würfel am Tisch: der Post zeigt groß „Zielwert ≤37“
   (W20 mit Zahlen auf allen Flächen), der Klick wirft ein GIF, dann das Ergebnis; Engine und DM warten nie darauf.
   75 Flug-GIFs liegen einmal in `#bot-commands` (Klick ohne Upload). Dazu: jeder Befehl tritt vorher dem Voice-Kanal
   bei, Plopp beim Login, `!test` ohne „für“, ein Spieler-Panel pro Kanal (einmal gepostet, dann nur bearbeitet, mit
@@ -35,6 +37,11 @@ Nicht verifiziert: Opus mit vollem Systemprompt, ein ganzer Zug mit Stimme, alle
 _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Current focus (Verlauf)`._
 
 ## Last session
+
+**Sprachbefehl „sehr böser Junge“ (2026-10-31, D134).** Sagt Tobi im Voice „Der Timo war ein sehr böser Junge.“,
+trennt DMbot Timo vom Kanal und postet eine Zeile; die Zeile geht nicht an den DM. Parser und Mitglieder-Suche sind
+rein (`dmbot/voice/kick_phrase.py`), der Hook sitzt in `_on_transcript`. Nur `DM_KICK_MASTER` darf es sagen.
+Live noch nicht gesehen — beim nächsten Start prüfen, ob DMbot „Mitglieder verschieben“ hat. 24 neue Tests.
 
 **Würfel-Feinschliff am Tisch (2026-10-31, D130–D133).** Tobi hat die Wurfanimation live ausprobiert und nach jedem
 Blick nachschärfen lassen; jede Runde ist committet, der Bot jeweils neu gestartet. Geblieben ist: der W20 mit Zahlen

@@ -39,6 +39,7 @@ import discord
 from .config import Config
 from .voice.recv import VadSink
 from .voice.preflight import check_static, check_tts_speaker
+from .voice.kick_phrase import find_culprit, is_kick_master, parse_kick_phrase
 from .stt import Transcriber
 from .llm import consistency as consistency_mod
 from .llm import build_llm_client
@@ -253,6 +254,12 @@ class SessionRuntime:
         # ``clocks_enabled`` everywhere.
         self._clocks = config.clocks
         self._post_player_lines = config.post_player_lines
+        # The table's running gag as a voice command ("Der Timo war ein sehr böser Junge." →
+        # Timo is disconnected from voice). DM_KICK_PHRASE=0 off; DM_KICK_MASTER limits who may say it.
+        self._kick_phrase = config.kick_phrase
+        self._kick_master = config.kick_master
+        self._speaker_ids: dict[str, int] = {}  # display name → Discord user id (written per utterance)
+        self._voice_channel = None  # the joined voice channel (seed_session); its members are live
         if not self._clocks:
             log.info("⏱ Uhren aus (DM_CLOCKS=0) — nicht angelegt, nicht angezeigt, <<UHR>> wird "
                      "ignoriert; gespeicherte Uhren bleiben erhalten.")
@@ -453,6 +460,7 @@ class SessionRuntime:
         # in hand — the STT callback below only gets the display name back. One plain dict write;
         # the STT thread reads it (GIL-atomic, like _last_stt_ms).
         self._speaker_names[name] = self.character_name_for(user_id, name)
+        self._speaker_ids[name] = user_id
         if self._dump_utterances:  # debug only — off by default so temp doesn't fill up
             try:
                 path = _write_utterance_wav(name, n, pcm)
@@ -478,6 +486,8 @@ class SessionRuntime:
         # the file log keeps the same one-line, greppable form.
         marker = " →DM" if for_dm else ""
         log.info("📝 %s | %.1fs·%dms%s | %s", name, clip_s, round(latency_ms), marker, text)
+        if self._maybe_kick(name, text):
+            return  # a table command, not a line for the DM
         # Buffer the line for the next DM turn (triggered by !dm) only when routed. Runs on the STT
         # thread; the brain's buffer is lock-guarded.
         if for_dm and self._active_vc_id is not None:
@@ -513,6 +523,55 @@ class SessionRuntime:
                 log.exception("posting the player line failed")
 
         asyncio.run_coroutine_threadsafe(_post(), loop)
+
+    # ----- "Der Timo war ein sehr böser Junge." (voice command → disconnect) -----------------------
+
+    def _maybe_kick(self, speaker: str, text: str) -> bool:
+        """If ``text`` is the kick phrase, disconnect the named member from the voice channel.
+        Returns True when the line was a command (handled or refused), so the caller keeps it
+        away from the DM. Runs on the STT thread: the move itself is scheduled on the loop."""
+        if not getattr(self, "_kick_phrase", False):
+            return False
+        culprit_name = parse_kick_phrase(text)
+        if not culprit_name:
+            return False
+        master = getattr(self, "_kick_master", "")
+        if not is_kick_master(master, speaker, self._speaker_ids.get(speaker)):
+            log.info("⚡ %s said the kick phrase about %r — only %s may (DM_KICK_MASTER)",
+                     speaker, culprit_name, master)
+            return True
+        vc = getattr(self, "_voice_channel", None)
+        loop = getattr(self, "_loop", None)
+        if vc is None or loop is None or loop.is_closed():
+            log.info("⚡ kick phrase about %r, but no voice channel/loop to act on", culprit_name)
+            return True
+        member = find_culprit(culprit_name, getattr(vc, "members", []) or [],
+                              self._char_by_user, self._bot_a_user_id)
+        if member is None:
+            log.info("⚡ kick phrase about %r — nobody in the voice channel matches", culprit_name)
+            return True
+        asyncio.run_coroutine_threadsafe(self._kick_member(member, speaker), loop)
+        return True
+
+    async def _kick_member(self, member, by: str) -> None:
+        """``move_to(None)`` = drop the member from voice (needs the Move Members permission),
+        then tell the text channel. Errors are logged, never raised into the loop."""
+        name = getattr(member, "display_name", "?")
+        try:
+            await member.move_to(None, reason=f"Sprachbefehl von {by}: war ein sehr böser Junge")
+        except Exception:
+            log.exception("⚡ disconnecting %s failed (Move Members permission?)", name)
+            return
+        log.info("⚡ %s war ein sehr böser Junge — vom Voice-Kanal getrennt (gesagt von %s)", name, by)
+        channel = getattr(self, "_text_channel", None)
+        if channel is None:
+            return
+        try:
+            await self._send_with_retry(
+                channel, f"⚡ **{discord.utils.escape_markdown(name)}** war ein sehr böser Junge "
+                         f"und wurde vom Server getrennt.")
+        except Exception:
+            log.exception("posting the kick line failed")
 
     # ----- Shared Discord send util --------------------------------------------------------------
 
@@ -1800,6 +1859,7 @@ class SessionRuntime:
         cid = voice_channel.id
         self._active_vc_id = cid  # buffer transcripts + answer for this channel
         self._text_channel = text_channel  # where the pause panel (and other panels) are posted
+        self._voice_channel = voice_channel  # live member list for the kick phrase (_maybe_kick)
         # The STT thread posts player lines through this loop (_echo_player_line).
         try:
             self._loop = asyncio.get_running_loop()
