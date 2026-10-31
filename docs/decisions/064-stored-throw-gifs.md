@@ -49,3 +49,16 @@ as a place the bot may fill with files, once.
 - `#botcommands` gets ~8 bot messages with attachments; deleting them only costs a re-upload.
 - Changing the frame plan bumps `FRAME_SET_VERSION`, which renames the stored files, so the next
   start uploads the new set (old messages can be deleted by hand).
+
+## Amendment 2026-10-31 — at the table
+
+- Edit 1 swaps **only the picture**: an earlier version also cleared the message text, so the box jumped
+  a line while it reloaded. The box now holds only the picture; "Zielwert ≤37" and later the result line
+  are the message text (still an embed, because only an embed can point at a stored link).
+- Posting the throw as a new message and deleting the old one 1.5 s later (no blank picture while clients
+  load the GIF) was built and compared side by side (`!wurfvergleich`); Tobi kept the in-place swap and
+  the variant was removed again. The short load gap is accepted (lesson `discord-image-swaps-reload`).
+- GIFs use 16 colours (~266 KB) and their names carry `gif_version()` (frame-set version + colours), so a
+  change re-uploads the set once; the old messages in the channel are forgotten, not deleted.
+- Live: the first start uploaded 75/75 in ~55 s; later starts only re-fetch (~6 s); a click had the GIF
+  in Discord ~0.3 s after the click.

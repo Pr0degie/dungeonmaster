@@ -56,23 +56,30 @@ here is its contract, which DMbot calls:
   via `palette_for` (the UI decides nothing). Fail-open: a render problem posts the embed without
   a picture. Stand-in runtimes without `_dice_images` keep plain text, so tests don't render.
   Cache `data/dice/` (git-ignored); pre-render with `uv run python tools/generate_dice.py`.
-- **Target die + throw animation (D128):** `DiceCog._post_dice_button` attaches the steel
-  "≤target" die big (`set_image`; an embed picture can't be the button, so 🎲 sits below it) (`get_target_image_async`, `discord_ui.dice.target_embed`) when the test has a
-  target 1–100. With `DM_DICE_ANIMATION` on, the click resolves and feeds the DM **at once**; only
-  the two cosmetic edits (throw GIF via `get_dice_gif_async`, then `_result_edit`) run in a task
-  (`_animate_result`). The throw is picked and pre-rendered when the button is posted
-  (`prepare_throw_async`; the click then needs ~0.5 s instead of ~3 s). The GIF starts mid-throw
-  (the posted PNG is the target picture), has 32 colours (~300 KB), and the result replaces it
-  `REVEAL_GRACE_S` after the landing; the log line `🎲 throw gif: built … in Discord …` times it.
-  Changing the frame plan → bump `FRAME_SET_VERSION` (stale pool frames) and re-run `--throw-pool`.
+- **Target die + throw animation (D128–D133):** `DiceCog._post_dice_button` posts "🎲 Probe angefordert:
+  Zielwert **≤37**" as message text with the steel target die in a picture-only box (`picture_embed`; an
+  embed picture can't be the button, so 🎲 sits below). The click resolves and feeds the DM **at once**;
+  only the cosmetic edits run in a task (`_animate_result`): the throw swaps **only the picture** (never
+  `content`, or the box jumps), then `_result_edit(large=True)` puts the result line in the text and the
+  die in the box. A Fate reroll is thrown the same way. The throw is picked and pre-rendered when the
+  button is posted (`prepare_throw_async`). Renderer stages live in `tools/generate_dice.py`
+  (`shaded_die` → `transform` → `ascii_pass`; move the *shaded* die, never the ASCII image); side faces
+  carry `face_numbers` (fixed per value). PNGs are saved 600 px / 64 colours, GIFs 16 colours.
+  `tools/dice_throw.py`: `simulate` is Tobi's tuned prototype — keep it verbatim; the frame plan around
+  it (take-off frames, 60 ms flight, slide-in, settle) is ours. Changing the plan or the look → bump
+  `FRAME_SET_VERSION` (pool frames) and re-run `--throw-pool`; GIF file names carry `gif_version()`.
   **Stored GIFs (ADR 064):** with `DM_DICE_ASSET_CHANNEL` set, `dmbot/dice_assets.py` uploads the 75
   flight-only GIFs once (`on_ready`; message ids in `data/dice/anim/assets.json`, links refreshed by
-  re-fetching, never re-uploading) and `DiceCog._animate_stored` points edit 1 at the link; the
-  result stays an uploaded attachment, started early by the learnt `_upload_lead_s`, and a Fate choice rides on edit 2. The trajectory comes from
-  `dice_images._THROW_RNG`, never `self._rt._rng`. Renderer stages live in `tools/generate_dice.py`
-  (`shaded_die` → `transform` → `ascii_pass`; move the *shaded* die, never the ASCII image); the
-  physics + frame plan in `tools/dice_throw.py` is a tuned prototype — keep it verbatim. Pool:
-  `--throw-pool`; look at one: `--preview-throw <seed>` → `data/dice/anim/preview_s<seed>.gif`.
+  re-fetching, never re-uploading) and `_animate_stored` points the box at the link; the result stays an
+  uploaded attachment, started early by the learnt `_upload_lead_s`. The trajectory comes from
+  `dice_images._THROW_RNG`, never `self._rt._rng`. Look at one throw: `--preview-throw <seed>`.
+- **Player panel (D132/D133):** posted once at the bottom, then only edited in place — never re-posted;
+  after a restart `_adopt_old_panel` edits the bot's newest panel from the channel and deletes older
+  duplicates (one per channel). With the panel on there is no separate pressure panel: time, deadlines
+  and (if on) clocks are in it.
+- **Auto-join + ready pop (D130):** a global before-invoke hook (`VoiceCog.auto_join`) joins the caller's
+  voice channel before any DMbot command (not `!j`/`!leave`/`!vstatus`/`!help`; `DM_AUTO_JOIN`).
+  `dmbot/ready_sound.py` plays a synthesised pop at "logged in as …" (`DM_READY_SOUND`, Windows only).
 
 ## Rules engine (`dmbot/rules/`)
 
@@ -276,7 +283,9 @@ dmbot/          the DM bot
   orchestrator.py   the DM brain (history + buffer → LLM)
   bridge.py     HTTP client to Bot A's /speak
   logsetup.py   console (green chat) + file logging
-  dice_images.py  dice result thumbnails: render-on-demand cache over tools/generate_dice.py (presentation only)
+  dice_images.py  dice pictures + throw GIFs: render-on-demand cache over tools/generate_dice.py (presentation only)
+  dice_assets.py  the throw GIFs stored once in a Discord channel, clicks point at them (ADR 064)
+  ready_sound.py  the pop when the bot has logged in (D130)
 data/           committed seed/reference: systems/ (profiles), lore/ + rules_de/ (curated DE setting/rules), party/ (party JSONs), sessions/_example + the live channel's characters.json, adventures/debug-kampagne/ (the gate-run test campaign — original content). Generated/local (git-ignored — see the .gitignore allowlist): pdfs/ (RAG sources), the other adventures/ compendia (scene cards, bought-book derivatives), sessions/<id>/ state+recaps, vectordb/ (rag.db)
 prompts/        dm_core_de.md (generic GM persona) + campaign_tone_de.md (campaign overlay)  — GERMAN, game content
 docs/           decisions/ (ADRs), plans/ (specs written before a build round + the findings they rest on), lessons/ (recurring corrections; README = the skimmed index), how-to-*.html + character-creation-prompt.md (player guides), speech-mode-comparison.md (the at-the-table A/B for the delivery modes). SETUP.md lives in the repo root.

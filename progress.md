@@ -12,16 +12,15 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** D128–D133 / **ADR 064** (30./31.10.) — Würfel-Wurfanimation: Zielwürfel „≤Ziel“ groß im Post,
-  Wurf-GIF, Ergebnisbild; W20 mit Zahlen auf allen Flächen; 75 Flug-GIFs einmal in `#bot-commands`, der Klick
-  zeigt nur auf den Link. Dazu: jeder Befehl tritt vorher dem Voice-Kanal bei, Plopp beim Login, `!test` ohne
-  „für“, Panel einmal gepostet, nur noch bearbeitet, mit Zeit/Sirene (D133); Wurf ersetzt nur das Bild; Bilder kleiner (PNG ~42 KB, GIF ~266 KB). **1345 Tests grün, `dm-eval`
-  Exit 0.** Live gesehen: Zielwürfel, GIF, Ergebnis, Auto-Join, Ablage (75/75). Offen live: Tempo, Panel.
+- **Newest round:** D128–D133 / **ADR 064** (30./31.10.) — Würfel am Tisch: der Post zeigt groß „Zielwert ≤37“
+  (W20 mit Zahlen auf allen Flächen), der Klick wirft ein GIF, dann das Ergebnis; Engine und DM warten nie darauf.
+  75 Flug-GIFs liegen einmal in `#bot-commands` (Klick ohne Upload). Dazu: jeder Befehl tritt vorher dem Voice-Kanal
+  bei, Plopp beim Login, `!test` ohne „für“, ein Spieler-Panel pro Kanal (einmal gepostet, dann nur bearbeitet, mit
+  Zeit/Sirene). **1345 Tests grün, `dm-eval` Exit 0.** Live gesehen: Würfel-Ablauf, Auto-Join, Ablage 75/75.
 - **Davor (2026-10-25):** D123/D124 (ADR 062, improvisierte NSCs anwesend), D125 (XTTS-Sperre + `gpu_health`),
   D126 (ADR 063, Schicksalspunkte), D127 (Würfel-Thumbnails) — alle code-komplett, Details im Archiv/Log.
-- **Next concrete step:** Bot neu starten und im Log `dice assets: 75/75 throw GIFs ready` prüfen; ein paar
-  `!test Wahrnehmung für Tobi` — GIF in ~0,5 s? spielt es einmal und landet mit dem Ergebnisbild? Dann der
-  fünfte Lauf (Sandbox leeren, Bot A starten!) mit der Prüfliste im Abschnitt „Next concrete step“ unten.
+- **Next concrete step:** fünfter Lauf mit Bot A (lief am 30./31.10. nicht — der DM blieb stumm); vorher in
+  `#bot-commands` die alten GIF-Sätze löschen (nur die von 01:49 zählen). Prüfliste: Abschnitt „Next concrete step“.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
   geparkt (ADR 061, im [Live-Run-Skript](docs/live-run-script.md) markiert) und werden nach dem
   Abend neu gesichtet; sie zählen nicht gegen die WIP-Grenze.
@@ -37,35 +36,31 @@ _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-a
 
 ## Last session
 
-**Würfel-Wurfanimation (2026-10-30, D128/D129, ADR 064).** Eine Probe zeigt jetzt vor dem Klick groß, was man
-erreichen muss („≤37“, Steel), nach dem Klick fliegt der Würfel (Flipper-Physik aus Tobis Prototyp, 25 Bahnen) und
-landet auf dem Wurf; das Ergebnis steht groß mit Text. Engine und DM-Zeile laufen sofort, nur die zwei Edits warten.
-Am Tisch nachgeschärft: Zielzahl größer, GIF ohne Startbild, 32 Farben, Flug 60 ms (604 → 304 KB, 7,2 → 5,4 s),
-Ergebnis 1 s nach der Landung. Gemessen blieben ~1,2 s Upload im Edit → ADR 064: 75 Flug-GIFs einmal in
-`#botcommands`, der Klick zeigt nur auf den Link, das Ergebnisbild bleibt ein echter Anhang (startet früher).
-1333 Tests grün (+34), `dm-eval` Exit 0, `render()` byte-identisch. Lesson: Discord-Seite zuerst messen.
-31.10.: Zahlen auf allen Seitenflächen wie bei einem echten W20 (Tobis Variante B, nach außen gedreht, fest pro
-Wert); `FRAME_SET_VERSION` 3 → Pool neu, die Flug-GIFs gehen beim nächsten Start einmal neu nach `#botcommands`.
+**Würfel-Feinschliff am Tisch (2026-10-31, D130–D133).** Tobi hat die Wurfanimation live ausprobiert und nach jedem
+Blick nachschärfen lassen; jede Runde ist committet, der Bot jeweils neu gestartet. Geblieben ist: der W20 mit Zahlen
+auf allen Flächen (Variante B, nach außen gedreht), drei Abhebe-Bilder statt eines Sprungs, Wurf ersetzt im selben
+Post nur das Bild (verglichen mit „neue Nachricht, alte löschen“ — Tobi wollte das Ersetzen), Kasten nur ums Bild,
+Zielwert und Ergebnis als Text darüber; PNG 600 px/64 Farben (~42 statt ~290 KB), GIF 16 Farben (~266 KB). Dazu
+Auto-Join vor jedem Befehl (D130), Plopp beim Login, `!test` ohne „für“ mit Vornamen (D131), ein Panel pro Kanal,
+einmal gepostet und nur noch bearbeitet (D132), die Druck-Anzeige im Panel (D133), Stop-Hooks entfernt. 1345 Tests.
+Die Discord-Ladelücke beim Bildtausch bleibt (Lesson `discord-image-swaps-reload`).
 
-**Test-Leck geschlossen (2026-10-25 nachts).** `tests/test_turn_boundary.py` schrieb bei jedem Suite-Lauf zwei
-Szenen-Events in das echte `data/sessions/7/history.jsonl` (seit 2026-08-23, 124 Zeilen; zwei Tests mit
-`_autosave=True`). Der Test-Runtime leitet `session_file` jetzt nach `tmp_path` um und schlägt ohne ihn fehl;
-der Ordner ist gelöscht. Ein Datei-Schnappschuss um die volle Suite zeigt: nichts unter `data/`/`logs/`
-ändert sich mehr. Die zwei `session_fixture`-Chunks im `rag.db` (älteres, schon behobenes Leck vom Juli) sind samt
-Vektor-, FTS- und `meta`-Zeile gelöscht; `integrity_check` ok, `dm-sync` zeigt nur die sieben Wissensquellen. Lesson `isolation-must-enumerate-every-artifact`
-ergänzt. Sandbox für Lauf 5 geprüft: leer.
+**Würfel-Wurfanimation (2026-10-30, D128/D129, ADR 064).** Eine Probe zeigt vor dem Klick, was man erreichen muss,
+nach dem Klick fliegt der Würfel (Flipper-Physik aus Tobis Prototyp, 25 Bahnen) und landet auf dem Wurf. Engine und
+DM-Zeile laufen sofort, nur die zwei Edits warten. Gemessen waren ~1,2 s der Wartezeit der Upload im Edit → ADR 064:
+Flug-GIFs einmal in der Ablage, der Klick zeigt nur darauf. Renderer in Stufen zerlegt, Physik wörtlich übernommen.
+Lesson `time-the-discord-side-before-optimising`.
 
 _Ältere `## Last session`-Einträge: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Last session (Verlauf)`._
 
 ## Next concrete step
 
-**Erst die Würfel-Ablage live, dann der fünfte Lauf.** Bot neu starten (Bot A auch — am 30.10. lief er nicht,
-der DM blieb stumm), im Log `dice assets: 75/75 throw GIFs ready in #botcommands` und beim Würfeln
-`🎲 throw gif (stored): in Discord … ms` ansehen: Ziel ~0,5 s bis zum GIF; spielt Discord das GIF einmal und
-trifft das Ergebnisbild die Landung? Dann Lauf 5 (Sandbox leeren) und prüfen: Würfelbild an jedem Ergebnis (auch
-nach „🙏 Neu würfeln“), `👥 anwesend in …` für improvisierte Gegner, Zielauswahl nur Anwesende, kein Psi-Doppelwurf,
-kein „Wechseln“ nach Auto-Wechsel, „Was kann ich?“ aus dem Bogen, Schicksal-Buttons nach Fehlschlägen. Danach
-`characters.json` zurück (`git checkout`), wenn Timo/Vinnie wieder mitspielen.
+**Der fünfte Lauf.** Vorher: Bot A starten (am 30./31.10. lief er nicht, der DM erzählte stumm), in `#bot-commands`
+die alten Würfel-GIF-Sätze löschen (gültig sind die 8 Nachrichten von 2026-10-31 01:49), Sandbox leeren. Am Tisch
+prüfen: Würfel — Zielwert-Post, GIF, Ergebnis, auch nach „🙏 Neu würfeln“, und die Logzeile `🎲 throw gif (stored)`;
+das Spieler-Panel bleibt eins und wird nur bearbeitet; `👥 anwesend in …` für improvisierte Gegner, Zielauswahl nur
+Anwesende, kein Psi-Doppelwurf, kein „Wechseln“ nach Auto-Wechsel, „Was kann ich?“ aus dem Bogen, Schicksal-Buttons
+nach Fehlschlägen. Danach `characters.json` zurück (`git checkout`), wenn Timo/Vinnie wieder mitspielen.
 
 ## Decision log
 
@@ -207,10 +202,14 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 ## Open questions / to clarify
 
 
-**Aus der Würfel-Animation (2026-10-30) — offen:**
+**Aus der Würfel-Animation (2026-10-30/31) — offen:**
 - **Würfel dreht sich nicht:** Tobis Prototyp integriert `angle` nie (`w` wird berechnet, `angle += w*dt`
   fehlt); wörtlich übernommen. Eine Zeile, ändert nur das Bild, nicht die Seed-Auswahl — Tobi fragen.
-- **GIF-Cache wächst** (`data/dice/anim/s*_r*.gif`, ~300 KB je Ergebnis/Bahn/Farbe, ohne Aufräumen).
+- **Caches wachsen ohne Aufräumen:** `data/dice/anim/` (Wurf-GIFs je Ergebnis/Bahn/Farbe, alte `gif_version`en
+  bleiben liegen) und in `#bot-commands` die alten GIF-Sätze jeder Version (der Bot vergisst sie, löscht sie aber
+  nicht). Ein Aufräum-Schritt beim Start wäre klein.
+- **Discord-Ladelücke beim Bildtausch:** bleibt, Tobi hat sie gegen „neue Nachricht“ in Kauf genommen. Nächster
+  Hebel, falls sie stört: weniger Flugbahnen pro Farbe (der Client cacht sie dann schneller).
 
 **Aus den Opus-Läufen (2026-10-25) — offen:**
 - **Größeres `CLAUDE_NUM_CTX`** (z. B. 65536) als eigener Versuch nach dem Abend: Gedächtnis vs. Verbrauch und Antwortzeit. Heute bewusst gleich wie Nemo.

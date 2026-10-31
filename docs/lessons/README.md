@@ -39,6 +39,8 @@ or an ADR already holds — link there instead.
   overflow silently truncates the persona; spoken chars ARE the latency — read the
   `[latency]` line before blaming model or infrastructure; a token cap doesn't travel between
   models, and a cap on a recap cuts its newest events.
+- [discord-image-swaps-reload](discord-image-swaps-reload.md) — Editing a picture blanks it until
+  clients reload; change only the picture, keep files small, let Tobi compare workarounds live.
 - [time-the-discord-side-before-optimising](time-the-discord-side-before-optimising.md) — An
   edit with an attachment costs ~1 s at Discord however fast the bot renders; log a timestamp
   around the call first, then optimise the larger share.
