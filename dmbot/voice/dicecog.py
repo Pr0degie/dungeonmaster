@@ -23,7 +23,9 @@ from ..dice_images import (
     roll_image_value,
 )
 from ..llm.roll_router import is_continuation_fragment, roll_button_source, superseded_by_manifest
-from ..discord_ui.dice import DiceTestView, result_embed, target_embed, throw_embed, throw_link_embed
+from ..discord_ui.dice import (
+    DiceTestView, result_embed, result_picture, target_embed, target_text, throw_embed, throw_link_embed,
+)
 from ..discord_ui.fate import FateView
 from ..discord_ui.turnorder import TurnOrderView
 from ..discord_ui.rules import RulesView
@@ -188,7 +190,8 @@ class DiceCog(commands.Cog):
         view = DiceTestView(label, self._make_dice_roll(channel, req, resolved, prep=prep))
         image = await get_target_image_async(resolved.target) if self._dice_images_on() else None
         if image is not None:  # the steel "≤target" die; a free !roll / no sheet value has none
-            embed, file = target_embed(resolved.target, image)
+            embed, file = target_embed(image)
+            text = f"{text} {target_text(resolved.target)}"
             try:
                 await self._rt._send_with_retry(channel, text, view=view, embed=embed, file=file)
                 return
@@ -308,7 +311,7 @@ class DiceCog(commands.Cog):
         if anim is not None:
             gif, landed = anim
             built = time.monotonic()
-            embed, file = throw_embed(gif, target)
+            embed, file = throw_embed(gif)
             try:
                 await dice_msg["message"].edit(embed=embed, attachments=[file])  # only the picture
             except discord.NotFound:
@@ -337,7 +340,7 @@ class DiceCog(commands.Cog):
         points at it (no upload), and the result picture — uploaded so it stays in the history —
         starts early by the learnt upload time, to land with the die."""
         try:
-            await dice_msg["message"].edit(embed=throw_link_embed(link, target),  # only the picture
+            await dice_msg["message"].edit(embed=throw_link_embed(link),  # only the picture
                                            attachments=[])
         except discord.NotFound:
             await self._message_gone(channel, line, view)
@@ -380,7 +383,12 @@ class DiceCog(commands.Cog):
         if not self._dice_images_on():
             return {"content": text}
         image = await get_dice_image_async(face, palette)
-        embed, file = result_embed(text, image, palette, large=large)
+        if large:  # a dice-button test: the line as message text, the die alone in its box
+            if image is None:
+                return {"content": text, "embed": None, "attachments": []}
+            embed, file = result_picture(image)
+            return {"content": text, "embed": embed, "attachments": [file]}
+        embed, file = result_embed(text, image, palette)
         return {"content": None, "embed": embed, "attachments": [file] if file else []}
 
     def _fate_holder(self, channel, who: str | None):

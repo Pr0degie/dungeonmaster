@@ -16,64 +16,61 @@ from typing import Awaitable, Callable
 
 import discord
 
-from ..dice_images import EMBED_COLOURS, TARGET_PALETTE, TARGET_PREFIX
+from ..dice_images import EMBED_COLOURS, TARGET_PREFIX
 
 DICE_FILENAME = "dice.png"
 TARGET_FILENAME = "target.png"
 THROW_FILENAME = "dice.gif"
 
 
-def _show_picture(embed: discord.Embed, filename: str, large: bool) -> None:
-    url = f"attachment://{filename}"
-    if large:
-        embed.set_image(url=url)      # full embed width, below the text
-    else:
-        embed.set_thumbnail(url=url)  # small, at message height
-
-
-def result_embed(text: str, image: Path | None, palette: str, *,
-                 large: bool = False) -> tuple[discord.Embed, discord.File | None]:
-    """A dice result as an embed: the unchanged German result line as the description, the die
-    as a small thumbnail — or, ``large`` (a dice-button test: target, throw and result all big),
-    as the embed's big image. ``image=None`` → the embed without a picture, so a failed render
-    never loses the result."""
+def result_embed(text: str, image: Path | None, palette: str) -> tuple[discord.Embed, discord.File | None]:
+    """A dice result as an embed (``!roll``, Manifest): the unchanged German result line as the
+    description, the die as a small thumbnail. ``image=None`` → the embed without a picture, so a
+    failed render never loses the result. Dice-button tests use :func:`result_picture` instead."""
     embed = discord.Embed(description=text, colour=discord.Colour(EMBED_COLOURS.get(palette, EMBED_COLOURS["red"])))
     if image is None:
         return embed, None
-    _show_picture(embed, DICE_FILENAME, large)
+    embed.set_thumbnail(url=f"attachment://{DICE_FILENAME}")
     return embed, discord.File(image, filename=DICE_FILENAME)
 
 
-def _big_embed(text: str, image: Path, palette: str, filename: str) -> tuple[discord.Embed, discord.File]:
-    embed = discord.Embed(description=text, colour=discord.Colour(EMBED_COLOURS[palette]))
-    _show_picture(embed, filename, large=True)
-    return embed, discord.File(image, filename=filename)
+def picture_embed(filename: str) -> discord.Embed:
+    """A box holding only a picture — no text, no coloured side bar (2026-10-31, Tobi: "Kasten nur
+    ums Bild"). The dice-button test keeps its words in the message text, so swapping the picture
+    changes nothing else. Still an embed, not a plain attachment, because only an embed can point at
+    a stored GIF (ADR 064) and spare the upload."""
+    embed = discord.Embed()
+    embed.set_image(url=f"attachment://{filename}")
+    return embed
 
 
 def target_text(target: int) -> str:
-    """The posted test's line — also kept while the die is thrown, so only the picture changes."""
+    """The posted test's target in words — part of the message text, above the picture."""
     return f"Zielwert **{TARGET_PREFIX}{target}**"
 
 
-def target_embed(target: int, image: Path) -> tuple[discord.Embed, discord.File]:
-    """The posted test's target: the steel "≤45" die big above the 🎲 button, the target in words.
-    (The picture itself can't be the button — Discord embeds aren't clickable for interactions.)"""
-    return _big_embed(target_text(target), image, TARGET_PALETTE, TARGET_FILENAME)
+def target_embed(image: Path) -> tuple[discord.Embed, discord.File]:
+    """The posted test's target picture: the steel "≤45" die big above the 🎲 button. (The picture
+    itself can't be the button — Discord embeds aren't clickable for interactions.)"""
+    return picture_embed(TARGET_FILENAME), discord.File(image, filename=TARGET_FILENAME)
 
 
-def throw_link_embed(url: str, target: int) -> discord.Embed:
-    """:func:`throw_embed` for a flight GIF already stored in Discord (ADR 064): the embed points
+def result_picture(image: Path) -> tuple[discord.Embed, discord.File]:
+    """The rolled die big, for a dice-button test; the result line is the message text."""
+    return picture_embed(DICE_FILENAME), discord.File(image, filename=DICE_FILENAME)
+
+
+def throw_link_embed(url: str) -> discord.Embed:
+    """:func:`throw_embed` for a flight GIF already stored in Discord (ADR 064): the box points
     at its link, so the edit carries no upload."""
-    embed = discord.Embed(description=target_text(target), colour=discord.Colour(EMBED_COLOURS[TARGET_PALETTE]))
+    embed = discord.Embed()
     embed.set_image(url=url)
     return embed
 
 
-def throw_embed(gif: Path, target: int) -> tuple[discord.Embed, discord.File]:
-    """The die in the air: the throw GIF big, in the target picture's place, under the same text —
-    straight from the picture to the GIF, nothing else changes (2026-10-31, Tobi). The side bar
-    stays steel; the result's colour would give a critical or a fumble away early."""
-    return _big_embed(target_text(target), gif, TARGET_PALETTE, THROW_FILENAME)
+def throw_embed(gif: Path) -> tuple[discord.Embed, discord.File]:
+    """The die in the air: the throw GIF in the target picture's place — only the picture changes."""
+    return picture_embed(THROW_FILENAME), discord.File(gif, filename=THROW_FILENAME)
 
 
 class DiceTestView(discord.ui.View):

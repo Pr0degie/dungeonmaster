@@ -51,7 +51,7 @@ here is its contract, which DMbot calls:
   engine, never inline their own dice logic.
 - **Dice result thumbnails (`dmbot/dice_images.py`):** a posted dice result goes through
   `DiceCog._result_edit` / `discord_ui.dice.result_embed` — the unchanged German line as the
-  embed description, the rolled die as `set_thumbnail` — except a dice-button test, where target, throw and result are all `set_image` (big, `large=True`; button below). Show the **raw**
+  embed description, the rolled die as `set_thumbnail` — except a dice-button test: there the words ("Zielwert ≤37", later the result line) are the message text and the box holds only the big picture (`picture_embed`, no text, no colour), so the throw swaps nothing but the picture (2026-10-31). Show the **raw**
   face (`TestResult.roll`), not a modified value; the palette comes only from the engine flags
   via `palette_for` (the UI decides nothing). Fail-open: a render problem posts the embed without
   a picture. Stand-in runtimes without `_dice_images` keep plain text, so tests don't render.

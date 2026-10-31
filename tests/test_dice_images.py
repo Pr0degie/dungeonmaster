@@ -179,13 +179,13 @@ def test_a_dice_button_result_shows_the_raw_face_as_the_big_image(monkeypatch, t
     assert asked == [(22, "gold")]
     (edit,) = msg.edits
     embed = edit["embed"]
-    assert edit["content"] is None
+    assert edit["content"] == fed[0]                    # the same line the DM is fed, as message text
     assert embed.image.url == f"attachment://{DICE_FILENAME}"
     assert embed.thumbnail.url is None                  # a button test is big: target, throw, result
     (file,) = edit["attachments"]
     assert file.filename == DICE_FILENAME
-    assert embed.description == fed[0]                  # the same line the DM is fed
-    assert "kritischer Erfolg" in embed.description
+    assert embed.description is None                    # the box holds only the die
+    assert "kritischer Erfolg" in edit["content"]
 
 
 def test_a_roll_without_a_sheet_value_still_shows_its_die(monkeypatch, tmp_path) -> None:
@@ -199,8 +199,8 @@ def test_a_failed_render_posts_the_result_without_a_thumbnail(monkeypatch, tmp_p
     _fake_images(monkeypatch, tmp_path, broken=True)
     cog, fed = _cog(_Seq(23))
     (edit,) = _click(cog, face_skill="Wahrnehmung").edits
-    assert edit["attachments"] == [] and edit["embed"].image.url is None
-    assert edit["embed"].description == fed[0]
+    assert edit["attachments"] == [] and edit["embed"] is None
+    assert edit["content"] == fed[0]
 
 
 def test_with_dice_images_off_the_result_stays_plain_text(monkeypatch, tmp_path) -> None:
@@ -266,7 +266,7 @@ def test_a_fate_reroll_shows_the_die_of_the_result_that_stands(monkeypatch, tmp_
     cog, _ = _fate_cog(_Seq(75, 12))                     # fails, the reroll succeeds
     (edit,) = _fate_decide(cog, True).edits
     assert asked == [(12, "red")]
-    assert "75" in edit["embed"].description and "12 — Erfolg" in edit["embed"].description
+    assert "75" in edit["content"] and "12 — Erfolg" in edit["content"]
     assert len(edit["attachments"]) == 1 and edit["view"] is None
     assert edit["embed"].image.url == f"attachment://{DICE_FILENAME}"  # same message, still big
 

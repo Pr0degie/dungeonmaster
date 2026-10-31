@@ -272,8 +272,8 @@ def test_a_click_throws_then_reveals_and_the_dm_is_fed_before_the_animation(monk
     assert second["attachments"][0].filename == DICE_FILENAME and second["view"] is None
     assert second["embed"].image.url == f"attachment://{DICE_FILENAME}"  # the result stays big
     fed = next(entry[1] for entry in log if entry[0] == "fed")
-    assert second["embed"].description == fed               # the result text only comes with edit 2
-    assert fed not in (first["embed"].description or "")
+    assert second["content"] == fed                        # the result line only comes with edit 2
+    assert "content" not in first                          # the throw changes only the picture
     kinds = [entry[0] for entry in log]
     assert kinds.index("fed") < kinds.index("edit") and kinds.index("narrate") < kinds.index("edit")
     (target, face, _palette), = asked["gif"]
@@ -406,8 +406,8 @@ def test_a_posted_test_shows_the_steel_target_die(monkeypatch, tmp_path) -> None
     _post(cog, monkeypatch, 45)
     (send,) = [entry for entry in log if entry[0] == "send"]
     _, content, view, embed, file = send
-    assert asked["target"] == [45] and content == "🎲 Probe angefordert:" and view is not None
-    assert embed.description == "Zielwert **≤45**" and file.filename == TARGET_FILENAME
+    assert asked["target"] == [45] and content == "🎲 Probe angefordert: Zielwert **≤45**" and view is not None
+    assert embed.description is None and file.filename == TARGET_FILENAME   # the box holds only the die
     assert embed.image.url == f"attachment://{TARGET_FILENAME}"  # big, the 🎲 button below it
     assert embed.thumbnail.url is None
 
