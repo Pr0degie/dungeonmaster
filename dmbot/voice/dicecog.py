@@ -167,8 +167,10 @@ class DiceCog(commands.Cog):
                          char.name, text[:50], req.skill, req.difficulty or "Standard")
                 await self._post_dice_button(channel, req)
 
-    async def _post_dice_button(self, channel, req: TestRequest) -> None:
-        """Resolve a test request (skill value + difficulty → target, all in code) and post its button."""
+    async def _post_dice_button(self, channel, req: TestRequest, *, heading: str | None = None,
+                                in_place: bool = False, demo: bool = False) -> None:
+        """Resolve a test request (skill value + difficulty → target, all in code) and post its button.
+        ``heading``/``in_place``/``demo``: only for ``!wurfvergleich`` (see there)."""
         skill = req.skill or "Probe"
         resolved = resolve_target(
             self._rt._profile, self._rt._characters, skill=skill,
@@ -183,12 +185,13 @@ class DiceCog(commands.Cog):
             diff = ""
         label = f"{who} würfelt: {skill}" + (f" ({diff})" if diff else "")
         note = "" if req.parsed else " (unklarer Marker — manuell prüfen)"
-        text = f"🎲 Probe angefordert{note}:"
+        text = heading or f"🎲 Probe angefordert{note}:"
         # Pick the throw now and render its groundwork, so the click only renders the landing.
         # Cosmetic, in the background: the button does not wait for it.
         prep = (self._spawn_presentation(prepare_throw_async())
                 if self._dice_animation_on() and resolved.target is not None else None)
-        view = DiceTestView(label, self._make_dice_roll(channel, req, resolved, prep=prep))
+        view = DiceTestView(label, self._make_dice_roll(channel, req, resolved, prep=prep,
+                                                        in_place=in_place, demo=demo))
         image = await get_target_image_async(resolved.target) if self._dice_images_on() else None
         if image is not None:  # the steel "≤target" die; a free !roll / no sheet value has none
             embed, file = target_embed(resolved.target, image)
@@ -199,7 +202,8 @@ class DiceCog(commands.Cog):
                 log.warning("dice button with target die failed — posting it without", exc_info=True)
         await self._rt._send_with_retry(channel, text, view=view)
 
-    def _make_dice_roll(self, channel, req: TestRequest, resolved, *, prep=None):
+    def _make_dice_roll(self, channel, req: TestRequest, resolved, *, prep=None,
+                        in_place: bool = False, demo: bool = False):
         """Build the roll callback for a dice button: the engine rolls + resolves, the message is
         replaced with the result, and it's fed back so the DM narrates the consequence.
 
@@ -215,7 +219,8 @@ class DiceCog(commands.Cog):
             # The dice message can be replaced by the throw (a new message below it), so the
             # animation and the Fate choice share one handle to whichever is current.
             dice_msg = {"message": interaction.message}
-            pc = self._fate_holder(channel, who) if result is not None and not result.success else None
+            pc = (self._fate_holder(channel, who)
+                  if result is not None and not result.success and not demo else None)
             view = None
             if pc is not None:
                 view = FateView(
@@ -229,11 +234,13 @@ class DiceCog(commands.Cog):
                 # engine has resolved already, and the DM is fed below without waiting for it.
                 self._spawn_presentation(self._animate_result(
                     channel, dice_msg, target=resolved.target, line=line, face=face,
-                    palette=palette_for(result), view=view, prep=prep,
+                    palette=palette_for(result), view=view, prep=prep, in_place=in_place,
                 ))
             else:
                 await self._show_result(channel, interaction.message, line, face,
                                         palette_for(result), view)  # result (+ Fate choice)
+            if demo:
+                return  # !wurfvergleich: shown only — not fed to the DM, not narrated
             if view is not None:
                 return  # the Fate decision narrates
             await self._finish_roll(channel, guild_id, result, line, skill, who)
@@ -291,7 +298,7 @@ class DiceCog(commands.Cog):
         return task
 
     async def _animate_result(self, channel, dice_msg: dict, *, target: int, line: str, face: int | None,
-                              palette: str, view, prep=None) -> None:
+                              palette: str, view, prep=None, in_place: bool = False) -> None:
         """Presentation only: the throw GIF (posted below the dice message, which goes a moment
         later — :meth:`_swap_in_throw`), then, once it has played, the static result (+ ``view``)
         as an edit of it. ``dice_msg["message"]`` follows the swap. No GIF (render failed, value
@@ -304,7 +311,7 @@ class DiceCog(commands.Cog):
                 if assets is not None and seed is not None and face is not None else None)
         if link is not None:
             await self._animate_stored(channel, dice_msg, link=link, seed=seed, line=line, face=face,
-                                       palette=palette, view=view, started=started)
+                                       palette=palette, view=view, started=started, in_place=in_place)
             return
         anim = await get_dice_gif_async(target, face, palette, seed)
         if anim is not None:
@@ -312,7 +319,7 @@ class DiceCog(commands.Cog):
             built = time.monotonic()
             embed, file = throw_embed(gif)
             try:
-                await self._swap_in_throw(channel, dice_msg, embed, file)
+                await self._swap_in_throw(channel, dice_msg, embed, file, in_place=in_place)
             except discord.NotFound:
                 await self._message_gone(channel, line, view)
                 return
@@ -333,14 +340,15 @@ class DiceCog(commands.Cog):
         except discord.HTTPException:
             await self._rt._send_with_retry(channel, line, view=view)
 
-    async def _swap_in_throw(self, channel, dice_msg: dict, embed, file=None) -> None:
+    async def _swap_in_throw(self, channel, dice_msg: dict, embed, file=None, *,
+                             in_place: bool = False) -> None:
         """Show the throw: post it as a NEW message below the dice message and delete the old one
         :data:`OLD_DICE_MESSAGE_S` later. An in-place edit blanked the picture until every client
         had loaded the GIF (2026-10-31, Tobi); this way the target die stays visible meanwhile.
         A channel that can't post (or a failed post) falls back to editing in place, so a caller
         sees the same exceptions an edit would raise."""
         old = dice_msg["message"]
-        send = getattr(channel, "send", None)
+        send = None if in_place else getattr(channel, "send", None)  # in_place: the old way
         if send is not None:
             try:
                 new = await send(embed=embed, **({"file": file} if file is not None else {}))
@@ -360,12 +368,13 @@ class DiceCog(commands.Cog):
             pass  # already gone
 
     async def _animate_stored(self, channel, dice_msg: dict, *, link: str, seed: int, line: str,
-                              face: int, palette: str, view, started: float) -> None:
+                              face: int, palette: str, view, started: float,
+                              in_place: bool = False) -> None:
         """:meth:`_animate_result` with a flight GIF stored in Discord (ADR 064): the throw only
         points at it (no upload), and the result picture — uploaded so it stays in the history —
         starts early by the learnt upload time, to land with the die."""
         try:
-            await self._swap_in_throw(channel, dice_msg, throw_link_embed(link))
+            await self._swap_in_throw(channel, dice_msg, throw_link_embed(link), in_place=in_place)
         except discord.NotFound:
             await self._message_gone(channel, line, view)
             return
@@ -768,6 +777,29 @@ class DiceCog(commands.Cog):
             await ctx.send("Konnte daraus keine Probe lesen.")
             return
         await self._post_dice_button(ctx.channel, reqs[0])
+
+    @commands.command(name="wurfvergleich")
+    async def wurfvergleich(self, ctx: commands.Context, *, skill: str = "Wahrnehmung") -> None:
+        """Compare the two ways of showing a throw: `!wurfvergleich [Fertigkeit]` posts two test
+        buttons for your character — "Alt" swaps the picture inside the message (the blank gap
+        while the GIF loads), "Neu" posts the throw below and deletes the old message after
+        loading. Both roll through the engine but are only shown: not fed to the DM, no
+        narration, no Fate choice."""
+        if self._rt._profile is None:
+            await ctx.send("Keine Würfel-Engine geladen (Systemprofil fehlt) — siehe Log.")
+            return
+        if not self._dice_animation_on():
+            await ctx.send("Die Wurf-Animation ist aus (`DM_DICE_ANIMATION=0`) — nichts zu vergleichen.")
+            return
+        spec = self._test_spec_with_name(skill, ctx.author)
+        _, reqs = extract_tests(f"<<TEST {spec}>>", self._rt._profile)
+        if not reqs:
+            await ctx.send("Konnte daraus keine Probe lesen.")
+            return
+        await self._post_dice_button(ctx.channel, reqs[0], in_place=True, demo=True,
+                                     heading="🧪 **Alt** — das Bild wird in derselben Nachricht ersetzt:")
+        await self._post_dice_button(ctx.channel, reqs[0], in_place=False, demo=True,
+                                     heading="🧪 **Neu** — der Wurf kommt als neue Nachricht darunter:")
 
     @commands.command(name="turn", aliases=["order"])
     async def turn(self, ctx: commands.Context) -> None:
