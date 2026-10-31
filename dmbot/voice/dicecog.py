@@ -310,7 +310,7 @@ class DiceCog(commands.Cog):
             built = time.monotonic()
             embed, file = throw_embed(gif, target)
             try:
-                await dice_msg["message"].edit(content=None, embed=embed, attachments=[file])
+                await dice_msg["message"].edit(embed=embed, attachments=[file])  # only the picture
             except discord.NotFound:
                 await self._message_gone(channel, line, view)
                 return
@@ -337,7 +337,7 @@ class DiceCog(commands.Cog):
         points at it (no upload), and the result picture — uploaded so it stays in the history —
         starts early by the learnt upload time, to land with the die."""
         try:
-            await dice_msg["message"].edit(content=None, embed=throw_link_embed(link, target),
+            await dice_msg["message"].edit(embed=throw_link_embed(link, target),  # only the picture
                                            attachments=[])
         except discord.NotFound:
             await self._message_gone(channel, line, view)
