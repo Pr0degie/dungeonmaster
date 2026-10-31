@@ -43,7 +43,8 @@ def test_the_flight_gif_plays_once_and_rests_on_the_blank_die(monkeypatch, tmp_p
 
     def fake_frame(frame):
         rendered.append(frame.kind)
-        return Image.new("RGB", (_renderer.THUMB, _renderer.THUMB), (frame.value, frame.texture_seed % 256, 9))
+        shade = (frame.value, frame.texture_seed % 256, int(frame.scale * 200))  # distinct per frame
+        return Image.new("RGB", (_renderer.THUMB, _renderer.THUMB), shade)
 
     monkeypatch.setattr(_renderer, "render_frame", fake_frame)
     path, seconds = dice_images.get_flight_gif(528, "red", cache_dir=tmp_path)

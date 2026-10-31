@@ -248,7 +248,7 @@ def render(number: int, path: str | os.PathLike, seed: int = 7, palette: str = "
 
 THUMB = 360  # GIF frame size in px
 GIF_COLOURS = 32  # per frame — the ASCII dice have few tones; halves the upload vs. 256
-FRAME_SET_VERSION = 3  # bump when the frame plan or the die's look changes (stale pool frames)
+FRAME_SET_VERSION = 4  # bump when the frame plan or the die's look changes (stale pool frames)
 
 _throw_module: ModuleType | None = None
 _throw_lock = threading.Lock()

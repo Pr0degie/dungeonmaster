@@ -73,6 +73,7 @@ from .memory.state import (
     Combatant,
     WorldState,
     clock_full_note_de,
+    clocks_panel_de,
     pressure_panel_de,
     world_state_summary_de,
 )
@@ -1055,6 +1056,12 @@ class SessionRuntime:
         logs, never breaks a turn/command."""
         if self._text_channel is None:
             return
+        if getattr(self, "_player_panel_enabled", False):
+            # Time, deadlines (and clocks) live in the player panel — one message, not two (D133).
+            await self.clear_panel("_clock_panel")
+            await self._sweep_pressure_panels()
+            await self.update_player_panel()
+            return
         state = self._state.get(self._active_vc_id) if self._active_vc_id is not None else None
         clocks = self.clocks_enabled
         if state is None or not ((clocks and state.clocks) or state.deadlines):
@@ -1071,6 +1078,30 @@ class SessionRuntime:
             self._clock_panel = await self._text_channel.send(content)
         except discord.HTTPException:
             log.warning("could not post the clock panel", exc_info=True)
+
+    async def _sweep_pressure_panels(self) -> None:
+        """Delete this bot's separate pressure panels (time + deadlines) left by earlier runs, now
+        that the player panel carries them (D133). Once per channel and run, recent history only."""
+        channel = self._text_channel
+        seen = self.__dict__.setdefault("_pressure_swept_channels", set())
+        if getattr(channel, "id", None) in seen:
+            return
+        seen.add(getattr(channel, "id", None))
+        me = getattr(getattr(channel, "guild", None), "me", None)
+        history = getattr(channel, "history", None)
+        if me is None or history is None:
+            return
+        try:
+            async for msg in history(limit=PANEL_SWEEP_LIMIT):
+                text = msg.content or ""
+                if (getattr(msg.author, "id", None) == me.id and text.startswith("🕐 **")
+                        and "\n⏳ **" in text):
+                    try:
+                        await msg.delete()
+                    except discord.HTTPException:
+                        pass
+        except discord.HTTPException:
+            log.info("could not read the channel history to sweep old pressure panels")
 
     # ----- 🧪 Debug overlay (ADR 052) ---------------------------------------------------------
 
@@ -1146,9 +1177,12 @@ class SessionRuntime:
         entry = plan.entry_for(state.scene_id) if plan is not None else None
         order = self._turn_order.get(cid, [])
         active = order[self._turn_index.get(cid, 0) % len(order)] if order else ""
-        return render_player_panel_de(
+        text = render_player_panel_de(
             state, scene, entry.gates if entry is not None else (), active_player=active
         )
+        if text and self.clocks_enabled and state.clocks:  # the pressure panel's clocks (D133)
+            text = f"{text}\n{clocks_panel_de(state.clocks)}"
+        return text
 
     async def update_player_panel(self, *, reanchor: bool = False) -> None:
         """(Re)render the player panel in the session's text channel.

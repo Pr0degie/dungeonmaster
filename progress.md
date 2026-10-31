@@ -12,10 +12,10 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** D128–D132 / **ADR 064** (30./31.10.) — Würfel-Wurfanimation: Zielwürfel „≤Ziel“ groß im Post,
+- **Newest round:** D128–D133 / **ADR 064** (30./31.10.) — Würfel-Wurfanimation: Zielwürfel „≤Ziel“ groß im Post,
   Wurf-GIF, Ergebnisbild; W20 mit Zahlen auf allen Flächen; 75 Flug-GIFs einmal in `#bot-commands`, der Klick
   zeigt nur auf den Link. Dazu: jeder Befehl tritt vorher dem Voice-Kanal bei, Plopp beim Login, `!test` ohne
-  „für“, Spieler-Panel einmal gepostet und nur noch bearbeitet (nur eins pro Kanal). **1345 Tests grün, `dm-eval`
+  „für“, Panel einmal gepostet, nur noch bearbeitet, mit Zeit/Sirene (D133); Wurf als neue Nachricht. **1345 Tests grün, `dm-eval`
   Exit 0.** Live gesehen: Zielwürfel, GIF, Ergebnis, Auto-Join, Ablage (75/75). Offen live: Tempo, Panel.
 - **Davor (2026-10-25):** D123/D124 (ADR 062, improvisierte NSCs anwesend), D125 (XTTS-Sperre + `gpu_health`),
   D126 (ADR 063, Schicksalspunkte), D127 (Würfel-Thumbnails) — alle code-komplett, Details im Archiv/Log.

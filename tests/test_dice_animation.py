@@ -70,12 +70,14 @@ def test_the_frame_plan_starts_mid_throw_and_settles_on_the_result() -> None:
     states, _ = throw.simulate(528)
     # The posted target die is the picture before the GIF: no opening still, no die at rest.
     assert all(f.kind in ("flicker", "final") for f in plan)
-    assert len(plan) == (len(states) - 1) + len(throw.SLIDE_IN) + 2
-    first = plan[0]
+    take_off = len(throw.TAKE_OFF)
+    assert len(plan) == take_off + (len(states) - 1) + len(throw.SLIDE_IN) + 2
+    assert plan[0].scale > plan[1].scale > plan[2].scale > plan[take_off].scale   # shrinks, no jump
+    first = plan[take_off]
     assert (first.dx, first.dy) == (states[1][0], states[1][1]) and first.duration_ms == throw.FLICKER_MS
     assert [f.duration_ms for f in plan[-5:]] == [130, 180, 250, 340, 2600]
     assert all(f.kind == "final" and f.value == 23 and f.palette == "gold" for f in plan[-2:])
-    assert all(f.palette == "gold" and 1 <= f.value <= 100 for f in plan if f.kind == "flicker")
+    assert all(f.palette == "gold" and 1 <= f.value <= 100 for f in plan[take_off:] if f.kind == "flicker")
     # The flicker frames are the cached ones: they don't depend on the result.
     other = throw.throw_frames(528, 99, "gold")
     assert [f for f in plan if f.kind == "flicker"] == [f for f in other if f.kind == "flicker"]

@@ -110,6 +110,11 @@ TEXTURE_SEED = 7      # the static dice images' texture; the final frames match 
 # the target die before the click, so the GIF starts mid-throw, and the flight plays faster.
 FLICKER_MS = 60
 SLIDE_IN = ((0.6, 130), (0.3, 180), (0.1, 250))
+# Take-off (2026-10-31, "looks odd from PNG to GIF"): the first flight frame shows the die at ~40 %
+# and moved, so the swap from the big target picture jumped. These frames shrink it there smoothly:
+# (share of the way to the first flight frame, palette — None = the result's, ms). Blank centre,
+# the static pictures' texture, steel first like the target die.
+TAKE_OFF = ((0.25, "steel", 40), (0.5, "steel", 40), (0.75, None, 40))
 SETTLE_MS = 340
 HOLD_MS = 2600
 
@@ -135,12 +140,18 @@ class Frame:
 
 def throw_frames(seed: int, result: int, palette: str) -> list[Frame]:
     """The whole GIF for one throw: the pinball (numbers flicker), the slide back to the front,
-    the settle on ``result``. It starts mid-throw — the posted target die is the picture before
-    it, so the first sim state (the die still at rest) is left out. Same arguments → the same plan
+    the settle on ``result``. The posted target die is the picture before it, so the first sim
+    state (the die at rest) is left out; three take-off frames shrink the die from full size
+    into the flight instead of jumping there. Same arguments → the same plan
     (the flicker values come from a seed-derived generator, so the pool frames are reproducible)."""
     states, _ = simulate(seed)
     flick = random.Random(seed * 7919 + 1)
     frames: list[Frame] = []
+    x1, dy1, z1, a1 = states[1]
+    s1 = scale_of(max(z1, 0.0))
+    for t, take_palette, ms in TAKE_OFF:
+        frames.append(Frame("flicker", a1*t, 1 - (1 - s1)*t, x1*t, dy1*t, 0, take_palette or palette, "",
+                            ms, TEXTURE_SEED))
     for i, (x, dy, z, angle) in enumerate(states):
         value = flick.randint(1, 100)  # drawn for every state, so the flicker values never shift
         if i == 0:
