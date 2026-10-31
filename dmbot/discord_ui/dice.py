@@ -21,7 +21,6 @@ from ..dice_images import EMBED_COLOURS, TARGET_PALETTE, TARGET_PREFIX
 DICE_FILENAME = "dice.png"
 TARGET_FILENAME = "target.png"
 THROW_FILENAME = "dice.gif"
-THROW_TEXT = "🎲 *Der Würfel rollt …*"
 
 
 def _show_picture(embed: discord.Embed, filename: str, large: bool) -> None:
@@ -51,25 +50,30 @@ def _big_embed(text: str, image: Path, palette: str, filename: str) -> tuple[dis
     return embed, discord.File(image, filename=filename)
 
 
+def target_text(target: int) -> str:
+    """The posted test's line — also kept while the die is thrown, so only the picture changes."""
+    return f"Zielwert **{TARGET_PREFIX}{target}**"
+
+
 def target_embed(target: int, image: Path) -> tuple[discord.Embed, discord.File]:
     """The posted test's target: the steel "≤45" die big above the 🎲 button, the target in words.
     (The picture itself can't be the button — Discord embeds aren't clickable for interactions.)"""
-    return _big_embed(f"Zielwert **{TARGET_PREFIX}{target}**", image, TARGET_PALETTE, TARGET_FILENAME)
+    return _big_embed(target_text(target), image, TARGET_PALETTE, TARGET_FILENAME)
 
 
-def throw_link_embed(url: str) -> discord.Embed:
+def throw_link_embed(url: str, target: int) -> discord.Embed:
     """:func:`throw_embed` for a flight GIF already stored in Discord (ADR 064): the embed points
     at its link, so the edit carries no upload."""
-    embed = discord.Embed(description=THROW_TEXT, colour=discord.Colour(EMBED_COLOURS[TARGET_PALETTE]))
+    embed = discord.Embed(description=target_text(target), colour=discord.Colour(EMBED_COLOURS[TARGET_PALETTE]))
     embed.set_image(url=url)
     return embed
 
 
-def throw_embed(gif: Path) -> tuple[discord.Embed, discord.File]:
-    """The die in the air: the throw GIF big, in the target's place; the result line follows when
-    it lands. The side bar stays steel — the result's colour would give a critical or a fumble
-    away early."""
-    return _big_embed(THROW_TEXT, gif, TARGET_PALETTE, THROW_FILENAME)
+def throw_embed(gif: Path, target: int) -> tuple[discord.Embed, discord.File]:
+    """The die in the air: the throw GIF big, in the target picture's place, under the same text —
+    straight from the picture to the GIF, nothing else changes (2026-10-31, Tobi). The side bar
+    stays steel; the result's colour would give a critical or a fumble away early."""
+    return _big_embed(target_text(target), gif, TARGET_PALETTE, THROW_FILENAME)
 
 
 class DiceTestView(discord.ui.View):
