@@ -13,7 +13,7 @@ is on-demand._
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
 - **Newest round:** D134 (31.10.) — Sprachbefehl „Der Timo war ein sehr böser Junge.“ trennt Timo vom Voice-Kanal
-  (`DM_KICK_MASTER=Pr0degie`, braucht „Mitglieder verschieben“; **live-unverifiziert**, 1369 Tests grün).
+  (`DM_KICK_MASTER=Pr0degie`, braucht „Mitglieder verschieben“ und einen Bot-Neustart; **live-unverifiziert**, 1369 Tests grün).
   Davor D128–D133 / **ADR 064** (30./31.10.) — Würfel am Tisch: der Post zeigt groß „Zielwert ≤37“
   (W20 mit Zahlen auf allen Flächen), der Klick wirft ein GIF, dann das Ergebnis; Engine und DM warten nie darauf.
   75 Flug-GIFs liegen einmal in `#bot-commands` (Klick ohne Upload). Dazu: jeder Befehl tritt vorher dem Voice-Kanal
@@ -22,7 +22,8 @@ is on-demand._
 - **Davor (2026-10-25):** D123/D124 (ADR 062, improvisierte NSCs anwesend), D125 (XTTS-Sperre + `gpu_health`),
   D126 (ADR 063, Schicksalspunkte), D127 (Würfel-Thumbnails) — alle code-komplett, Details im Archiv/Log.
 - **Next concrete step:** fünfter Lauf mit Bot A (lief am 30./31.10. nicht — der DM blieb stumm); vorher in
-  `#bot-commands` die alten GIF-Sätze löschen (nur die von 01:49 zählen). Prüfliste: Abschnitt „Next concrete step“.
+  `#bot-commands` die alten GIF-Sätze löschen (nur die von 01:49 zählen). Prüfliste: Abschnitt „Next concrete step“; dort auch die
+  kleine Entscheidung, welcher Sprach-Trigger als nächster kommt.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
   geparkt (ADR 061, im [Live-Run-Skript](docs/live-run-script.md) markiert) und werden nach dem
   Abend neu gesichtet; sie zählen nicht gegen die WIP-Grenze.
@@ -38,10 +39,14 @@ _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-a
 
 ## Last session
 
-**Sprachbefehl „sehr böser Junge“ (2026-10-31, D134).** Sagt Tobi im Voice „Der Timo war ein sehr böser Junge.“,
+**Sprachbefehl „sehr böser Junge“ + Tisch-Dossier (2026-10-31/11-01, D134).** Sagt Tobi im Voice „Der Timo war ein sehr böser Junge.“,
 trennt DMbot Timo vom Kanal und postet eine Zeile; die Zeile geht nicht an den DM. Parser und Mitglieder-Suche sind
 rein (`dmbot/voice/kick_phrase.py`), der Hook sitzt in `_on_transcript`. Nur `DM_KICK_MASTER` darf es sagen.
-Live noch nicht gesehen — beim nächsten Start prüfen, ob DMbot „Mitglieder verschieben“ hat. 24 neue Tests.
+Live noch nicht gesehen — Bot neu starten und prüfen, ob DMbot „Mitglieder verschieben“ hat. 24 neue Tests, 1369 grün.
+- Außerhalb des Repos (nur Artefakte): ein Tisch-Dossier aus beiden `transcript.log` und den 🎲-Zeilen der `debug.log`s —
+  [groß, 15 Abschnitte](https://claude.ai/artifact/DwCsuFC3WaAHnRsWhvaZpH), [frühere Kurzfassung](https://claude.ai/artifact/39WPYcH5tSgDyJa88UXsbL).
+  Eckzahlen: 3.227 Transkriptzeilen, 186 →DM (Tobi 82), 67 echte Würfelproben (40 % Erfolg); Vinnie 0 Zeilen;
+  Marco (BloodyP) hat keinen Bogen in `data/party`.
 
 **Würfel-Feinschliff am Tisch (2026-10-31, D130–D133).** Tobi hat die Wurfanimation live ausprobiert und nach jedem
 Blick nachschärfen lassen; jede Runde ist committet, der Bot jeweils neu gestartet. Geblieben ist: der W20 mit Zahlen
@@ -51,12 +56,6 @@ Zielwert und Ergebnis als Text darüber; PNG 600 px/64 Farben (~42 statt ~290 KB
 Auto-Join vor jedem Befehl (D130), Plopp beim Login, `!test` ohne „für“ mit Vornamen (D131), ein Panel pro Kanal,
 einmal gepostet und nur noch bearbeitet (D132), die Druck-Anzeige im Panel (D133), Stop-Hooks entfernt. 1345 Tests.
 Die Discord-Ladelücke beim Bildtausch bleibt (Lesson `discord-image-swaps-reload`).
-
-**Würfel-Wurfanimation (2026-10-30, D128/D129, ADR 064).** Eine Probe zeigt vor dem Klick, was man erreichen muss,
-nach dem Klick fliegt der Würfel (Flipper-Physik aus Tobis Prototyp, 25 Bahnen) und landet auf dem Wurf. Engine und
-DM-Zeile laufen sofort, nur die zwei Edits warten. Gemessen waren ~1,2 s der Wartezeit der Upload im Edit → ADR 064:
-Flug-GIFs einmal in der Ablage, der Klick zeigt nur darauf. Renderer in Stufen zerlegt, Physik wörtlich übernommen.
-Lesson `time-the-discord-side-before-optimising`.
 
 _Ältere `## Last session`-Einträge: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Last session (Verlauf)`._
 
@@ -68,6 +67,11 @@ prüfen: Würfel — Zielwert-Post, GIF, Ergebnis, auch nach „🙏 Neu würfel
 das Spieler-Panel bleibt eins und wird nur bearbeitet; `👥 anwesend in …` für improvisierte Gegner, Zielauswahl nur
 Anwesende, kein Psi-Doppelwurf, kein „Wechseln“ nach Auto-Wechsel, „Was kann ich?“ aus dem Bogen, Schicksal-Buttons
 nach Fehlschlägen. Danach `characters.json` zurück (`git checkout`), wenn Timo/Vinnie wieder mitspielen.
+
+**Klein, Tobi entscheidet:** welcher Sprach-Trigger als nächster gebaut wird (alle nach dem Muster von
+`dmbot/voice/kick_phrase.py` + `_maybe_kick`). Rangfolge: (1) „Baby, welcome to the party!“ trennt BloodyP;
+(2) Zähler: BloodyPs n-tes nacktes „Ja.“ pro Sitzung; (3) „Yo Marco, baby!“. Weitere Ideen aus dem Dossier:
+Timos „Bro“-Zähler, Sezgins „keine Ahnung“ → erzwungene Wahrnehmungsprobe, Tobis „warte“-Zähler, DM-Umfrage „Was tust du?“.
 
 ## Decision log
 
