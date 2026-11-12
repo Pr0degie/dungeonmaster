@@ -12,9 +12,10 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** Aufräumen ohne Verhaltensänderung (12.11.) — die `getattr`-Guards für Test-Stubs sind aus `dmbot/`
-  raus, ebenso die drei trägen `__dict__.setdefault`-Attribute der Panels; Tests bauen Runtime/Brain über
-  `tests/fakes.py` (1365 Tests grün, `dm-eval` Exit 0, live nicht gesehen).
+- **Newest round:** `runtime.py` zerlegt, ohne Verhaltensänderung (12.11., D135 / **ADR 065**) — sieben Methodengruppen
+  liegen als Mixins in `dmbot/session/`, `runtime.py` 1949 → 844 Zeilen (Ziel ≤ 800 um 44 verfehlt, Entscheidung offen:
+  siehe „Last session“). 1365 Tests grün ohne Teständerung, `dm-eval` Exit 0, live nicht gesehen.
+  Am selben Tag davor: Stub-Guards raus, Tests bauen Runtime/Brain über `tests/fakes.py`.
   Davor D134 (31.10., Sprachbefehl „sehr böser Junge“ trennt Timo vom Voice; **live-unverifiziert**, braucht
   `DM_KICK_MASTER`, „Mitglieder verschieben“ und einen Neustart) und D128–D133 / **ADR 064** (Würfel am Tisch, live gesehen).
 - **Davor (2026-10-25):** D123–D127 (improvisierte NSCs, XTTS-Sperre, Schicksalspunkte, Würfel-Thumbnails) —
@@ -37,6 +38,19 @@ _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-a
 
 ## Last session
 
+**`runtime.py` in Module zerlegt (2026-11-12, D135 / ADR 065).** Wer an Szenenfluss, Panels oder Seeding arbeitet,
+lädt jetzt nur noch dieses Modul statt 1949 Zeilen; am Tisch ändert sich nichts. Sieben byte-exakte Moves, je ein
+Commit: `dmbot/session/` mit `ingest`, `clocks`, `npcs`, `panels`, `persistence`, `seeding`, `scenes` (1097 Zeilen).
+`SessionRuntime` erbt die Gruppen als Mixins — ein Objekt, `self` bleibt die Runtime, Cogs und Tests unverändert.
+Nach jedem Move: Byte-Prüfung gegen HEAD, 1365 Tests grün, ruff (F) sauber, `dm-eval` Exit 0. Live nicht gesehen;
+einziger sichtbarer Unterschied sind die Logger-Namen (`session.scenes` statt `runtime`).
+- **Offen (Tobi):** `runtime.py` steht bei 844 statt ≤ 800 Zeilen. Der ADR-052-Pin
+  `test_testplan_is_only_reachable_from_the_runtime` erlaubt das Wort „testplan“ nur in `runtime.py`; deshalb blieben
+  `_session_ingest_source`, `update_debug_overlay` und `_panel_text` (63 Zeilen) dort. Mit `ingest.py` und `panels.py`
+  in der Erlaubnisliste des Tests ziehen sie in einem kleinen Commit nach (≈ 781 Zeilen).
+- **Zurückgestellt:** die öffentliche Cog-Schnittstelle (446 Zugriffe auf Runtime-Privates) — Zahlen und die 21
+  schreibenden Attribute stehen in ADR 065 und [runtime-split.md](docs/plans/runtime-split.md).
+
 **Stub-Guards raus (2026-11-12).** Rund 60 `getattr(self, …, default)`-Zugriffe in `dmbot/` existierten nur, damit
 halb gebaute Test-Runtimes und -Brains nicht abstürzen; sie hätten echte `AttributeError`s verschluckt. Jetzt direkter
 Zugriff, echte optionale Abhängigkeiten (`_adventure is None`, XTTS vs. Piper, Failover-Client, Discord-Interna) bleiben.
@@ -46,15 +60,6 @@ gepatchten schweren Teilen (STT, TTS-Thread, LLM, RAG, Bridge), `FakeBrain`/`mak
 über `FakeLLMClient`. Vier Tests, die nur die Guards festschrieben, sind gestrichen. 1365 grün, `dm-eval` Exit 0.
 Nachzügler: `_player_panel_lock`, `_panel_swept_channels`, `_pressure_swept_channels` entstehen jetzt in `__init__`
 statt per `self.__dict__.setdefault` — kein Test brauchte eine Änderung, weil keiner die Runtime mehr per `__new__` baut.
-
-**Sprachbefehl „sehr böser Junge“ + Tisch-Dossier (2026-10-31/11-01, D134).** Sagt Tobi im Voice „Der Timo war ein sehr böser Junge.“,
-trennt DMbot Timo vom Kanal und postet eine Zeile; die Zeile geht nicht an den DM. Parser und Mitglieder-Suche sind
-rein (`dmbot/voice/kick_phrase.py`), der Hook sitzt in `_on_transcript`. Nur `DM_KICK_MASTER` darf es sagen.
-Live noch nicht gesehen — Bot neu starten und prüfen, ob DMbot „Mitglieder verschieben“ hat. 24 neue Tests, 1369 grün.
-- Außerhalb des Repos (nur Artefakte): ein Tisch-Dossier aus beiden `transcript.log` und den 🎲-Zeilen der `debug.log`s —
-  [groß, 15 Abschnitte](https://claude.ai/artifact/DwCsuFC3WaAHnRsWhvaZpH), [frühere Kurzfassung](https://claude.ai/artifact/39WPYcH5tSgDyJa88UXsbL).
-  Eckzahlen: 3.227 Transkriptzeilen, 186 →DM (Tobi 82), 67 echte Würfelproben (40 % Erfolg); Vinnie 0 Zeilen;
-  Marco (BloodyP) hat keinen Bogen in `data/party`.
 
 _Ältere `## Last session`-Einträge: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Last session (Verlauf)`._
 

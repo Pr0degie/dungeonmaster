@@ -1,7 +1,9 @@
 # Plan — split `dmbot/runtime.py` into session modules, no behaviour change
 
-**Status:** approved by Tobi 2026-11-12 with changes — this round is the **seven move commits
-only**. The cog interface is deferred (see *Deferred*).
+**Status:** the seven moves are done (2026-11-12): `runtime.py` 1949 → **844** lines, all gates
+green after every commit. The ≤ 800 target is missed by 44 lines because of the ADR 052 pin —
+see *Result*. Approved by Tobi with changes: this round is the seven move commits only; the
+cog interface is deferred (see *Deferred*).
 **Date:** 2026-11-12 · **Base commit:** `87c5997` (all line numbers below refer to it)
 **Governing:** ADR 029 (runtime + cogs), ADR 035 (delivery extraction — the precedent),
 ADR 046 (`dm-eval` as the refactor gate), lessons `byte-exact-moves-stepwise-gates` and
@@ -125,6 +127,27 @@ After every commit:
 
 The seventh commit also carries the final numbers in ADR 065 and the `progress.md` entry. Then
 the round stops with a report.
+
+## Result
+
+| Module | Lines | Moved |
+| --- | --- | --- |
+| `session/ingest.py` | 82 | 58 |
+| `session/clocks.py` | 99 | 78 |
+| `session/npcs.py` | 132 | 109 |
+| `session/panels.py` | 167 | 143 |
+| `session/persistence.py` | 161 | 137 |
+| `session/seeding.py` | 158 | 137 |
+| `session/scenes.py` | 477 | 435 |
+| `runtime.py` | 844 (was 1949) | — |
+
+Every move passed the byte check, the suite (1365, zero test edits), ruff (F) and `dm-eval`.
+`history_store` stays imported in `runtime.py` as a re-export because `test_seed_session`
+reaches it there.
+
+**Open:** ≤ 800 is not met. With `ingest.py` and `panels.py` added to the allow-list of
+`test_testplan_is_only_reachable_from_the_runtime`, the three pinned methods follow in one
+commit and `runtime.py` lands at ≈ 781.
 
 ## Deferred — the cog interface (not this round)
 

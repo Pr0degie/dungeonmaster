@@ -1,6 +1,6 @@
 # ADR 065 — `SessionRuntime` split into mixins, not into separate objects
 
-- **Status:** Accepted (in progress 2026-11-12; live-unverified — no behaviour change intended)
+- **Status:** Accepted (built 2026-11-12; live-unverified — no behaviour change intended)
 - **Date:** 2026-11-12
 - **Refs:** decision row **D135** in `docs/decision-log.md`; plan `docs/plans/runtime-split.md`;
   ADR 029 (the runtime), ADR 035 (delivery extraction), lesson `byte-exact-moves-stepwise-gates`.
@@ -24,6 +24,12 @@ Each concern moves into a module under `dmbot/session/` as a **mixin class**, an
 is the runtime and all state stays in `SessionRuntime.__init__`. Method bodies move byte for
 byte by a line-slice script. The cogs and the tests are not touched.
 
+Result: seven modules — `ingest` (82 lines), `clocks` (99), `npcs` (132), `panels` (167),
+`persistence` (161), `seeding` (158), `scenes` (477); 1097 lines moved in seven commits.
+`runtime.py` went from 1949 to **844** lines. After each move: moved text byte-identical to
+`HEAD`, kind/signature/source of all 75 class attributes identical to the base, 1365 tests
+green with zero test edits, ruff (F) clean, `dm-eval` exit 0.
+
 ## Alternatives
 
 - **Collaborator objects** (`rt.scenes.move(…)`, the shape ADR 035 used for the delivery
@@ -44,7 +50,9 @@ byte by a line-slice script. The cogs and the tests are not touched.
 - **The ADR 052 pin shapes the cut.** `test_testplan_is_only_reachable_from_the_runtime` allows
   only `runtime.py` to name the debug sidecar. The three methods outside `__init__` that do —
   `_session_ingest_source`, `update_debug_overlay`, `_panel_text` — therefore stay in
-  `runtime.py`. Moving them needs that allow-list extended, which is Tobi's call.
+  `runtime.py` (63 lines), which is why the file ended at 844 lines instead of the planned
+  ≤ 800. Moving them needs that allow-list extended by `ingest.py` and `panels.py` — Tobi's
+  call, open at the end of the round.
 - `history_store` stays imported in `runtime.py` even where unused, because `test_seed_session`
   reaches it as `runtime_mod.history_store`.
 

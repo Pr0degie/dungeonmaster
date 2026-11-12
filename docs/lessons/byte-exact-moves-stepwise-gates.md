@@ -17,6 +17,10 @@ after every step. Review effort belongs on new logic — the moves are the safe 
 - Boundary cases: sometimes **no** shim is right — a silently drifting stale copy is worse
   than a hard break (D90); and don't generalize the concrete parts (handlers, verdicts)
   while consolidating the seam — that's the feature, not the naht (ADR 051 #5).
+- A test can pin a **file name**, and then it shapes the cut: the ADR 052 pin lets only
+  `runtime.py` name the debug sidecar, so three methods could not follow their concern into
+  `dmbot/session/` and the size target was missed (ADR 065). Grep the tests for `rglob` and
+  file allow-lists *before* promising a cut or a line count.
 
 ## The correction
 
