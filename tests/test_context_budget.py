@@ -107,3 +107,16 @@ def test_ctx_over_budget_handles_missing_meta() -> None:
     # No stats yet, or a 0/None num_ctx → never warns (no false alarms when counts are unknown).
     assert not _TurnTiming(turn=3, trigger=0.0).ctx_over_budget()
     assert not _TurnTiming(turn=4, trigger=0.0, prompt_eval=9000, num_ctx=0).ctx_over_budget()
+
+
+def test_ctx_warning_names_the_real_consequence_per_backend(caplog) -> None:
+    """Over the budget Ollama truncates the prompt head; Claude truncates nothing (the budget is
+    nominal there, ADR 061) — the line must not tell the operator the persona is being cut."""
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="dmbot.turn_timing"):
+        _TurnTiming(turn=1, trigger=0.0, prompt_eval=900, num_ctx=1000).log_line()
+        _TurnTiming(turn=2, trigger=0.0, prompt_eval=900, num_ctx=1000, spawn_ms=400).log_line()
+    ollama, claude = [r.getMessage() for r in caplog.records]
+    assert "Ollama will start truncating" in ollama
+    assert "Ollama" not in claude and "nothing is truncated" in claude

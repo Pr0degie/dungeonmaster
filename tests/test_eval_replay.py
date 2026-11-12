@@ -195,3 +195,21 @@ def test_main_exit_2_on_an_unusable_transcript(monkeypatch, capsys, tmp_path) ->
     monkeypatch.setattr(sys, "argv", ["dm-eval", str(path)])
     assert main() == 2
     assert "FEHLER" in capsys.readouterr().out
+
+
+def test_compaction_events_are_skipped_by_the_golden_loader(tmp_path) -> None:
+    """A journal promoted to a golden may carry the autosave's compaction marker; the replay
+    must see the same turns with and without it."""
+    import json
+
+    from dmbot.memory import history as history_store
+    from dmbot.tools.eval_replay import load_golden
+
+    p = tmp_path / "golden.jsonl"
+    p.write_text(json.dumps({"kind": "session", "ts": "t0"}) + "\n", encoding="utf-8")
+    # a golden turn carries the replay fields (ADR 046) — ``raw`` is the one the loader insists on
+    history_store.append_turn(p, ts="t1", user_msg="Timo: a", answer="A1", extra={"raw": "A1"})
+    history_store.append_compaction(p, ts="c1", since=history_store.journal_size(p))
+    history_store.append_turn(p, ts="t2", user_msg="Timo: b", answer="A2", extra={"raw": "A2"})
+    _header, turns = load_golden(p)
+    assert [(t["user_msg"], t["answer"]) for t in turns] == [("Timo: a", "A1"), ("Timo: b", "A2")]

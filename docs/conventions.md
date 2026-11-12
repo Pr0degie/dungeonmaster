@@ -106,6 +106,8 @@ here is its contract, which DMbot calls:
   campaign-memory feed (ADR 053/054): scene events + `time_minutes` are chunk metadata —
   don't strip them, and never ingest the live (unrotated) file. Debug-run archives carry a
   `.debug` filename marker (ADR 055) — that marker IS the sandbox routing; never rename.
+  An auto-recap leaves a `{"kind": "compact", "keep": n}` event (D136): the crash restore loads
+  only the `n` turns before it and what follows; session ingest and `dm-eval` skip it.
 - A debug run reads and writes `.debug` twins of state/history/chekhov/recap (ADR 056), so
   the two campaigns in one channel can't reach each other. Everything WITHOUT `.debug` in
   the name belongs to the real campaign — that is the rule for every manual cleanup.

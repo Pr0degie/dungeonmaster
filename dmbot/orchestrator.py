@@ -22,7 +22,7 @@ from .llm.client import LLMClient
 from .llm.persona import load_system_prompt
 from .llm.prompt_assembly import assemble_system_prompt
 from .llm.roll_router import classifier_schema, classifier_system, to_test_request
-from .memory.recap import RECAP_SYSTEM_DE, build_recap_user
+from .memory.recap import RECAP_NUM_PREDICT, RECAP_SYSTEM_DE, build_recap_user
 from .rules.marker import (
     MARKER_SPECS,
     ClockTickRequest,
@@ -97,8 +97,12 @@ class DMBrain:
         num_predict: int = 220,
         max_buffer_lines: int = 8,
         retriever=None,
+        recap_num_predict: int = RECAP_NUM_PREDICT,
     ) -> None:
         self._client = client
+        # Output cap of the recap call (:meth:`summarize`). A constructor value because the room a
+        # recap needs depends on the backend's tokens; the wiring sizes it (dmbot.llm.recap_num_predict).
+        self._recap_num_predict = recap_num_predict
         # Rulebook retriever (stage 3, ADR 019): an object with
         # ``async fetch_block(query, *, channel_id) -> str`` (rag/retrieve.RulebookRetriever).
         # Per turn the latest user_msg is embedded and matching rule chunks join the prompt —
@@ -1018,7 +1022,7 @@ class DMBrain:
         raw = await self._client.chat(
             RECAP_SYSTEM_DE,
             [{"role": "user", "content": user}],
-            options={"temperature": 0.3, "num_predict": 400},
+            options={"temperature": 0.3, "num_predict": self._recap_num_predict},
         )
         # Light cleanup only (no marker/test stripping — a recap has none): drop markdown + a leading
         # role label the model might prepend.

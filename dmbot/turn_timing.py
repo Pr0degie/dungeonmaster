@@ -125,7 +125,16 @@ class _TurnTiming:
         log.info("[latency] %s", " ".join(parts))
         # Context-budget early warning (narration turns only — those are the ones that build a
         # _TurnTiming). Above ~85% of num_ctx, Ollama truncates the prompt head (the persona) first.
-        if self.ctx_over_budget():
+        if self.ctx_over_budget() and self.spawn_ms is not None:
+            # A Claude turn (only its stats carry ``spawn_ms``). The budget is nominal there
+            # (ADR 061): it paces the auto-recap, the model's own window is far larger.
+            log.warning(
+                "[ctx] prompt %d/%d tokens (>%d%% of the nominal budget) — Claude backend: nothing "
+                "is truncated; the budget only paces the auto-recap, which compacts the history now "
+                "(if DM_AUTORECAP is on).",
+                self.prompt_eval, self.num_ctx, round(_CTX_WARN_FRACTION * 100),
+            )
+        elif self.ctx_over_budget():
             log.warning(
                 "[ctx] prompt %d/%d tokens (>%d%% of num_ctx) — nearing the cap; Ollama will start "
                 "truncating the prompt head (persona first). Trim history / recap / state block.",

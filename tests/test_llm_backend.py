@@ -376,3 +376,17 @@ def test_a_notice_before_any_channel_is_joined_is_logged_not_lost_silently(caplo
     with caplog.at_level(logging.WARNING, logger="dmbot.voice.dmcog"):
         asyncio.run(go())
     assert "no channel joined yet" in caplog.text
+
+
+def test_the_claude_backend_gets_a_larger_recap_cap() -> None:
+    """Opus writes German at about 2 characters per token; Nemo's 400-token recap cap cut six of
+    seven recaps at their newest events (live 2026-10-31 / 2026-11-12). The Ollama number stays."""
+    from dmbot.llm import recap_num_predict
+    from dmbot.llm.claude_client import _THINKING_HEADROOM
+
+    from fakes import make_config
+
+    assert recap_num_predict(make_config(llm_backend="ollama")) == 400
+    claude = recap_num_predict(make_config(llm_backend="claude"))
+    # room for more than three times the prompted 1200 characters, beside the thinking headroom
+    assert claude >= 2000 and claude + _THINKING_HEADROOM <= 4096

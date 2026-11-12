@@ -159,6 +159,10 @@ class _StubRuntime:
     def __init__(self, brain: DMBrain, *, autorecap: bool = True) -> None:
         self._brain = brain
         self._autorecap = autorecap
+        self._autosave = False  # the compaction journals itself only with the autosave on
+        # Was missing since ADR 044: _maybe_compact resets the NPC-memory window after clearing
+        # the history, and the AttributeError was swallowed by its broad except in every test.
+        self._npc_mem_marks: dict[int, int] = {}
         self._compacting: set[int] = set()
         self._active_vc_id = None
         self._state: dict = {}
@@ -320,3 +324,81 @@ def test_wrapup_folds_in_the_current_recap() -> None:
 
     # The prior recap reached the summariser prompt → the wrap-up is cumulative, not plain.
     assert captured["user"] is not None and "FRÜHERER_RECAP_SENTINEL" in captured["user"]
+
+
+# ---- the compaction is journalled, so a restart does not restore the compacted turns ----------
+
+def test_maybe_compact_journals_the_compaction_and_keeps_a_turn_autosaved_meanwhile(tmp_path) -> None:
+    """The recap covers what was in the history when summarising began. A turn autosaved while
+    the LLM summarises is not in the recap, so a restart must still restore it — and nothing
+    older (live 2026-11-12: every restart reloaded 20 turns the recap already held)."""
+    import json
+
+    from dmbot.memory import history as history_store
+
+    journal = tmp_path / "history.jsonl"
+
+    class _Brain(DMBrain):
+        async def summarize(self, channel_id, *, prior_recap=""):
+            # another turn finishes its playback and is autosaved while this call is in flight
+            history_store.append_turn(journal, ts="t2", user_msg="Timo: währenddessen", answer="A2")
+            return await super().summarize(channel_id, prior_recap=prior_recap)
+
+    brain = _Brain(_CapClient(answer="Kumulativer Recap."))
+    cog = _bare_cog(brain)
+    cog._persist_recap = lambda *a, **k: None  # state.json/recap.md are not under test here
+    cog._rt._autosave = True
+    cog._rt._history_path = lambda cid: journal
+
+    class _Chan:
+        id = 77
+
+    cid = _Chan.id
+    cog._rt._state[cid] = WorldState(session_id=str(cid))
+    brain.add_player_line(cid, "Timo", "Wir kämpfen.")
+    asyncio.run(brain.respond(cid))
+    history_store.append_turn(journal, ts="t1", user_msg="Timo: Wir kämpfen.", answer="A1")
+
+    timing = _TurnTiming(turn=1, trigger=0.0, prompt_eval=900, num_ctx=1000)  # over budget
+    asyncio.run(cog._maybe_compact(_Chan(), timing))
+
+    last = json.loads(journal.read_text(encoding="utf-8").splitlines()[-1])
+    assert last["kind"] == "compact" and last["keep"] == 1
+    assert history_store.load_recent(journal, 20) == [("Timo: währenddessen", "A2")]
+
+
+def test_maybe_compact_writes_no_journal_when_autosave_is_off(tmp_path) -> None:
+    brain = DMBrain(_CapClient(answer="Kumulativer Recap."))
+    cog = _bare_cog(brain)
+    cog._persist_recap = lambda *a, **k: None
+    journal = tmp_path / "history.jsonl"
+    cog._rt._history_path = lambda cid: journal
+
+    class _Chan:
+        id = 78
+
+    cog._rt._state[_Chan.id] = WorldState(session_id="78")
+    brain.add_player_line(_Chan.id, "Timo", "Wir kämpfen.")
+    asyncio.run(brain.respond(_Chan.id))
+    timing = _TurnTiming(turn=1, trigger=0.0, prompt_eval=900, num_ctx=1000)
+    asyncio.run(cog._maybe_compact(_Chan(), timing))
+
+    assert brain.history_len(_Chan.id) == 0  # compacted as before
+    assert not journal.exists()
+
+
+def test_summarize_passes_the_configured_output_cap() -> None:
+    """The recap's output cap is a constructor value, so the backend wiring can size it (ADR 061:
+    Opus needs far more room than Nemo's 400 tokens, or the recap is cut at its newest events)."""
+    seen: dict = {}
+
+    class _Cap(_CapClient):
+        async def chat(self, system, messages, options=None, format=None) -> str:
+            seen["options"] = options
+            return await super().chat(system, messages, options=options, format=format)
+
+    brain = DMBrain(_Cap(answer="Recap."), recap_num_predict=1234)
+    brain.add_player_line(5, "Timo", "Wir gehen.")
+    asyncio.run(brain.respond(5))
+    asyncio.run(brain.summarize(5))
+    assert seen["options"]["num_predict"] == 1234

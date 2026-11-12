@@ -221,3 +221,56 @@ def test_restore_history_respects_the_history_cap():
     n = brain.restore_history(ch, turns)
     assert n == 2  # only the last 2 turns kept (4 messages = _max_messages)
     assert brain._history[ch][0]["content"] == "u3"
+
+
+# ---- compaction marker: a restart must not restore what the recap already covers ---------------
+# Live 2026-10-31 and 2026-11-12: the auto-recap cleared the in-memory history, the journal kept
+# every turn, and each restart loaded the last 20 again on top of the recap that summarised them —
+# the context was at its cap on the first turn after every restart.
+
+def test_restore_after_a_compaction_skips_the_compacted_turns(tmp_path):
+    p = tmp_path / "history.jsonl"
+    history.append_turn(p, ts="t1", user_msg="u1", answer="a1")
+    history.append_turn(p, ts="t2", user_msg="u2", answer="a2")
+    mark = history.journal_size(p)  # summarising starts here: the recap covers u1 and u2
+    assert history.append_compaction(p, ts="c1", since=mark) == 0
+    history.append_turn(p, ts="t3", user_msg="u3", answer="a3")
+    assert history.load_recent(p, 10) == [("u3", "a3")]
+
+
+def test_restore_without_a_marker_loads_every_turn_as_before(tmp_path):
+    # A journal written before the marker existed: turns, a session header, a scene event.
+    p = tmp_path / "history.jsonl"
+    records = [
+        {"kind": "session", "ts": "t0", "system": "imperium_maledictum"},
+        {"ts": "t1", "user_msg": "u1", "answer": "a1", "redo": False},
+        {"kind": "scene", "ts": "t1", "scene_id": "s2"},
+        {"ts": "t2", "user_msg": "u2", "answer": "a2", "redo": False},
+    ]
+    p.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+    assert history.load_recent(p, 10) == [("u1", "a1"), ("u2", "a2")]
+
+
+def test_a_turn_appended_while_summarising_survives_the_compaction(tmp_path):
+    p = tmp_path / "history.jsonl"
+    history.append_turn(p, ts="t1", user_msg="u1", answer="a1")
+    mark = history.journal_size(p)  # summarising starts: the recap will cover u1 only
+    history.append_turn(p, ts="t2", user_msg="u2", answer="a2")  # autosaved while the LLM summarises
+    assert history.append_compaction(p, ts="c1", since=mark) == 1
+    assert history.load_recent(p, 10) == [("u2", "a2")]
+    history.append_turn(p, ts="t3", user_msg="u3", answer="a3")
+    assert history.load_recent(p, 10) == [("u2", "a2"), ("u3", "a3")]
+
+
+def test_a_later_compaction_supersedes_the_earlier_one(tmp_path):
+    p = tmp_path / "history.jsonl"
+    history.append_turn(p, ts="t1", user_msg="u1", answer="a1")
+    history.append_compaction(p, ts="c1", since=history.journal_size(p))
+    history.append_turn(p, ts="t2", user_msg="u2", answer="a2")
+    history.append_compaction(p, ts="c2", since=history.journal_size(p))
+    history.append_turn(p, ts="t3", user_msg="u3", answer="a3")
+    assert history.load_recent(p, 10) == [("u3", "a3")]
+
+
+def test_journal_size_of_a_missing_file_is_zero(tmp_path):
+    assert history.journal_size(tmp_path / "nope.jsonl") == 0

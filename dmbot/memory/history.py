@@ -8,6 +8,12 @@ plus typed journal events (``{"kind": …}``). It is code-owned like ``state.jso
 ``characters.json`` stays the read-only sheet, so the ADR 015 split is not blurred. Restored on
 ``!join`` (only into an empty history), rotated on ``!leave``.
 
+The auto-recap writes a ``{"kind": "compact", "keep": n}`` event when it folds the running
+history into the recap: the restore then loads only the ``n`` turns before it that the recap does
+not cover, and everything after it. Without the event a restart put the compacted turns back on
+top of the recap that already summarised them (live 2026-10-31 and 2026-11-12: the context was at
+its cap on the first turn after every restart).
+
 Pure file helpers (no Discord/asyncio) so they're unit-testable and run off the event loop via
 ``asyncio.to_thread`` in the cog.
 """
@@ -16,9 +22,28 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from pathlib import Path
 
 log = logging.getLogger(__name__)
+
+# The typed event the auto-recap leaves in the journal (see the module docstring).
+COMPACT_KIND = "compact"
+
+# One journal writer at a time. Turn autosaves run in worker threads (``asyncio.to_thread``), and
+# :func:`append_compaction` counts the journal's tail and appends its event in one step — no turn
+# may land between the count and the event, or the restore would drop it.
+_WRITE_LOCK = threading.Lock()
+
+
+def _write_line(path: Path, record: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def _is_turn(rec) -> bool:
+    return isinstance(rec, dict) and rec.get("user_msg") is not None and rec.get("answer") is not None
 
 
 def append_event(path: Path, record: dict) -> None:
@@ -27,10 +52,47 @@ def append_event(path: Path, record: dict) -> None:
     carries typed events (``{"kind": "session", …}``, ADR 046; ``{"kind": "scene", …}``, ADR 053)
     — :func:`load_recent` skips those (no ``user_msg``/``answer``), so old and new consumers
     coexist on one file."""
+    with _WRITE_LOCK:
+        _write_line(Path(path), record)
+
+
+def journal_size(path: Path) -> int:
+    """The journal's size in bytes (``0`` if it does not exist) — the position mark the auto-recap
+    takes at the moment it starts summarising. Cheap (one ``stat``), so it can run on the event
+    loop right before the summary call, with no await in between."""
+    with _WRITE_LOCK:  # never inside a half-written line
+        try:
+            return Path(path).stat().st_size
+        except OSError:
+            return 0
+
+
+def append_compaction(path: Path, *, ts: str, since: int) -> int:
+    """Append the compaction event after a successful auto-recap and return its ``keep`` count.
+
+    ``since`` is the :func:`journal_size` taken when the summary started: every turn record
+    written before it is covered by the new recap. Turn records written after it were autosaved
+    while the LLM summarised — the recap does not hold them, so ``keep`` counts them and
+    :func:`load_recent` restores exactly those plus whatever follows the event. A record of a
+    turn that was already in the history when the summary started can land in that window too
+    (its playback ended late); it is then restored although the recap covers it. The count only
+    ever errs that way — a turn too many, never one lost."""
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    with _WRITE_LOCK:
+        keep = 0
+        if path.is_file():
+            with path.open("rb") as fh:
+                fh.seek(max(since, 0))
+                tail = fh.read().decode("utf-8", errors="replace")
+            for raw in tail.splitlines():
+                try:
+                    rec = json.loads(raw)
+                except ValueError:
+                    continue
+                if _is_turn(rec):
+                    keep += 1
+        _write_line(path, {"kind": COMPACT_KIND, "ts": ts, "keep": keep})
+    return keep
 
 
 def append_turn(
@@ -50,8 +112,11 @@ def load_recent(path: Path, max_turns: int) -> list[tuple[str, str]]:
     """Read the saved turns and return the last ``max_turns`` as ``(user_msg, answer)`` pairs.
 
     A ``redo`` record **replaces** the previous turn (so a restored session doesn't resurrect a
-    superseded answer — same semantics as :meth:`DMBrain.redo`). Corrupt lines are skipped with a
-    warning (an append-only file can have a torn tail). A missing file → ``[]``."""
+    superseded answer — same semantics as :meth:`DMBrain.redo`). A compaction event
+    (:func:`append_compaction`) drops the turns before it except its ``keep`` newest: the recap
+    holds the rest. A journal without such an event (every file written before 2026-11-13) loads
+    as before. Corrupt lines are skipped with a warning (an append-only file can have a torn
+    tail). A missing file → ``[]``."""
     path = Path(path)
     if not path.is_file():
         return []
@@ -64,6 +129,10 @@ def load_recent(path: Path, max_turns: int) -> list[tuple[str, str]]:
             rec = json.loads(raw)
         except ValueError:
             log.warning("history autosave: skipping a corrupt line in %s", path)
+            continue
+        if rec.get("kind") == COMPACT_KIND:
+            keep = rec.get("keep")
+            turns = turns[-keep:] if isinstance(keep, int) and keep > 0 else []
             continue
         user_msg, answer = rec.get("user_msg"), rec.get("answer")
         if user_msg is None or answer is None:

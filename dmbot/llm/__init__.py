@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from importlib import metadata
 
+from ..memory.recap import RECAP_NUM_PREDICT
 from .client import LLMClient, OllamaClient
 
 
@@ -47,3 +48,16 @@ def build_llm_client(config) -> LLMClient:
         app_version=_app_version(),
     )
     return FailoverClient(claude, ollama, cooldown_s=config.llm_failover_cooldown_s)
+
+
+def recap_num_predict(config) -> int:
+    """The output cap of the recap call for this bot's backend (ADR 061, amendment 2026-11-13).
+
+    ``ollama`` → the number the recap has always had. ``claude`` → the Claude client's own, larger
+    number: the same text costs Opus far more tokens, and a recap cut at the cap loses its newest
+    events. Chosen here, next to :func:`build_llm_client`, so no call site names a model."""
+    if config.llm_backend != "claude":
+        return RECAP_NUM_PREDICT
+    from .claude_client import RECAP_NUM_PREDICT as claude_recap_num_predict
+
+    return claude_recap_num_predict

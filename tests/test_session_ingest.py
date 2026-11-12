@@ -344,3 +344,17 @@ def test_failed_ingest_only_logs_and_skips_the_file(tmp_path) -> None:
     )
     # a directory where a file is expected → OSError inside → logged, never raised
     SessionRuntime._ingest_one(rt, tmp_path, 42)
+
+
+def test_compaction_events_are_invisible_to_the_ingest(tmp_path) -> None:
+    """The autosave's compaction marker (which turns a restart restores) is no part of the
+    campaign memory: every turn of the evening is still ingested, the marker is skipped."""
+    from dmbot.memory import history as history_store
+    from dmbot.rag.ingest_session import load_journal
+
+    p = tmp_path / "history.20261112-230000.jsonl"
+    history_store.append_turn(p, ts="t1", user_msg="Timo: a", answer="A1")
+    history_store.append_compaction(p, ts="c1", since=history_store.journal_size(p))
+    history_store.append_turn(p, ts="t2", user_msg="Timo: b", answer="A2")
+    assert [(r["user_msg"], r["answer"]) for r in load_journal(p)] == [
+        ("Timo: a", "A1"), ("Timo: b", "A2")]

@@ -20,6 +20,11 @@ or `self.__dict__.setdefault(...)` added "so the stub in the test doesn't crash"
 - One guard was classified wrongly at first (`getattr(self._client, "last_stats", None)`
   looked like an optional protocol member). The `LLMClient` protocol declares it, and its
   comment named a "test double". Read the protocol or class before calling a guard optional.
+- A hand-built stub plus a broad `except` hides the same thing from the other side:
+  `test_autorecap._StubRuntime` lacked `_npc_mem_marks` since ADR 044, `_maybe_compact` raised
+  `AttributeError` after clearing the history in every test, and its `except Exception` logged
+  and swallowed it — the tests stayed green. Found only when new code was added behind that
+  line (2026-11-13).
 
 ## The correction
 

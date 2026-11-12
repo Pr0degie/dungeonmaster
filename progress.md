@@ -12,10 +12,10 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** `runtime.py` zerlegt, ohne Verhaltensänderung (12.11., D135 / **ADR 065**) — sieben Methodengruppen
-  liegen als Mixins in `dmbot/session/`, `runtime.py` 1949 → 844 Zeilen (Ziel ≤ 800 um 44 verfehlt, von Tobi akzeptiert).
-  1365 Tests grün ohne Teständerung, `dm-eval` Exit 0, live nicht gesehen.
-  Am selben Tag davor: Stub-Guards raus, Tests bauen Runtime/Brain über `tests/fakes.py`.
+- **Newest round:** Kontext nach Neustart (13.11., D136 / ADR 061 Nachtrag) — der Auto-Recap markiert sich im
+  Autosave-Journal, ein Neustart lädt nur noch Züge danach; Recap unter Claude mit eigener Ausgabegrenze und harter
+  Länge. 1377 Tests grün, `dm-eval` Exit 0, **live-unverifiziert**.
+  Davor (12.11., D135 / ADR 065): `runtime.py` in sieben Mixin-Module unter `dmbot/session/` zerlegt (1949 → 844 Zeilen).
   Davor D134 (31.10., Sprachbefehl „sehr böser Junge“ trennt Timo vom Voice; **live-unverifiziert**, braucht
   `DM_KICK_MASTER`, „Mitglieder verschieben“ und einen Neustart) und D128–D133 / **ADR 064** (Würfel am Tisch, live gesehen).
 - **Davor (2026-10-25):** D123–D127 (improvisierte NSCs, XTTS-Sperre, Schicksalspunkte, Würfel-Thumbnails) —
@@ -38,6 +38,21 @@ _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-a
 
 ## Last session
 
+**Kontext nach Neustart, Recap-Grenze (2026-11-13, D136 / ADR 061 Nachtrag).** Nach einem Neustart ist der Kontext
+nicht mehr sofort voll, und der Recap verliert sein Ende nicht mehr. Befund aus `debug.log`: acht der letzten zehn
+Auto-Recaps waren der erste Zug nach einem Neustart (23.200–24.000 von 24.576 Tokens), sechs der letzten sieben Recaps
+waren am Ende gekappt (gespeichert: 2344 Zeichen, endet mit „Kurz darauf brachte ein“).
+- Der Auto-Recap schreibt `{"kind": "compact", "keep": n}` ins Autosave-Journal; `load_recent` lädt nur die `n` Züge
+  davor, die während des Zusammenfassens gespeichert wurden, und alles danach. Alte Dateien ohne Ereignis laden wie
+  bisher. Session-Ingest und `dm-eval` überspringen das Ereignis (je ein Test).
+- Recap unter Claude: Ausgabegrenze 2000 statt 400 Tokens (`dmbot.llm.recap_num_predict`, Ollama unverändert), im
+  Prompt höchstens 8 Sätze und 1200 Zeichen; die `[ctx]`-Warnung sagt unter Claude, dass nichts gekürzt wird.
+- 12 neue Tests, 1377 grün, `dm-eval` Exit 0. **Live-unverifiziert.** Das laufende Debug-Journal hat noch kein
+  Ereignis: der nächste Start lädt einmal noch 20 Züge, ab dem ersten Auto-Recap danach greift die Markierung.
+- **Offen (Tobi), nichts geändert:** das Sprechbudget (748 Zeichen) griff am 12.11. bei allen drei Antworten. Das
+  abgeschnittene Satzstück wird weder gesprochen noch gepostet. Lücke dabei: ein vollständiger Satz, der auf `.“`
+  endet, fällt direkt vor dem Schnitt mit weg (`_SENTENCE_END` kennt das deutsche Schlusszeichen nicht).
+
 **`runtime.py` in Module zerlegt (2026-11-12, D135 / ADR 065).** Wer an Szenenfluss, Panels oder Seeding arbeitet,
 lädt jetzt nur noch dieses Modul statt 1949 Zeilen; am Tisch ändert sich nichts. Sieben byte-exakte Moves, je ein
 Commit: `dmbot/session/` mit `ingest`, `clocks`, `npcs`, `panels`, `persistence`, `seeding`, `scenes` (1097 Zeilen).
@@ -54,16 +69,6 @@ einziger sichtbarer Unterschied sind die Logger-Namen (`session.scenes` statt `r
   Recap der Debug-Sitzung ist 2455 Zeichen lang und ging ungeteilt an Discord (kein Refactor-Effekt; der Lauf zeigte
   nebenbei, dass Seeding und Persistenz aus `dmbot/session/` laufen). `!join` und `!wrap` teilen den Recap jetzt mit
   `split_for_discord`; der Fehler-Log nennt den Befehl und schreibt den Traceback. Live noch nicht nachgeprüft.
-
-**Stub-Guards raus (2026-11-12).** Rund 60 `getattr(self, …, default)`-Zugriffe in `dmbot/` existierten nur, damit
-halb gebaute Test-Runtimes und -Brains nicht abstürzen; sie hätten echte `AttributeError`s verschluckt. Jetzt direkter
-Zugriff, echte optionale Abhängigkeiten (`_adventure is None`, XTTS vs. Piper, Failover-Client, Discord-Interna) bleiben.
-Zwei Attribute existieren dafür ab `__init__`: `SessionRuntime._loop = None`, `DMBrain.last_npcs = None`. Der tote
-Pre-D107-Pfad im `<<ORT>>`-Bestätigen ist weg. `tests/fakes.py`: `make_runtime()` baut die echte `SessionRuntime` mit
-gepatchten schweren Teilen (STT, TTS-Thread, LLM, RAG, Bridge), `FakeBrain`/`make_brain()` ist ein echter `DMBrain`
-über `FakeLLMClient`. Vier Tests, die nur die Guards festschrieben, sind gestrichen. 1365 grün, `dm-eval` Exit 0.
-Nachzügler: `_player_panel_lock`, `_panel_swept_channels`, `_pressure_swept_channels` entstehen jetzt in `__init__`
-statt per `self.__dict__.setdefault` — kein Test brauchte eine Änderung, weil keiner die Runtime mehr per `__new__` baut.
 
 _Ältere `## Last session`-Einträge: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Last session (Verlauf)`._
 

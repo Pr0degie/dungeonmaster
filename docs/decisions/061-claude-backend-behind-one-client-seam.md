@@ -52,6 +52,9 @@ embeddings and as the fallback.
 - Narration calls: `effort="low"`, per-request cap `num_predict` + 1024 thinking headroom, the
   spoken budget held on the text at Nemo's 3.4 chars/token, **streamed calls only**; batch prose
   (recap, `!rules`) is held only by the request cap.
+- Since 2026-11-13 (last amendment): the recap call has its own cap on this backend (2000 tokens
+  + headroom), the recap prompt names a hard length (1200 characters), and the `[ctx]` line
+  says that nothing is truncated here.
 - Stats: separate slots for prose and schema calls; the boot ping checks both models.
 - The live evening is isolated (17 old gates parked, optional layers off — one variable). Known
   gaps and the deliberately deferred review findings: the "review of the whole round" amendment.
@@ -333,3 +336,47 @@ the end of generation. Two consequences of the first version showed:
   characters, uncut, ending with Kessel. Known gap: with `DM_STREAMING=0` a Claude turn has no
   spoken budget below ~1244 tokens; not the evening's configuration.
 
+## Amendment (2026-11-13) — the recap gets its own cap on Claude and a hard length
+
+Found in the logs of 2026-10-31 and 2026-11-12: `✂ … (1102/400 Tokens)` on six of the last seven
+auto-recaps. The stored recap was 2344 characters and ended mid-sentence ("Kurz darauf brachte
+ein"). The 2026-10-25 revision had taken the spoken budget off batch prose, which left the recap
+held by the request cap of 400 + 1024 tokens. That was enough for the 1275-character recap
+measured then; it is not enough once the recap is cumulative. Each auto-recap folds the previous
+one in, the prompt asked for "4–8 Sätze" and told the model that nothing of the earlier recap
+may be lost, and Opus obeyed the second instruction: the recap grew until the cap cut it — at its
+end, where the newest events are.
+
+Decided:
+
+- **The recap call has its own output cap per backend.** `DMBrain` takes `recap_num_predict`;
+  `dmbot.llm.recap_num_predict(config)` — next to `build_llm_client`, so no call site names a
+  model — returns 400 for Ollama (unchanged) and `claude_client.RECAP_NUM_PREDICT` = **2000**
+  for Claude. With the thinking headroom that is a request cap of 3024 tokens, room for more
+  than three times the prompted length. The cap is now a brake on a runaway answer; it is not
+  what ends a recap. A cut still raises the ✂ WARNING. While the failover has the bot on Ollama, the
+  recap call reaches Nemo with the same 2000: a higher ceiling there, never a cut.
+- **The recap prompt names a hard length:** at most 8 sentences and 1200 characters
+  (`RECAP_MAX_CHARS`), also when an earlier recap is folded in. The cumulative instruction now
+  reads "condense the earlier part so the length holds; names, decisions and open threads must
+  survive" instead of "nothing may be lost". This prompt is shared with Ollama.
+
+Rejected: a higher floor for all batch prose in the client — it would also lift the cap of a
+batch-mode turn (`DM_STREAMING=0`), and the narration budget is not to change before the Claude
+evening. Raising the 400 at the call site — it would change the Ollama path.
+
+Fixed in the same round, outside the client: the auto-recap now writes a `{"kind": "compact"}`
+event into the autosave journal and the crash restore loads only what follows it (D136). Before,
+every restart put the last 20 turns back on top of the recap that already held them, so the first
+turn after a restart was at 23,200–24,000 of 24,576 tokens and triggered another recap — eight of
+the last ten auto-recaps in the log. The `[ctx]` WARNING of a Claude turn now says that nothing
+is truncated and that the budget only paces the auto-recap.
+
+Not changed: the spoken budget of a streamed turn. It engaged on all three turns of 2026-11-12
+(raw text exactly 748 characters each). The cut fragment is neither spoken nor posted —
+`_trim_to_last_sentence` drops it from the answer that chat, speech and history share. One gap
+found while checking: `_SENTENCE_END` does not accept the German closing quote `“` after the
+full stop, so a complete sentence ending in `.“` right before the cut is dropped with the
+fragment (seen once that evening). Left for the round that decides the spoken budget.
+
+Live-unverified: the recap under the new cap and prompt, and a restart after an auto-recap.

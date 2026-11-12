@@ -11,6 +11,15 @@ owns the Ollama client and the per-channel history.
 
 from __future__ import annotations
 
+# The recap's hard length, named in the prompt. It is injected into every later prompt and each
+# auto-recap folds the previous one in, so without a hard number it only grows: on Opus it reached
+# ~2400 characters and was cut at the output cap in six of seven runs, losing its newest events
+# (live 2026-10-31 / 2026-11-12). An uncut recap over 15 turns measured 1275 characters (ADR 061).
+RECAP_MAX_CHARS = 1200
+# Output cap of the recap call in the Ollama model's tokens (~3.4 characters each: room for
+# ~1360 characters). The Claude backend gets its own, larger number — see ``dmbot.llm``.
+RECAP_NUM_PREDICT = 400
+
 # German: the recap is game content (play language), like the persona. It must read like a short
 # "previously on …" for the players, not a meta report — facts only, no rules talk, no commentary.
 RECAP_SYSTEM_DE = (
@@ -18,7 +27,9 @@ RECAP_SYSTEM_DE = (
     "der bisherigen Sitzung — ein \"Was bisher geschah\", das die Gruppe beim nächsten Mal an den "
     "Stand erinnert.\n\n"
     "Regeln:\n"
-    "- Schreibe 4–8 Sätze, dichte Prosa, in der Vergangenheitsform, auf Deutsch.\n"
+    f"- Schreibe höchstens 8 Sätze und höchstens {RECAP_MAX_CHARS} Zeichen: dichte Prosa, in der "
+    "Vergangenheitsform, auf Deutsch. Die Grenze gilt immer — auch wenn eine bisherige "
+    "Zusammenfassung mitgegeben ist: dann verdichte das Ältere, statt anzuhängen.\n"
     "- Nur was tatsächlich geschah: besuchte Orte, getroffene NSCs, Entscheidungen der Gruppe, "
     "Kämpfe und ihr Ausgang, offene Fäden.\n"
     "- Nenne die Charaktere bei ihren Namen.\n"
@@ -56,7 +67,8 @@ def build_recap_user(history: list[dict[str, str]], prior_recap: str = "") -> st
             "Seitdem ist Folgendes geschehen:\n\n"
             f"{transcript}\n\n"
             "Schreibe EINE zusammenhängende, aktualisierte Zusammenfassung, die das Bisherige und "
-            "das Neue vereint — nichts aus der bisherigen Zusammenfassung darf verloren gehen."
+            "das Neue vereint. Verdichte das Bisherige, damit die Längengrenze hält — Namen, "
+            "getroffene Entscheidungen und offene Fäden daraus dürfen nicht verloren gehen."
         )
     return (
         "Hier ist der Verlauf der bisherigen Sitzung. Fasse ihn als \"Was bisher geschah\" zusammen:\n\n"

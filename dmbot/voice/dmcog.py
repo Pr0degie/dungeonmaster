@@ -583,6 +583,11 @@ class DMCog(commands.Cog):
             # Cumulative: fold the recap currently in the prompt into the new one so nothing already
             # summarised is lost (the older recap covers what scrolled out of the running history).
             prior = self._rt._brain.current_recap(cid)
+            # Journal mark, taken with no await before the summary starts: what the autosave holds
+            # up to here is what this recap will cover; a turn autosaved while the LLM summarises
+            # is not, and the compaction event below tells the crash restore to keep it.
+            journal = self._rt._history_path(cid) if self._rt._autosave else None
+            mark = history_store.journal_size(journal) if journal is not None else 0
             recap = await self._rt._brain.summarize(cid, prior_recap=prior)
             if not recap:
                 log.warning("🧵 Auto-Recap: leere Zusammenfassung — history NICHT geleert.")
@@ -595,6 +600,17 @@ class DMCog(commands.Cog):
             # compaction only the turns appended during the summarize await remain, so restart the
             # window at 0. Overlap (extracted-but-unconsumed turns) is deduped at apply.
             self._rt._npc_mem_marks.pop(cid, None)
+            if journal is not None:
+                # Without this event a restart restored the compacted turns on top of the recap
+                # that holds them — the context was at its cap on the first turn after every
+                # restart (live 2026-10-31, 2026-11-12). A failed write only costs that again.
+                try:
+                    await asyncio.to_thread(
+                        history_store.append_compaction, journal,
+                        ts=datetime.now().isoformat(timespec="seconds"), since=mark,
+                    )
+                except OSError:
+                    log.exception("could not journal the compaction for channel %s", cid)
             log.info("🧵 Auto-Recap fertig — history kompaktiert, Recap aktualisiert.")
             if self._rt._text_channel is not None:  # a brief, lightweight Discord note (matches status posts)
                 await self._rt._send_with_retry(

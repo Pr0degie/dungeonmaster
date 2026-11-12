@@ -347,7 +347,8 @@ after the recap and before the history.
 > - **`data/sessions/<channel>/history.jsonl`** — the **conversation autosave** (`dmbot/memory/history.py`,
 >   D41, `DM_AUTOSAVE=1`): append-only, one JSON line per completed DM turn (`{ts, user_msg, answer,
 >   redo}`), written off the event loop after every turn. **Restored** into an empty in-memory
->   history on `!join` (capped at `max_history_turns`; a `redo` record replaces the prior turn), and
+>   history on `!join` (capped at `max_history_turns`; a `redo` record replaces the prior turn; after
+>   an auto-recap only the turns behind its `{"kind": "compact"}` event, since the recap holds the rest), and
 >   **rotated** to `history.<timestamp>.jsonl` on `!leave` so the next session starts fresh while the
 >   record survives (a debug-campaign run rotates to `history.<stamp>.debug.jsonl` — the ADR 055
 >   sandbox marker). Crash recovery for the *narrative thread* (`state.json` already covers the hard
@@ -642,7 +643,9 @@ the replay harness do not know which one answers.
 - **Not mappable on Claude:** `temperature` (the intro temperature of D83 is a no-op), server-side
   `stop` sequences, `repeat_penalty` / `repeat_last_n` / `top_p`. The client-side speaker-label
   cut stays the anti-puppeting guard. `num_ctx` is a *nominal* budget (`CLAUDE_NUM_CTX`, equal to
-  Ollama's) so auto-recap and the `[ctx]` warning keep their cadence.
+  Ollama's) so auto-recap and the `[ctx]` warning keep their cadence; on this backend the warning
+  says that nothing is truncated. The recap call has its own output cap here (2000 tokens,
+  `dmbot.llm.recap_num_predict`), so a recap is not cut at its newest events.
 - **`num_predict` is enforced by the client, on the text.** Opus thinks even with thinking
   disabled, and thinking counts against the CLI's per-request cap. Narration therefore runs with
   `effort="low"`, the per-request cap gets 1024 tokens of thinking headroom, and the client holds

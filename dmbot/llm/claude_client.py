@@ -92,6 +92,13 @@ _THINKING_HEADROOM = 1024
 # is meant as a brake on monologues that rarely engages. Enforced as characters because the
 # stream carries no per-delta token count.
 _CHARS_PER_TOKEN = 3.4
+# The recap's output cap on this backend (wired in by ``dmbot.llm.recap_num_predict``). The
+# callers' 400 is an Ollama number: with the thinking headroom it left Opus ~1100-1350 text
+# tokens, and six of seven recaps were cut at their end — the newest events (live 2026-10-31 /
+# 2026-11-12). The recap prompt names a hard length of 1200 characters, ~600 Opus tokens; this
+# is room for more than three times that, so the cap is a brake on a runaway answer and never
+# the thing that ends a recap. A cut still raises the ✂ WARNING.
+RECAP_NUM_PREDICT = 2000
 
 
 def render_transcript(messages: list[dict[str, str]]) -> str:
