@@ -13,15 +13,14 @@ is on-demand._
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
 - **Newest round:** Kontext nach Neustart (13.11., D136 / ADR 061 Nachtrag) — der Auto-Recap markiert sich im
-  Autosave-Journal, ein Neustart lädt nur noch Züge danach; Recap unter Claude mit eigener Ausgabegrenze und harter
-  Länge; danach `/code-review` über beide Commits, die bestätigten Befunde sind behoben. 1381 Tests grün, `dm-eval`
-  Exit 0, **live-unverifiziert**.
+  Autosave-Journal, ein Neustart lädt nur noch Züge danach; Recap unter Claude mit eigener Grenze und harter Länge;
+  `/code-review`-Befunde behoben. 1381 Tests grün, 3 xfail (NSC-Sichtung, ADR 062 — „Open questions“), `dm-eval`
+  Exit 0. Recap und Journal-Ereignis live gesehen, der Neustart danach noch nicht.
   Davor (12.11., D135 / ADR 065): `runtime.py` in sieben Mixin-Module unter `dmbot/session/` zerlegt (1949 → 844 Zeilen).
-  Davor D134 (31.10., Sprachbefehl „sehr böser Junge“ trennt Timo vom Voice; **live-unverifiziert**, braucht
-  `DM_KICK_MASTER`, „Mitglieder verschieben“ und einen Neustart) und D128–D133 / **ADR 064** (Würfel am Tisch, live gesehen).
+  Davor D134 (31.10., Sprachbefehl „sehr böser Junge“, **live-unverifiziert**) und D128–D133 / **ADR 064** (Würfel, live gesehen).
 - **Davor (2026-10-25):** D123–D127 (improvisierte NSCs, XTTS-Sperre, Schicksalspunkte, Würfel-Thumbnails) —
   code-komplett, Details im Archiv/Log.
-- **Next concrete step:** fünfter Lauf mit Bot A (lief am 30./31.10. nicht — der DM blieb stumm); vorher in
+- **Next concrete step:** erst ein Neustart als Probe (Restore nach Kompaktierung), dann der fünfte Lauf mit Bot A; vorher in
   `#bot-commands` die alten GIF-Sätze löschen (nur die von 01:49 zählen). Prüfliste: Abschnitt „Next concrete step“; dort auch die
   kleine Entscheidung, welcher Sprach-Trigger als nächster kommt.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
@@ -81,6 +80,16 @@ einziger sichtbarer Unterschied sind die Logger-Namen (`session.scenes` statt `r
 _Ältere `## Last session`-Einträge: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Last session (Verlauf)`._
 
 ## Next concrete step
+
+**Zuerst, zwei Minuten: Neustart-Probe (D136).** Bot neu starten, `!join` im Debug-Kanal. Erwartet: die Zeile
+`restored N conversation turns` nennt nur die Züge seit dem letzten `compact`-Ereignis (nicht 20), der erste Zug liegt
+bei etwa 15.000 statt 23.000 Tokens und löst keinen Auto-Recap aus. Wenn doch 20: Journal-Ende und `state.debug.json`
+ansehen (das Ereignis entsteht nur, wenn der Recap in `state.json` steht).
+
+**Vor dem Abend entscheiden (Tobi):** (1) Sprechbudget — 748 Zeichen griffen bei vier von fünf Opus-Antworten am
+12./13.11.; dazu die Lücke, dass ein Satz auf `.“` vor dem Schnitt mit wegfällt (ADR 061, Nachtrag 13.11.).
+(2) Ob die drei NSC-xfails (ADR 062, „Open questions“) vor dem Abend behoben werden — sie treffen jeden Zug, in dem
+die Gruppe an einem neuen Ort ankommt und dort jemanden sieht.
 
 **Der fünfte Lauf.** Vorher: Bot A starten (am 30./31.10. lief er nicht, der DM erzählte stumm), in `#bot-commands`
 die alten Würfel-GIF-Sätze löschen (gültig sind die 8 Nachrichten von 2026-10-31 01:49), Sandbox leeren. Am Tisch
