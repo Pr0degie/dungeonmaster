@@ -14,6 +14,8 @@ import discord
 
 from dmbot.runtime import SessionRuntime
 
+from fakes import make_runtime
+
 
 class _FakeMessage:
     """Stands in for a discord.Message panel handle: records whether .delete() ran."""
@@ -43,7 +45,7 @@ class _Gone(discord.HTTPException):
 
 def _runtime() -> SessionRuntime:
     """A bare SessionRuntime without running __init__ (which boots the voice stack / Config)."""
-    return SessionRuntime.__new__(SessionRuntime)
+    return make_runtime()
 
 
 def test_clear_panel_deletes_and_nulls_handle():

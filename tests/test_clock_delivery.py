@@ -11,8 +11,9 @@ import logging
 
 from dmbot.memory.state import WorldState
 from dmbot.rules.marker import ClockTickRequest
-from dmbot.runtime import SessionRuntime
 from dmbot.voice.delivery import DeliveryPipeline, uhr_verdict
+
+from fakes import FakeBrain, make_runtime
 
 
 class _Channel:
@@ -23,8 +24,9 @@ class _Channel:
         self.sent.append((content, view))
 
 
-class _Brain:
+class _Brain(FakeBrain):
     def __init__(self, reqs: list[ClockTickRequest]) -> None:
+        super().__init__()
         self._reqs = reqs
         self.notes: list[str] = []
         self.discarded: list[str] = []
@@ -43,12 +45,6 @@ class _Brain:
         return before - len(self.notes)
 
 
-class _NoUhrBrain:
-    """Deliberately WITHOUT take_pending_uhr — pins the getattr guard in _handle_uhr, which
-    keeps tests/test_delivery.py's fake brain untouched (clocks need no adventure, so the
-    ADR-043 adventure-guard trick doesn't apply here)."""
-
-
 def _state_with_clocks() -> WorldState:
     state = WorldState()
     state.add_clock("Arbites-Ermittlung", 6)   # id: arbites-ermittlung
@@ -58,7 +54,7 @@ def _state_with_clocks() -> WorldState:
 
 
 def _pipeline(reqs: list[ClockTickRequest], *, confirm: bool, brain=None):
-    rt = object.__new__(SessionRuntime)
+    rt = make_runtime()
     rt._brain = brain if brain is not None else _Brain(reqs)
     rt._brain_channel = lambda ch: 7
     rt._state = {7: _state_with_clocks()}
@@ -160,17 +156,10 @@ def test_confirm_callback_degrades_when_clock_gone_or_full() -> None:
     assert "Nicht mehr aktuell" in interaction.edits[0]
 
 
-def test_handle_uhr_without_take_pending_uhr_is_a_noop() -> None:
-    channel = _Channel()
-    pipeline, rt = _pipeline([], confirm=True, brain=_NoUhrBrain())
-    asyncio.run(pipeline._handle_uhr(channel))  # would raise AttributeError without the guard
-    assert channel.sent == []
-
-
 # -- runtime mutators (_tick_clock / _untick_clock) ----------------------------------------------
 
 def _runtime():
-    rt = object.__new__(SessionRuntime)
+    rt = make_runtime()
     rt._brain = _Brain([])
     rt._brain_channel = lambda ch: 7
     rt._state = {7: WorldState()}
@@ -222,7 +211,7 @@ class _PanelChannel:
 
 
 def _panel_runtime():
-    rt = object.__new__(SessionRuntime)
+    rt = make_runtime()
     rt._active_vc_id = 7
     rt._state = {7: WorldState()}
     rt._text_channel = _PanelChannel()

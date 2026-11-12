@@ -260,6 +260,7 @@ class SessionRuntime:
         self._kick_master = config.kick_master
         self._speaker_ids: dict[str, int] = {}  # display name → Discord user id (written per utterance)
         self._voice_channel = None  # the joined voice channel (seed_session); its members are live
+        self._loop: asyncio.AbstractEventLoop | None = None  # captured by seed_session (STT → loop)
         if not self._clocks:
             log.info("⏱ Uhren aus (DM_CLOCKS=0) — nicht angelegt, nicht angezeigt, <<UHR>> wird "
                      "ignoriert; gespeicherte Uhren bleiben erhalten.")
@@ -508,9 +509,9 @@ class SessionRuntime:
         the event loop captured at ``seed_session``. Fire-and-forget — a failed post is logged,
         never blocks the turn. The line lands before the DM's answer because the turn waits for
         STT to go idle and then spends seconds in the LLM."""
-        loop = getattr(self, "_loop", None)
-        channel = getattr(self, "_text_channel", None)
-        if not getattr(self, "_post_player_lines", True) or loop is None or channel is None:
+        loop = self._loop
+        channel = self._text_channel
+        if not self._post_player_lines or loop is None or channel is None:
             return
         if not text.strip() or loop.is_closed():
             return
@@ -530,18 +531,18 @@ class SessionRuntime:
         """If ``text`` is the kick phrase, disconnect the named member from the voice channel.
         Returns True when the line was a command (handled or refused), so the caller keeps it
         away from the DM. Runs on the STT thread: the move itself is scheduled on the loop."""
-        if not getattr(self, "_kick_phrase", False):
+        if not self._kick_phrase:
             return False
         culprit_name = parse_kick_phrase(text)
         if not culprit_name:
             return False
-        master = getattr(self, "_kick_master", "")
+        master = self._kick_master
         if not is_kick_master(master, speaker, self._speaker_ids.get(speaker)):
             log.info("⚡ %s said the kick phrase about %r — only %s may (DM_KICK_MASTER)",
                      speaker, culprit_name, master)
             return True
-        vc = getattr(self, "_voice_channel", None)
-        loop = getattr(self, "_loop", None)
+        vc = self._voice_channel
+        loop = self._loop
         if vc is None or loop is None or loop.is_closed():
             log.info("⚡ kick phrase about %r, but no voice channel/loop to act on", culprit_name)
             return True
@@ -563,7 +564,7 @@ class SessionRuntime:
             log.exception("⚡ disconnecting %s failed (Move Members permission?)", name)
             return
         log.info("⚡ %s war ein sehr böser Junge — vom Voice-Kanal getrennt (gesagt von %s)", name, by)
-        channel = getattr(self, "_text_channel", None)
+        channel = self._text_channel
         if channel is None:
             return
         try:
@@ -796,8 +797,7 @@ class SessionRuntime:
             clocks=self.clocks_enabled,
         )
         chekhov_block = chekhov_mod.chekhov_block_de(self.chekhov_list(cid).top_open())
-        characters = getattr(self, "_characters", None)  # stub runtimes in tests have no store
-        sheet_block = characters.sheet_block_de() if characters is not None else ""
+        sheet_block = self._characters.sheet_block_de() if self._characters is not None else ""
         for block in (sheet_block, self._psyker_block(state), self._augmetic_block(), chekhov_block):
             if block:
                 summary = f"{summary}\n\n{block}" if summary else block
@@ -897,10 +897,9 @@ class SessionRuntime:
         self._register_scene_npcs(state, scene)
         if changed:
             self._journal_scene_event(state)
-            turns = getattr(self, "_scene_turns", None)  # getattr: stub runtimes stay dormant
-            cid = next((c for c, st in getattr(self, "_state", {}).items() if st is state), None)
-            if turns is not None and cid is not None:
-                turns[cid] = 0  # the guidance impulse fires again on the first turn here
+            cid = next((c for c, st in self._state.items() if st is state), None)
+            if cid is not None:
+                self._scene_turns[cid] = 0  # the guidance impulse fires again on the first turn here
         return scene
 
     def _register_scene_npcs(self, state: WorldState, scene: Scene | None) -> list[str]:
@@ -916,11 +915,10 @@ class SessionRuntime:
         Idempotent: an already-registered NPC keeps its drifted attitude, wounds and memories —
         ``attitude=""`` on the update path means "don't touch". A name belonging to a player
         character is skipped."""
-        # getattr: a partially-built state (tests) has no roster to register into — stay dormant.
-        if self._adventure is None or scene is None or not hasattr(state, "add_or_update_npc"):
+        if self._adventure is None or scene is None:
             return []
-        players = {c.name.strip().lower() for c in getattr(state, "characters", [])}
-        known = {n.name.strip().lower() for n in getattr(state, "npcs", [])}
+        players = {c.name.strip().lower() for c in state.characters}
+        known = {n.name.strip().lower() for n in state.npcs}
         added: list[str] = []
         for raw in scene.npcs_here:
             name = raw.strip()
@@ -947,11 +945,10 @@ class SessionRuntime:
         """Append a ``{"kind": "scene", "scene_id", "ts"}`` record to the session journal
         (ADR 053): rotated transcripts carry their own scene boundaries for the upcoming
         session-transcript ingest. ``load_recent`` skips it (no ``user_msg``/``answer``,
-        ADR 046). getattr-guarded like :meth:`replay_note` — journaling must never break a
-        scene move on a partially-built runtime."""
-        if not getattr(self, "_autosave", False):
+        ADR 046). Journaling must never break a scene move: a write error is only logged."""
+        if not self._autosave:
             return
-        cid = next((c for c, st in getattr(self, "_state", {}).items() if st is state), None)
+        cid = next((c for c, st in self._state.items() if st is state), None)
         if cid is None:
             return
         try:
@@ -1041,10 +1038,8 @@ class SessionRuntime:
         except RuntimeError:
             log.debug("no running event loop — session ingest not scheduled")
             return
-        tasks = getattr(self, "_session_tasks", None)
-        if tasks is not None:  # stub runtimes in tests may lack the set
-            tasks.add(task)
-            task.add_done_callback(tasks.discard)
+        self._session_tasks.add(task)
+        task.add_done_callback(self._session_tasks.discard)
 
     def _set_scene_flag(self, state: WorldState, element_id: str, *, resolved: bool) -> str | None:
         """Deterministically flag an element of the CURRENT scene resolved/open (ADR 043, golden
@@ -1070,9 +1065,8 @@ class SessionRuntime:
 
     @property
     def clocks_enabled(self) -> bool:
-        """``DM_CLOCKS`` — the one place the switch is read. Defaults to on for a runtime built
-        without ``__init__`` (the stub runtimes of the test suite)."""
-        return getattr(self, "_clocks", True)
+        """``DM_CLOCKS`` — the one place the switch is read."""
+        return self._clocks
 
     def _tick_clock(self, channel, clock_id: str) -> Clock | None:
         """Deterministically advance a clock one segment (golden rule #3) — the single mutator
@@ -1115,7 +1109,7 @@ class SessionRuntime:
         logs, never breaks a turn/command."""
         if self._text_channel is None:
             return
-        if getattr(self, "_player_panel_enabled", False):
+        if self._player_panel_enabled:
             # Time, deadlines (and clocks) live in the player panel — one message, not two (D133).
             await self.clear_panel("_clock_panel")
             await self._sweep_pressure_panels()
@@ -1196,7 +1190,7 @@ class SessionRuntime:
         (the clock-panel pattern), called by every scene-change path. Fully dormant without a
         loaded testplan; zero LLM calls, zero prompt bytes — the DM never learns a test run is
         happening. Best-effort: a send/edit failure logs, never breaks a turn."""
-        plan = getattr(self, "_testplan", None)  # getattr: stub runtimes stay dormant
+        plan = self._testplan
         if plan is None:
             return
         state = self._state.get(self._active_vc_id) if self._active_vc_id is not None else None
@@ -1232,7 +1226,7 @@ class SessionRuntime:
         if state is None:
             return ""
         scene = self._adventure.get_scene(state.scene_id) if self._adventure is not None else None
-        plan = getattr(self, "_testplan", None)
+        plan = self._testplan
         entry = plan.entry_for(state.scene_id) if plan is not None else None
         order = self._turn_order.get(cid, [])
         active = order[self._turn_index.get(cid, 0) % len(order)] if order else ""
@@ -1251,8 +1245,7 @@ class SessionRuntime:
         bot adopts its newest panel from the channel instead of posting another, and deletes
         older duplicates. ``reanchor=True`` (tests, a manual reset) deletes and posts it anew.
         Best-effort: a send/edit failure logs and never breaks a turn."""
-        # getattr: a partially-built runtime (tests) stays dormant, like the 🧪 overlay above.
-        if not getattr(self, "_player_panel_enabled", False) or self._text_channel is None:
+        if not self._player_panel_enabled or self._text_channel is None:
             return
         content = self._panel_text()
         if not content:
@@ -1387,15 +1380,12 @@ class SessionRuntime:
         player lines, as ``Speaker: text`` lines. The narration is kept here, not read back from
         the brain's history, so it does not depend on when the history is written. Then this
         turn's answer becomes the next turn's previous narration."""
-        narrations = getattr(self, "_last_narration", None)  # getattr: stub runtimes
-        if narrations is None:
-            narrations = self._last_narration = {}
+        narrations = self._last_narration
         lines = []
         previous = narrations.get(cid, "").strip()
         if previous:
             lines.append(f"Spielleitung: {previous}")
-        last_actions = getattr(self._brain, "last_actions", None)
-        for name, text in (last_actions(cid) if last_actions is not None else None) or ():
+        for name, text in self._brain.last_actions(cid) or ():
             if str(text).strip():
                 lines.append(f"{name}: {str(text).strip()}")
         narrations[cid] = answer
@@ -1405,36 +1395,31 @@ class SessionRuntime:
         """Run the scene (ADR 057), fact (ADR 058) and presence (ADR 062) classifiers on the same
         turn boundary.
 
-        All are optional layers and fail open: a switched-off block, a missing brain method (a
-        stub in tests) or a degenerate verdict yields ``None`` and changes nothing. Returns
+        All are optional layers and fail open: a switched-off block or a degenerate verdict
+        yields ``None`` and changes nothing. Returns
         ``(scene_verdict | None, fact_verdict | None, npc_verdict | None)``."""
         scene = self._adventure.get_scene(state.scene_id) if self._adventure is not None else None
         jobs: list[tuple[str, object]] = []
         if self._scene_router and scene is not None:
-            classify = getattr(self._brain, "classify_scene_move", None)
             exits = self._exit_labels(scene, state)
-            if classify is not None and exits:
-                jobs.append(("scene", classify(
+            if exits:
+                jobs.append(("scene", self._brain.classify_scene_move(
                     turn_text=answer, exits=exits, current_title=scene.title_de, context=context,
                 )))
         if self._fact_router:
-            classify = getattr(self._brain, "classify_commitment", None)
-            if classify is not None:
-                givers = list(scene.npcs_here) if scene is not None else []
-                jobs.append(("fact", classify(
-                    answer_text=answer,
-                    recipients=self._characters.character_names() if self._characters else [],
-                    givers=givers,
-                )))
-        if getattr(self, "_npc_router", False):  # getattr: stub runtimes in tests stay dormant
-            classify = getattr(self._brain, "classify_present_npcs", None)
-            if classify is not None:
-                jobs.append(("npc", classify(
-                    answer_text=answer,
-                    party=self._characters.character_names() if self._characters else [],
-                    roster=self._adventure.statblock_names() if self._adventure is not None else [],
-                    present=[n.name for n in self._scene_npcs(state)],
-                )))
+            givers = list(scene.npcs_here) if scene is not None else []
+            jobs.append(("fact", self._brain.classify_commitment(
+                answer_text=answer,
+                recipients=self._characters.character_names() if self._characters else [],
+                givers=givers,
+            )))
+        if self._npc_router:
+            jobs.append(("npc", self._brain.classify_present_npcs(
+                answer_text=answer,
+                party=self._characters.character_names() if self._characters else [],
+                roster=self._adventure.statblock_names() if self._adventure is not None else [],
+                present=[n.name for n in self._scene_npcs(state)],
+            )))
         if not jobs:
             return None, None, None
         results = await asyncio.gather(*(coro for _, coro in jobs), return_exceptions=True)
@@ -1448,7 +1433,7 @@ class SessionRuntime:
         # Replay journal (ADR 046): the raw verdicts, exactly like the roll router's.
         for key, attr in (("scene_router", "last_scene_router"), ("facts", "last_facts"),
                           ("npcs", "last_npcs")):
-            note = getattr(self._brain, attr, None)
+            note = getattr(self._brain, attr)
             if isinstance(note, dict):
                 self.replay_note(channel, key, note)
         return out.get("scene"), out.get("fact"), out.get("npc")
@@ -1624,9 +1609,7 @@ class SessionRuntime:
         self._persist_and_refresh(channel)
         log.info("scene → %s (%s) [%s]", moved.id, moved.title_de,
                  getattr(trigger, "value", trigger) or "auto")
-        proposals = getattr(self, "_scene_proposals", None)  # stub runtimes in tests have none
-        if proposals is not None:
-            await retire_scene_proposal(proposals, cid, moved)
+        await retire_scene_proposal(self._scene_proposals, cid, moved)
         if old_scene and old_scene != moved.id:
             self.schedule_npc_memory_extraction(channel, old_scene)
             await self.advance_scene_time(channel)
@@ -1828,26 +1811,24 @@ class SessionRuntime:
 
         All three are idempotent — ``seed_time_from_adventure`` latches ``time_seeded``,
         ``set_mission`` replaces rather than appends and NPC registration keeps existing values —
-        so a re-join or a restart mid-session neither resets the clock nor duplicates a deadline.
-        Every step is ``getattr``-guarded: a partially-built state (tests) simply skips it."""
+        so a re-join or a restart mid-session neither resets the clock nor duplicates a deadline."""
         adv = self._adventure
         if adv is None:
             return
-        start_time = getattr(adv, "start_time_de", "")
-        deadlines = getattr(adv, "deadlines", []) or []
+        start_time = adv.start_time_de
+        deadlines = adv.deadlines
         # DM_CLOCKS=0: the adventure's clocks are not created at all (start time and deadlines are).
-        clocks = (getattr(adv, "clocks", []) or []) if self.clocks_enabled else []
-        seed_time =getattr(state, "seed_time_from_adventure", None)
-        if seed_time is not None and (start_time or deadlines or clocks):
-            seed_time(start_time=start_time or None, deadlines=deadlines, clocks=clocks)
-        mission = getattr(adv, "mission", None) or {}
-        set_mission = getattr(state, "set_mission", None)
+        clocks = adv.clocks if self.clocks_enabled else []
+        if start_time or deadlines or clocks:
+            state.seed_time_from_adventure(start_time=start_time or None, deadlines=deadlines,
+                                           clocks=clocks)
+        mission = adv.mission
         title = str(mission.get("title_de", "") or "").strip()
-        if set_mission is not None and title:
-            set_mission(title,
-                        detail=str(mission.get("detail_de", "") or ""),
-                        given_by=str(mission.get("given_by", "") or ""))
-        if hasattr(state, "npcs") and getattr(state, "scene_id", ""):
+        if title:
+            state.set_mission(title,
+                              detail=str(mission.get("detail_de", "") or ""),
+                              given_by=str(mission.get("given_by", "") or ""))
+        if state.scene_id:
             self._register_scene_npcs(state, adv.get_scene(state.scene_id))
 
     def seed_session(self, voice_channel, text_channel) -> bool:
@@ -1886,7 +1867,7 @@ class SessionRuntime:
         self._state[cid] = self._load_or_seed_state(cid)
         # Fate (ADR 063, IM p.220): a !join starts a session — unset totals come from the profile,
         # Fate spent last time is recovered.
-        profile = getattr(self, "_profile", None)  # stub runtimes in tests have none
+        profile = self._profile
         if profile is not None and profile.fate_enabled():
             self._state[cid].start_fate_session(default=profile.fate_start())
         # Adventure (Phase 10a): point a fresh session at the start scene; a loaded state keeps
@@ -1930,15 +1911,15 @@ class SessionRuntime:
         # Replay journal header (ADR 046): the session context dm-eval needs to rebuild the
         # pipeline (profile, adventure, scene mode). One line per !join; load_recent skips it.
         if self._autosave:
-            profile = getattr(self, "_profile", None)
-            adventure = getattr(self, "_adventure", None)
+            profile = self._profile
+            adventure = self._adventure
             try:
                 history_store.append_event(self._history_path(cid), {
                     "kind": "session",
                     "ts": datetime.now().isoformat(timespec="seconds"),
                     "profile": profile.name if profile else "",
                     "adventure": adventure.id if adventure else "",
-                    "scene_mode": getattr(self, "_scene_mode", "verbunden"),
+                    "scene_mode": self._scene_mode,
                 })
             except OSError:
                 log.exception("could not write the session header for channel %s", cid)
@@ -1952,18 +1933,13 @@ class SessionRuntime:
     def replay_note(self, channel, key: str, value) -> None:
         """Record one replay-journal fact for the turn in flight (ADR 046) — the delivery
         pipeline notes the pre-marker world state + scene/flag verdicts, the dice cog notes the
-        router verdict. Drained into the turn's autosave record by :meth:`take_replay_notes`.
-        getattr-guarded: recording must never break a turn on a partially-built runtime."""
-        if not getattr(self, "_autosave", False):
+        router verdict. Drained into the turn's autosave record by :meth:`take_replay_notes`."""
+        if not self._autosave:
             return
-        notes = getattr(self, "_replay_notes", None)
-        if notes is None:
-            notes = self._replay_notes = {}
-        notes.setdefault(self._brain_channel(channel), {})[key] = value
+        self._replay_notes.setdefault(self._brain_channel(channel), {})[key] = value
 
     def take_replay_notes(self, channel) -> dict:
         """Return and clear the turn's replay notes (ADR 046) — called by the autosave."""
-        notes = getattr(self, "_replay_notes", None)
-        if not notes:
+        if not self._replay_notes:
             return {}
-        return notes.pop(self._brain_channel(channel), {})
+        return self._replay_notes.pop(self._brain_channel(channel), {})

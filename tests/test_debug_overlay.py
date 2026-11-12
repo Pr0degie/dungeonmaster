@@ -16,6 +16,8 @@ from dmbot.rag.testplan import Testplan, TestplanEntry
 from dmbot.runtime import SessionRuntime
 from dmbot.voice.delivery import DeliveryPipeline
 
+from fakes import make_runtime
+
 
 class _Msg:
     def __init__(self, content: str) -> None:
@@ -43,7 +45,7 @@ def _plan() -> Testplan:
 
 
 def _runtime(*, testplan, scene_id: str = "s1"):
-    rt = object.__new__(SessionRuntime)
+    rt = make_runtime()
     rt._testplan = testplan
     rt._debug_panel = None
     rt._debug_channel_id = 0
@@ -64,13 +66,6 @@ def test_dormant_without_testplan() -> None:
     rt = _runtime(testplan=None)
     asyncio.run(SessionRuntime.update_debug_overlay(rt))
     assert rt._text_channel.sent == []
-
-
-def test_stub_runtime_without_attrs_is_dormant() -> None:
-    # The delivery/cog call sites run against stub runtimes in tests — the getattr guard
-    # keeps a bare SessionRuntime shell quiet instead of raising.
-    rt = object.__new__(SessionRuntime)
-    asyncio.run(SessionRuntime.update_debug_overlay(rt))
 
 
 def test_dormant_without_active_session() -> None:
@@ -136,17 +131,16 @@ def test_scene_confirm_refreshes_the_overlay() -> None:
     async def _overlay():
         flags["overlay"] = True
 
-    rt = types.SimpleNamespace(
+    rt = make_runtime(
         _brain_channel=lambda ch: 7,
-        _state={7: types.SimpleNamespace(scene_id="s1")},
+        _state={7: WorldState(scene_id="s1")},
         _set_scene=lambda st, sid: scene,
         _persist_and_refresh=lambda ch: None,
         schedule_npc_memory_extraction=lambda ch, sid: None,
         advance_scene_time=_advance,
         update_debug_overlay=_overlay,
     )
-    dp = object.__new__(DeliveryPipeline)
-    dp._rt = rt
+    dp = DeliveryPipeline(rt, post_deliver=lambda *a, **k: None)
 
     class _Interaction:
         async def edit_original_response(self, content: str = "") -> None:

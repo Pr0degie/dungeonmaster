@@ -150,17 +150,13 @@ class DMCog(commands.Cog):
             return
         # Replay journal (ADR 046): merge the brain's turn capture (lines/results/raw/markers)
         # and the runtime notes (state_before, scene/flag verdicts, router) into the record.
-        # getattr-guarded so stubbed brains/runtimes in tests stay valid.
-        take_turn = getattr(self._rt._brain, "take_replay_turn", None)
-        extra = (take_turn(cid) if take_turn is not None else None) or {}
-        take_notes = getattr(self._rt, "take_replay_notes", None)
-        if take_notes is not None:
-            extra.update(take_notes(channel))
+        extra = self._rt._brain.take_replay_turn(cid) or {}
+        extra.update(self._rt.take_replay_notes(channel))
         # In-game clock at turn completion (ADR 053): the chunk-time anchor for the upcoming
         # session-transcript ingest. Metadata only — no renderer or prompt consumes it, and
         # every reader must tolerate its absence (old journals lack it).
-        state = getattr(self._rt, "_state", {}).get(cid)
-        if state is not None and hasattr(state, "time_minutes"):
+        state = self._rt._state.get(cid)
+        if state is not None:
             extra["time_minutes"] = state.time_minutes
         try:
             await asyncio.to_thread(
@@ -429,7 +425,7 @@ class DMCog(commands.Cog):
         # The adventure's own plain-language opening (D107, findings A1/A9/A11): with it the
         # first part of the monologue is the campaign's text instead of the model's invention,
         # so a newcomer is not handed two paragraphs of unexplained Warhammer vocabulary.
-        briefing = getattr(self._rt._adventure, "briefing_de", "") if self._rt._adventure else ""
+        briefing = self._rt._adventure.briefing_de if self._rt._adventure else ""
         director_msg = build_intro_director_msg(roster, briefing)
         np = self._rt._intro_num_predict
         tmp = self._rt._intro_temperature  # lower, fixed !intro temperature (D83) — steadier monologue

@@ -21,6 +21,8 @@ from dmbot.rules.marker import ManifestRequest, extract_manifests
 from dmbot.memory.state import Combatant, WorldState, world_state_summary_de
 from dmbot.voice.dicecog import DiceCog
 
+from fakes import make_brain, make_runtime
+
 _IM = profile_mod.load("imperium_maledictum")
 
 
@@ -266,14 +268,14 @@ class _FakeInteraction:
 
 
 def _fake_runtime(*, store: CharacterStore, state: WorldState | None):
-    """A minimal stand-in for SessionRuntime exposing only what _make_manifest_roll touches."""
-    rt = types.SimpleNamespace()
+    """A runtime set up for _make_manifest_roll: the party, the state, no Discord."""
+    rt = make_runtime()
     rt._profile = _IM
     rt._rng = random.Random(7)
     rt._characters = store
     rt._state = {1: state} if state is not None else {}
     rt._brain_channel = lambda channel: 1
-    rt._brain = types.SimpleNamespace(add_test_result=lambda cid, ln: None)
+    rt._brain = make_brain(add_test_result=lambda cid, ln: None)
     rt._persist_and_refresh = lambda channel: None
 
     async def _send_with_retry(channel, content=None, *, view=None):
@@ -301,9 +303,7 @@ def test_manifest_warns_when_party_psyker_not_in_world_state() -> None:
     ])
     state = WorldState(characters=[])  # encounter has no Mortn
     rt = _fake_runtime(store=store, state=state)
-    cog = DiceCog.__new__(DiceCog)  # skip __init__ (needs a real bot); set only what we use
-    cog._rt = rt
-    cog._warp_untracked_warned = set()
+    cog = DiceCog(None, rt)
 
     resolved = resolve_manifest_request(_IM, store, power="Smite", target_name="Mortn")
     assert resolved is not None and resolved.target is not None
@@ -329,9 +329,7 @@ def test_manifest_warning_is_one_time_per_psyker() -> None:
         })
     ])
     rt = _fake_runtime(store=store, state=WorldState(characters=[]))
-    cog = DiceCog.__new__(DiceCog)
-    cog._rt = rt
-    cog._warp_untracked_warned = set()
+    cog = DiceCog(None, rt)
 
     resolved = resolve_manifest_request(_IM, store, power="Smite", target_name="Mortn")
     req = ManifestRequest(power="Smite", target_name="Mortn")

@@ -24,6 +24,8 @@ from dmbot.runtime import SessionRuntime
 from dmbot.voice import dicecog
 from dmbot.voice.dicecog import DiceCog
 
+from fakes import make_brain, make_runtime
+
 _IM = load("imperium_maledictum")
 _renderer = dice_images._load_renderer()
 throw = _renderer.throw_module()
@@ -230,15 +232,13 @@ def _cog(rng, *, animation: bool = True, images: bool = True):
     async def send(channel, content=None, *, view=None, embed=None, file=None):
         log.append(("send", content, view, embed, file))
 
-    rt = SimpleNamespace(
+    rt = make_runtime(
         _profile=_IM, _rng=rng, _state={}, _brain_channel=lambda ch: 7, _characters=None,
         _dice_images=images, _dice_animation=animation,
-        _brain=SimpleNamespace(add_test_result=lambda cid, line: log.append(("fed", line))),
+        _brain=make_brain(add_test_result=lambda cid, line: log.append(("fed", line))),
         run_and_deliver=run_and_deliver, _send_with_retry=send,
     )
-    cog = DiceCog.__new__(DiceCog)
-    cog._rt = rt
-    cog._presentations = set()
+    cog = DiceCog(None, rt)
 
     async def no_damage_flow(channel, *, attacker, result):  # a hit's damage flow is not under test
         return True

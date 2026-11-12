@@ -41,7 +41,7 @@ class ClockCog(commands.Cog):
     async def _off(self, ctx: commands.Context) -> bool:
         """``DM_CLOCKS=0``: every clock command answers with the same hint and does nothing.
         The clocks in the saved state are left alone — hidden, not deleted."""
-        if getattr(self._rt, "clocks_enabled", True):
+        if self._rt.clocks_enabled:
             return False
         await ctx.send(CLOCKS_OFF_DE)
         return True

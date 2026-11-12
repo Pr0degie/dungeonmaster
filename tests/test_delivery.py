@@ -26,6 +26,8 @@ from types import SimpleNamespace
 from dmbot.runtime import _TurnTiming
 from dmbot.voice.delivery import DeliveryPipeline
 
+from fakes import FakeBrain, make_runtime
+
 
 class _Recorder:
     """Shared sink for the fake synth + bridge: what was synthesised, in what order it played, the
@@ -52,13 +54,13 @@ class _Recorder:
         return path
 
 
-class _FakeBrain:
+class _FakeBrain(FakeBrain):
     """Yields a fixed sentence sequence through on_sentence, then returns the full answer."""
 
     def __init__(self, sentences: list[str]) -> None:
+        super().__init__()
         self.sentences = sentences
         self.answer = " ".join(sentences)
-        self.last_llm_stats = None
 
     async def respond_streaming(self, channel_id, *, extra_text=None, on_sentence=None,
                                 should_abort=None) -> str:
@@ -68,9 +70,6 @@ class _FakeBrain:
 
     def last_user_msg(self, channel_id):
         return None
-
-    def take_pending_scenes(self, channel_id):
-        return []  # no scene markers → _handle_scene returns early
 
 
 class _FakeBridge:
@@ -91,39 +90,28 @@ class _FakeBridge:
         return True
 
 
-class _StubRuntime:
-    """A minimal stand-in for SessionRuntime carrying only what _deliver_streaming touches — the
-    cog split (ADR 029) reaches all shared state through the runtime, so the pipeline holds this."""
+def _stream_runtime(brain, bridge, *, prebuffer: int, transform):
+    """The runtime _deliver_streaming runs against — the cog split (ADR 029) reaches all shared
+    state through it. No adventure (the marker handlers return early), layer-2 mute off (no sink
+    mute/unmute), a TTS backend counted as loaded; Discord sends are recorded."""
+    sent: list[str] = []
 
-    def __init__(self, brain, bridge, *, prebuffer: int, transform) -> None:
-        self._brain = brain
-        self._bridge = bridge
-        self._prebuffer = prebuffer
-        self._transform = transform
-        self._sink = None
-        self._pause_vad_while_speaking = False  # layer-2 mute off → no sink mute/unmute in the test
-        self._paused = False
-        self._tts_enabled = True
-        self._adventure = None  # no adventure → _handle_scene returns early
-        self.sent: list[str] = []
+    async def _send_with_retry(channel, content) -> None:
+        sent.append(content)
 
-    def _brain_channel(self, channel) -> int:
-        return channel.id
-
-    def speech_transform(self):
-        return self._transform
-
-    def prebuffer_count(self) -> int:
-        return self._prebuffer
-
-    async def _send_with_retry(self, channel, content) -> None:
-        self.sent.append(content)
-
-    async def handle_dice(self, channel) -> None:
+    async def _handle_dice(channel) -> None:
         return None
 
-    def consistency_checker(self, channel):
-        return None  # guard off (ADR 045) — the streamed log-only check is tested separately
+    return make_runtime(
+        _brain=brain, _bridge=bridge, _tts_enabled=True, sent=sent,
+        _brain_channel=lambda channel: channel.id,
+        speech_transform=lambda: transform,
+        prebuffer_count=lambda: prebuffer,
+        _send_with_retry=_send_with_retry,
+        handle_dice=_handle_dice,
+        # guard off (ADR 045) — the streamed log-only check is tested separately
+        consistency_checker=lambda channel: None,
+    )
 
 
 def _run_streaming(*, sentences, prebuffer=1, transform=None, fail_first=False):
@@ -131,7 +119,7 @@ def _run_streaming(*, sentences, prebuffer=1, transform=None, fail_first=False):
     rec = _Recorder()
     brain = _FakeBrain(sentences)
     bridge = _FakeBridge(rec, fail_first=fail_first)
-    rt = _StubRuntime(brain, bridge, prebuffer=prebuffer, transform=transform)
+    rt = _stream_runtime(brain, bridge, prebuffer=prebuffer, transform=transform)
 
     async def _post_deliver(channel, answer, timing, *, saved_user_msg=None, redo=False) -> None:
         pass  # the cog's end-of-turn tail (autosave/recap) is tested on the cog, not here

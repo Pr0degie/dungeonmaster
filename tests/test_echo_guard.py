@@ -71,6 +71,7 @@ def test_empty_answer_is_not_an_echo() -> None:
 
 class _EchoThenGoodClient:
     """First call parrots the player line, the retry narrates. Records each call's messages."""
+    last_stats = None  # LLMClient surface (ADR 061)
 
     def __init__(self) -> None:
         self.calls: list[list[dict[str, str]]] = []
@@ -86,6 +87,8 @@ class _EchoThenGoodClient:
 
 
 class _AlwaysEchoClient:
+    last_stats = None  # LLMClient surface (ADR 061)
+
     def __init__(self) -> None:
         self.calls = 0
 
@@ -127,6 +130,7 @@ def test_respond_suppresses_a_double_echo_and_keeps_history_clean() -> None:
 
 class _EchoStreamClient:
     """Streams an echo; the (batch) retry narrates — or echoes again when ``always_echo``."""
+    last_stats = None  # LLMClient surface (ADR 061)
 
     def __init__(self, always_echo: bool = False) -> None:
         self.always_echo = always_echo
@@ -181,6 +185,7 @@ def test_streaming_double_echo_is_suppressed_nothing_spoken_or_stored() -> None:
 # --- results-only turns carry the narrate-the-consequence directive -------------------------------
 
 class _CaptureClient:
+    last_stats = None  # LLMClient surface (ADR 061)
     def __init__(self) -> None:
         self.messages: list[dict[str, str]] | None = None
 

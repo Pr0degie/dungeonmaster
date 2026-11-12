@@ -61,7 +61,7 @@ class DiceCog(commands.Cog):
         # Running throw animations (cosmetic message edits) — referenced so they aren't collected.
         self._presentations: set[asyncio.Task] = set()
         # Throw GIFs stored once in Discord (ADR 064); None = upload per roll.
-        spec = str(getattr(runtime, "_dice_asset_channel", "") or "")
+        spec = str(runtime._dice_asset_channel or "")
         self._assets: DiceAssetStore | None = DiceAssetStore(spec) if spec else None
         # How long the result edit (an upload) takes — learnt per roll, so it starts early enough.
         self._upload_lead_s = 1.0
@@ -152,7 +152,7 @@ class DiceCog(commands.Cog):
             req = await self._rt._brain.classify_test(action=text, character=char.name, skills=skills)
             # Replay journal (ADR 046): the router's raw constrained-JSON verdict + parsed decision,
             # so dm-eval can re-run the classification offline. None (a failed call) records nothing.
-            recorded = getattr(self._rt._brain, "last_router", None)
+            recorded = self._rt._brain.last_router
             if recorded is not None:
                 self._rt.replay_note(channel, "router", {
                     "action": text, "character": char.name, "skills": skills, **recorded,
@@ -222,7 +222,7 @@ class DiceCog(commands.Cog):
                     pc.fate_available,
                     self._make_fate_decision(channel, guild_id, dice_msg, resolved,
                                              skill, who, result, line),
-                    timeout=float(getattr(self._rt, "_fate_wait_seconds", 20.0)),
+                    timeout=float(self._rt._fate_wait_seconds),
                 )
             if self._dice_animation_on() and resolved.target is not None:
                 # Cosmetic, in its own task: the throw GIF, then the result (+ Fate choice). The
@@ -261,12 +261,12 @@ class DiceCog(commands.Cog):
         ), result.roll
 
     def _dice_images_on(self) -> bool:
-        """Dice result thumbnails on? Off for stand-in runtimes that don't set the flag."""
-        return bool(getattr(self._rt, "_dice_images", False))
+        """Dice result thumbnails on?"""
+        return bool(self._rt._dice_images)
 
     def _dice_animation_on(self) -> bool:
-        """Throw animation on? Needs dice images; off for stand-in runtimes without the flag."""
-        return self._dice_images_on() and bool(getattr(self._rt, "_dice_animation", False))
+        """Throw animation on? Needs dice images."""
+        return self._dice_images_on() and bool(self._rt._dice_animation)
 
     async def _show_result(self, channel, message, line: str, face: int | None, palette: str,
                            view) -> None:
@@ -300,7 +300,7 @@ class DiceCog(commands.Cog):
         the narration, so it is posted anew)."""
         started = time.monotonic()
         seed = await prep if prep is not None else None  # the throw prepared at post time
-        assets = getattr(self, "_assets", None)
+        assets = self._assets
         link = (assets.url(getattr(channel, "guild", None), seed, palette)
                 if assets is not None and seed is not None and face is not None else None)
         if link is not None:
@@ -595,8 +595,7 @@ class DiceCog(commands.Cog):
         # Candidates: the living NPCs PRESENT in this scene (ADR 062) first, then other party
         # members (friendly fire). Never NPCs elsewhere — on 2026-10-25 the picker offered the
         # seneschal from two scenes away and both hits landed on the quest-giver.
-        scene_npcs = getattr(self._rt, "_scene_npcs", None)
-        present = scene_npcs(state) if scene_npcs is not None else [n for n in state.npcs if n.wounds > 0]
+        present = self._rt._scene_npcs(state)
         candidates = [n.name for n in present]
         candidates += [
             c.name for c in state.characters if c.name.lower() != (attacker or "").lower()
@@ -727,8 +726,8 @@ class DiceCog(commands.Cog):
             for n in (2, 1):  # "Fridolin Feuchtgebietheld" before "Fridolin"
                 if len(words) > n and store.get(" ".join(words[-n:])) is not None:
                     return f"{' '.join(words[:-n])} für {' '.join(words[-n:])}"
-            name_for = getattr(self._rt, "character_name_for", None)
-            own = name_for(getattr(author, "id", None), getattr(author, "display_name", "")) if name_for else None
+            own = self._rt.character_name_for(getattr(author, "id", None),
+                                              getattr(author, "display_name", ""))
             if own and store.get(own) is not None:
                 return f"{spec} für {own}"
         return spec

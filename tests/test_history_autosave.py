@@ -11,8 +11,11 @@ import json
 from types import SimpleNamespace
 
 from dmbot.memory import history
+from dmbot.memory.state import WorldState
+from dmbot.rag.adventure import Adventure, Scene
 from dmbot.orchestrator import DMBrain
-from dmbot.runtime import SessionRuntime
+
+from fakes import make_brain, make_runtime
 
 
 def test_append_and_load_roundtrip(tmp_path):
@@ -75,13 +78,12 @@ def test_scene_events_are_invisible_to_the_crash_restore(tmp_path):
 # ---- ADR 053: the runtime journals scene boundaries ----------------------------------------
 
 def _scene_runtime(tmp_path, *, autosave: bool = True, cid: int = 7):
-    """A SessionRuntime with __init__ skipped, wired with only what _set_scene touches
-    (the test_seed_session pattern): a two-scene fake adventure and a real history path."""
-    rt = SessionRuntime.__new__(SessionRuntime)
-    scenes = {sid: SimpleNamespace(id=sid, title_de="") for sid in ("a", "b")}
-    rt._adventure = SimpleNamespace(get_scene=lambda sid: scenes.get(sid))
+    """A runtime for _set_scene: a two-scene adventure and a real history path."""
+    rt = make_runtime()
+    rt._adventure = Adventure(id="mini", start_scene="a",
+                              scenes=[Scene(id="a", title_de=""), Scene(id="b", title_de="")])
     rt._autosave = autosave
-    state = SimpleNamespace(scene_id="a", set_location=lambda loc: None)
+    state = WorldState(scene_id="a")
     rt._state = {cid: state}
     rt._history_path = lambda channel_id: tmp_path / str(channel_id) / "history.jsonl"
     return rt, state
@@ -117,9 +119,9 @@ def test_set_scene_autosave_off_writes_no_event(tmp_path):
 
 
 def test_set_scene_unknown_state_is_tolerated(tmp_path):
-    """A state not registered in _state (partially-built runtime) moves fine, just unjournaled."""
+    """A state not registered in _state moves fine, just unjournaled."""
     rt, _ = _scene_runtime(tmp_path)
-    foreign = SimpleNamespace(scene_id="a", set_location=lambda loc: None)
+    foreign = WorldState(scene_id="a")
     assert rt._set_scene(foreign, "b") is not None
     assert foreign.scene_id == "b"
     assert _journal_records(tmp_path) == []
@@ -151,11 +153,11 @@ def test_autosave_turn_stamps_time_minutes(tmp_path):
     from dmbot.voice.dmcog import DMCog
 
     cog = object.__new__(DMCog)  # __init__ skipped (the test_subcogs pattern)
-    cog._rt = SimpleNamespace(
+    cog._rt = make_runtime(
         _autosave=True,
         _brain_channel=lambda ch: 7,
-        _brain=SimpleNamespace(last_user_msg=lambda cid: "Timo: hi"),
-        _state={7: SimpleNamespace(time_minutes=510)},
+        _brain=make_brain(last_user_msg=lambda cid: "Timo: hi"),
+        _state={7: WorldState(time_minutes=510)},
         _history_path=lambda cid: tmp_path / "history.jsonl",
     )
     asyncio.run(cog._autosave_turn(SimpleNamespace(id=7), "Antwort", user_msg="Timo: hi"))

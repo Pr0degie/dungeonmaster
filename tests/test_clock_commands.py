@@ -9,8 +9,9 @@ import asyncio
 import types
 
 from dmbot.memory.state import WorldState
-from dmbot.runtime import SessionRuntime
 from dmbot.voice.clockcog import ClockCog
+
+from fakes import make_runtime
 
 
 class _Ctx:
@@ -25,7 +26,7 @@ class _Ctx:
 
 
 def _runtime():
-    rt = object.__new__(SessionRuntime)
+    rt = make_runtime()
     rt._brain = types.SimpleNamespace(
         add_gm_note=lambda cid, note: rt._notes.append(note),
         discard_gm_notes=lambda cid, containing: 0,

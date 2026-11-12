@@ -17,6 +17,8 @@ from dmbot.rules.characters import CharacterStore
 from dmbot.voice.delivery import DeliveryPipeline
 from dmbot.voice.scenecog import SceneCog
 
+from fakes import make_brain, make_runtime
+
 
 class _Ctx:
     def __init__(self) -> None:
@@ -41,20 +43,9 @@ def _pipeline(rt) -> DeliveryPipeline:
 
 
 def _delivery_runtime(**over):
-    """Enough runtime for ``_marker_proposal_tasks``: every marker handler bails out early
-    (no adventure, no pending markers), so only the new turn-boundary entry does work."""
-    brain = types.SimpleNamespace(
-        take_pending_scenes=lambda cid: [],
-        take_pending_erledigt=lambda cid: [],
-        take_pending_uhr=lambda cid: [],
-        take_pending_zeit=lambda cid: [],
-    )
-    rt = types.SimpleNamespace(
-        _brain=brain, _adventure=None, _state={}, _brain_channel=lambda ch: 7,
-    )
-    for key, value in over.items():
-        setattr(rt, key, value)
-    return rt
+    """A runtime for ``_marker_proposal_tasks``: every marker handler bails out early
+    (no adventure, no pending markers), so only the turn-boundary entry does work."""
+    return make_runtime(_brain_channel=lambda ch: 7, **over)
 
 
 def test_a_narrated_turn_spawns_the_turn_boundary_beside_the_markers() -> None:
@@ -95,18 +86,6 @@ def test_a_content_less_turn_does_not_classify_anything() -> None:
     assert seen == []
 
 
-def test_a_runtime_without_the_boundary_keeps_the_old_marker_list() -> None:
-    rt = _delivery_runtime()  # no close_turn at all (the stub runtimes of the older tests)
-
-    async def _drive():
-        tasks = _pipeline(rt)._marker_proposal_tasks(types.SimpleNamespace(id=7), "Text")
-        assert len(tasks) == 4
-        for task, _ in tasks:
-            await task
-
-    _run(_drive())
-
-
 # ---- the demoted <<ORT>> marker reports its rejection (ADR 057 #5) ---------------------------
 
 class _Req:
@@ -129,11 +108,10 @@ def test_a_rejected_ort_marker_reaches_the_runtime_instead_of_a_log_line() -> No
         reported.append(verdict)
 
     state = types.SimpleNamespace(scene_id="a", resolved_ids=lambda sid: [])
-    rt = types.SimpleNamespace(
-        _brain=types.SimpleNamespace(take_pending_scenes=lambda cid: [_Req("kanalisation")]),
+    rt = make_runtime(
+        _brain=make_brain(take_pending_scenes=lambda cid: [_Req("kanalisation")]),
         _adventure=adv, _scene_mode="verbunden", _state={7: state},
         _brain_channel=lambda ch: 7, report_rejected_move=_report,
-        replay_note=lambda ch, k, v: None,
     )
 
     _run(_pipeline(rt)._handle_scene(types.SimpleNamespace(id=7)))
@@ -146,7 +124,7 @@ def test_a_rejected_ort_marker_reaches_the_runtime_instead_of_a_log_line() -> No
 # ---- !automatik: the kill switches (PRD "Kill switches") -------------------------------------
 
 def _switch_runtime():
-    return types.SimpleNamespace(
+    return make_runtime(
         _scene_router=True, _scene_flag_gate=True, _fact_router=True,
         _turn_time_advance=2, _player_panel_enabled=True,
     )

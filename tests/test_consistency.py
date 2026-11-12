@@ -214,6 +214,7 @@ def test_retry_nudge_contains_the_concrete_hint() -> None:
 
 class _SeqClient:
     """Returns the queued answers in order and records every prompt it was asked."""
+    last_stats = None  # LLMClient surface (ADR 061)
 
     def __init__(self, answers: list[str]) -> None:
         self.answers = list(answers)

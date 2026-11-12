@@ -188,24 +188,18 @@ class DeliveryPipeline:
         return self._rt._streaming and self._rt._tts_enabled
 
     def _replay_note(self, channel, key: str, value) -> None:
-        """Best-effort replay-journal note (ADR 046): a stub runtime without the recording
-        surface (tests) is a silent no-op — recording must never break a turn."""
-        note = getattr(self._rt, "replay_note", None)
-        if note is not None:
-            note(channel, key, value)
+        """Replay-journal note (ADR 046) for the turn in flight."""
+        self._rt.replay_note(channel, key, value)
 
     async def _refresh_player_panel(self) -> None:
         """Re-render the player panel in place after something it shows changed (a flag, the
-        time). ``getattr``-guarded: a stub runtime without the panel is a silent no-op."""
-        update = getattr(self._rt, "update_player_panel", None)
-        if update is not None:
-            await update()
+        time)."""
+        await self._rt.update_player_panel()
 
     def _note_state_before(self, channel) -> None:
         """Replay journal (ADR 046): snapshot the world state the marker handlers are about to
         validate against — dm-eval re-runs the scene/flag verdicts on exactly this state."""
-        states = getattr(self._rt, "_state", None)
-        state = states.get(self._rt._brain_channel(channel)) if states else None
+        state = self._rt._state.get(self._rt._brain_channel(channel))
         if state is not None:
             self._replay_note(channel, "state_before", state.to_dict())
 
@@ -237,26 +231,20 @@ class DeliveryPipeline:
             # Loud, not log-only (ADR 057 #5): on 2026-08-22 a refused move produced one log.info
             # line, so neither the table nor the model ever learned that the world had not
             # followed the narration. The runtime turns the reason into a [Regie] note for the
-            # next turn plus an operator line; a stub runtime without it keeps the old log.
-            report = getattr(self._rt, "report_rejected_move", None)
-            if report is not None:
-                await report(channel, resolve_exit(
-                    self._rt._adventure.get_scene(state.scene_id), req.scene_id,
-                    resolved_ids=state.resolved_ids(state.scene_id),
-                    known_scene_ids=[s for _, s, _ in self._rt._adventure.scene_overview()],
-                ))
-                return
-            log.info("🚫 Auto-Szenenwechsel '%s' abgelehnt (Modus '%s', aktuelle Szene '%s')",
-                     req.scene_id, self._rt._scene_mode, state.scene_id)
+            # next turn plus an operator line.
+            await self._rt.report_rejected_move(channel, resolve_exit(
+                self._rt._adventure.get_scene(state.scene_id), req.scene_id,
+                resolved_ids=state.resolved_ids(state.scene_id),
+                known_scene_ids=[s for _, s, _ in self._rt._adventure.scene_overview()],
+            ))
             return
         log.info("📖 Auto-Szenenwechsel vorgeschlagen → %s (%s)", target.id, target.title_de)
         message = await channel.send(
             f"📖 Szenenwechsel vorgeschlagen: **{target.title_de}** (Teil {target.part}). Wechseln?",
             view=SceneChangeView(target.title_de, target.part, self._make_scene_confirm(channel, target)),
         )
-        proposals = getattr(self._rt, "_scene_proposals", None)
-        if proposals is not None:  # retired by the next real move (runtime.move_scene)
-            proposals[self._rt._brain_channel(channel)] = (message, target.id)
+        # Retired by the next real move (runtime.move_scene).
+        self._rt._scene_proposals[self._rt._brain_channel(channel)] = (message, target.id)
 
     def _make_scene_confirm(self, channel, scene: Scene):
         """Build the confirm callback for a proposed move to ``scene``: on click, perform the same
@@ -273,18 +261,8 @@ class DeliveryPipeline:
             state = self._rt._state.get(cid)
             if state is None:
                 return
-            move = getattr(self._rt, "move_scene", None)
-            if move is not None:
-                moved = await move(channel, scene.id, trigger=MoveTrigger.MARKER, announce=False)
-            else:  # stub runtimes (tests) keep the pre-D107 inline path
-                old_scene = state.scene_id
-                moved = self._rt._set_scene(state, scene.id)
-                if moved is not None:
-                    self._rt._persist_and_refresh(channel)
-                    if old_scene and old_scene != moved.id:
-                        self._rt.schedule_npc_memory_extraction(channel, old_scene)
-                        await self._rt.advance_scene_time(channel)
-                    await self._rt.update_debug_overlay()
+            moved = await self._rt.move_scene(channel, scene.id, trigger=MoveTrigger.MARKER,
+                                              announce=False)
             if moved is None:  # the scene vanished between proposal and click — shouldn't happen
                 return
             log.info("scene → %s (%s) [auto, bestätigt]", moved.id, moved.title_de)
@@ -301,10 +279,9 @@ class DeliveryPipeline:
         Unlike ``<<ORT>>`` every valid request in the turn is processed — flags are idempotent and
         low-stakes. Unknown/foreign/duplicate ids are ignored + logged, never applied.
 
-        Guard order is load-bearing: the adventure check comes BEFORE the brain drain, so a stub
-        brain without ``take_pending_erledigt`` (tests/test_delivery.py) is never touched when no
-        adventure is loaded. Pending requests then simply expire on redo/reset — harmless, they
-        are never queued in practice without a scene card in the prompt."""
+        The adventure check comes BEFORE the brain drain: without an adventure the requests are
+        not drained and simply expire on redo/reset — harmless, they are never queued in practice
+        without a scene card in the prompt."""
         if self._rt._adventure is None:
             return
         cid = self._rt._brain_channel(channel)
@@ -379,17 +356,13 @@ class DeliveryPipeline:
         *requests* the tick. Hard clamp: max +1 per clock per turn — duplicates, unknown ids and
         already-full clocks are rejected + logged, never applied (and never guessed).
 
-        Unlike the scene/flag handlers this needs no adventure — clocks live in the world state.
-        The brain drain is getattr-guarded so a stub brain without ``take_pending_uhr``
-        (tests/test_delivery.py) keeps working."""
-        take = getattr(self._rt._brain, "take_pending_uhr", None)
-        if take is None:
-            return
+        Unlike the scene/flag handlers this needs no adventure — clocks live in the world state."""
         cid = self._rt._brain_channel(channel)
-        reqs = take(cid)  # drained either way, so a request never lingers into a later turn
+        # Drained either way, so a request never lingers into a later turn.
+        reqs = self._rt._brain.take_pending_uhr(cid)
         if not reqs:
             return
-        if not getattr(self._rt, "clocks_enabled", True):
+        if not self._rt.clocks_enabled:
             # DM_CLOCKS=0: the marker is already stripped from the spoken text; nothing ticks.
             log.info("⏱ %d <<UHR>>-Anfrage(n) ignoriert — Uhren sind aus (DM_CLOCKS=0)", len(reqs))
             return
@@ -460,13 +433,9 @@ class DeliveryPipeline:
         counter, it only *requests* the advance. Unparseable/non-positive/surplus proposals are
         rejected + logged, never applied.
 
-        Needs no adventure (time lives in the world state). The brain drain is getattr-guarded
-        so a stub brain without ``take_pending_zeit`` (tests/test_delivery.py) keeps working."""
-        take = getattr(self._rt._brain, "take_pending_zeit", None)
-        if take is None:
-            return
+        Needs no adventure (time lives in the world state)."""
         cid = self._rt._brain_channel(channel)
-        reqs = take(cid)
+        reqs = self._rt._brain.take_pending_zeit(cid)
         if not reqs:
             return
         state = self._rt._state.get(cid)
@@ -607,9 +576,8 @@ class DeliveryPipeline:
             (asyncio.create_task(self._handle_uhr(channel)), "clock tick"),          # ADR 047
             (asyncio.create_task(self._handle_zeit(channel)), "time advance"),       # ADR 048
         ]
-        close_turn = getattr(self._rt, "close_turn", None)  # getattr: stub runtimes stay dormant
-        if close_turn is not None and answer.strip():
-            tasks.append((asyncio.create_task(close_turn(channel, answer)), "turn boundary"))
+        if answer.strip():
+            tasks.append((asyncio.create_task(self._rt.close_turn(channel, answer)), "turn boundary"))
         return tasks
 
     @staticmethod

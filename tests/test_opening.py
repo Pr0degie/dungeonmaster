@@ -34,6 +34,7 @@ def test_director_msg_is_a_gm_instruction_not_a_player_line() -> None:
 class _CaptureClient:
     """Captures the messages/options DMBrain forwards and returns a canned opening answer that
     also carries a stray <<TEST>> marker — to prove the opening turn never queues a dice button."""
+    last_stats = None  # LLMClient surface (ADR 061)
 
     def __init__(self) -> None:
         self.last_user_content: str | None = None
@@ -68,6 +69,7 @@ def test_opening_turn_runs_and_suppresses_dice() -> None:
 
 def test_opening_turn_stored_for_redo() -> None:
     class _Seq:
+        last_stats = None  # LLMClient surface (ADR 061)
         def __init__(self) -> None:
             self.n = 0
 

@@ -12,7 +12,9 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** D134 (31.10.) — Sprachbefehl „Der Timo war ein sehr böser Junge.“ trennt Timo vom Voice-Kanal
+- **Newest round:** Aufräumen ohne Verhaltensänderung (12.11.) — die `getattr`-Guards für Test-Stubs sind aus `dmbot/`
+  raus; Tests bauen Runtime/Brain über `tests/fakes.py` (1365 Tests grün, `dm-eval` Exit 0, live nicht gesehen).
+  Davor D134 (31.10.) — Sprachbefehl „Der Timo war ein sehr böser Junge.“ trennt Timo vom Voice-Kanal
   (`DM_KICK_MASTER=Pr0degie`, braucht „Mitglieder verschieben“ und einen Bot-Neustart; **live-unverifiziert**, 1369 Tests grün).
   Davor D128–D133 / **ADR 064** (30./31.10.) — Würfel am Tisch: der Post zeigt groß „Zielwert ≤37“
   (W20 mit Zahlen auf allen Flächen), der Klick wirft ein GIF, dann das Ergebnis; Engine und DM warten nie darauf.
@@ -38,6 +40,14 @@ Nicht verifiziert: Opus mit vollem Systemprompt, ein ganzer Zug mit Stimme, alle
 _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Current focus (Verlauf)`._
 
 ## Last session
+
+**Stub-Guards raus (2026-11-12).** Rund 60 `getattr(self, …, default)`-Zugriffe in `dmbot/` existierten nur, damit
+halb gebaute Test-Runtimes und -Brains nicht abstürzen; sie hätten echte `AttributeError`s verschluckt. Jetzt direkter
+Zugriff, echte optionale Abhängigkeiten (`_adventure is None`, XTTS vs. Piper, Failover-Client, Discord-Interna) bleiben.
+Zwei Attribute existieren dafür ab `__init__`: `SessionRuntime._loop = None`, `DMBrain.last_npcs = None`. Der tote
+Pre-D107-Pfad im `<<ORT>>`-Bestätigen ist weg. `tests/fakes.py`: `make_runtime()` baut die echte `SessionRuntime` mit
+gepatchten schweren Teilen (STT, TTS-Thread, LLM, RAG, Bridge), `FakeBrain`/`make_brain()` ist ein echter `DMBrain`
+über `FakeLLMClient`. Vier Tests, die nur die Guards festschrieben, sind gestrichen. 1365 grün, `dm-eval` Exit 0.
 
 **Sprachbefehl „sehr böser Junge“ + Tisch-Dossier (2026-10-31/11-01, D134).** Sagt Tobi im Voice „Der Timo war ein sehr böser Junge.“,
 trennt DMbot Timo vom Kanal und postet eine Zeile; die Zeile geht nicht an den DM. Parser und Mitglieder-Suche sind

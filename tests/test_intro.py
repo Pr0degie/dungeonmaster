@@ -146,6 +146,7 @@ def test_intro_director_msg_briefing_without_roster() -> None:
 
 class _CaptureClient:
     """Captures the options DMBrain forwards so a test can assert the per-turn num_predict."""
+    last_stats = None  # LLMClient surface (ADR 061)
 
     def __init__(self) -> None:
         self.options: dict | None = None
@@ -195,6 +196,7 @@ def test_opening_path_omits_temperature_by_default() -> None:
 
 class _SequenceClient:
     """Returns a queued answer per chat() call, so a test can stage weak-then-strong openings."""
+    last_stats = None  # LLMClient surface (ADR 061)
 
     def __init__(self, answers: list[str]) -> None:
         self._answers = list(answers)

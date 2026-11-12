@@ -13,6 +13,7 @@ from dmbot.orchestrator import DMBrain
 
 class _CapClient:
     """Captures the system prompt DMBrain builds; returns a canned answer. No real Ollama."""
+    last_stats = None  # LLMClient surface (ADR 061)
 
     def __init__(self, answer: str = "Eine Antwort.") -> None:
         self.answer = answer

@@ -21,8 +21,9 @@ from dmbot.memory.state import (
     world_state_summary_de,
 )
 from dmbot.rag.adventure import AdventureNpc
-from dmbot.runtime import SessionRuntime
 from dmbot.voice.dicecog import DiceCog
+
+from fakes import make_runtime
 
 
 def _agenda_npc(name: str = "Vex", goal: str = "Die Ware außer Reichweite schaffen") -> Combatant:
@@ -232,7 +233,7 @@ class _Ctx:
 
 
 def _runtime():
-    rt = object.__new__(SessionRuntime)
+    rt = make_runtime()
     rt._brain_channel = lambda ch: 7
     rt._state = {7: WorldState()}
     rt._persisted = []

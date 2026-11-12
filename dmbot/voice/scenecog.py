@@ -152,7 +152,7 @@ class SceneCog(commands.Cog):
 
     def _switch_value(self, name: str) -> bool:
         attr, _ = _SWITCHES[name]
-        value = getattr(self._rt, attr, False)
+        value = getattr(self._rt, attr)
         return bool(value)
 
     def _set_switch(self, name: str, on: bool) -> None:

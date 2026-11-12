@@ -23,6 +23,8 @@ from dmbot.runtime import SessionRuntime
 from dmbot.voice.clockcog import CLOCKS_OFF_DE, ClockCog
 from dmbot.voice.delivery import DeliveryPipeline
 
+from fakes import make_runtime
+
 
 def _load(monkeypatch, **env) -> Config:
     """``Config.load()`` from exactly this environment (the developer's ``.env`` stays out)."""
@@ -44,7 +46,7 @@ def _adventure():
 
 
 def _runtime(*, clocks: bool) -> SessionRuntime:
-    rt = object.__new__(SessionRuntime)
+    rt = make_runtime()
     rt._clocks = clocks
     rt._adventure = _adventure()
     return rt
@@ -61,7 +63,6 @@ def _state_with_clock_and_deadline() -> WorldState:
 
 def test_the_switch_defaults_to_on(monkeypatch) -> None:
     assert _load(monkeypatch).clocks is True
-    assert object.__new__(SessionRuntime).clocks_enabled is True  # a runtime built without init
 
 
 def test_env_zero_reaches_the_runtime(monkeypatch) -> None:

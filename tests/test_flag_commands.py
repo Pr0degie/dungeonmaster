@@ -9,8 +9,9 @@ import types
 
 from dmbot.memory.state import WorldState
 from dmbot.rag.adventure import Adventure, Scene
-from dmbot.runtime import SessionRuntime
 from dmbot.voice.scenecog import SceneCog
+
+from fakes import make_runtime
 
 
 class _Ctx:
@@ -25,7 +26,7 @@ class _Ctx:
 
 
 def _runtime():
-    rt = object.__new__(SessionRuntime)
+    rt = make_runtime()
     rt._adventure = Adventure(scenes=[
         Scene(id="a", title_de="Anfang", part=1,
               opportunities_de=["Die Kiste öffnen."], secrets_de=["Bob ist der Täter."]),

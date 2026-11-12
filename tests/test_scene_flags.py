@@ -9,6 +9,8 @@ from dmbot.memory.state import WorldState
 from dmbot.rag.adventure import Adventure, Scene
 from dmbot.runtime import SessionRuntime
 
+from fakes import make_runtime
+
 
 # -- storage: WorldState.scene_flags ----------------------------------------------------------------
 
@@ -49,7 +51,7 @@ def test_mark_resolved_and_mark_open_are_idempotent() -> None:
 
 def _runtime() -> SessionRuntime:
     """A SessionRuntime with __init__ skipped — _set_scene_flag only needs _adventure."""
-    rt = object.__new__(SessionRuntime)
+    rt = make_runtime()
     rt._adventure = Adventure(scenes=[
         Scene(id="a", title_de="A", opportunities_de=["Die Kiste öffnen."], secrets_de=["Wahrheit."]),
         Scene(id="b", title_de="B", opportunities_de=["Woanders."]),
@@ -78,6 +80,6 @@ def test_set_scene_flag_resolves_and_reopens() -> None:
 
 
 def test_set_scene_flag_without_adventure_returns_none() -> None:
-    rt = object.__new__(SessionRuntime)
+    rt = make_runtime()
     rt._adventure = None
     assert rt._set_scene_flag(WorldState(scene_id="a"), "opp-1", resolved=True) is None

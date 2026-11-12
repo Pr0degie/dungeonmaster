@@ -87,6 +87,7 @@ def test_adventure_block_lands_in_the_system_prompt() -> None:
     captured: dict = {}
 
     class _C:
+        last_stats = None  # LLMClient surface (ADR 061)
         async def chat(self, system, messages, options=None):
             captured["system"] = system
             return "Es regnet Asche."
@@ -152,6 +153,7 @@ def test_short_answers_are_exempt_from_the_repetition_check() -> None:
 
 def test_repetition_is_retried_with_the_repeat_nudge() -> None:
     class _C:
+        last_stats = None  # LLMClient surface (ADR 061)
         def __init__(self) -> None:
             self.calls: list[list[dict[str, str]]] = []
 

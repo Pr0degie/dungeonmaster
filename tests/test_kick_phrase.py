@@ -11,6 +11,8 @@ import pytest
 from dmbot.runtime import SessionRuntime
 from dmbot.voice.kick_phrase import find_culprit, is_kick_master, parse_kick_phrase
 
+from fakes import make_runtime
+
 
 # ----- parse_kick_phrase ---------------------------------------------------------------------
 
@@ -100,7 +102,7 @@ class _Channel:
 
 
 def _runtime(members, *, master: str = "") -> SessionRuntime:
-    rt = SessionRuntime.__new__(SessionRuntime)
+    rt = make_runtime()
     rt._kick_phrase = True
     rt._kick_master = master
     rt._speaker_ids = {}

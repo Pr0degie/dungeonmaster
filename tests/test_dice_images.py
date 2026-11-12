@@ -26,6 +26,8 @@ from dmbot.rules.profile import load
 from dmbot.voice import dicecog
 from dmbot.voice.dicecog import DiceCog
 
+from fakes import make_brain, make_runtime
+
 _IM = load("imperium_maledictum")
 
 
@@ -148,13 +150,12 @@ def _cog(rng, *, images: bool = True):
     async def run_and_deliver(channel, guild_id):
         narrated.append(1)
 
-    rt = SimpleNamespace(
+    rt = make_runtime(
         _profile=_IM, _rng=rng, _state={}, _brain_channel=lambda ch: 7, _dice_images=images,
-        _brain=SimpleNamespace(add_test_result=lambda cid, line: fed.append(line)),
+        _brain=make_brain(add_test_result=lambda cid, line: fed.append(line)),
         run_and_deliver=run_and_deliver,
     )
-    cog = DiceCog.__new__(DiceCog)
-    cog._rt = rt
+    cog = DiceCog(None, rt)
 
     async def no_damage_flow(channel, *, attacker, result):  # a hit's damage flow is not under test
         return True

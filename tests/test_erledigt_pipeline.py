@@ -11,6 +11,7 @@ from dmbot.orchestrator import DMBrain
 
 class _C:
     """Fake Ollama client: returns a scripted answer per call."""
+    last_stats = None  # LLMClient surface (ADR 061)
 
     def __init__(self, answers: list[str]) -> None:
         self._answers = list(answers)

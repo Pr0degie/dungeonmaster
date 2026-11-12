@@ -85,6 +85,8 @@ from types import SimpleNamespace  # noqa: E402
 from dmbot.discord_ui.fate import FateView  # noqa: E402
 from dmbot.voice.dicecog import DiceCog  # noqa: E402
 
+from fakes import make_brain, make_runtime  # noqa: E402
+
 
 class _Seq:
     def __init__(self, *values: int) -> None:
@@ -112,13 +114,12 @@ def _cog(rng):
     async def run_and_deliver(channel, guild_id):
         narrated.append(1)
 
-    rt = SimpleNamespace(
+    rt = make_runtime(
         _profile=_IM, _rng=rng, _state={7: s}, _brain_channel=lambda ch: 7,
-        _brain=SimpleNamespace(add_test_result=lambda cid, line: fed.append(line)),
+        _brain=make_brain(add_test_result=lambda cid, line: fed.append(line)),
         _persist_and_refresh=lambda ch: None, run_and_deliver=run_and_deliver,
     )
-    cog = DiceCog.__new__(DiceCog)
-    cog._rt = rt
+    cog = DiceCog(None, rt)
     return cog, s, fed, narrated
 
 

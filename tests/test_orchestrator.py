@@ -57,6 +57,7 @@ def test_finalize_marker_only_in_backticks_is_empty() -> None:
 def test_results_only_turn_suppresses_inline_marker() -> None:
     # a post-roll consequence narration must NOT request a new roll, or the dice loop never ends.
     class _C:
+        last_stats = None  # LLMClient surface (ADR 061)
         async def chat(self, system, messages, options=None):
             return "Der Kultist weicht zurück. <<TEST Kampf für Mortn>>"
 
@@ -73,6 +74,7 @@ def test_results_only_turn_suppresses_inline_marker() -> None:
 
 def test_player_action_turn_keeps_inline_marker() -> None:
     class _C:
+        last_stats = None  # LLMClient surface (ADR 061)
         async def chat(self, system, messages, options=None):
             return "Du schleichst zur Tür. <<TEST Heimlichkeit für Timo>>"
 
@@ -173,6 +175,7 @@ def test_sanitize_strips_trailing_action_prompt() -> None:
 
 def test_redo_reruns_last_turn_without_stacking_history() -> None:
     class _SeqClient:
+        last_stats = None  # LLMClient surface (ADR 061)
         def __init__(self) -> None:
             self.n = 0
 
@@ -201,6 +204,7 @@ def test_redo_without_prior_turn_returns_none() -> None:
 
 class _FakeClient:
     """Captures the messages DMBrain forwards, returns a canned answer; no real Ollama call."""
+    last_stats = None  # LLMClient surface (ADR 061)
 
     def __init__(self) -> None:
         self.last_user_content: str | None = None
@@ -253,6 +257,7 @@ def test_sanitize_strips_meta_selfcorrection() -> None:
 
 class _CapClient:
     """Returns a puppeted multi-party script and captures the options DMBrain passes."""
+    last_stats = None  # LLMClient surface (ADR 061)
 
     def __init__(self) -> None:
         self.options: dict | None = None

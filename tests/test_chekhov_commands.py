@@ -10,8 +10,9 @@ import types
 
 from dmbot.memory.chekhov import ChekhovList
 from dmbot.memory.state import WorldState
-from dmbot.runtime import SessionRuntime
 from dmbot.voice.chekhovcog import ChekhovCog
+
+from fakes import make_runtime
 
 
 class _Ctx:
@@ -26,7 +27,7 @@ class _Ctx:
 
 
 def _runtime():
-    rt = object.__new__(SessionRuntime)
+    rt = make_runtime()
     rt._brain_channel = lambda ch: 7
     state = WorldState()
     state.scene_id = "bar"

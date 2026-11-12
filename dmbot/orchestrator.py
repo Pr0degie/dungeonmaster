@@ -209,6 +209,7 @@ class DMBrain:
         # copies them into the turn's notes right after classifying (ADR 046).
         self.last_scene_router: dict | None = None
         self.last_facts: dict | None = None
+        self.last_npcs: dict | None = None  # the presence classifier's (ADR 062), same shape
 
     @property
     def max_history_turns(self) -> int:
@@ -505,9 +506,8 @@ class DMBrain:
         the streaming path's echo retry."""
         system, messages, options = self._build_request(channel_id, user_msg, labels, history_prefix, num_predict=num_predict, temperature=temperature)
         raw = await self._client.chat(system, messages, options=options)
-        # narration call's token counts (for [latency]); getattr so a test double without the attr
-        # (or a future client) degrades to None instead of raising.
-        self.last_llm_stats = getattr(self._client, "last_stats", None)
+        # narration call's token counts (for [latency]).
+        self.last_llm_stats = self._client.last_stats
         # Debug aid (lands in debug.log only — 🪵 is filtered off the console + terminal mirror):
         # the raw LLM output BEFORE marker-stripping, so we can see whether the model emitted a
         # <<TEST …>> marker at all (the prime suspect when the dice-marker flow doesn't fire).
@@ -668,7 +668,7 @@ class DMBrain:
             errored = True
         finally:
             await agen.aclose()  # closes the httpx stream (the client-side stop)
-        self.last_llm_stats = getattr(self._client, "last_stats", None)
+        self.last_llm_stats = self._client.last_stats
         log.info("🪵 LLM roh (stream): %s", assembler.raw.replace("\n", " ⏎ "))
         # Replay capture (ADR 046) — an echo-guard retry below overwrites this via _chat_once,
         # so the kept answer's raw wins (batch-path parity).
@@ -722,8 +722,7 @@ class DMBrain:
     def take_pending(self, kind: str, channel_id: int) -> list:
         """Return and clear the queued requests of one marker-registry kind (ADR 051). The
         named ``take_pending_<kind>`` wrappers below stay the public surface — dicecog, the
-        delivery handlers (whose getattr-guards against stub brains are test-pinned) and
-        dm-eval call those."""
+        delivery handlers and dm-eval call those."""
         return self._pending[kind].pop(channel_id, [])
 
     def _drop_pending(self, channel_id: int) -> None:

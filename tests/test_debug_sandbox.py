@@ -16,12 +16,14 @@ from pathlib import Path
 from dmbot.memory import history as history_store
 from dmbot.runtime import SessionRuntime
 
+from fakes import make_runtime
+
 CID = 1343673766487654464
 
 
 def _runtime(adventure_dir: Path | None) -> SessionRuntime:
     """A bare runtime shell: ``session_file`` only reads ``_adventure_dir`` (via is_debug_run)."""
-    rt = object.__new__(SessionRuntime)
+    rt = make_runtime()
     rt._adventure_dir = adventure_dir
     return rt
 

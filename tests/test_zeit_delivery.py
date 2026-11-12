@@ -11,8 +11,9 @@ import logging
 
 from dmbot.memory.state import WorldState
 from dmbot.rules.marker import ZeitRequest
-from dmbot.runtime import SessionRuntime
 from dmbot.voice.delivery import DeliveryPipeline, zeit_verdict
+
+from fakes import FakeBrain, make_runtime
 
 
 class _Channel:
@@ -23,8 +24,9 @@ class _Channel:
         self.sent.append((content, view))
 
 
-class _Brain:
+class _Brain(FakeBrain):
     def __init__(self, reqs: list[ZeitRequest]) -> None:
+        super().__init__()
         self._reqs = reqs
         self.notes: list[str] = []
 
@@ -36,13 +38,8 @@ class _Brain:
         self.notes.append(note)
 
 
-class _NoZeitBrain:
-    """Deliberately WITHOUT take_pending_zeit — pins the getattr guard in _handle_zeit
-    (keeps tests/test_delivery.py's fake brain untouched, the ADR-047 pattern)."""
-
-
 def _pipeline(reqs: list[ZeitRequest], *, confirm: bool, brain=None):
-    rt = object.__new__(SessionRuntime)
+    rt = make_runtime()
     rt._brain = brain if brain is not None else _Brain(reqs)
     rt._brain_channel = lambda ch: 7
     rt._state = {7: WorldState()}
@@ -123,17 +120,10 @@ def test_confirm_callback_advances_persists_and_updates_panel() -> None:
     assert "Tag 1, 12:00" in interaction.edits[0]
 
 
-def test_handle_zeit_without_take_pending_zeit_is_a_noop() -> None:
-    channel = _Channel()
-    pipeline, _rt = _pipeline([], confirm=True, brain=_NoZeitBrain())
-    asyncio.run(pipeline._handle_zeit(channel))  # would raise AttributeError without the guard
-    assert channel.sent == []
-
-
 # -- runtime mutator (_advance_time) ----------------------------------------------------------------
 
 def _runtime():
-    rt = object.__new__(SessionRuntime)
+    rt = make_runtime()
     rt._brain = _Brain([])
     rt._brain_channel = lambda ch: 7
     rt._state = {7: WorldState()}

@@ -174,7 +174,7 @@ class VoiceCog(commands.Cog):
         """Global before-invoke hook (D130): any DMbot command while the bot is in no voice channel
         yet joins the caller's channel first, like ``!j``. Commands DMbot doesn't own (the music
         bot's ``!play``) never get here. Never blocks the command: a failed join is only logged."""
-        if not getattr(self._rt, "_auto_join", False):
+        if not self._rt._auto_join:
             return
         command = getattr(ctx, "command", None)
         if command is None or command.name in NO_AUTO_JOIN or ctx.guild is None:
@@ -364,7 +364,7 @@ class VoiceCog(commands.Cog):
                         stamp=datetime.now().strftime("%Y%m%d-%H%M%S"),
                         # Debug-run sandbox (ADR 055): mark the archive so it can never be
                         # mistaken for a real session record in the shared channel directory.
-                        debug=getattr(self._rt, "is_debug_run", False),
+                        debug=self._rt.is_debug_run,
                     )
                 except OSError:
                     log.exception("could not rotate the history autosave on leave")

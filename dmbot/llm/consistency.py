@@ -188,7 +188,7 @@ def check(
     longer make the DM's incidental figures illegal. ``None`` keeps the pre-D107 behaviour:
     every registered NPC is presence-checked. The **dead** check is never scoped — code is the
     only thing that can kill an NPC, so a dead one speaking is always a contradiction."""
-    if not text or world_state is None or not getattr(world_state, "npcs", None):
+    if not text or world_state is None or not world_state.npcs:
         return []
     stripped = _strip_quotes(text)
     ambiguous = _ambiguous_tokens(world_state)

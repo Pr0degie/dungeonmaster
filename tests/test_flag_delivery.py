@@ -11,8 +11,9 @@ import logging
 from dmbot.memory.state import WorldState
 from dmbot.rag.adventure import Adventure, Scene
 from dmbot.rules.marker import ErledigtRequest
-from dmbot.runtime import SessionRuntime
 from dmbot.voice.delivery import DeliveryPipeline
+
+from fakes import FakeBrain, make_runtime
 
 
 class _Channel:
@@ -25,19 +26,14 @@ class _Channel:
         self.sent.append((content, view))
 
 
-class _Brain:
+class _Brain(FakeBrain):
     def __init__(self, reqs: list[ErledigtRequest]) -> None:
+        super().__init__()
         self._reqs = reqs
 
     def take_pending_erledigt(self, channel_id):
         reqs, self._reqs = self._reqs, []
         return reqs
-
-
-class _NoErledigtBrain:
-    """Deliberately WITHOUT take_pending_erledigt — pins the guard order in _handle_erledigt
-    (adventure check BEFORE the brain drain), which keeps tests/test_delivery.py's fake brain
-    untouched when no adventure is loaded."""
 
 
 def _adventure() -> Adventure:
@@ -49,7 +45,7 @@ def _adventure() -> Adventure:
 
 
 def _pipeline(reqs: list[ErledigtRequest], *, confirm: bool, brain=None):
-    rt = object.__new__(SessionRuntime)
+    rt = make_runtime()
     rt._adventure = _adventure()
     rt._brain = brain if brain is not None else _Brain(reqs)
     rt._brain_channel = lambda ch: 7
@@ -135,8 +131,11 @@ def test_confirm_after_scene_change_degrades_cleanly() -> None:
 
 
 def test_handle_erledigt_without_adventure_never_touches_the_brain() -> None:
+    # The adventure check comes BEFORE the brain drain: without an adventure the requests stay
+    # queued (they expire on redo/reset) and nothing is posted.
     channel = _Channel()
-    pipeline, rt = _pipeline([], confirm=True, brain=_NoErledigtBrain())
+    pipeline, rt = _pipeline([_req("opp-1")], confirm=True)
     rt._adventure = None
-    asyncio.run(pipeline._handle_erledigt(channel))  # would raise AttributeError if drained
+    asyncio.run(pipeline._handle_erledigt(channel))
     assert channel.sent == []
+    assert [r.element_id for r in rt._brain._reqs] == ["opp-1"]  # not drained

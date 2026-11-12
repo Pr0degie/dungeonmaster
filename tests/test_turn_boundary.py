@@ -30,6 +30,8 @@ from dmbot.rag.adventure import Adventure, AdventureNpc, Scene
 from dmbot.rules.scene_flow import MoveRejection, MoveTrigger, capture_scene_undo
 from dmbot.runtime import SessionRuntime
 
+from fakes import FakeBrain, make_runtime
+
 
 # ---- fixtures: a three-scene campaign with a gate ------------------------------------------
 
@@ -72,11 +74,12 @@ def _adventure() -> Adventure:
     )
 
 
-class _FakeBrain:
+class _FakeBrain(FakeBrain):
     """Records the GM notes and hands back canned classifier verdicts."""
 
     def __init__(self, *, scene: SceneVerdict | None = None,
                  fact: FactVerdict | None = None) -> None:
+        super().__init__()
         self.notes: list[str] = []
         self.scene_calls: list[dict] = []
         self.fact_calls: list[dict] = []
@@ -143,7 +146,7 @@ def _runtime(adv: Adventure | None, state: WorldState | None, brain: _FakeBrain,
     Session files (the history journal a scene move appends to with ``_autosave`` on) go to
     ``sessions_dir``; without one, touching a session file fails the test. Until 2026-10-25 the
     journal landed in the real ``data/sessions/7/`` on every suite run."""
-    rt = SessionRuntime.__new__(SessionRuntime)
+    rt = make_runtime()
 
     def _session_file(channel_id, stem, ext):
         if sessions_dir is None:

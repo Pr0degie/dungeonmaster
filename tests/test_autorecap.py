@@ -57,6 +57,7 @@ def test_ctx_over_budget_is_the_compaction_trigger() -> None:
 
 class _CapClient:
     """Returns a canned recap; never hits Ollama."""
+    last_stats = None  # LLMClient surface (ADR 061)
 
     def __init__(self, answer: str = "Eine aktualisierte Zusammenfassung.") -> None:
         self.answer = answer
@@ -73,6 +74,7 @@ def test_summarize_passes_prior_recap_through_to_the_builder() -> None:
     captured: dict = {}
 
     class _Cap(_CapClient):
+        last_stats = None  # LLMClient surface (ADR 061)
         async def chat(self, system, messages, options=None, format=None) -> str:
             captured["user"] = messages[-1]["content"] if messages else None
             return await super().chat(system, messages, options=options, format=format)
@@ -291,6 +293,7 @@ def test_wrapup_folds_in_the_current_recap() -> None:
     captured: dict = {}
 
     class _Cap(_CapClient):
+        last_stats = None  # LLMClient surface (ADR 061)
         async def chat(self, system, messages, options=None, format=None) -> str:
             captured["user"] = messages[-1]["content"] if messages else None
             return await super().chat(system, messages, options=options, format=format)

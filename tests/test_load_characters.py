@@ -15,6 +15,8 @@ from pathlib import Path
 
 from dmbot.runtime import SessionRuntime
 
+from fakes import make_runtime
+
 
 def _write_party(path: Path, *names: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -23,7 +25,7 @@ def _write_party(path: Path, *names: str) -> None:
 
 def _runtime(default_party: str) -> SessionRuntime:
     """A SessionRuntime with __init__ skipped — _load_characters only needs _default_party."""
-    rt = object.__new__(SessionRuntime)
+    rt = make_runtime()
     rt._default_party = default_party
     return rt
 

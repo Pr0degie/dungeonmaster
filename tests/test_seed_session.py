@@ -13,7 +13,11 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from dmbot.memory.state import WorldState
+from dmbot.rag.adventure import Adventure, Scene
 from dmbot.runtime import SessionRuntime
+
+from fakes import FakeBrain, make_runtime
 
 
 # ---- stubs --------------------------------------------------------------------------------
@@ -35,11 +39,11 @@ class _FakeStore:
         return ["Mortn", "Seskin", "Vask"]
 
 
-class _FakeBrain:
+class _FakeBrain(FakeBrain):
     """Records the brain calls seed_session makes; restore_history returns a fixed count."""
 
     def __init__(self, *, restore_return: int = 0) -> None:
-        self.max_history_turns = 20
+        super().__init__()  # max_history_turns: the real default of 20
         self.alias_hints: dict[int, str] = {}
         self.known_speakers: dict[int, list[str]] = {}
         self.restore_calls: list[tuple[int, object]] = []
@@ -67,10 +71,9 @@ def _make_runtime(
     autosave: bool = False,
     restore_return: int = 0,
 ) -> SessionRuntime:
-    """A SessionRuntime with __init__ skipped, wired with only the attributes seed_session
-    touches: stub brain + character store, dict-valued per-channel maps, and stubbed loaders /
-    persistence as plain lambdas so nothing reaches disk or Discord."""
-    rt = SessionRuntime.__new__(SessionRuntime)
+    """A runtime for seed_session: recording brain, fake character store, and stubbed
+    loaders / persistence as plain lambdas so nothing reaches disk or Discord."""
+    rt = make_runtime()
     rt._brain = _FakeBrain(restore_return=restore_return)
     rt._adventure = adventure
     rt._autosave = autosave
@@ -105,17 +108,13 @@ def _channels(cid: int = 4242):
 # ---- scene pointer ------------------------------------------------------------------------
 
 def _adventure(*, start_scene: str = "szene_01", scenes=("szene_01", "szene_07")):
-    """An adventure stub that knows exactly ``scenes`` — enough for the pointer bootstrap, which
-    only asks for ``start_scene``, ``id`` and ``get_scene``."""
-    return SimpleNamespace(
-        id="testabenteuer",
-        start_scene=start_scene,
-        get_scene=lambda sid: SimpleNamespace(id=sid) if sid in scenes else None,
-    )
+    """An adventure that knows exactly ``scenes`` — no clock, deadlines or mission to seed."""
+    return Adventure(id="testabenteuer", start_scene=start_scene,
+                     scenes=[Scene(id=sid, title_de="") for sid in scenes])
 
 
 def test_fresh_state_gets_adventure_start_scene() -> None:
-    state = SimpleNamespace(scene_id="")  # fresh: no stored pointer
+    state = WorldState(scene_id="")  # fresh: no stored pointer
     rt = _make_runtime(adventure=_adventure(), state_obj=state)
     voice, text = _channels()
 
@@ -126,7 +125,7 @@ def test_fresh_state_gets_adventure_start_scene() -> None:
 
 
 def test_loaded_state_keeps_its_stored_scene() -> None:
-    state = SimpleNamespace(scene_id="szene_07")  # a loaded state with a saved position
+    state = WorldState(scene_id="szene_07")  # a loaded state with a saved position
     rt = _make_runtime(adventure=_adventure(), state_obj=state)
     voice, text = _channels()
 
@@ -140,7 +139,7 @@ def test_foreign_scene_pointer_reseeds_to_start_scene(caplog) -> None:
     # pointed at the PREVIOUS campaign's scene. Every get_scene() came back None, so the session
     # ran with no scene card and no 🧪 overlay. A pointer the loaded adventure doesn't know must
     # re-seed to the start scene — and say so.
-    state = SimpleNamespace(scene_id="rokarth_gasse")  # belongs to another adventure
+    state = WorldState(scene_id="rokarth_gasse")  # belongs to another adventure
     rt = _make_runtime(adventure=_adventure(), state_obj=state)
     voice, text = _channels()
 
@@ -152,7 +151,7 @@ def test_foreign_scene_pointer_reseeds_to_start_scene(caplog) -> None:
 
 
 def test_no_adventure_leaves_scene_untouched() -> None:
-    state = SimpleNamespace(scene_id="")
+    state = WorldState(scene_id="")
     rt = _make_runtime(adventure=None, state_obj=state)
     voice, text = _channels()
 
@@ -164,7 +163,7 @@ def test_no_adventure_leaves_scene_untouched() -> None:
 # ---- turn order + active/text channel -----------------------------------------------------
 
 def test_turn_order_seeded_and_index_reset() -> None:
-    state = SimpleNamespace(scene_id="x")
+    state = WorldState(scene_id="x")
     rt = _make_runtime(adventure=None, state_obj=state)
     voice, text = _channels()
 
@@ -183,9 +182,9 @@ def test_turn_order_seeded_and_index_reset() -> None:
 # ---- fallback flag passthrough ------------------------------------------------------------
 
 def test_char_fallback_flag_returned_through() -> None:
-    state = SimpleNamespace(scene_id="x")
+    state = WorldState(scene_id="x")
     rt_fb = _make_runtime(adventure=None, state_obj=state, fallback=True)
-    rt_ok = _make_runtime(adventure=None, state_obj=SimpleNamespace(scene_id="x"), fallback=False)
+    rt_ok = _make_runtime(adventure=None, state_obj=WorldState(scene_id="x"), fallback=False)
     voice, text = _channels()
 
     assert rt_fb.seed_session(voice, text) is True
@@ -195,7 +194,7 @@ def test_char_fallback_flag_returned_through() -> None:
 # ---- D41 crash-recovery restore -----------------------------------------------------------
 
 def test_autosave_on_calls_restore_history(monkeypatch) -> None:
-    state = SimpleNamespace(scene_id="x")
+    state = WorldState(scene_id="x")
     rt = _make_runtime(adventure=None, state_obj=state, autosave=True, restore_return=3)
     voice, text = _channels()
 
@@ -237,8 +236,8 @@ def _stub_journal(rt, monkeypatch) -> list[dict]:
 def test_join_start_scene_assignment_is_journaled(monkeypatch) -> None:
     """ADR 053: the initial start-scene seed on !join writes a scene event, so the first chunk
     of a fresh session has a scene."""
-    state = SimpleNamespace(scene_id="")  # fresh: the seed assigns the start scene
-    adventure = SimpleNamespace(start_scene="szene_01", id="abenteuer")  # header reads .id
+    state = WorldState(scene_id="")  # fresh: the seed assigns the start scene
+    adventure = _adventure()
     rt = _make_runtime(adventure=adventure, state_obj=state, autosave=True)
     voice, text = _channels()
     events = _stub_journal(rt, monkeypatch)
@@ -250,7 +249,7 @@ def test_join_start_scene_assignment_is_journaled(monkeypatch) -> None:
 
 
 def test_join_without_scene_writes_no_scene_event(monkeypatch) -> None:
-    state = SimpleNamespace(scene_id="")  # no adventure → the pointer stays empty
+    state = WorldState(scene_id="")  # no adventure → the pointer stays empty
     rt = _make_runtime(adventure=None, state_obj=state, autosave=True)
     voice, text = _channels()
     events = _stub_journal(rt, monkeypatch)
@@ -261,7 +260,7 @@ def test_join_without_scene_writes_no_scene_event(monkeypatch) -> None:
 
 
 def test_autosave_off_skips_restore_history() -> None:
-    state = SimpleNamespace(scene_id="x")
+    state = WorldState(scene_id="x")
     rt = _make_runtime(adventure=None, state_obj=state, autosave=False)
     voice, text = _channels()
 
