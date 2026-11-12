@@ -56,6 +56,9 @@ or an ADR already holds — link there instead.
 - [isolation-must-enumerate-every-artifact](isolation-must-enumerate-every-artifact.md) —
   "Isolated" is per artifact, not per feature; enumerate every shared file/table, route them
   through one seam, and assert the two path sets are disjoint.
+- [complete-fakes-not-production-guards](complete-fakes-not-production-guards.md) — Tests
+  build runtime/brain via `tests/fakes.py`; production never `getattr`-guards for half-built
+  test objects — a missing attribute goes into `__init__`.
 
 ### Config, dependencies & ops
 - [unwired-knobs-and-silent-fallbacks](unwired-knobs-and-silent-fallbacks.md) — Unread

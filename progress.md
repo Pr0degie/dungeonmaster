@@ -15,15 +15,10 @@ is on-demand._
 - **Newest round:** Aufräumen ohne Verhaltensänderung (12.11.) — die `getattr`-Guards für Test-Stubs sind aus `dmbot/`
   raus, ebenso die drei trägen `__dict__.setdefault`-Attribute der Panels; Tests bauen Runtime/Brain über
   `tests/fakes.py` (1365 Tests grün, `dm-eval` Exit 0, live nicht gesehen).
-  Davor D134 (31.10.) — Sprachbefehl „Der Timo war ein sehr böser Junge.“ trennt Timo vom Voice-Kanal
-  (`DM_KICK_MASTER=Pr0degie`, braucht „Mitglieder verschieben“ und einen Bot-Neustart; **live-unverifiziert**, 1369 Tests grün).
-  Davor D128–D133 / **ADR 064** (30./31.10.) — Würfel am Tisch: der Post zeigt groß „Zielwert ≤37“
-  (W20 mit Zahlen auf allen Flächen), der Klick wirft ein GIF, dann das Ergebnis; Engine und DM warten nie darauf.
-  75 Flug-GIFs liegen einmal in `#bot-commands` (Klick ohne Upload). Dazu: jeder Befehl tritt vorher dem Voice-Kanal
-  bei, Plopp beim Login, `!test` ohne „für“, ein Spieler-Panel pro Kanal (einmal gepostet, dann nur bearbeitet, mit
-  Zeit/Sirene). **1345 Tests grün, `dm-eval` Exit 0.** Live gesehen: Würfel-Ablauf, Auto-Join, Ablage 75/75.
-- **Davor (2026-10-25):** D123/D124 (ADR 062, improvisierte NSCs anwesend), D125 (XTTS-Sperre + `gpu_health`),
-  D126 (ADR 063, Schicksalspunkte), D127 (Würfel-Thumbnails) — alle code-komplett, Details im Archiv/Log.
+  Davor D134 (31.10., Sprachbefehl „sehr böser Junge“ trennt Timo vom Voice; **live-unverifiziert**, braucht
+  `DM_KICK_MASTER`, „Mitglieder verschieben“ und einen Neustart) und D128–D133 / **ADR 064** (Würfel am Tisch, live gesehen).
+- **Davor (2026-10-25):** D123–D127 (improvisierte NSCs, XTTS-Sperre, Schicksalspunkte, Würfel-Thumbnails) —
+  code-komplett, Details im Archiv/Log.
 - **Next concrete step:** fünfter Lauf mit Bot A (lief am 30./31.10. nicht — der DM blieb stumm); vorher in
   `#bot-commands` die alten GIF-Sätze löschen (nur die von 01:49 zählen). Prüfliste: Abschnitt „Next concrete step“; dort auch die
   kleine Entscheidung, welcher Sprach-Trigger als nächster kommt.
@@ -60,15 +55,6 @@ Live noch nicht gesehen — Bot neu starten und prüfen, ob DMbot „Mitglieder 
   [groß, 15 Abschnitte](https://claude.ai/artifact/DwCsuFC3WaAHnRsWhvaZpH), [frühere Kurzfassung](https://claude.ai/artifact/39WPYcH5tSgDyJa88UXsbL).
   Eckzahlen: 3.227 Transkriptzeilen, 186 →DM (Tobi 82), 67 echte Würfelproben (40 % Erfolg); Vinnie 0 Zeilen;
   Marco (BloodyP) hat keinen Bogen in `data/party`.
-
-**Würfel-Feinschliff am Tisch (2026-10-31, D130–D133).** Tobi hat die Wurfanimation live ausprobiert und nach jedem
-Blick nachschärfen lassen; jede Runde ist committet, der Bot jeweils neu gestartet. Geblieben ist: der W20 mit Zahlen
-auf allen Flächen (Variante B, nach außen gedreht), drei Abhebe-Bilder statt eines Sprungs, Wurf ersetzt im selben
-Post nur das Bild (verglichen mit „neue Nachricht, alte löschen“ — Tobi wollte das Ersetzen), Kasten nur ums Bild,
-Zielwert und Ergebnis als Text darüber; PNG 600 px/64 Farben (~42 statt ~290 KB), GIF 16 Farben (~266 KB). Dazu
-Auto-Join vor jedem Befehl (D130), Plopp beim Login, `!test` ohne „für“ mit Vornamen (D131), ein Panel pro Kanal,
-einmal gepostet und nur noch bearbeitet (D132), die Druck-Anzeige im Panel (D133), Stop-Hooks entfernt. 1345 Tests.
-Die Discord-Ladelücke beim Bildtausch bleibt (Lesson `discord-image-swaps-reload`).
 
 _Ältere `## Last session`-Einträge: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Last session (Verlauf)`._
 
