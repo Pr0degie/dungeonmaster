@@ -74,7 +74,6 @@ from .memory import npc_memory as npc_memory_mod
 from .memory.state import (
     WorldState,
     clocks_panel_de,
-    pressure_panel_de,
     world_state_summary_de,
 )
 from .rag.adventure import Adventure, Scene
@@ -84,6 +83,7 @@ from .rag.testplan import Testplan, overlay_line_de
 from .session.ingest import SessionIngestMixin
 from .session.clocks import ClocksMixin
 from .session.npcs import NpcMemoryMixin
+from .session.panels import PanelsMixin
 
 # Re-export shim (ADR 034): the per-turn latency record + its ctx-budget threshold moved to
 # dmbot/turn_timing.py for context-leanness; keep importing them from here so the cog/dice/tests'
@@ -94,10 +94,6 @@ from .turn_timing import _CTX_WARN_FRACTION, _TurnTiming  # noqa: F401
 _DATA_DIR = profile_mod.systems_dir().parent
 
 log = logging.getLogger(__name__)
-
-# The player panel's first line (discord_ui/panel.py) — how old panels of this bot are recognised.
-PANEL_MARK = "📍 **Wo ihr seid:**"
-PANEL_SWEEP_LIMIT = 100  # recent messages searched for this bot's panel after a restart
 
 _SR_16K = 16_000
 
@@ -141,7 +137,7 @@ def _safe_remove(path: str) -> None:
         pass
 
 
-class SessionRuntime(SessionIngestMixin, ClocksMixin, NpcMemoryMixin):
+class SessionRuntime(SessionIngestMixin, ClocksMixin, NpcMemoryMixin, PanelsMixin):
     """Shared session state + services, built once from :class:`Config` and injected into every cog.
 
     Holds the LLM brain, STT/TTS, bridge, rules profile + characters, RAG retriever, adventure
@@ -1010,89 +1006,7 @@ class SessionRuntime(SessionIngestMixin, ClocksMixin, NpcMemoryMixin):
             state.mark_open(scene.id, element_id)
         return text
 
-    async def update_clock_panel(self) -> None:
-        """(Re)render the pressure panel (time + deadlines + clocks, ADR 047/048) in the
-        session's text channel — edit-in-place (the pause-panel pattern), so ticks/advances
-        update one message instead of spamming. No clocks AND no deadlines → the panel is
-        removed (`!zeit` shows the bare time on demand). Best-effort: a send/edit failure
-        logs, never breaks a turn/command."""
-        if self._text_channel is None:
-            return
-        if self._player_panel_enabled:
-            # Time, deadlines (and clocks) live in the player panel — one message, not two (D133).
-            await self.clear_panel("_clock_panel")
-            await self._sweep_pressure_panels()
-            await self.update_player_panel()
-            return
-        state = self._state.get(self._active_vc_id) if self._active_vc_id is not None else None
-        clocks = self.clocks_enabled
-        if state is None or not ((clocks and state.clocks) or state.deadlines):
-            await self.clear_panel("_clock_panel")
-            return
-        content = pressure_panel_de(state, clocks=clocks)
-        if self._clock_panel is not None:
-            try:
-                await self._clock_panel.edit(content=content)
-                return
-            except discord.HTTPException:
-                self._clock_panel = None  # message gone — fall through and re-post
-        try:
-            self._clock_panel = await self._text_channel.send(content)
-        except discord.HTTPException:
-            log.warning("could not post the clock panel", exc_info=True)
-
-    async def _sweep_pressure_panels(self) -> None:
-        """Delete this bot's separate pressure panels (time + deadlines) left by earlier runs, now
-        that the player panel carries them (D133). Once per channel and run, recent history only."""
-        channel = self._text_channel
-        seen = self._pressure_swept_channels
-        if getattr(channel, "id", None) in seen:
-            return
-        seen.add(getattr(channel, "id", None))
-        me = getattr(getattr(channel, "guild", None), "me", None)
-        history = getattr(channel, "history", None)
-        if me is None or history is None:
-            return
-        try:
-            async for msg in history(limit=PANEL_SWEEP_LIMIT):
-                text = msg.content or ""
-                if (getattr(msg.author, "id", None) == me.id and text.startswith("🕐 **")
-                        and "\n⏳ **" in text):
-                    try:
-                        await msg.delete()
-                    except discord.HTTPException:
-                        pass
-        except discord.HTTPException:
-            log.info("could not read the channel history to sweep old pressure panels")
-
     # ----- 🧪 Debug overlay (ADR 052) ---------------------------------------------------------
-
-    def _operator_channel(self):
-        """The configured ``DM_DEBUG_CHANNEL``, or ``None`` when none is set or it cannot be
-        resolved — never the game channel.
-
-        Everything that would leak campaign structure if the table read it (scene ids, gate
-        conditions, verdict internals) goes here and nowhere else. ``DM_DEBUG_CHANNEL`` is empty
-        in ``.env.example``, so "fall back to the game channel" means "read it out to the
-        players"; for those lines the log plus the model-facing ``[Regie]`` note are the whole
-        delivery."""
-        if not self._debug_channel_id:
-            return None
-        guild = getattr(self._text_channel, "guild", None)
-        ch = guild.get_channel(self._debug_channel_id) if guild is not None else None
-        if ch is not None:
-            return ch
-        if not self._debug_channel_warned:
-            log.warning("🧪 DM_DEBUG_CHANNEL=%s not resolvable — overlay falls back to "
-                        "the game channel", self._debug_channel_id)
-            self._debug_channel_warned = True
-        return None
-
-    def _debug_overlay_channel(self):
-        """The 🧪 overlay's target: the operator channel when there is one, else the session's
-        text channel. The overlay itself is spoiler-safe by construction (ADR 052), so the
-        fallback is fine here — unlike for the operator lines above."""
-        return self._operator_channel() or self._text_channel
 
     async def update_debug_overlay(self) -> None:
         """(Re)render the 🧪 testplan overlay for the current scene (ADR 052) — edit-in-place
@@ -1145,63 +1059,6 @@ class SessionRuntime(SessionIngestMixin, ClocksMixin, NpcMemoryMixin):
         if text and self.clocks_enabled and state.clocks:  # the pressure panel's clocks (D133)
             text = f"{text}\n{clocks_panel_de(state.clocks)}"
         return text
-
-    async def update_player_panel(self, *, reanchor: bool = False) -> None:
-        """(Re)render the player panel in the session's text channel.
-
-        Posted once at the bottom, then only ever edited in place — it is never re-posted, so it
-        drifts up as the table plays (Tobi's choice, D132). One per channel: after a restart the
-        bot adopts its newest panel from the channel instead of posting another, and deletes
-        older duplicates. ``reanchor=True`` (tests, a manual reset) deletes and posts it anew.
-        Best-effort: a send/edit failure logs and never breaks a turn."""
-        if not self._player_panel_enabled or self._text_channel is None:
-            return
-        content = self._panel_text()
-        if not content:
-            return
-        async with self._player_panel_lock:  # two quick updates must not post two panels
-            if reanchor:
-                await self.clear_panel("_player_panel")
-            elif self._player_panel is None:
-                self._player_panel = await self._adopt_old_panel()
-            if self._player_panel is not None:
-                try:
-                    await self._player_panel.edit(content=content)
-                    return
-                except discord.HTTPException:
-                    self._player_panel = None  # message gone — fall through and post anew
-            try:
-                self._player_panel = await self._text_channel.send(content)
-            except discord.HTTPException:
-                log.warning("could not post the player panel", exc_info=True)
-
-    async def _adopt_old_panel(self):
-        """This bot's newest player panel in the text channel, to edit instead of posting another
-        (a restart forgets the handle); older duplicates are deleted. Once per channel and run,
-        recent history only; best-effort — no permission / no history → ``None``."""
-        channel = self._text_channel
-        seen = self._panel_swept_channels
-        if getattr(channel, "id", None) in seen:
-            return None
-        seen.add(getattr(channel, "id", None))
-        me = getattr(getattr(channel, "guild", None), "me", None)
-        history = getattr(channel, "history", None)
-        if me is None or history is None:
-            return None
-        found = []
-        try:
-            async for msg in history(limit=PANEL_SWEEP_LIMIT):  # newest first
-                if getattr(msg.author, "id", None) == me.id and (msg.content or "").startswith(PANEL_MARK):
-                    found.append(msg)
-        except discord.HTTPException:
-            log.info("could not read the channel history to find the player panel")
-            return None
-        for dupe in found[1:]:
-            try:
-                await dupe.delete()
-            except discord.HTTPException:
-                pass
-        return found[0] if found else None
 
     # ----- The post-turn boundary: scene, facts, clock (ADR 057/058/059) ---------------------
 
