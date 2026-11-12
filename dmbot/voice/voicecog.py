@@ -18,6 +18,7 @@ from ..discord_ui.mic import MicToggleView
 from ..discord_ui.pause import PauseToggleView, pause_embed
 from ..memory import history as history_store
 from ..shutdown import progress
+from ..tts.textsplit import split_for_discord
 from ..runtime import SessionRuntime
 
 log = logging.getLogger(__name__)
@@ -296,8 +297,10 @@ class VoiceCog(commands.Cog):
 
         # If a recap was stored from a previous session, show it so the table picks up the thread.
         state = self._rt._state.get(channel.id)
+        # (split across messages — a cumulative recap outgrows Discord's 2000 characters.)
         if state is not None and state.recap:
-            await ctx.send(f"📜 **Was bisher geschah:** {state.recap}")
+            for piece in split_for_discord(f"📜 **Was bisher geschah:** {state.recap}"):
+                await ctx.send(piece)
 
     async def toggle_listening(self) -> bool:
         """Flip the push-to-talk DM-routing gate; return the new state. Called by the mic button.

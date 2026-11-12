@@ -16,7 +16,7 @@ from discord.ext import commands
 from ..gpu_health import health as gpu_health
 from ..orchestrator import build_intro_director_msg, build_opening_director_msg
 from ..llm.intro_guard import is_weak_intro
-from ..tts.textsplit import has_speakable_content, strip_speech_punctuation
+from ..tts.textsplit import has_speakable_content, split_for_discord, strip_speech_punctuation
 from ..memory import history as history_store
 from .delivery import DeliveryPipeline
 from ..runtime import SessionRuntime, _TurnTiming
@@ -535,7 +535,9 @@ class DMCog(commands.Cog):
             await ctx.send("Noch nichts passiert, das sich zusammenfassen ließe.")
             return
         self._persist_recap(ctx.channel, recap)
-        await ctx.send(f"📜 **Was bisher geschah:**\n{recap}")
+        # split across messages — a cumulative recap outgrows Discord's 2000 characters
+        for piece in split_for_discord(f"📜 **Was bisher geschah:**\n{recap}"):
+            await ctx.send(piece)
 
     def _persist_recap(self, channel, recap: str) -> None:
         """Store a freshly generated recap exactly like ``!wrap up``: write it into the world state

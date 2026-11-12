@@ -50,6 +50,10 @@ einziger sichtbarer Unterschied sind die Logger-Namen (`session.scenes` statt `r
   erweitert: sie vergleicht `p.name`, `ingest.py` gäbe auch `dmbot/rag/ingest.py` frei.
 - **Zurückgestellt:** die öffentliche Cog-Schnittstelle (446 Zugriffe auf Runtime-Privates) — Zahlen und die 21
   schreibenden Attribute stehen in ADR 065 und [runtime-split.md](docs/plans/runtime-split.md).
+- **Live-Fund am selben Abend (23:37):** `!join` brach am Ende mit „Must be 2000 or fewer“ ab — der gespeicherte
+  Recap der Debug-Sitzung ist 2455 Zeichen lang und ging ungeteilt an Discord (kein Refactor-Effekt; der Lauf zeigte
+  nebenbei, dass Seeding und Persistenz aus `dmbot/session/` laufen). `!join` und `!wrap` teilen den Recap jetzt mit
+  `split_for_discord`; der Fehler-Log nennt den Befehl und schreibt den Traceback. Live noch nicht nachgeprüft.
 
 **Stub-Guards raus (2026-11-12).** Rund 60 `getattr(self, …, default)`-Zugriffe in `dmbot/` existierten nur, damit
 halb gebaute Test-Runtimes und -Brains nicht abstürzen; sie hätten echte `AttributeError`s verschluckt. Jetzt direkter

@@ -109,7 +109,10 @@ class DMBot(commands.Bot):
             except discord.HTTPException:
                 log.exception("could not post the usage hint for %r", cmd)
             return
-        log.error("command error in %r: %r", cmd, error)
+        # Name the command and keep the traceback: the bare Command repr hid which command and
+        # which line had failed (the over-long recap at the end of !join, 2026-11-12).
+        log.error("command error in !%s: %r", cmd.qualified_name if cmd is not None else "?",
+                  error, exc_info=error)
 
     async def close(self) -> None:
         """Step-wise teardown with an `[i/n]` console display (dmbot.shutdown.progress), so the
