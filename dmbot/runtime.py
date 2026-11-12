@@ -346,6 +346,11 @@ class SessionRuntime:
         # while this one is in players' language and belongs in the game channel.
         self._player_panel_enabled = config.player_panel
         self._player_panel: discord.Message | None = None
+        self._player_panel_lock = asyncio.Lock()  # two quick updates must not post two panels
+        # Channels already swept this run (once per channel): old player panels adopted/deduped,
+        # and the separate pressure panels of earlier runs deleted (D132/D133).
+        self._panel_swept_channels: set = set()
+        self._pressure_swept_channels: set = set()
         # Memory (Phase 9): the mutable world state per channel — current wounds/conditions, NPCs,
         # quests, location, recap. Loaded/seeded on !join (data/sessions/<id>/state.json), advanced
         # deterministically by code (golden rule #3), persisted on every change so HP survives a
@@ -1136,7 +1141,7 @@ class SessionRuntime:
         """Delete this bot's separate pressure panels (time + deadlines) left by earlier runs, now
         that the player panel carries them (D133). Once per channel and run, recent history only."""
         channel = self._text_channel
-        seen = self.__dict__.setdefault("_pressure_swept_channels", set())
+        seen = self._pressure_swept_channels
         if getattr(channel, "id", None) in seen:
             return
         seen.add(getattr(channel, "id", None))
@@ -1250,8 +1255,7 @@ class SessionRuntime:
         content = self._panel_text()
         if not content:
             return
-        lock = self.__dict__.setdefault("_player_panel_lock", asyncio.Lock())
-        async with lock:  # two quick updates must not post two panels
+        async with self._player_panel_lock:  # two quick updates must not post two panels
             if reanchor:
                 await self.clear_panel("_player_panel")
             elif self._player_panel is None:
@@ -1272,7 +1276,7 @@ class SessionRuntime:
         (a restart forgets the handle); older duplicates are deleted. Once per channel and run,
         recent history only; best-effort — no permission / no history → ``None``."""
         channel = self._text_channel
-        seen = self.__dict__.setdefault("_panel_swept_channels", set())
+        seen = self._panel_swept_channels
         if getattr(channel, "id", None) in seen:
             return None
         seen.add(getattr(channel, "id", None))
