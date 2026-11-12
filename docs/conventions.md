@@ -271,7 +271,7 @@ This is the **DMbot repo**. Bot A is a separate repo (the music bot) — not her
 ```
 dmbot/          the DM bot
   runtime.py    SessionRuntime — shared session state/services, injected into every cog (ADR 029)
-  session/      SessionRuntime's method groups as mixins, one module per concern (ADR 065): ingest
+  session/      SessionRuntime's method groups as mixins, one module per concern (ADR 065): ingest, clocks
   voice/        recv, resample, VAD + the Discord cogs (voicecog / dicecog / dmcog + scenecog / lorecog / clockcog / timecog / chekhovcog, ADR 039/047/048/050) + delivery.py (the answer→audio turn-delivery pipeline, ADR 035)
   stt/          faster-whisper wrapper + segments.py (pure hallucination guard: confidence thresholds AND the outro-phrase blocklist, D114)
   tts/          piper + xtts (Coqui XTTS v2) wrappers

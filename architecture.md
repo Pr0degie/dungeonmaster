@@ -720,7 +720,7 @@ cogitator/                 # = the DMbot repo
 │   ├── rules/             # engine.py + combat.py (attack/Warp resolution, ADR 037) + profile loader (+ tests)  ← deterministic core
 │   ├── discord_ui/        # buttons, turn-order view
 │   ├── orchestrator.py    # the DM brain (history + buffer → LLM)
-│   ├── session/           # SessionRuntime's method groups as mixins (ADR 065): ingest
+│   ├── session/           # SessionRuntime's method groups as mixins (ADR 065): ingest, clocks
 │   └── runtime.py         # SessionRuntime — shared session state/services, injected into the cogs (ADR 029)
 ├── data/
 │   ├── systems/           # system profiles, e.g. imperium_maledictum.json (§9)
