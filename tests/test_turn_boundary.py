@@ -1228,3 +1228,64 @@ def test_an_npc_elsewhere_is_not_present_and_an_improvised_one_is_in_the_prompt(
     summary = world_state_summary_de(state, present=present)
     assert "NSCs in der Szene: Schwester Vall" in summary and "Hakenmann" in summary
     assert "Seneschall Kaad" in summary.split("anderswo")[1]
+
+
+# ---- known defects from the table of 2026-11-13: documented, reproduced, not yet fixed --------
+# Evidence: docs/plans/npc-sighting-stale-scene-2026-11-13.md (ADR 062). Both tests assert the
+# behaviour the table needs and fail today; ``strict`` makes the eventual fix show up as an
+# XPASS failure, so the marker has to be removed with it and cannot rot.
+
+_IMPROVISED = SimpleNamespace(improvised_npc=lambda: {"wounds": 10, "toughness_bonus": 3, "armour": 0})
+
+
+def _arriving_meanwhile(rt: SessionRuntime, state: WorldState, brain) -> None:
+    """While the presence classifier is thinking, the table confirms the ``<<ORT>>`` proposal:
+    the pointer moves to the shrine and its scene-card NPC is registered — what ``move_scene``
+    does, at the point the live run did it (00:40:17, two seconds before the verdict came back)."""
+    classify = brain.classify_present_npcs
+
+    async def classify_present_npcs(**kwargs):
+        rt._set_scene(state, "schrein")
+        return await classify(**kwargs)
+
+    brain.classify_present_npcs = classify_present_npcs
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "ADR 062: a sighting is filed under the pointer snapshot taken before the classifiers ran, "
+    "even when the pointer moved meanwhile and the answer narrated the arrival — live "
+    "2026-11-13, docs/plans/npc-sighting-stale-scene-2026-11-13.md"))
+def test_a_sighting_lands_in_the_scene_the_group_arrived_in_meanwhile() -> None:
+    adv = _adventure()
+    state = _state(adv)                                  # the pointer stands on zollhaus
+    brain = _npc_brain(("Kettenmann", ""))
+    rt = _runtime(adv, state, brain, _FakeChannel(), _npc_router=True, _scene_router=False,
+                  _profile=_IMPROVISED)
+    _arriving_meanwhile(rt, state, brain)
+
+    _run(rt.close_turn(_FakeChannel(), "Das Portal knarrt, als du in den Schrein trittst. "
+                                       "Vor dem Altar lehnt ein Kerl mit einer Kette."))
+
+    assert state.scene_id == "schrein"
+    thug = state.find("Kettenmann")
+    assert thug is not None and thug.scene == "schrein"  # today: "zollhaus", the scene just left
+    assert "Kettenmann" in [n.name for n in rt._scene_npcs(state)]
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "ADR 062: a sighting that names a scene-card NPC by her role instead of her name becomes a "
+    "second NPC with default values (place_npc matches by exact name) — live 2026-11-13, "
+    "'Schreinschwester' beside 'Schwester Cassia Vall', "
+    "docs/plans/npc-sighting-stale-scene-2026-11-13.md"))
+def test_a_sighting_of_a_scene_card_npc_under_another_name_adds_no_second_entry() -> None:
+    adv = _adventure()              # the shrine's card: "Schwester Vall", role "Schreinschwester"
+    state = _state(adv)
+    brain = _npc_brain(("Schreinschwester", ""))  # the live verdict: her role as label, no statblock
+    rt = _runtime(adv, state, brain, _FakeChannel(), _npc_router=True, _scene_router=False,
+                  _profile=_IMPROVISED)
+    _arriving_meanwhile(rt, state, brain)
+
+    _run(rt.close_turn(_FakeChannel(), "Im Schrein kniet eine alte Schreinschwester und stemmt "
+                                       "mit einer Eisenstange eine Bodenplatte an."))
+
+    assert [n.name for n in state.npcs] == ["Schwester Vall"]  # today: plus "Schreinschwester"

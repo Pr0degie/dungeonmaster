@@ -54,6 +54,9 @@ waren am Ende gekappt (gespeichert: 2344 Zeichen, endet mit „Kurz darauf brach
   Recap über `_send_with_retry`; ein Recap über 1800 Zeichen loggt eine Warnung.
 - 16 neue Tests, 1381 grün, `dm-eval` Exit 0. **Live-unverifiziert.** Das laufende Debug-Journal hat noch kein
   Ereignis: der nächste Start lädt einmal noch 20 Züge, ab dem ersten Auto-Recap danach greift die Markierung.
+- Live gesehen (00:35–00:41): Auto-Recap ohne ✂ (1187 Zeichen, vollständiger Schlusssatz), `compact`-Ereignis im
+  Journal, Prompt danach bei 14.736 statt 23.732 Tokens; Szenenwechsel per Knopf. Der Neustart nach einer
+  Kompaktierung ist noch nicht gesehen. Zwei NSC-Fehler aus dem Zug von 00:40 stehen unter „Open questions“.
 - **Offen (Tobi), nichts geändert:** das Sprechbudget (748 Zeichen) griff am 12.11. bei allen drei Antworten. Das
   abgeschnittene Satzstück wird weder gesprochen noch gepostet. Lücke dabei: ein vollständiger Satz, der auf `.“`
   endet, fällt direkt vor dem Schnitt mit weg (`_SENTENCE_END` kennt das deutsche Schlusszeichen nicht).
@@ -229,6 +232,19 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 ---
 
 ## Open questions / to clarify
+
+**Aus dem Debug-Lauf (2026-11-13, Zug von 00:40) — dokumentiert und reproduziert, nicht behoben (ADR 062):**
+Belege: [npc-sighting-stale-scene-2026-11-13.md](docs/plans/npc-sighting-stale-scene-2026-11-13.md). Beide Tests
+stehen in `tests/test_turn_boundary.py` als `xfail(strict=True)`; der Fix muss die Markierung entfernen.
+- **Gesichtete Figur landet in der verlassenen Szene.** `close_turn` legt Sichtungen unter dem Szenenzeiger ab,
+  der vor der Klassifikation galt. Wechselt der Zeiger währenddessen (Knopf, `!ort`) und die Antwort erzählt die
+  Ankunft, steht die Figur in der alten Szene und gilt in der neuen nicht als anwesend.
+  Test: `test_a_sighting_lands_in_the_scene_the_group_arrived_in_meanwhile`.
+- **Zweiter Eintrag für eine Karten-NSC unter anderem Namen.** Der Klassifikator meldete „Schreinschwester“ ohne
+  Statblock; `place_npc` vergleicht nur den exakten Namen, also entstand neben „Schwester Cassia Vall“ eine zweite
+  NSC mit Standardwerten. Test: `test_a_sighting_of_a_scene_card_npc_under_another_name_adds_no_second_entry`.
+- _Beobachtung, kein Fehler:_ bei „Ich gehe die Treppen hinunter zum Schrein“ blieb der Szenen-Klassifikator bei
+  „bleiben“, obwohl die Erzählung schon vor dem Portal stand; gewechselt wurde einen Zug später beim Hineingehen.
 
 
 **Aus der Würfel-Animation (2026-10-30/31) — offen:**
