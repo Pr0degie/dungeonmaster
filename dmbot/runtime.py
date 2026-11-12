@@ -18,6 +18,9 @@ piece of it is shared state — pointer, world state, prompt context, panels —
 scene movers (classifier, flag gate, ``!ort``, the demoted ``<<ORT>>`` marker) must go through the
 same :meth:`move_scene`, or NPC registration and the panels drift apart again.
 
+Since ADR 065 the method groups live in ``dmbot/session/`` as mixins of this one class (still one
+object, ``self`` is the runtime); this module keeps the constructor and the shared plumbing.
+
 Docs and code are English; game content (what the DM says) stays German (CLAUDE.md).
 """
 
@@ -82,6 +85,7 @@ from .rag.adventure import Adventure, Scene
 from .rag import ingest_session
 from .rag.retrieve import RulebookRetriever
 from .rag.testplan import Testplan, overlay_line_de
+from .session.ingest import SessionIngestMixin
 
 # Re-export shim (ADR 034): the per-turn latency record + its ctx-budget threshold moved to
 # dmbot/turn_timing.py for context-leanness; keep importing them from here so the cog/dice/tests'
@@ -139,7 +143,7 @@ def _safe_remove(path: str) -> None:
         pass
 
 
-class SessionRuntime:
+class SessionRuntime(SessionIngestMixin):
     """Shared session state + services, built once from :class:`Config` and injected into every cog.
 
     Holds the LLM brain, STT/TTS, bridge, rules profile + characters, RAG retriever, adventure
@@ -987,64 +991,6 @@ class SessionRuntime:
         if self._adventure_dir is not None and (self._adventure_dir / "testplan.json").is_file():
             return ingest_session.session_source(channel_id, debug=True)
         return ingest_session.session_source(channel_id)
-
-    def schedule_session_ingest(self, channel_id: int, rotated: Path | None) -> None:
-        """Ingest one just-rotated journal in the background (the !leave trigger). Degrades
-        silently: any failure only logs; !leave never waits on it."""
-        if rotated is None or self._session_ingest_source(channel_id) is None:
-            return
-        self._spawn_session_ingest([Path(rotated)], channel_id)
-
-    def schedule_session_catchup(self, channel_id: int) -> None:
-        """Ingest every rotated journal whose stamp isn't in the store yet, in the background
-        (the !join trigger). Self-healing: covers crashes, shutdown-during-ingest — and the
-        first !join after the feature lands backfills all existing rotated sessions."""
-        if self._session_ingest_source(channel_id) is None:
-            return
-        session_dir = self._history_path(channel_id).parent
-        db_path = self._retriever._db_path
-        debug = self.is_debug_run  # captured now — the scan sees only this mode's archives
-
-        def _scan_and_ingest() -> None:
-            pending = ingest_session.pending_files(session_dir, db_path=db_path, debug=debug)
-            if pending:
-                # gate-G10 evidence: the catch-up half of the ingest story is greppable too
-                log.info("🗂 session memory: catch-up — %d rotated journal(s) pending",
-                         len(pending))
-            for path in pending:
-                self._ingest_one(path, channel_id)
-
-        self._spawn_session_task(_scan_and_ingest)
-
-    def _ingest_one(self, path: Path, channel_id: int) -> None:
-        """One journal into the store (worker thread). Failures log and skip the file — the
-        catch-up retries it on the next !join because its stamp was never recorded."""
-        try:
-            n = ingest_session.ingest_session_file(
-                path, channel_id=channel_id,
-                db_path=self._retriever._db_path, host=self._ollama_host,
-            )
-            log.info("🗂 session memory: ingested %s (%d chunks)", path.name, n)
-        except Exception:
-            log.exception("session ingest failed for %s — skipped", path.name)
-
-    def _spawn_session_ingest(self, paths: list[Path], channel_id: int) -> None:
-        def _work() -> None:
-            for path in paths:
-                self._ingest_one(path, channel_id)
-
-        self._spawn_session_task(_work)
-
-    def _spawn_session_task(self, work) -> None:
-        """Run ``work`` (sync, does its own error logging) off the event loop as a fire-and-forget
-        background task. Without a running loop (unit tests) it degrades to a no-op."""
-        try:
-            task = asyncio.get_running_loop().create_task(asyncio.to_thread(work))
-        except RuntimeError:
-            log.debug("no running event loop — session ingest not scheduled")
-            return
-        self._session_tasks.add(task)
-        task.add_done_callback(self._session_tasks.discard)
 
     def _set_scene_flag(self, state: WorldState, element_id: str, *, resolved: bool) -> str | None:
         """Deterministically flag an element of the CURRENT scene resolved/open (ADR 043, golden
