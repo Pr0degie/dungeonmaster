@@ -13,8 +13,8 @@ is on-demand._
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
 - **Newest round:** `runtime.py` zerlegt, ohne Verhaltensänderung (12.11., D135 / **ADR 065**) — sieben Methodengruppen
-  liegen als Mixins in `dmbot/session/`, `runtime.py` 1949 → 844 Zeilen (Ziel ≤ 800 um 44 verfehlt, Entscheidung offen:
-  siehe „Last session“). 1365 Tests grün ohne Teständerung, `dm-eval` Exit 0, live nicht gesehen.
+  liegen als Mixins in `dmbot/session/`, `runtime.py` 1949 → 844 Zeilen (Ziel ≤ 800 um 44 verfehlt, von Tobi akzeptiert).
+  1365 Tests grün ohne Teständerung, `dm-eval` Exit 0, live nicht gesehen.
   Am selben Tag davor: Stub-Guards raus, Tests bauen Runtime/Brain über `tests/fakes.py`.
   Davor D134 (31.10., Sprachbefehl „sehr böser Junge“ trennt Timo vom Voice; **live-unverifiziert**, braucht
   `DM_KICK_MASTER`, „Mitglieder verschieben“ und einen Neustart) und D128–D133 / **ADR 064** (Würfel am Tisch, live gesehen).
@@ -44,10 +44,10 @@ Commit: `dmbot/session/` mit `ingest`, `clocks`, `npcs`, `panels`, `persistence`
 `SessionRuntime` erbt die Gruppen als Mixins — ein Objekt, `self` bleibt die Runtime, Cogs und Tests unverändert.
 Nach jedem Move: Byte-Prüfung gegen HEAD, 1365 Tests grün, ruff (F) sauber, `dm-eval` Exit 0. Live nicht gesehen;
 einziger sichtbarer Unterschied sind die Logger-Namen (`session.scenes` statt `runtime`).
-- **Offen (Tobi):** `runtime.py` steht bei 844 statt ≤ 800 Zeilen. Der ADR-052-Pin
-  `test_testplan_is_only_reachable_from_the_runtime` erlaubt das Wort „testplan“ nur in `runtime.py`; deshalb blieben
-  `_session_ingest_source`, `update_debug_overlay` und `_panel_text` (63 Zeilen) dort. Mit `ingest.py` und `panels.py`
-  in der Erlaubnisliste des Tests ziehen sie in einem kleinen Commit nach (≈ 781 Zeilen).
+- **Entschieden (Tobi):** 844 statt ≤ 800 Zeilen sind akzeptiert. Der ADR-052-Pin
+  `test_testplan_is_only_reachable_from_the_runtime` erlaubt das Wort „testplan“ nur in `runtime.py`; deshalb bleiben
+  `_session_ingest_source`, `update_debug_overlay` und `_panel_text` (63 Zeilen) dort. Die Erlaubnisliste wird nicht
+  erweitert: sie vergleicht `p.name`, `ingest.py` gäbe auch `dmbot/rag/ingest.py` frei.
 - **Zurückgestellt:** die öffentliche Cog-Schnittstelle (446 Zugriffe auf Runtime-Privates) — Zahlen und die 21
   schreibenden Attribute stehen in ADR 065 und [runtime-split.md](docs/plans/runtime-split.md).
 

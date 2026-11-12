@@ -1,8 +1,8 @@
 # Plan — split `dmbot/runtime.py` into session modules, no behaviour change
 
 **Status:** the seven moves are done (2026-11-12): `runtime.py` 1949 → **844** lines, all gates
-green after every commit. The ≤ 800 target is missed by 44 lines because of the ADR 052 pin —
-see *Result*. Approved by Tobi with changes: this round is the seven move commits only; the
+green after every commit. The ≤ 800 target is missed by 44 lines because of the ADR 052 pin;
+Tobi accepted 844 and closed the round (see *Result*). Approved by Tobi with changes: this round is the seven move commits only; the
 cog interface is deferred (see *Deferred*).
 **Date:** 2026-11-12 · **Base commit:** `87c5997` (all line numbers below refer to it)
 **Governing:** ADR 029 (runtime + cogs), ADR 035 (delivery extraction — the precedent),
@@ -81,9 +81,8 @@ allows only `runtime.py` (plus the loader and `config.py`) to contain the word "
 Three methods outside `__init__` do: `_session_ingest_source`, `update_debug_overlay` and
 `_panel_text` (63 lines). They stay in `runtime.py`, so the pin and the tests are untouched.
 The price is the size target: `runtime.py` is now expected at ≈ 835 lines, not ≈ 780. Reaching
-≤ 800 needs either that allow-list extended by `ingest.py` and `panels.py` (then the three
-methods move in one small follow-up commit) or more methods reassigned — Tobi's decision,
-reported after move 7.
+≤ 800 would need that allow-list extended or more methods reassigned; Tobi decided against
+both after move 7 (see *Result*).
 
 **Stays in `runtime.py` on purpose (≈ 835 lines):**
 
@@ -145,9 +144,9 @@ Every move passed the byte check, the suite (1365, zero test edits), ruff (F) an
 `history_store` stays imported in `runtime.py` as a re-export because `test_seed_session`
 reaches it there.
 
-**Open:** ≤ 800 is not met. With `ingest.py` and `panels.py` added to the allow-list of
-`test_testplan_is_only_reachable_from_the_runtime`, the three pinned methods follow in one
-commit and `runtime.py` lands at ≈ 781.
+**Closed:** ≤ 800 is not met and Tobi accepted 844. The three pinned methods stay in
+`runtime.py` and the allow-list of `test_testplan_is_only_reachable_from_the_runtime` is not
+extended: it compares `p.name`, so `ingest.py` would also exempt `dmbot/rag/ingest.py`.
 
 ## Deferred — the cog interface (not this round)
 

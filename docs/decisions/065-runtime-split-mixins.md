@@ -51,8 +51,9 @@ green with zero test edits, ruff (F) clean, `dm-eval` exit 0.
   only `runtime.py` to name the debug sidecar. The three methods outside `__init__` that do —
   `_session_ingest_source`, `update_debug_overlay`, `_panel_text` — therefore stay in
   `runtime.py` (63 lines), which is why the file ended at 844 lines instead of the planned
-  ≤ 800. Moving them needs that allow-list extended by `ingest.py` and `panels.py` — Tobi's
-  call, open at the end of the round.
+  ≤ 800. Tobi accepted 844 (2026-11-12): the three methods and the pin stay as they are. Do
+  not extend the allow-list to move them — it compares `p.name`, so an entry `ingest.py` would
+  also exempt `dmbot/rag/ingest.py`.
 - `history_store` stays imported in `runtime.py` even where unused, because `test_seed_session`
   reaches it as `runtime_mod.history_store`.
 
