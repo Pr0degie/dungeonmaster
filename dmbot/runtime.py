@@ -44,7 +44,7 @@ from .voice.preflight import check_static, check_tts_speaker
 from .voice.kick_phrase import find_culprit, is_kick_master, parse_kick_phrase
 from .stt import Transcriber
 from .llm import consistency as consistency_mod
-from .llm import build_llm_client, recap_num_predict
+from .llm import build_llm_client, recap_cap
 from .orchestrator import DMBrain
 from .tts.piper import PiperTTS
 from .tts.textsplit import split_for_discord, strip_speech_punctuation
@@ -381,15 +381,16 @@ class SessionRuntime(SessionIngestMixin, ClocksMixin, NpcMemoryMixin, PanelsMixi
             log.info("rulebook RAG store found — retrieval is on")
         else:
             log.info("no RAG store under data/vectordb/ — rule questions run without the book")
+        # Ollama alone, or Claude with Ollama as the loud fallback (DM_LLM_BACKEND, ADR 061).
+        # The retriever above keeps embedding through Ollama on both.
+        llm_client = build_llm_client(config)
         self._brain = DMBrain(
-            # Ollama alone, or Claude with Ollama as the loud fallback (DM_LLM_BACKEND, ADR 061).
-            # The retriever above keeps embedding through Ollama on both.
-            build_llm_client(config),
+            llm_client,
             profile=self._profile,
             num_predict=config.dm_num_predict,
             max_buffer_lines=config.dm_max_lines,
             retriever=self._retriever if self._retriever.available() else None,
-            recap_num_predict=recap_num_predict(config),  # per backend (ADR 061)
+            recap_num_predict=recap_cap(config, llm_client),  # per answering backend (ADR 061)
         )
         self._bridge = BridgeClient(config.bridge_host, config.bridge_port, secret=config.bridge_secret)
         # Load the TTS backend OFF the boot path so the bot is ready fast (ADR 020 made shutdown

@@ -46,8 +46,9 @@ def build_recap_user(history: list[dict[str, str]], prior_recap: str = "") -> st
 
     ``prior_recap`` makes the recap *cumulative* (the auto-compaction trigger, D56): when the running
     history is about to be cleared, an earlier recap already covers what scrolled out of it. We feed
-    that prior recap in as the lead-in so the new recap *supersedes and extends* it — nothing already
-    summarised is lost. Empty when there's no prior recap (the plain `!wrap up` case)."""
+    that prior recap in as the lead-in so the new recap *supersedes* it: the model merges both
+    and condenses the earlier part to hold ``RECAP_MAX_CHARS``, keeping open threads and the
+    newest events first. Empty when there's no prior recap (the plain `!wrap up` case)."""
     lines: list[str] = []
     for msg in history:
         role = msg.get("role")
@@ -67,8 +68,9 @@ def build_recap_user(history: list[dict[str, str]], prior_recap: str = "") -> st
             "Seitdem ist Folgendes geschehen:\n\n"
             f"{transcript}\n\n"
             "Schreibe EINE zusammenhängende, aktualisierte Zusammenfassung, die das Bisherige und "
-            "das Neue vereint. Verdichte das Bisherige, damit die Längengrenze hält — Namen, "
-            "getroffene Entscheidungen und offene Fäden daraus dürfen nicht verloren gehen."
+            "das Neue vereint. Verdichte das Bisherige, damit die Längengrenze hält. Die offenen "
+            "Fäden und das zuletzt Geschehene dürfen dabei nicht verloren gehen; wenn sonst nicht "
+            "alles hineinpasst, bleiben Namen und getroffene Entscheidungen vor älteren Einzelheiten."
         )
     return (
         "Hier ist der Verlauf der bisherigen Sitzung. Fasse ihn als \"Was bisher geschah\" zusammen:\n\n"

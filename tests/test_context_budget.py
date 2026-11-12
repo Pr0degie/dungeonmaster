@@ -116,7 +116,7 @@ def test_ctx_warning_names_the_real_consequence_per_backend(caplog) -> None:
 
     with caplog.at_level(logging.WARNING, logger="dmbot.turn_timing"):
         _TurnTiming(turn=1, trigger=0.0, prompt_eval=900, num_ctx=1000).log_line()
-        _TurnTiming(turn=2, trigger=0.0, prompt_eval=900, num_ctx=1000, spawn_ms=400).log_line()
+        _TurnTiming(turn=2, trigger=0.0, prompt_eval=900, num_ctx=1000, backend="claude").log_line()
     ollama, claude = [r.getMessage() for r in caplog.records]
     assert "Ollama will start truncating" in ollama
     assert "Ollama" not in claude and "nothing is truncated" in claude

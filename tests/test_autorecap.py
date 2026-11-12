@@ -163,6 +163,7 @@ class _StubRuntime:
         # Was missing since ADR 044: _maybe_compact resets the NPC-memory window after clearing
         # the history, and the AttributeError was swallowed by its broad except in every test.
         self._npc_mem_marks: dict[int, int] = {}
+        self.sent: list = []  # what the cog posted through the shared send util
         self._compacting: set[int] = set()
         self._active_vc_id = None
         self._state: dict = {}
@@ -170,6 +171,9 @@ class _StubRuntime:
 
     def _brain_channel(self, channel) -> int:
         return self._active_vc_id if self._active_vc_id is not None else channel.id
+
+    async def _send_with_retry(self, channel, content=None, **kwargs):
+        self.sent.append(content)
 
     # These exist so the persistence test can monkeypatch them (as it did on the cog before the
     # split); they're always replaced before use (only _persist_recap reaches them, and the only
@@ -328,6 +332,23 @@ def test_wrapup_folds_in_the_current_recap() -> None:
 
 # ---- the compaction is journalled, so a restart does not restore the compacted turns ----------
 
+def _persist_to(cog, brain, tmp_path, *, save: bool = True) -> None:
+    """Give the stub runtime the real persistence of the recap (state.json in tmp_path), as
+    test_maybe_compact_persists_recap_and_empties_history does. ``save=False`` is a state save
+    that failed: the production code logs the OSError and carries on."""
+    rt = cog._rt
+    rt._state_path = lambda cid: tmp_path / "state.json"
+    rt.session_file = lambda cid, stem, ext: tmp_path / f"{stem}.{ext}"
+
+    def _refresh(channel) -> None:
+        cid = rt._brain_channel(channel)
+        if save:
+            rt._state[cid].save(rt._state_path(cid))
+        brain.set_context(cid, recap=rt._state[cid].recap)
+
+    rt._persist_and_refresh = _refresh
+
+
 def test_maybe_compact_journals_the_compaction_and_keeps_a_turn_autosaved_meanwhile(tmp_path) -> None:
     """The recap covers what was in the history when summarising began. A turn autosaved while
     the LLM summarises is not in the recap, so a restart must still restore it — and nothing
@@ -346,7 +367,7 @@ def test_maybe_compact_journals_the_compaction_and_keeps_a_turn_autosaved_meanwh
 
     brain = _Brain(_CapClient(answer="Kumulativer Recap."))
     cog = _bare_cog(brain)
-    cog._persist_recap = lambda *a, **k: None  # state.json/recap.md are not under test here
+    _persist_to(cog, brain, tmp_path)
     cog._rt._autosave = True
     cog._rt._history_path = lambda cid: journal
 
@@ -365,6 +386,33 @@ def test_maybe_compact_journals_the_compaction_and_keeps_a_turn_autosaved_meanwh
     last = json.loads(journal.read_text(encoding="utf-8").splitlines()[-1])
     assert last["kind"] == "compact" and last["keep"] == 1
     assert history_store.load_recent(journal, 20) == [("Timo: währenddessen", "A2")]
+
+
+def test_maybe_compact_journals_nothing_when_the_recap_did_not_reach_the_disk(tmp_path) -> None:
+    """The event tells a restart that the recap holds the compacted turns. If the state save
+    failed, the recap on disk is still the old one — the turns must come back from the journal."""
+    from dmbot.memory import history as history_store
+
+    journal = tmp_path / "history.jsonl"
+    brain = DMBrain(_CapClient(answer="Kumulativer Recap."))
+    cog = _bare_cog(brain)
+    _persist_to(cog, brain, tmp_path, save=False)
+    cog._rt._autosave = True
+    cog._rt._history_path = lambda cid: journal
+
+    class _Chan:
+        id = 79
+
+    cog._rt._state[_Chan.id] = WorldState(session_id="79")
+    brain.add_player_line(_Chan.id, "Timo", "Wir kämpfen.")
+    asyncio.run(brain.respond(_Chan.id))
+    history_store.append_turn(journal, ts="t1", user_msg="Timo: Wir kämpfen.", answer="A1")
+
+    timing = _TurnTiming(turn=1, trigger=0.0, prompt_eval=900, num_ctx=1000)
+    asyncio.run(cog._maybe_compact(_Chan(), timing))
+
+    assert brain.history_len(_Chan.id) == 0  # in memory the turn is compacted as before
+    assert history_store.load_recent(journal, 20) == [("Timo: Wir kämpfen.", "A1")]
 
 
 def test_maybe_compact_writes_no_journal_when_autosave_is_off(tmp_path) -> None:
@@ -397,8 +445,13 @@ def test_summarize_passes_the_configured_output_cap() -> None:
             seen["options"] = options
             return await super().chat(system, messages, options=options, format=format)
 
-    brain = DMBrain(_Cap(answer="Recap."), recap_num_predict=1234)
+    cap = {"value": 1234}
+    brain = DMBrain(_Cap(answer="Recap."), recap_num_predict=lambda: cap["value"])
     brain.add_player_line(5, "Timo", "Wir gehen.")
     asyncio.run(brain.respond(5))
     asyncio.run(brain.summarize(5))
     assert seen["options"]["num_predict"] == 1234
+    # asked per call, so it follows a failover; None means the default (the Ollama number)
+    cap["value"] = None
+    asyncio.run(brain.summarize(5))
+    assert seen["options"]["num_predict"] == 400

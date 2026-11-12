@@ -349,28 +349,38 @@ end, where the newest events are.
 
 Decided:
 
-- **The recap call has its own output cap per backend.** `DMBrain` takes `recap_num_predict`;
-  `dmbot.llm.recap_num_predict(config)` — next to `build_llm_client`, so no call site names a
-  model — returns 400 for Ollama (unchanged) and `claude_client.RECAP_NUM_PREDICT` = **2000**
-  for Claude. With the thinking headroom that is a request cap of 3024 tokens, room for more
-  than three times the prompted length. The cap is now a brake on a runaway answer; it is not
-  what ends a recap. A cut still raises the ✂ WARNING. While the failover has the bot on Ollama, the
-  recap call reaches Nemo with the same 2000: a higher ceiling there, never a cut.
+- **The recap call has its own output cap on Claude, and only while Claude answers.**
+  `DMBrain` takes a hook (`recap_num_predict`) that it asks before each recap call;
+  `dmbot.llm.recap_cap(config, client)` — next to `build_llm_client`, so no call site names a
+  model — supplies it. On Ollama there is no hook and the 400 stands. On Claude the hook
+  answers `claude_client.RECAP_OUTPUT_TOKENS` = **2000** while the failover pair would try
+  Claude, and nothing while the pair is degraded or pinned with `!backend ollama`, so Nemo
+  keeps its 400. With the thinking headroom 2000 is a request cap of 3024 tokens, room for
+  more than three times the prompted length: the cap is a brake on a runaway answer, not what
+  ends a recap. A cut still raises the ✂ WARNING. Known gap: the one recap call during which
+  Claude fails is re-issued to Ollama as it was, with 2000.
 - **The recap prompt names a hard length:** at most 8 sentences and 1200 characters
   (`RECAP_MAX_CHARS`), also when an earlier recap is folded in. The cumulative instruction now
-  reads "condense the earlier part so the length holds; names, decisions and open threads must
-  survive" instead of "nothing may be lost". This prompt is shared with Ollama.
+  reads "condense the earlier part so the length holds; open threads and the latest events
+  must not be lost, then names and decisions before older detail" instead of "nothing may be
+  lost". This prompt is shared with Ollama. The length is prompted, not enforced — code cannot
+  shorten a recap without losing facts; a recap over 1.5 times the length logs a WARNING.
 
 Rejected: a higher floor for all batch prose in the client — it would also lift the cap of a
 batch-mode turn (`DM_STREAMING=0`), and the narration budget is not to change before the Claude
-evening. Raising the 400 at the call site — it would change the Ollama path.
+evening. Raising the 400 at the call site — it would change the Ollama path. A fixed number
+chosen at boot from `DM_LLM_BACKEND` (the first version of this round) — a degraded or pinned
+session would have sent Nemo 2000, and Nemo does not hold a prompted length.
 
 Fixed in the same round, outside the client: the auto-recap now writes a `{"kind": "compact"}`
 event into the autosave journal and the crash restore loads only what follows it (D136). Before,
 every restart put the last 20 turns back on top of the recap that already held them, so the first
 turn after a restart was at 23,200–24,000 of 24,576 tokens and triggered another recap — eight of
-the last ten auto-recaps in the log. The `[ctx]` WARNING of a Claude turn now says that nothing
-is truncated and that the budget only paces the auto-recap.
+the last ten auto-recaps in the log. The event is written only once the new recap is really in
+`state.json` (a failed save or a `!leave` during the summary leaves the turns to the journal),
+and not at all when the journal was rotated meanwhile. The `[ctx]` WARNING of a Claude turn
+(the stats' `backend` key) now says that nothing is truncated and that the budget only paces
+the auto-recap.
 
 Not changed: the spoken budget of a streamed turn. It engaged on all three turns of 2026-11-12
 (raw text exactly 748 characters each). The cut fragment is neither spoken nor posted —

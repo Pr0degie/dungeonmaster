@@ -16,8 +16,9 @@ from discord.ext import commands
 from ..gpu_health import health as gpu_health
 from ..orchestrator import build_intro_director_msg, build_opening_director_msg
 from ..llm.intro_guard import is_weak_intro
-from ..tts.textsplit import has_speakable_content, split_for_discord, strip_speech_punctuation
+from ..tts.textsplit import has_speakable_content, strip_speech_punctuation
 from ..memory import history as history_store
+from ..memory.state import WorldState
 from .delivery import DeliveryPipeline
 from ..runtime import SessionRuntime, _TurnTiming
 
@@ -535,9 +536,8 @@ class DMCog(commands.Cog):
             await ctx.send("Noch nichts passiert, das sich zusammenfassen ließe.")
             return
         self._persist_recap(ctx.channel, recap)
-        # split across messages — a cumulative recap outgrows Discord's 2000 characters
-        for piece in split_for_discord(f"📜 **Was bisher geschah:**\n{recap}"):
-            await ctx.send(piece)
+        # the shared send util splits past Discord's 2000 characters (a long recap, 2026-11-12)
+        await self._rt._send_with_retry(ctx.channel, f"📜 **Was bisher geschah:**\n{recap}")
 
     def _persist_recap(self, channel, recap: str) -> None:
         """Store a freshly generated recap exactly like ``!wrap up``: write it into the world state
@@ -562,8 +562,10 @@ class DMCog(commands.Cog):
         When the just-finished turn's prompt neared the num_ctx cap, fold the running history into a
         **cumulative** recap (prior recap + recent history → one new recap that supersedes it),
         persist it like ``!wrap up`` (so it survives a restart and is injected next turn), then clear
-        the in-memory history. The next prompt = persona + adventure + (longer) recap + state + empty
+        the in-memory history. The next prompt = persona + adventure + recap + state + empty
         history — safely under budget, so the persona/adventure head is never truncated again.
+        With the autosave on, a compaction event in the journal tells the crash restore which
+        turns the recap now holds (:meth:`_journal_compaction`).
 
         A per-channel guard stops two quick turns both compacting and stops the next player turn from
         reading half-cleared history. After compaction the history is small, so it won't re-trigger."""
@@ -580,8 +582,9 @@ class DMCog(commands.Cog):
                 "🧵 Kontext bei %s/%s — Auto-Recap: history wird kompaktiert (Persona/Abenteuer "
                 "bleiben so ungekürzt).", timing.prompt_eval, timing.num_ctx,
             )
-            # Cumulative: fold the recap currently in the prompt into the new one so nothing already
-            # summarised is lost (the older recap covers what scrolled out of the running history).
+            # Cumulative: fold the recap currently in the prompt into the new one — it is what covers
+            # the turns that scrolled out of the running history. The model condenses it to hold
+            # the recap's length (memory/recap.py).
             prior = self._rt._brain.current_recap(cid)
             # Journal mark, taken with no await before the summary starts: what the autosave holds
             # up to here is what this recap will cover; a turn autosaved while the LLM summarises
@@ -605,10 +608,7 @@ class DMCog(commands.Cog):
                 # that holds them — the context was at its cap on the first turn after every
                 # restart (live 2026-10-31, 2026-11-12). A failed write only costs that again.
                 try:
-                    await asyncio.to_thread(
-                        history_store.append_compaction, journal,
-                        ts=datetime.now().isoformat(timespec="seconds"), since=mark,
-                    )
+                    await asyncio.to_thread(self._journal_compaction, cid, journal, recap, mark)
                 except OSError:
                     log.exception("could not journal the compaction for channel %s", cid)
             log.info("🧵 Auto-Recap fertig — history kompaktiert, Recap aktualisiert.")
@@ -622,6 +622,23 @@ class DMCog(commands.Cog):
             log.exception("🧵 Auto-Recap failed — keeping the running history (no truncation safety lost)")
         finally:
             self._rt._compacting.discard(cid)
+
+    def _journal_compaction(self, cid: int, journal, recap: str, mark: int) -> None:
+        """Write the compaction event — but only once the new recap is really in ``state.json``.
+        The event tells a restart "the recap holds these turns"; ``_persist_recap`` returns
+        silently when the state is gone (a ``!leave`` during the summary) and a failed state save
+        is only logged, and in both cases the turns must still come back from the journal.
+        Runs in a worker thread (file I/O)."""
+        saved = WorldState.load(self._rt._state_path(cid))
+        if saved is None or saved.recap != recap.strip():
+            log.warning("🧵 auto-recap: the new recap is not in state.json — no compaction event "
+                        "written; a restart restores the compacted turns from the journal")
+            return
+        kept = history_store.append_compaction(
+            journal, ts=datetime.now().isoformat(timespec="seconds"), since=mark,
+        )
+        if kept is None:
+            log.info("🧵 auto-recap: the journal was rotated meanwhile — no compaction event written")
 
     @commands.command(name="say")
     async def say(self, ctx: commands.Context, *, text: str) -> None:

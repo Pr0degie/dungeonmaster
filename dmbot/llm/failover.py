@@ -104,6 +104,12 @@ class FailoverClient:
     def degraded(self) -> bool:
         return self._degraded_until is not None
 
+    @property
+    def on_primary(self) -> bool:
+        """Whether the next call goes to the primary first (not pinned to the fallback, not in a
+        cooldown). A call that then fails over still reaches the fallback as issued."""
+        return self._try_primary()
+
     def status(self) -> FailoverStatus:
         return FailoverStatus(
             mode=self._mode,

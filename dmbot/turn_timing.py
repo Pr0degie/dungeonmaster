@@ -49,6 +49,7 @@ class _TurnTiming:
     thinking: int | None = None  # Claude: the part of eval_count spent on thinking
     num_ctx: int | None = None  # the num_ctx cap in effect
     spawn_ms: int | None = None  # Claude: query() call → first SDK message (subprocess spawn)
+    backend: str | None = None  # who narrated, as the failover pair reports it (None: plain Ollama)
     cache_read: int | None = None  # Claude: prompt tokens served from the prompt cache
     truncated: bool = False  # Claude: the answer was cut at the output cap (the ✂ WARNING)
     answer_chars: int = 0
@@ -65,6 +66,7 @@ class _TurnTiming:
         self.thinking = stats.get("thinking")
         self.num_ctx = stats.get("num_ctx")
         self.spawn_ms = stats.get("spawn_ms")
+        self.backend = stats.get("backend")
         self.cache_read = stats.get("cache_read")
         self.truncated = bool(stats.get("truncated"))
 
@@ -125,13 +127,12 @@ class _TurnTiming:
         log.info("[latency] %s", " ".join(parts))
         # Context-budget early warning (narration turns only — those are the ones that build a
         # _TurnTiming). Above ~85% of num_ctx, Ollama truncates the prompt head (the persona) first.
-        if self.ctx_over_budget() and self.spawn_ms is not None:
-            # A Claude turn (only its stats carry ``spawn_ms``). The budget is nominal there
-            # (ADR 061): it paces the auto-recap, the model's own window is far larger.
+        if self.ctx_over_budget() and self.backend == "claude":
+            # The budget is nominal on Claude (ADR 061): it paces the auto-recap, the model's own
+            # window is far larger.
             log.warning(
                 "[ctx] prompt %d/%d tokens (>%d%% of the nominal budget) — Claude backend: nothing "
-                "is truncated; the budget only paces the auto-recap, which compacts the history now "
-                "(if DM_AUTORECAP is on).",
+                "is truncated; the budget only paces the auto-recap.",
                 self.prompt_eval, self.num_ctx, round(_CTX_WARN_FRACTION * 100),
             )
         elif self.ctx_over_budget():

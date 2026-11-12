@@ -14,7 +14,8 @@ is on-demand._
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
 - **Newest round:** Kontext nach Neustart (13.11., D136 / ADR 061 Nachtrag) — der Auto-Recap markiert sich im
   Autosave-Journal, ein Neustart lädt nur noch Züge danach; Recap unter Claude mit eigener Ausgabegrenze und harter
-  Länge. 1377 Tests grün, `dm-eval` Exit 0, **live-unverifiziert**.
+  Länge; danach `/code-review` über beide Commits, die bestätigten Befunde sind behoben. 1381 Tests grün, `dm-eval`
+  Exit 0, **live-unverifiziert**.
   Davor (12.11., D135 / ADR 065): `runtime.py` in sieben Mixin-Module unter `dmbot/session/` zerlegt (1949 → 844 Zeilen).
   Davor D134 (31.10., Sprachbefehl „sehr böser Junge“ trennt Timo vom Voice; **live-unverifiziert**, braucht
   `DM_KICK_MASTER`, „Mitglieder verschieben“ und einen Neustart) und D128–D133 / **ADR 064** (Würfel am Tisch, live gesehen).
@@ -45,9 +46,13 @@ waren am Ende gekappt (gespeichert: 2344 Zeichen, endet mit „Kurz darauf brach
 - Der Auto-Recap schreibt `{"kind": "compact", "keep": n}` ins Autosave-Journal; `load_recent` lädt nur die `n` Züge
   davor, die während des Zusammenfassens gespeichert wurden, und alles danach. Alte Dateien ohne Ereignis laden wie
   bisher. Session-Ingest und `dm-eval` überspringen das Ereignis (je ein Test).
-- Recap unter Claude: Ausgabegrenze 2000 statt 400 Tokens (`dmbot.llm.recap_num_predict`, Ollama unverändert), im
-  Prompt höchstens 8 Sätze und 1200 Zeichen; die `[ctx]`-Warnung sagt unter Claude, dass nichts gekürzt wird.
-- 12 neue Tests, 1377 grün, `dm-eval` Exit 0. **Live-unverifiziert.** Das laufende Debug-Journal hat noch kein
+- Recap unter Claude: Ausgabegrenze 2000 statt 400 Tokens, solange Claude antwortet (`dmbot.llm.recap_cap`; bei
+  Failover oder `!backend ollama` bleibt Nemo bei 400), im Prompt höchstens 8 Sätze und 1200 Zeichen; die
+  `[ctx]`-Warnung sagt unter Claude, dass nichts gekürzt wird.
+- Nach `/code-review` (zehn Befunde) nachgezogen: das Ereignis entsteht nur, wenn der neue Recap wirklich in
+  `state.json` steht, und gar nicht, wenn `!leave` das Journal inzwischen rotiert hat; `!join`/`!wrap` posten den
+  Recap über `_send_with_retry`; ein Recap über 1800 Zeichen loggt eine Warnung.
+- 16 neue Tests, 1381 grün, `dm-eval` Exit 0. **Live-unverifiziert.** Das laufende Debug-Journal hat noch kein
   Ereignis: der nächste Start lädt einmal noch 20 Züge, ab dem ersten Auto-Recap danach greift die Markierung.
 - **Offen (Tobi), nichts geändert:** das Sprechbudget (748 Zeichen) griff am 12.11. bei allen drei Antworten. Das
   abgeschnittene Satzstück wird weder gesprochen noch gepostet. Lücke dabei: ein vollständiger Satz, der auf `.“`

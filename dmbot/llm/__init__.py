@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from importlib import metadata
 
-from ..memory.recap import RECAP_NUM_PREDICT
 from .client import LLMClient, OllamaClient
 
 
@@ -50,14 +49,18 @@ def build_llm_client(config) -> LLMClient:
     return FailoverClient(claude, ollama, cooldown_s=config.llm_failover_cooldown_s)
 
 
-def recap_num_predict(config) -> int:
-    """The output cap of the recap call for this bot's backend (ADR 061, amendment 2026-11-13).
+def recap_cap(config, client):
+    """The recap call's output-cap hook for this bot's backend (ADR 061, amendment 2026-11-13) —
+    what ``DMBrain(recap_num_predict=…)`` takes.
 
-    ``ollama`` → the number the recap has always had. ``claude`` → the Claude client's own, larger
-    number: the same text costs Opus far more tokens, and a recap cut at the cap loses its newest
-    events. Chosen here, next to :func:`build_llm_client`, so no call site names a model."""
+    ``ollama`` → ``None``: the brain's own number applies, as it always has. ``claude`` → a
+    function asked before each recap call. It answers the Claude client's larger number while the
+    failover pair would try Claude (the same text costs Opus far more tokens, and a recap cut at
+    the cap loses its newest events), and ``None`` while the pair is degraded or pinned to Ollama,
+    so Nemo keeps its own cap. Chosen here, next to :func:`build_llm_client`, so no call site
+    names a model. ``client`` is what :func:`build_llm_client` returned."""
     if config.llm_backend != "claude":
-        return RECAP_NUM_PREDICT
-    from .claude_client import RECAP_NUM_PREDICT as claude_recap_num_predict
+        return None
+    from .claude_client import RECAP_OUTPUT_TOKENS
 
-    return claude_recap_num_predict
+    return lambda: RECAP_OUTPUT_TOKENS if client.on_primary else None

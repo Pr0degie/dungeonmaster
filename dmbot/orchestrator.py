@@ -22,7 +22,7 @@ from .llm.client import LLMClient
 from .llm.persona import load_system_prompt
 from .llm.prompt_assembly import assemble_system_prompt
 from .llm.roll_router import classifier_schema, classifier_system, to_test_request
-from .memory.recap import RECAP_NUM_PREDICT, RECAP_SYSTEM_DE, build_recap_user
+from .memory.recap import RECAP_MAX_CHARS, RECAP_NUM_PREDICT, RECAP_SYSTEM_DE, build_recap_user
 from .rules.marker import (
     MARKER_SPECS,
     ClockTickRequest,
@@ -97,11 +97,13 @@ class DMBrain:
         num_predict: int = 220,
         max_buffer_lines: int = 8,
         retriever=None,
-        recap_num_predict: int = RECAP_NUM_PREDICT,
+        recap_num_predict: Callable[[], int | None] | None = None,
     ) -> None:
         self._client = client
-        # Output cap of the recap call (:meth:`summarize`). A constructor value because the room a
-        # recap needs depends on the backend's tokens; the wiring sizes it (dmbot.llm.recap_num_predict).
+        # Output cap of the recap call (:meth:`summarize`), asked per call: the room a recap needs
+        # depends on the tokens of the backend that answers, and that can change mid-session (a
+        # failover). ``None`` — no hook, or the hook's answer — means ``RECAP_NUM_PREDICT``. The
+        # wiring supplies the hook (dmbot.llm.recap_cap).
         self._recap_num_predict = recap_num_predict
         # Rulebook retriever (stage 3, ADR 019): an object with
         # ``async fetch_block(query, *, channel_id) -> str`` (rag/retrieve.RulebookRetriever).
@@ -1019,15 +1021,21 @@ class DMBrain:
         # reads the list synchronously here; the await below is where a concurrent append can land.
         self._compact_consumed[channel_id] = len(history)
         user = build_recap_user(history, prior_recap)
+        cap = self._recap_num_predict() if self._recap_num_predict is not None else None
         raw = await self._client.chat(
             RECAP_SYSTEM_DE,
             [{"role": "user", "content": user}],
-            options={"temperature": 0.3, "num_predict": self._recap_num_predict},
+            options={"temperature": 0.3, "num_predict": cap or RECAP_NUM_PREDICT},
         )
         # Light cleanup only (no marker/test stripping — a recap has none): drop markdown + a leading
         # role label the model might prepend.
-        text = raw.replace("*", "").strip()
-        return _ROLE_LABEL.sub("", text).strip() or None
+        text = _ROLE_LABEL.sub("", raw.replace("*", "").strip()).strip()
+        if len(text) > RECAP_MAX_CHARS * 1.5:
+            # The length is only prompted — code cannot shorten a recap without losing facts. Say
+            # so, because a recap that keeps growing ends at the output cap again.
+            log.warning("recap is %d characters, the prompt asks for at most %d — it is kept as it is",
+                        len(text), RECAP_MAX_CHARS)
+        return text or None
 
     def current_recap(self, channel_id: int) -> str:
         """The recap currently injected into this channel's prompt (set via :meth:`set_context`), or

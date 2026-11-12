@@ -378,15 +378,23 @@ def test_a_notice_before_any_channel_is_joined_is_logged_not_lost_silently(caplo
     assert "no channel joined yet" in caplog.text
 
 
-def test_the_claude_backend_gets_a_larger_recap_cap() -> None:
+def test_the_recap_cap_follows_the_side_that_answers() -> None:
     """Opus writes German at about 2 characters per token; Nemo's 400-token recap cap cut six of
-    seven recaps at their newest events (live 2026-10-31 / 2026-11-12). The Ollama number stays."""
-    from dmbot.llm import recap_num_predict
-    from dmbot.llm.claude_client import _THINKING_HEADROOM
+    seven recaps at their newest events (live 2026-10-31 / 2026-11-12). The larger number is for
+    Claude only: while the pair is degraded or pinned to Ollama, Nemo keeps its own cap."""
+    from dmbot.llm import recap_cap
+    from dmbot.llm.claude_client import RECAP_OUTPUT_TOKENS
 
-    from fakes import make_config
+    from fakes import FakeLLMClient, make_config
 
-    assert recap_num_predict(make_config(llm_backend="ollama")) == 400
-    claude = recap_num_predict(make_config(llm_backend="claude"))
+    assert recap_cap(make_config(llm_backend="ollama"), FakeLLMClient()) is None  # the brain's default
+
+    pair = FailoverClient(FakeLLMClient(), FakeLLMClient())
+    cap = recap_cap(make_config(llm_backend="claude"), pair)
+    assert cap() == RECAP_OUTPUT_TOKENS
+    pair.force("fallback")  # `!backend ollama` — a degraded period answers the same way
+    assert cap() is None
+    pair.force("auto")
+    assert cap() == RECAP_OUTPUT_TOKENS
     # room for more than three times the prompted 1200 characters, beside the thinking headroom
-    assert claude >= 2000 and claude + _THINKING_HEADROOM <= 4096
+    assert RECAP_OUTPUT_TOKENS >= 2000 and RECAP_OUTPUT_TOKENS + _THINKING_HEADROOM <= 4096

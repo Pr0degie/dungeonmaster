@@ -274,3 +274,33 @@ def test_a_later_compaction_supersedes_the_earlier_one(tmp_path):
 
 def test_journal_size_of_a_missing_file_is_zero(tmp_path):
     assert history.journal_size(tmp_path / "nope.jsonl") == 0
+
+
+def test_a_journal_line_that_is_not_an_object_is_skipped(tmp_path):
+    # valid JSON, but no record (a hand-edited or torn file) — !join must not abort on it
+    p = tmp_path / "history.jsonl"
+    p.write_text('null\n[1, 2]\n"text"\n', encoding="utf-8")
+    history.append_turn(p, ts="t1", user_msg="u1", answer="a1")
+    assert history.load_recent(p, 10) == [("u1", "a1")]
+
+
+def test_no_compaction_event_for_a_journal_rotated_away_meanwhile(tmp_path):
+    # !leave rotates the journal while the summary is in flight: the mark belongs to a file that
+    # is gone, and a clean leave must not leave a live journal behind.
+    p = tmp_path / "history.jsonl"
+    history.append_turn(p, ts="t1", user_msg="u1", answer="a1")
+    mark = history.journal_size(p)
+    p.rename(tmp_path / "history.20261113-000000.jsonl")
+    assert history.append_compaction(p, ts="c1", since=mark) is None
+    assert not p.exists()
+
+
+def test_no_compaction_event_for_a_journal_shorter_than_the_mark(tmp_path):
+    # Rotated and started anew by a quick !join: the new session's turn is not in the recap.
+    p = tmp_path / "history.jsonl"
+    history.append_turn(p, ts="t1", user_msg="u1 " * 50, answer="a1")
+    mark = history.journal_size(p)
+    p.unlink()
+    history.append_turn(p, ts="t2", user_msg="u2", answer="a2")
+    assert history.append_compaction(p, ts="c1", since=mark) is None
+    assert history.load_recent(p, 10) == [("u2", "a2")]

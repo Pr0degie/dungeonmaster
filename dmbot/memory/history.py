@@ -67,8 +67,12 @@ def journal_size(path: Path) -> int:
             return 0
 
 
-def append_compaction(path: Path, *, ts: str, since: int) -> int:
-    """Append the compaction event after a successful auto-recap and return its ``keep`` count.
+def append_compaction(path: Path, *, ts: str, since: int) -> int | None:
+    """Append the compaction event after a successful auto-recap and return its ``keep`` count —
+    or write nothing and return ``None`` when the journal is no longer the file the mark was taken
+    on (it is gone or shorter than ``since``: ``!leave`` rotated it while the LLM summarised).
+    That recap belongs to the rotated session; an event here would leave a live journal behind
+    after a clean leave, or hide a new session's turns from the restore.
 
     ``since`` is the :func:`journal_size` taken when the summary started: every turn record
     written before it is covered by the new recap. Turn records written after it were autosaved
@@ -79,18 +83,23 @@ def append_compaction(path: Path, *, ts: str, since: int) -> int:
     ever errs that way — a turn too many, never one lost."""
     path = Path(path)
     with _WRITE_LOCK:
+        try:
+            size = path.stat().st_size
+        except OSError:
+            size = -1
+        if size < since:
+            return None
+        with path.open("rb") as fh:
+            fh.seek(max(since, 0))
+            tail = fh.read().decode("utf-8", errors="replace")
         keep = 0
-        if path.is_file():
-            with path.open("rb") as fh:
-                fh.seek(max(since, 0))
-                tail = fh.read().decode("utf-8", errors="replace")
-            for raw in tail.splitlines():
-                try:
-                    rec = json.loads(raw)
-                except ValueError:
-                    continue
-                if _is_turn(rec):
-                    keep += 1
+        for raw in tail.splitlines():
+            try:
+                rec = json.loads(raw)
+            except ValueError:
+                continue
+            if _is_turn(rec):
+                keep += 1
         _write_line(path, {"kind": COMPACT_KIND, "ts": ts, "keep": keep})
     return keep
 
@@ -130,13 +139,15 @@ def load_recent(path: Path, max_turns: int) -> list[tuple[str, str]]:
         except ValueError:
             log.warning("history autosave: skipping a corrupt line in %s", path)
             continue
+        if not isinstance(rec, dict):
+            continue  # valid JSON, but not a record
         if rec.get("kind") == COMPACT_KIND:
             keep = rec.get("keep")
             turns = turns[-keep:] if isinstance(keep, int) and keep > 0 else []
             continue
-        user_msg, answer = rec.get("user_msg"), rec.get("answer")
-        if user_msg is None or answer is None:
+        if not _is_turn(rec):
             continue
+        user_msg, answer = rec["user_msg"], rec["answer"]
         if rec.get("redo") and turns:
             turns[-1] = (user_msg, answer)  # the redo replaced the prior turn
         else:
