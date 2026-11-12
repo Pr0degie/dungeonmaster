@@ -1273,6 +1273,28 @@ def test_a_sighting_lands_in_the_scene_the_group_arrived_in_meanwhile() -> None:
 
 
 @pytest.mark.xfail(strict=True, reason=(
+    "ADR 062: sightings are applied before the scene verdict and under the scene the turn began "
+    "in, so a turn in which the classifier itself moves the pointer files the people of an "
+    "arrival narration under the scene just left — no race needed; not seen live, derived from "
+    "the code (docs/plans/npc-sighting-stale-scene-2026-11-13.md, 'Related')"))
+def test_a_sighting_lands_in_the_scene_the_classifier_moved_to_in_the_same_turn() -> None:
+    adv = _adventure()
+    state = _state(adv)                                  # the pointer stands on zollhaus
+    channel = _FakeChannel()
+    brain = _npc_brain(("Kettenmann", ""))
+    brain._scene = SceneVerdict(target_id="schrein")     # the scene classifier: the group arrived
+    rt = _runtime(adv, state, brain, channel, _npc_router=True, _profile=_IMPROVISED)
+
+    _run(rt.close_turn(channel, "Das Portal knarrt, als du in den Schrein trittst. "
+                                "Vor dem Altar lehnt ein Kerl mit einer Kette."))
+
+    assert state.scene_id == "schrein"                   # the classifier's move went through
+    thug = state.find("Kettenmann")
+    assert thug is not None and thug.scene == "schrein"  # today: "zollhaus", the scene just left
+    assert "Kettenmann" in [n.name for n in rt._scene_npcs(state)]
+
+
+@pytest.mark.xfail(strict=True, reason=(
     "ADR 062: a sighting that names a scene-card NPC by her role instead of her name becomes a "
     "second NPC with default values (place_npc matches by exact name) — live 2026-11-13, "
     "'Schreinschwester' beside 'Schwester Cassia Vall', "

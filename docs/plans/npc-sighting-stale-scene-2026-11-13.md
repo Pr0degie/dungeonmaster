@@ -1,9 +1,11 @@
 # Evidence — a sighted NPC filed under the scene the group had just left (2026-11-13, 00:40)
 
-**Status:** documented and reproduced, **not fixed** (Tobi, 2026-11-13). Two tests in
+**Status:** documented and reproduced, **not fixed** (Tobi, 2026-11-13). Three tests in
 `tests/test_turn_boundary.py` show today's behaviour and are marked `xfail(strict=True)`:
-`test_a_sighting_lands_in_the_scene_the_group_arrived_in_meanwhile` and
-`test_a_sighting_of_a_scene_card_npc_under_another_name_adds_no_second_entry`.
+`test_a_sighting_lands_in_the_scene_the_group_arrived_in_meanwhile`,
+`test_a_sighting_of_a_scene_card_npc_under_another_name_adds_no_second_entry` and, for the
+case under *Related* below,
+`test_a_sighting_lands_in_the_scene_the_classifier_moved_to_in_the_same_turn`.
 **Governing:** ADR 062 (improvised NPCs join the scene), ADR 057 (scene moves), lesson
 `snapshot-state-at-event-time`.
 **Sources, copied before they rotate:** `logs/debug.log` (session started 00:35:16),
@@ -41,9 +43,10 @@ exit is `schrein`.
 Observation, not a defect: at 00:39:22 the classifier answered `stay` although the narration had
 reached the shrine's door. The move came one turn later, when the group went in.
 
-Related, not covered by the two tests: the sightings are applied before the scene verdict, also
-under `classified_from`. A turn in which the classifier itself moves the pointer files the people
-of an arrival narration under the scene that was just left, without any race.
+Related, derived from the code and not seen live (the third test): the sightings are applied
+before the scene verdict, also under `classified_from`. A turn in which the classifier itself
+moves the pointer files the people of an arrival narration under the scene that was just left,
+without any race.
 
 ## Where in the code
 

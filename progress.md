@@ -234,12 +234,14 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 ## Open questions / to clarify
 
 **Aus dem Debug-Lauf (2026-11-13, Zug von 00:40) — dokumentiert und reproduziert, nicht behoben (ADR 062):**
-Belege: [npc-sighting-stale-scene-2026-11-13.md](docs/plans/npc-sighting-stale-scene-2026-11-13.md). Beide Tests
+Belege: [npc-sighting-stale-scene-2026-11-13.md](docs/plans/npc-sighting-stale-scene-2026-11-13.md). Die drei Tests
 stehen in `tests/test_turn_boundary.py` als `xfail(strict=True)`; der Fix muss die Markierung entfernen.
 - **Gesichtete Figur landet in der verlassenen Szene.** `close_turn` legt Sichtungen unter dem Szenenzeiger ab,
   der vor der Klassifikation galt. Wechselt der Zeiger währenddessen (Knopf, `!ort`) und die Antwort erzählt die
   Ankunft, steht die Figur in der alten Szene und gilt in der neuen nicht als anwesend.
   Test: `test_a_sighting_lands_in_the_scene_the_group_arrived_in_meanwhile`.
+  Derselbe Ablagefehler ohne Knopfdruck, wenn der Szenen-Klassifikator im selben Zug wechselt (aus dem Code
+  abgeleitet, live nicht gesehen): `test_a_sighting_lands_in_the_scene_the_classifier_moved_to_in_the_same_turn`.
 - **Zweiter Eintrag für eine Karten-NSC unter anderem Namen.** Der Klassifikator meldete „Schreinschwester“ ohne
   Statblock; `place_npc` vergleicht nur den exakten Namen, also entstand neben „Schwester Cassia Vall“ eine zweite
   NSC mit Standardwerten. Test: `test_a_sighting_of_a_scene_card_npc_under_another_name_adds_no_second_entry`.
