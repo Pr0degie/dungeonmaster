@@ -12,19 +12,11 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** Züge werden über das gespeicherte Objekt erkannt, nicht über Zähler oder Text (13.11., Nachgang zum
-  `/code-review` von `e4cb0a2..fdf64c6`, **live-unverifiziert**); davor vier offene `DMBrain`-Befunde behoben (Nr. 1–4
-  und 9 der „Open questions“, **live-unverifiziert**) — Details unter „Last session“. 1399 Tests grün, 7 xfail
-  (3 NSC-Sichtung, ADR 062; 4 offene `DMBrain`-Befunde), `dm-eval` Exit 0.
-  Davor: `DMBrain` entdoppelt (13.11., reiner Umbau von `orchestrator.py`, kein D-Eintrag) — `ChannelSession`
-  pro Channel statt 17 Dicts, ein Turn-Kern (`_run_turn`) für Batch und Streaming, `_pending_<kind>`-Aliase weg; Schnittstelle
-  unverändert. 1381 Tests grün, 12 xfail (3 NSC-Sichtung, ADR 062; 9 offene `DMBrain`-Befunde), `dm-eval` Exit 0. Live gesehen 13.11. (22 Züge bis `!leave`).
-  Davor (13.11., D136 / ADR 061 Nachtrag): Auto-Recap markiert sich im Autosave-Journal, Recap unter Claude mit eigener
-  Grenze — live gesehen, auch der Neustart danach (13.11. 01:48: 2 statt 20 Züge geladen).
-  Davor (12.11., D135 / ADR 065): `runtime.py` in sieben Mixin-Module unter `dmbot/session/` zerlegt (1949 → 844 Zeilen).
-  Davor D134 (31.10., Sprachbefehl „sehr böser Junge“, **live-unverifiziert**) und D128–D133 / **ADR 064** (Würfel, live gesehen).
-- **Davor (2026-10-25):** D123–D127 (improvisierte NSCs, XTTS-Sperre, Schicksalspunkte, Würfel-Thumbnails) —
-  code-komplett, Details im Archiv/Log.
+- **Newest round:** fünf offene `DMBrain`-Befunde behoben (Nr. 1–4, 9), Züge über das gespeicherte Objekt erkannt
+  statt über Zähler oder Text (13.11., **live-unverifiziert**). 1399 Tests grün, 7 xfail (3 NSC-Sichtung, ADR 062;
+  4 offene `DMBrain`-Befunde), `dm-eval` Exit 0.
+  Davor (13.11.): `DMBrain` entdoppelt (reiner Umbau, live gesehen, 22 Züge); D136 / ADR 061 Nachtrag (Auto-Recap im
+  Journal markiert, Recap-Grenze unter Claude, live gesehen). D135 / ADR 065 (12.11.), D134 (31.10., live-unverifiziert).
 - **Next concrete step:** der fünfte Lauf mit Bot A (die Neustart-Probe ist bestanden); vorher entscheiden, welche der neun
   noch offenen `DMBrain`-Punkte („Open questions“) behoben werden, und in `#bot-commands` die alten GIF-Sätze löschen (nur die
   von 01:49 zählen). Prüfliste: Abschnitt „Next concrete step“; dort auch die Entscheidung zum nächsten Sprach-Trigger.
@@ -43,41 +35,18 @@ _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-a
 
 ## Last session
 
-**Züge über das gespeicherte Objekt erkennen (2026-11-13, Nachgang zum `/code-review` von `e4cb0a2..fdf64c6`, kein
-D-Eintrag, live-unverifiziert).** Der Review fand, dass Zähler und Textvergleich aus den Fixes unten weiter Löcher
-hatten. Eine Änderung, eine Idee:
-- `summarize` merkt sich die Nachrichten-Objekte, die es zusammenfasst (gesetzt erst nach dem LLM-Aufruf, ein leerer
-  Recap setzt nichts); `clear_history` löscht genau diese, in der laufenden Liste. Zähler und Zähl-Ausgleich aus Fix 3
-  sind weg. Damit überlebt auch ein `!redo` während des Recaps, und ein gleichzeitiges `!wrap up` macht die Löschung
-  nicht breiter.
-- `last_turn` ist ein `_Turn` mit Verweis auf seine gespeicherte Spielerzeile; `!redo` löscht genau dieses Paar
-  (kein Textvergleich mehr — zwei gleiche Spielerzeilen hintereinander sind zwei Objekte).
-- `clear_history` behält `last_turn`, solange dessen Paar nicht im Recap aufgegangen ist; sonst meldet `!redo`, dass
-  es nichts zu wiederholen gibt. Ein Zug ohne gespeichertes Paar (läuft noch, unterdrückt) behält `last_turn`.
-- Der Turn-Kern gibt ein `TurnAnswer` zurück (ein `str` mit `user_msg`); Delivery und `!intro test` schreiben das Journal
-  daraus, `_autosave_turn` liest `last_user_msg()` nicht mehr. Ein Zug, der während des Recaps lief, landet so im Journal.
-- Tests: `tests/test_turn_identity.py` (fünf) und ein Delivery-Test; die bestehenden Kompaktierungs-Tests unverändert grün.
-  **Live-unverifiziert.**
-- Härtung: `_autosave_turn` loggt einen Fehler mit dem Anfang der Antwort, wenn eine nicht leere Antwort ohne
-  `user_msg` ankommt, statt still nichts zu schreiben. `tests/test_journal_per_delivery_path.py` treibt die echte
-  Delivery (Batch und Stream × Zug, Redo, Opening) und prüft genau einen Journal-Eintrag. **Live-unverifiziert.**
-
-**Offene `DMBrain`-Befunde behoben (2026-11-13, kein D-Eintrag, alles live-unverifiziert).** Ein Commit pro
-Befund, die xfail-Markierung fiel jeweils mit dem Fix; nach jedem pytest, ruff (F) und `dm-eval` (Exit 0, Goldens unverändert).
-- Nr. 2 + 3 (Kompaktierung): `clear_history` leert im Kompaktierungs-Pfad die Liste an Ort und Stelle statt sie
-  auszutauschen, und `_run_turn` verschob `compact_consumed` um das, was das History-Limit vorne abschneidet (der
-  Zähler ist durch die Objekt-Erkennung oben abgelöst).
-  Ein Zug, der während des Recaps läuft oder am Limit dazukommt, bleibt in der History. **Live-unverifiziert.**
-- Nr. 9 (Schlusssatz auf `?“`): `_SENTENCE_END` in `llm/sanitize.py` kennt jetzt `“` und `«` als schließende
-  Anführungszeichen; `_trim_to_last_sentence` schneidet einen solchen Satz nicht mehr ab. **Live-unverifiziert.**
-- Nr. 1 (`!redo`): `_redo` löscht das letzte History-Paar nur noch, wenn dessen Spielerzeile die des
-  wiederholten Zugs ist; nach einem unterdrückten oder fehlgeschlagenen Zug bleibt der Zug davor stehen.
-  **Live-unverifiziert.**
-- Nr. 4 (Opening mitten in der Sitzung): `_prepare_opening` setzt `last_action`/`last_actions` zurück; das Opening
-  reiht keine `<<TEST>>`-Marker ein und gibt dem Würfel-Router keine alte Aktion. **Live-unverifiziert.**
-- 1386 Tests grün, 7 xfail (3 NSC-Sichtung, 4 offene `DMBrain`-Befunde: Nr. 5–8).
-- `/code-review` auf `e4cb0a2..fdf64c6`: acht Befunde; die Kernpunkte sind durch den Block oben behoben, offen sind
-  Nr. 12–14 unter „Open questions“.
+**Fünf offene `DMBrain`-Befunde behoben, Züge über das gespeicherte Objekt erkannt (2026-11-13, kein D-Eintrag,
+alles live-unverifiziert).** Am Tisch: ein Schlusssatz auf `?“` wird wieder gesprochen, ein Zug während des Auto-Recaps
+bleibt im Kontext und im Journal, `!redo` löscht nie mehr den Zug davor, ein Opening mitten in der Sitzung würfelt nicht.
+Sechs Commits (`d87b673` bis `69ab361`), nach jedem pytest, ruff (F), `dm-eval` (Exit 0, Goldens unverändert).
+- Nr. 9: `_SENTENCE_END` in `llm/sanitize.py` kennt `“` und `«`. Nr. 4: `_prepare_opening` setzt `last_action`/`last_actions` zurück.
+- Nr. 1–3, nach `/code-review` von `e4cb0a2..fdf64c6` auf eine Idee umgebaut: `summarize` merkt sich die
+  Nachrichten-Objekte, die es zusammenfasst, `clear_history` löscht genau diese; `last_turn` (`_Turn`) verweist auf sein
+  gespeichertes Paar, `!redo` löscht genau dieses und hat nach einem Recap, der das Paar aufnahm, nichts zu wiederholen.
+- Der Turn-Kern gibt ein `TurnAnswer` (`str` mit `user_msg`) zurück; das Journal wird daraus geschrieben, nicht aus
+  `last_user_msg()`. Fehlt die Zeile bei einer Antwort mit Inhalt, loggt `_autosave_turn` einen Fehler.
+- Tests: fünf xfails grün, `tests/test_turn_identity.py`, `tests/test_journal_per_delivery_path.py` (Batch und Stream ×
+  Zug/Redo/Opening, je genau ein Journal-Eintrag). 1399 grün, 7 xfail. Offen aus dem Review: Nr. 12–14 („Open questions“).
 
 **`DMBrain` entdoppelt (2026-11-13, reiner Umbau von `dmbot/orchestrator.py`, kein D-Eintrag).** Wer am
 Turn-Ablauf arbeitet, liest jetzt einen Pfad statt zwei; am Tisch ändert sich nichts. Sechs Commits
@@ -101,29 +70,6 @@ Turn-Ablauf arbeitet, liest jetzt einen Pfad statt zwei; am Tisch ändert sich n
   `history.20261113-021634.debug.jsonl`, Session-Ingest 02:16:37 mit 22 Chunks (Store gleich den neu gebauten Chunks,
   Redo-Antwort drin, ersetzte Antwort nicht). `CLAUDE_NUM_CTX` stand auf 24576, nicht 18000. Befund 3 (Zug fällt am
   History-Limit aus dem Kontext) ist in diesem Lauf eingetreten.
-
-**Kontext nach Neustart, Recap-Grenze (2026-11-13, D136 / ADR 061 Nachtrag).** Nach einem Neustart ist der Kontext
-nicht mehr sofort voll, und der Recap verliert sein Ende nicht mehr. Befund aus `debug.log`: acht der letzten zehn
-Auto-Recaps waren der erste Zug nach einem Neustart (23.200–24.000 von 24.576 Tokens), sechs der letzten sieben Recaps
-waren am Ende gekappt (gespeichert: 2344 Zeichen, endet mit „Kurz darauf brachte ein“).
-- Der Auto-Recap schreibt `{"kind": "compact", "keep": n}` ins Autosave-Journal; `load_recent` lädt nur die `n` Züge
-  davor, die während des Zusammenfassens gespeichert wurden, und alles danach. Alte Dateien ohne Ereignis laden wie
-  bisher. Session-Ingest und `dm-eval` überspringen das Ereignis (je ein Test).
-- Recap unter Claude: Ausgabegrenze 2000 statt 400 Tokens, solange Claude antwortet (`dmbot.llm.recap_cap`; bei
-  Failover oder `!backend ollama` bleibt Nemo bei 400), im Prompt höchstens 8 Sätze und 1200 Zeichen; die
-  `[ctx]`-Warnung sagt unter Claude, dass nichts gekürzt wird.
-- Nach `/code-review` (zehn Befunde) nachgezogen: das Ereignis entsteht nur, wenn der neue Recap wirklich in
-  `state.json` steht, und gar nicht, wenn `!leave` das Journal inzwischen rotiert hat; `!join`/`!wrap` posten den
-  Recap über `_send_with_retry`; ein Recap über 1800 Zeichen loggt eine Warnung.
-- 16 neue Tests, 1381 grün, `dm-eval` Exit 0. **Live-unverifiziert.** Das laufende Debug-Journal hat noch kein
-  Ereignis: der nächste Start lädt einmal noch 20 Züge, ab dem ersten Auto-Recap danach greift die Markierung.
-- Live gesehen (00:35–00:41): Auto-Recap ohne ✂ (1187 Zeichen, vollständiger Schlusssatz), `compact`-Ereignis im
-  Journal, Prompt danach bei 14.736 statt 23.732 Tokens; Szenenwechsel per Knopf. Der Neustart danach ist gesehen
-  (13.11. 01:48:22: `restored 2 conversation turns`, die zwei Züge nach dem `compact`-Ereignis von 00:37:01; die
-  vier Starts davor luden 20; erster Zug bei 15.399/24.576 Tokens, kein Auto-Recap). Zwei NSC-Fehler aus dem Zug von 00:40 stehen unter „Open questions“.
-- **Offen (Tobi), nichts geändert:** das Sprechbudget (748 Zeichen) griff am 12.11. bei allen drei Antworten. Das
-  abgeschnittene Satzstück wird weder gesprochen noch gepostet. Lücke dabei: ein vollständiger Satz, der auf `.“`
-  endet, fällt direkt vor dem Schnitt mit weg (`_SENTENCE_END` kennt das deutsche Schlusszeichen nicht).
 
 _Ältere `## Last session`-Einträge: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Last session (Verlauf)`._
 

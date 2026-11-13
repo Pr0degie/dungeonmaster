@@ -12,6 +12,31 @@ offene Fragen) steht in [`../progress.md`](../progress.md), das Decision-Log in
 
 _Index, aus `progress.md` verschoben (2026-10-25):_ Ältere `## Last session`-Einträge (`DM_CLOCKS`-Schalter D118 2026-10-06, Charakter-Akten `docs/characters.html` + Umbenennung Rene Redo 2026-08-22, Vierter Charakter Vinzentius Kabelbrand D105 2026-08-22 [90-Punkte-Bogen gegen das Profil gerechnet, Deployment in beide `characters.json`, Augmetik-Check reaktiviert], Playtest-Triage nach dem ersten Debug-Abend 2026-08-15 [Fehlstart in der Live-Kampagne, `session_file()`-Naht, Sanitize, Testabend-Doku, Kommando-Fehlermeldung → ADR 056], Doku-Drift-Sweep 2026-07-18 [5 Drift-Funde, alle gefixt; ADR-Renumber 019/020], Debug-Sandbox + Gate G10 2026-07-17 [`.debug`-Archive → `session_debug`-Source, `--wipe-debug` → ADR 055], Session-RAG-Runde D101 2026-07-17 [Ingest + Hybrid-Retrieval + Kalibrierung, Verifier-Fund `session_chunks_vec` → ADR 054], Journal-Runde D100 2026-07-17 [Scene-Events + `time_minutes` im Journal → ADR 053], Content-Runde Debug-Kampagne „Die Mitternachtsfracht“ 2026-07-11 [adventure/npcs/testplan lokal, `validate.py` RESULT: OK, Gate-Abdeckung G1–G9 → Runbook], D99 🧪-Debug-Overlay-Runde 2026-07-11 [Sidecar-Loader `testplan.py`, edit-in-place-Panel, Invisibility-Pin → ADR 052], Live-Gate-Triage 2026-07-11 [alle 8 Gates + Tuning-Checks in EIN Abend-Drehbuch gemerged, `docs/live-run-script.md`; Checklisten-Korrekturen per Code-Sweep], Workflow-Migration Runde 4/5 2026-07-11 [roadmap-Modell-Tabelle → Effort-first-Block + konservativer Skill-Sweep], Doc-Diet-Runde 2026-07-11 [State header + Rotation + Decision-Log-Diät], D98 Marker-Registry-Konsolidierung [`MarkerSpec`-Tabelle + eine generische Naht, marker-weise migriert → ADR 051], D97 Chekhov-Liste [Fäden-Schema + Wrap-up-Extraktion + Top-3-Injektion + ChekhovCog → ADR 050], D96 NPC-Agenden [`goal` + `agenda_log` + Extraktor-Erweiterung → ADR 049], D95 Ingame-Zeit [Minuten-Zähler + `<<ZEIT>>`-Marker + Fristen + Druck-Panel → ADR 048], D94 Consequence Clocks [`<<UHR id>>`-Marker + ClockCog + Druck-Panel + Voll-Uhr-`[Regie]`-Note → ADR 047], D93 Replay-Eval-Harness [Replay-Journal + `uv run dm-eval`, 6 Diff-Kategorien, synthetische Goldens → ADR 046], D92 Konsistenz-Wächter [deterministischer Pre-Delivery-Check, Regenerate-once, fail-open → ADR 045], D91 NPC-Gedächtnis [NpcMemory-Schema + Extraktor + Lügen-Flip/Gossip + Prompt-Block → ADR 044], D90 `dm-sync`-Entry-Point [Package-Move + hatchling, byte-identischer `[sync]`-Block], D89 Sync-Check-Fingerprint-Tool [`[sync]`-Block, Ingest-Stempel, SETUP.md-Sync-Sektion], D88 `/author-adventure`-Authoring-Skill [5-Pass-Workflow + `validate.py`, Dry-Run-Abnahme gegen Chemical Burn], D87 Stateful Scene Cards [`<<ERLEDIGT>>`-Flags, tote NSCs, gated Exits → ADR 043], D85+D86 Spielbarkeits-Tuning [repeat_penalty + Roll-Router-Carve-out, `intro_guard`-Retry], D84 `!intro`-Meta-Auftakt-Strip + Temp 0.7, D83 `!intro`-Temperatur + Direktive, D82 Default-Party-Fix, D81 Scene-/Lore-Sub-Cogs, D80 Deepening #4–#6 [prompt_assembly/seed_session/clear_panel], D79 Deepening #1+#2 [`combat.py`-Auslagerung + `segments.py`-Verdrahtung], D78 Skill-Tooling-Runde [4 Claude-Code-Skills: /tdd, /grill-me, /improve-architecture, /to-prd], D77 Dev-Gates [Lint-Stop-Hook + blockierender git-pre-commit + Review/Simplify-Checkliste], D76 `disconnect_voice`-Kontrakt + neuer Delivery-Test, D75 One-Shot-Setup, D74
 
+_Aus `progress.md` rotiert (2026-11-13, Wrap-up der `DMBrain`-Befund-Runde):_
+
+**Kontext nach Neustart, Recap-Grenze (2026-11-13, D136 / ADR 061 Nachtrag).** Nach einem Neustart ist der Kontext
+nicht mehr sofort voll, und der Recap verliert sein Ende nicht mehr. Befund aus `debug.log`: acht der letzten zehn
+Auto-Recaps waren der erste Zug nach einem Neustart (23.200–24.000 von 24.576 Tokens), sechs der letzten sieben Recaps
+waren am Ende gekappt (gespeichert: 2344 Zeichen, endet mit „Kurz darauf brachte ein“).
+- Der Auto-Recap schreibt `{"kind": "compact", "keep": n}` ins Autosave-Journal; `load_recent` lädt nur die `n` Züge
+  davor, die während des Zusammenfassens gespeichert wurden, und alles danach. Alte Dateien ohne Ereignis laden wie
+  bisher. Session-Ingest und `dm-eval` überspringen das Ereignis (je ein Test).
+- Recap unter Claude: Ausgabegrenze 2000 statt 400 Tokens, solange Claude antwortet (`dmbot.llm.recap_cap`; bei
+  Failover oder `!backend ollama` bleibt Nemo bei 400), im Prompt höchstens 8 Sätze und 1200 Zeichen; die
+  `[ctx]`-Warnung sagt unter Claude, dass nichts gekürzt wird.
+- Nach `/code-review` (zehn Befunde) nachgezogen: das Ereignis entsteht nur, wenn der neue Recap wirklich in
+  `state.json` steht, und gar nicht, wenn `!leave` das Journal inzwischen rotiert hat; `!join`/`!wrap` posten den
+  Recap über `_send_with_retry`; ein Recap über 1800 Zeichen loggt eine Warnung.
+- 16 neue Tests, 1381 grün, `dm-eval` Exit 0. **Live-unverifiziert.** Das laufende Debug-Journal hat noch kein
+  Ereignis: der nächste Start lädt einmal noch 20 Züge, ab dem ersten Auto-Recap danach greift die Markierung.
+- Live gesehen (00:35–00:41): Auto-Recap ohne ✂ (1187 Zeichen, vollständiger Schlusssatz), `compact`-Ereignis im
+  Journal, Prompt danach bei 14.736 statt 23.732 Tokens; Szenenwechsel per Knopf. Der Neustart danach ist gesehen
+  (13.11. 01:48:22: `restored 2 conversation turns`, die zwei Züge nach dem `compact`-Ereignis von 00:37:01; die
+  vier Starts davor luden 20; erster Zug bei 15.399/24.576 Tokens, kein Auto-Recap). Zwei NSC-Fehler aus dem Zug von 00:40 stehen unter „Open questions“.
+- **Offen (Tobi), nichts geändert:** das Sprechbudget (748 Zeichen) griff am 12.11. bei allen drei Antworten. Das
+  abgeschnittene Satzstück wird weder gesprochen noch gepostet. Lücke dabei: ein vollständiger Satz, der auf `.“`
+  endet, fällt direkt vor dem Schnitt mit weg (`_SENTENCE_END` kennt das deutsche Schlusszeichen nicht).
+
 _Aus `progress.md` rotiert (2026-11-13, `DMBrain` entdoppelt):_
 
 **`runtime.py` in Module zerlegt (2026-11-12, D135 / ADR 065).** Wer an Szenenfluss, Panels oder Seeding arbeitet,
