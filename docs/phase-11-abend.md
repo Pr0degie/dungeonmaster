@@ -82,6 +82,8 @@ Abends: nichts davon erzwingen, nur notieren, wenn die Lage eintritt. Diese Punk
 hier, nicht in testabend-ablauf.md §9. D135 (Umbau ohne Verhaltensänderung) und D136 (am 13.11.
 live belegt: Auto-Recap ohne Schnitt, Neustart danach) brauchen keinen Punkt. Vor dem Start die vier Alteinträge des Laufs vom 13.11.
 aus dem Spielstand nehmen: Schreinschwester, Frau hinter der Sichtklappe, Türwächter, Blinder Greis.
+Der Schritt „Sandbox leer“ unter „Vor dem Start“ entfernt sie schon; ein eigener Handgriff ist
+dafür nicht nötig.
 
 | # | Was | Wie | Gut, wenn | Beweis im Log |
 |---|---|---|---|---|
@@ -93,6 +95,18 @@ aus dem Spielstand nehmen: Schreinschwester, Frau hinter der Sichtklappe, Türw�
 | N6 | **Wörtliche Rede klingt am Satzende natürlich** (Befund 9, 12) | auf NSC-Sätze achten, die auf `?“`, `!“` oder `.“` enden | der Satz wird gesprochen und steht im Chat; keine Pause oder Betonung an der falschen Stelle | keine Logzeile, nur Ohr und Chat |
 | N7 | **Opening mitten in der Sitzung** (Befund 4) | nur falls nötig: `!start` oder `!intro` nach einem Spielerzug | das Opening bringt keinen 🎲-Knopf mit | keine Logzeile |
 | N8 | **Sprachbefehl „… war ein sehr böser Junge"** (D134) | nur wenn Tobi es am Abend will; braucht „Mitglieder verschieben" | der Genannte fliegt aus dem Voice-Kanal, der DM hört die Zeile nicht | `⚡ <Name> war ein sehr böser Junge — vom Voice-Kanal getrennt` |
+
+### Zwischen Durchgang 1 und 2 — Logs von Durchgang 1 sichern
+
+Bot stoppen und, **bevor** er für Durchgang 2 wieder startet, in PowerShell im Repo-Ordner:
+
+```
+Copy-Item logs\debug.log    logs\debug-d1.log
+Copy-Item logs\terminal.log logs\terminal-d1.log
+```
+
+`terminal.log` wird bei jedem Start geleert, `debug.log` läuft weiter und bekommt die Züge von
+Durchgang 2 und 3 dazu. Die Messungen A, C und D laufen deshalb auf `debug-d1.log`.
 
 ### Durchgang 2 — setzt Opus den Würfel-Marker selbst? (Punkt 7a)
 
@@ -129,12 +143,13 @@ Danach `.env` zurück auf `opus`, Neustart, ein Zug: Opus antwortet wieder.
 
 ## Die vier Messungen (nach dem Abend, in PowerShell im Repo-Ordner)
 
-Nur Züge aus Durchgang 1 werten. Durchgang 3 lief auf Nemo.
+Nur Züge aus Durchgang 1 werten. Durchgang 3 lief auf Nemo. Die Messungen A, C und D laufen
+auf der Kopie `logs\debug-d1.log` (Schritt zwischen Durchgang 1 und 2), nicht auf dem Gesamt-Log.
 
 **A — Wie schnell ist ein Opus-Zug?**
 
 ```
-Select-String -Path logs\debug.log -Pattern '\[latency\]' | Select-Object -First 8
+Select-String -Path logs\debug-d1.log -Pattern '\[latency\]' | Select-Object -First 8
 ```
 
 Aus zwei Zeilen (erster Zug nach `!start`, einer aus der Mitte) ablesen: `spawn=` (Start der
@@ -151,8 +166,8 @@ Drei Zeilen mit einem Urteil (nicht `no test`) notieren, je die Millisekunden.
 **C — Wie oft wurde abgeschnitten?**
 
 ```
-$alle = (Select-String -Path logs\debug.log -Pattern '\[latency\]').Count
-$cut  = (Select-String -Path logs\debug.log -Pattern '\[latency\].* cut ').Count
+$alle = (Select-String -Path logs\debug-d1.log -Pattern '\[latency\]').Count
+$cut  = (Select-String -Path logs\debug-d1.log -Pattern '\[latency\].* cut ').Count
 "$cut von $alle"
 ```
 
@@ -166,8 +181,8 @@ Jeder Schema-Call auf Claude schreibt eine `[aux]`-Zeile: `in=` (Input-Tokens, C
 `ziel` Szene, `art,sache,an,von` Fakten, `npcs` NSCs, `needs_test,skill,difficulty` Würfel-Router.
 
 ```
-$aux   = Select-String -Path logs\debug.log -Pattern '\[aux\] \S+ fields=(\S+) in=(\d+) cache=(\d+) out=(\d+) turns=(\d+) spawn=(\d+)ms'
-$zuege = (Select-String -Path logs\debug.log -Pattern '\[latency\]').Count
+$aux   = Select-String -Path logs\debug-d1.log -Pattern '\[aux\] \S+ fields=(\S+) in=(\d+) cache=(\d+) out=(\d+) turns=(\d+) spawn=(\d+)ms'
+$zuege = (Select-String -Path logs\debug-d1.log -Pattern '\[latency\]').Count
 $aux | Group-Object { $_.Matches[0].Groups[1].Value } | ForEach-Object {
   $in    = ($_.Group | ForEach-Object { [int]$_.Matches[0].Groups[2].Value } | Measure-Object -Sum).Sum
   $cache = ($_.Group | ForEach-Object { [int]$_.Matches[0].Groups[3].Value } | Measure-Object -Sum).Sum
@@ -181,9 +196,11 @@ $summe = ($aux | ForEach-Object { [int]$_.Matches[0].Groups[2].Value } | Measure
 Notieren: die Zeile je Call-Art und die Summenzeile. Der Vergleichswert aus ADR 066 ist eine
 Schätzung: Szene, Fakten und NSCs zusammen 3800–4900 Input-Tokens je Zug. Liegt die Messung
 deutlich darüber oder kam am Abend ein Verbrauchslimit, ist das der Anlass, ADR 066 neu zu
-entscheiden. Die Datei enthält auch ältere Läufe; die haben noch keine `[aux]`-Zeilen, aber
-`[latency]`-Zeilen — für eine saubere Zahl vorher `logs\debug.log` wegsichern oder nur den Teil
-ab dem Start des Abends auswerten.
+entscheiden. `debug-d1.log` endet vor Durchgang 2, dessen Züge und die von Durchgang 3 zählen
+also nicht mit. Die Kopie enthält aber alles, was vor dem Abend schon in `logs\debug.log` stand
+(die Datei wird nie geleert): ältere Läufe haben keine `[aux]`-Zeilen, aber `[latency]`-Zeilen,
+und die Summe je Zug fiele zu klein aus. Für eine saubere Zahl das alte `logs\debug.log` vor
+dem ersten Start des Abends wegschieben.
 
 ---
 
