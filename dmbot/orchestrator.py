@@ -18,6 +18,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
 
 from .llm.client import LLMClient
+from .llm.failover import LLMPausedError
 from .llm.persona import load_system_prompt
 from .llm.prompt_assembly import assemble_system_prompt
 from .llm.roll_router import classifier_schema, classifier_system, to_test_request
@@ -99,6 +100,17 @@ class _Turn:
     user_msg: str
     labels: list[str]
     stored: dict[str, str] | None = None
+    # What _prepare_turn took out of the session for this turn, so a turn the paused backend
+    # could not answer can put it back (:meth:`DMBrain._hold_turn`): the lines an earlier
+    # unanswered turn had left (``held``, kept under ``held_seq``), the newly drained ones
+    # (``fresh``), dice results, notes. ``seq`` orders the turns of a channel as they were prepared.
+    seq: int = 0
+    held_seq: int | None = None
+    held: list[tuple[str, str]] = field(default_factory=list)
+    fresh: list[tuple[str, str]] = field(default_factory=list)
+    results: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+    aside: bool = False  # put aside by _hold_turn: its input is back in the queues
 
 
 def _markers_dict(markers: dict[str, list], *, queued: bool) -> dict:
@@ -145,6 +157,15 @@ class ChannelSession:
     # Test results fed back in (engine roll → narrate consequence): prepended to the next turn,
     # exempt from the player-line cap.
     test_results: list[str] = field(default_factory=list)
+    # The player lines of the turn the paused backend did not answer (ADR 061, amendment
+    # 2026-11-13 fourth), as ``(turn seq, lines)``. They lead the next turn in the order they
+    # were said and are exempt from the player-line cap; what is said after them goes through
+    # ``buffer`` and the cap as always. More than one entry only when several turns were in
+    # flight as the backend failed. ``turn_held`` says the channel's latest finished turn attempt
+    # ended that way (the cog's "nothing to answer" is then wrong).
+    held_parts: list[tuple[int, list[tuple[str, str]]]] = field(default_factory=list)
+    turn_seq: int = 0
+    turn_held: bool = False
     # A light "who plays whom" hint (display name → character) appended to the system prompt,
     # so the model stops confusing player and character names (open item F).
     alias_hint: str = ""
@@ -291,9 +312,23 @@ class DMBrain:
             session.buffer.append((name, text))
 
     def pending_count(self, channel_id: int) -> int:
+        """Player lines waiting for a DM turn — buffered ones and those a paused turn left."""
         session = self._session(channel_id)
         with self._lock:
-            return len(session.buffer)
+            return len(session.buffer) + sum(len(lines) for _seq, lines in session.held_parts)
+
+    def waiting_turn(self, channel_id: int) -> bool:
+        """Whether a turn the paused backend left unanswered still waits: kept player lines, or
+        dice results nobody narrated. A turn in flight has taken both along, so this is False
+        while the call that ended the pause is that very turn. Lines merely buffered (spoken,
+        mic not released yet) do not count."""
+        session = self._session(channel_id)
+        return bool(session.held_parts or session.test_results)
+
+    def turn_held(self, channel_id: int) -> bool:
+        """Whether the channel's latest turn attempt was put aside because the LLM backend is
+        paused — its ``None`` then means "not answered yet", not "nothing to respond to"."""
+        return self._session(channel_id).turn_held
 
     def _drain(self, channel_id: int) -> list[tuple[str, str]]:
         session = self._session(channel_id)
@@ -319,7 +354,14 @@ class DMBrain:
             )
         if extra_text:
             lines.append(("Spieler", extra_text.strip()))
-        lines = [(n, t) for n, t in lines if t]
+        fresh = [(n, t) for n, t in lines if t]
+        # A turn the paused backend left unanswered leads, outside the cap above: the cap drops
+        # table-talk noise, and these lines were already chosen as a turn.
+        session = self._session(channel_id)
+        parts, session.held_parts = sorted(session.held_parts, key=lambda part: part[0]), []
+        held = [line for _seq, part in parts for line in part]
+        held_seq = parts[0][0] if parts else None
+        lines = held + fresh
         # Dice results from clicked tests feed the consequence narration even with no player line.
         results = self._drain_test_results(channel_id)
         if not lines and not results:
@@ -327,7 +369,6 @@ class DMBrain:
 
         # GM notes (ADR 047, e.g. "clock full — consequence now") ride whatever turn comes next.
         # Drained AFTER the nothing-to-respond-to guard, so an empty auto-turn can't swallow them.
-        session = self._session(channel_id)
         notes, session.gm_notes = session.gm_notes, []
 
         # Remember the latest player action for the roll-detection router (ADR 014); None on a
@@ -353,8 +394,50 @@ class DMBrain:
         # character/player at the table (so an appended "Seskin: …"/"Pr0degie: …" puppet script is
         # cut even when those names didn't speak this turn) + the generic role labels. Deduped.
         labels = list(dict.fromkeys([name for name, _ in lines] + session.known_speakers + _ROLE_LABELS))
-        session.last_turn = _Turn(user_msg, labels)
+        session.turn_seq += 1
+        session.last_turn = _Turn(
+            user_msg, labels, seq=session.turn_seq, held_seq=held_seq,
+            held=held, fresh=fresh, results=results, notes=notes,
+        )
         return user_msg, labels, session.history
+
+    def _hold_turn(self, channel_id: int, turn: _Turn, before: tuple) -> None:
+        """The LLM backend is paused and nothing of ``turn`` was said (ADR 061, amendment
+        2026-11-13 fourth): put its input back so the next turn answers it, and leave the session
+        as if the turn had not been tried (``before``: the last-turn/last-action/replay fields
+        from before :meth:`_prepare_turn`), so ``!redo`` and the roll router still see the turn
+        that was really played.
+
+        Only the turn the backend failed on is kept outside the player-line cap. A later attempt
+        that had taken the kept lines along gives them back as they were, and its own new lines go
+        to the head of the buffer, where the cap applies again. Several turns that were in flight
+        when the backend failed are each kept, and ``_prepare_turn`` reads them in the order they
+        were said, whichever failed first. Dice results and GM notes return to their own queues,
+        which have no cap."""
+        session = self._session(channel_id)
+        if turn.held:
+            session.held_parts.append((turn.held_seq, turn.held))
+            with self._lock:
+                session.buffer[:0] = turn.fresh
+        elif turn.fresh:
+            session.held_parts.append((turn.seq, turn.fresh))
+        session.test_results[:0] = turn.results
+        session.gm_notes[:0] = turn.notes
+        turn.aside = True
+        if session.last_turn is turn:
+            # Only while this is still the channel's newest turn: a later one in flight owns
+            # these fields, and if it gets its answer they must describe it (roll router, !redo).
+            (session.last_turn, session.last_action, session.last_actions,
+             session.replay_turn, session.replay_gen) = before
+            if session.last_turn is not None and session.last_turn.aside:
+                # ``before`` was taken while another turn was in flight that has been put aside
+                # too: its input waits in the queues, so ``!redo`` must not run it a second time.
+                session.last_turn, session.last_action, session.last_actions = None, None, []
+        session.turn_held = True
+        log.warning(
+            "⏸ LLM backend paused — the turn is kept for later: %d player line(s), %d dice "
+            "result(s), %d GM note(s)", len(turn.held) + len(turn.fresh), len(turn.results), len(turn.notes),
+        )
 
     async def _refresh_rag(self, channel_id: int, user_msg: str) -> None:
         """Fetch the turn's ``## Regelwerk`` block for ``user_msg`` (stage 3, ADR 019). Empty for
@@ -378,15 +461,27 @@ class DMBrain:
     ) -> str | None:
         """The body of :meth:`respond` (``sink=None``) and :meth:`respond_streaming`: prepare
         the turn from the buffer, refresh the rulebook block, run it through :meth:`_run_turn`.
-        ``None`` if there is nothing to respond to."""
+        ``None`` if there is nothing to respond to — and when the paused backend did not answer:
+        the turn's input is then kept for the next turn (:meth:`_hold_turn`, :meth:`turn_held`)."""
+        session = self._session(channel_id)
+        before = (session.last_turn, session.last_action, session.last_actions,
+                  session.replay_turn, session.replay_gen)
         prep = self._prepare_turn(channel_id, extra_text)
         if prep is None:
+            session.turn_held = False
             return None
         user_msg, labels, history = prep
-        session = self._session(channel_id)
         turn = session.last_turn  # this turn's record — taken before any await
         await self._refresh_rag(channel_id, user_msg)
-        return await self._run_turn(session, turn, history, sink=sink, check=check)
+        try:
+            answer = await self._run_turn(session, turn, history, sink=sink, check=check)
+        except LLMPausedError:
+            self._hold_turn(channel_id, turn, before)
+            return None
+        # Written when the turn ends, never when one starts: a turn starting in between must not
+        # wipe what the cog is about to read for the turn that was just put aside.
+        session.turn_held = False
+        return answer
 
     async def respond(
         self, channel_id: int, *, extra_text: str | None = None,
@@ -412,17 +507,32 @@ class DMBrain:
         session = self._session(channel_id)
         last = session.last_turn
         if last is None:
+            session.turn_held = False
             return None
         history = session.history
         # Drop the pair this very turn stored, so the redo isn't duplicated — found by identity:
         # after a suppressed or failed turn there is none, and the last pair is the turn BEFORE it.
         idx = next((i for i, m in enumerate(history) if m is last.stored), None)
+        removed = history[idx:idx + 2] if idx is not None else []
         if idx is not None:
             del history[idx:idx + 2]
         last.stored = None
+        pending = session.pending
         self._drop_pending(channel_id)  # the redo supersedes the old turn's marker requests
         await self._refresh_rag(channel_id, last.user_msg)
-        return await self._run_turn(session, last, history, sink=sink, check=check)
+        try:
+            answer = await self._run_turn(session, last, history, sink=sink, check=check)
+            session.turn_held = False
+            return answer
+        except LLMPausedError:
+            # The paused backend gave no new answer: the old one stands, with its requests.
+            if removed:
+                history[idx:idx] = removed
+                last.stored = removed[0]
+            session.pending = pending
+            session.turn_held = True
+            log.warning("⏸ LLM backend paused — the redo is dropped, the previous answer stays")
+            return None
 
     async def redo(self, channel_id: int, *,
                    check: Callable[[str], list[Violation]] | None = None) -> str | None:
@@ -461,7 +571,10 @@ class DMBrain:
         log.warning("[consistency] violated (%s) — regenerating once", found)
         snapshot, session.pending = session.pending, empty_markers()
         nudged = f"{user_msg}\n{retry_nudge_de(violations)}"
-        retry, _errored = await self._guarded_answer(session, nudged, labels, history)
+        try:
+            retry, _errored = await self._guarded_answer(session, nudged, labels, history)
+        except LLMPausedError:
+            retry = None  # the backend paused between the two calls — fail-open like an empty retry
         if not retry:
             # Kind by kind, and only where the first answer had queued something: a kind it left
             # empty keeps whatever the discarded retry queued (unchanged behaviour).
@@ -496,6 +609,7 @@ class DMBrain:
         session = self._session(channel_id)
         labels = list(dict.fromkeys(session.known_speakers + _ROLE_LABELS))
         session.last_turn = _Turn(director_msg, labels)
+        session.turn_held = False
         session.last_action = None
         session.last_actions = []
         # Replay capture (ADR 046): an opening turn re-feeds its director_msg, not player lines.
@@ -666,6 +780,10 @@ class DMBrain:
                         break  # a mid-text speaker label — abort the stream, keep the narration
                     if sink.should_abort is not None and sink.should_abort():
                         break  # paused (ADR 013): stop emitting; resume won't replay
+            except LLMPausedError:
+                # Raised only before the first delta (the failover's rule): nothing was said, so
+                # this is no half-spoken turn to keep — the caller puts the turn aside.
+                raise
             except Exception:
                 log.exception("streaming turn failed mid-generation — keeping the partial answer")
                 errored = True
@@ -735,6 +853,8 @@ class DMBrain:
             nudged = f"{user_msg}\n{nudge}"
             try:
                 answer, markers = await self._chat_once(session, nudged, labels, history_prefix, num_predict=num_predict, temperature=temperature)
+            except LLMPausedError:
+                raise  # nothing was spoken (a retry only happens then) — the turn is put aside, not suppressed
             except Exception:
                 if not streaming:
                     raise  # a batch turn has always let a failed retry propagate
@@ -796,9 +916,12 @@ class DMBrain:
         if answer and is_weak is not None and is_weak(answer):
             log.warning("intro guard: opening came out weak — regenerating once")
             nudged = f"{user_msg}\n{INTRO_RETRY_NUDGE}"
-            retry, _errored = await self._guarded_answer(
-                session, nudged, labels, history, num_predict=num_predict, temperature=temperature
-            )
+            try:
+                retry, _errored = await self._guarded_answer(
+                    session, nudged, labels, history, num_predict=num_predict, temperature=temperature
+                )
+            except LLMPausedError:
+                retry = None  # the backend paused between the two calls — the first opening stands
             if retry:
                 answer = retry  # keep the retry even if still weak — never speak less than we had
         if answer is None:
@@ -1248,6 +1371,8 @@ class DMBrain:
         session = self._session(channel_id)
         with self._lock:
             session.buffer = []
+        session.held_parts = []
+        session.turn_held = False
         session.history = []
         session.last_turn = None
         session.compact_consumed = None

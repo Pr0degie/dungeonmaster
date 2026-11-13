@@ -111,9 +111,10 @@ troubleshooting and style live in **`docs/conventions.md`** — read it when you
 - **Never hardcode `OLLAMA_HOST`** (env/config) — the 4070→5080 switch stays a one-liner.
 - **LLM backends sit behind one seam (ADR 061).** `llm/client.py` holds the `LLMClient` protocol
   and `OllamaClient` (do not edit it for Claude's sake); `llm/claude_client.py` is everything
-  Claude-specific; `llm/failover.py` degrades loudly to Ollama. **Tier rule:** a call with a
+  Claude-specific; `llm/failover.py` decides what a failed Claude means — the game pauses
+  (`DM_LLM_ON_FAILURE=pause`, default) or Ollama takes over loudly (`fallback`). **Tier rule:** a call with a
   JSON-schema `format` goes to the aux model (Haiku), every other call to the narration model
-  (Opus) — call sites never name a model. Read ADR 061 with both amendments before touching
+  (Opus) — call sites never name a model. Read ADR 061 with its amendments before touching
   either file; the SDK differs from the PRD and the ADR wins.
 - **Audio reality:** per-user PCM arrives 48 kHz **stereo** → resample to **16 kHz mono** before
   anything else, or you get a garbage transcript (not an error).

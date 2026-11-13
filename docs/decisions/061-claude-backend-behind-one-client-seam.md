@@ -47,8 +47,12 @@ embeddings and as the fallback.
 ## Current state (2026-10-25) — read this first; the amendments below are the history
 
 - Status **Proposed** until the Phase-11 live gate; `DM_LLM_BACKEND=ollama` (default) is the bot
-  of before. On `claude`, Opus narrates, Haiku answers every JSON-schema call, Nemo is the loud
-  fallback (one ⚠ line in chat). Subscription login only, never an API key.
+  of before. On `claude`, Opus narrates and Haiku answers every JSON-schema call. Subscription
+  login only, never an API key.
+- Since 2026-11-13 (fourth amendment): when Claude fails **the game pauses** (`DM_LLM_ON_FAILURE=pause`,
+  the default) — one ⏸ line and one spoken sentence, no call reaches Nemo, the unanswered turn's
+  player lines are kept, a probe at a doubling interval finds the return. `fallback` is the old
+  way (Nemo takes over, one ⚠ line); `!backend ollama` pins Nemo for the session in either position.
 - Narration calls: `effort="low"`, per-request cap `num_predict` + 1024 thinking headroom, the
   spoken budget held on the text at Nemo's 3.4 chars/token, **streamed calls only**; batch prose
   (recap, `!rules`) is held only by the request cap.
@@ -456,5 +460,127 @@ fact, `npcs` presence, `needs_test,skill,difficulty` roll router). `in` counts c
 like `ctx=` in the `[latency]` line; `turns` above 1 means the model answered in prose before the
 tool call; ` cut` is appended when the call ran out of cap. Logging only: no stats key, no return
 value and no call path changed. A schema call answered by Ollama writes no such line.
+
+Live-unverified.
+
+## Amendment (2026-11-13, fourth) — a failed Claude pauses the game instead of handing it to Nemo
+
+The table's verdict after the Claude evenings is unanimous: Nemo is unusable as a narrator. The
+failover of this ADR made a failed backend "cost quality, not the evening" — but a Nemo turn in
+the middle of an Opus scene costs more than a pause does, and it writes itself into history and
+recap. Ollama stays for the embeddings (`bge-m3`) and as the operator's deliberate way out.
+
+Decided:
+
+- **One switch, two positions: `DM_LLM_ON_FAILURE=pause|fallback`, default `pause`.** `fallback`
+  is everything this ADR described before, unchanged, and stays so a better local model can step
+  in later. The constructor of `FailoverClient` defaults to `fallback` (the existing tests are
+  untouched); the config defaults to `pause`; an unknown value is a boot error; the boot log and
+  `!backend` name the position, and the preflight's failure lines say which consequence applies.
+- **In `pause` no call reaches the fallback.** The failing call and every call until the next
+  attempt raise `LLMPausedError` (a subclass of `LLMBackendError`, raised only while no text of
+  the call has been handed out; calls during the pause do not start the CLI). The decision lives
+  in `llm/failover.py`; no call site names a backend. What each caller makes of it:
+
+  | Call | Caller's handling | Changed? |
+  |---|---|---|
+  | narration, streamed | `_stream_once` used to swallow it: an empty answer went into history and the lines were spent | **yes** — re-raised, the turn core keeps the turn |
+  | narration, batch (`!dm`, after a roll) | rose to the delivery layer: "(Der Spielleiter schweigt …)", lines spent | **yes** — the turn core keeps the turn, no chat line |
+  | roll router | `classify_test` catches, no dice button | no |
+  | scene / fact / presence classifier | each catches, verdict `call_failed` | no |
+  | recap | auto-recap catches and keeps the history; `!wrap` says it could not summarise | no |
+  | NPC memory | the extraction wrapper catches; the window mark is not advanced, so the turns are mined at the next extraction | no |
+  | `!rules` | the cog catches; its line no longer asks "läuft Ollama?" | text only |
+
+- **The unanswered turn is kept, not lost.** When a turn fails before anything was said, the turn
+  core (`DMBrain._hold_turn`) puts its input back: the player lines into `held_lines`, dice
+  results and GM notes to the head of their own queues, and the session's last-turn / last-action
+  / replay fields back to what they were — nothing reaches history, the roll router or the
+  classifiers. The kept lines lead the next turn **outside the 8-line cap**; everything said
+  after them goes through the buffer and the cap as always. Only one turn is kept that way: a
+  second attempt during the pause leaves it as it was and returns its own new lines to the head
+  of the buffer. Two turns that were both in flight when the backend failed (a network outage
+  can take the client two minutes to report) are both kept and answered in the order they were
+  said, whichever failed first; if the later one still gets its answer, the session's
+  last-turn fields describe that one. A `!redo` during the pause leaves the previous answer and its marker requests
+  in place. An echo-guard retry that meets the pause keeps the turn (nothing was spoken); an
+  intro-guard or consistency retry keeps the first answer.
+- **The return is found by a probe, at a doubling interval.** `DM_LLM_PAUSE_RETRY_S` (30) is the
+  first wait; each failed attempt doubles it up to 300 s; a reported rate-limit reset beats the
+  interval. The existing watcher in `DMCog` sleeps for `FailoverClient.retry_in()` and calls
+  `probe()`: one call of the shape that failed — prose or schema, so it reaches the tier that was
+  out without naming a model — with the eight-token "ping" of the boot preflight and a 30 s
+  timeout. A call that arrives after the wait is an attempt of its own — **if it has the shape
+  that failed.** Only that shape is tried and only its answer ends the pause; the other tier's
+  calls are refused meanwhile (Haiku out, Opus fine: a narration that got through would
+  announce ▶ and its classifiers ⏸ again, every turn). A failure counts only if nothing changed
+  since the call began: the other two post-turn classifiers do not double the wait, and a probe
+  that fails after a call has already ended the pause announces no second outage.
+  `DM_LLM_PAUSE_RETRY_S` below 1 is a boot error (0 would never back off).
+- **The bot answers the kept turn itself only after a short pause.** `DM_LLM_PAUSE_AUTO_TURN_S`
+  (180): when a pause shorter than that ends — by a probe or by a call that got through — and
+  the brain still holds a waiting turn (`DMBrain.waiting_turn`: kept lines or unnarrated dice
+  results), the watcher starts one DM turn, which answers the kept lines and what was said
+  since in one answer. A turn that ended the pause itself has taken its lines along and is not
+  waiting, so nothing is started on top of it; a side call (`!rules`, a recap) that ended it
+  leaves the turn waiting, and it is answered. The turn runs as its own task, so the watcher
+  keeps posting and probing while it plays. After a longer pause the bot only announces the
+  return and waits for the next player line; the kept lines stay where they are.
+- **Exactly one notice each way, in chat and by voice.** Failed probes and kept turns say
+  nothing; `!dm` / `!redo` during the pause get a ⏸ reaction instead of a line.
+  - Out: `⏸ Claude antwortet nicht — das Spiel pausiert. Eure Zeilen bleiben vorgemerkt, ich
+    melde mich, sobald Claude wieder da ist.` (with ` (Limit bis etwa HH:MM)` after "pausiert"
+    when a rate-limit reset was reported) — spoken: „Die Spielleitung ist gerade nicht
+    erreichbar, das Spiel pausiert.“
+  - Back, short pause or a call got through: `▶ Claude antwortet wieder — es geht weiter.` —
+    spoken: „Die Spielleitung ist wieder da, es geht weiter.“
+  - Back, long pause: `▶ Claude antwortet wieder. Die Pause war lang, darum warte ich auf eure
+    nächste Zeile — das Vorgemerkte beantworte ich dann mit.` — spoken: „Die Spielleitung ist
+    wieder da und wartet auf eure nächste Ansage.“ When a call that got through ended the long
+    pause, this text is used only if a turn is still waiting (the pair hands both texts to the
+    cog, which asks the brain); otherwise that call is the turn and the short text is right.
+
+  The spoken sentences go through the existing no-LLM path (`runtime.speak`, the one `!lore tts`
+  uses) and do not say "Claude" (a guess that XTTS would mispronounce it; not tried). The chat
+  line says "bleiben vorgemerkt", not "eure letzten Zeilen sind vorgemerkt": when the outage hits
+  a side call, no turn is waiting.
+- **A failure in the middle of a streamed turn is handled as before.** After the first delta the
+  backend's own error is re-raised, what was spoken stays, history notes "… [Antwort
+  unterbrochen]", and the turn counts as answered (lesson `spoken-audio-cannot-be-retracted`).
+  New is only that the pair then pauses instead of degrading, with the one notice.
+- **`!backend ollama` stays the emergency grip.** It pins Nemo for the session in either
+  position, also during a pause (no probing while pinned); `!backend auto` follows the switch
+  again and clears a running pause without a ▶ line.
+
+Rejected: a pause that only a player turn can end (how the cooldown works) — the table would
+have to poke the bot to learn that Claude is back. A probe on the cheaper tier regardless of
+what failed — a Haiku probe reports a return while Opus is still rate-limited, and the next turn
+announces a second outage. A fixed 30 s interval — a two-hour outage would cost 240 CLI starts
+for nothing. Building a new voice path for the notices — one existed.
+
+Open points, left as they are:
+
+- **A router or classifier verdict lost in the outage is not fetched again** — as with a timeout
+  today. An action narrated just before the outage gets no dice button from the router.
+- **Kept lines live in memory only.** A restart during the pause loses them (the crash restore
+  loads answered turns).
+- **A `!start` / `!intro` that fails in the pause is not run again.** The command answers with
+  its existing error line; issuing it again after ▶ works.
+- **How long until ⏸ on a network outage is unmeasured.** A rejected rate limit or a dead login
+  fails at once; a CLI that cannot reach the API may only hit the client's 120 s no-output
+  timeout. Durchgang 3 of the Phase-11 sheet measures it.
+- **The spoken notice is not queued behind a turn that is still playing.** After a mid-stream
+  failure the last sentences of the broken turn and the pause sentence can reach Bot A close
+  together; what Bot A does with two `/speak` calls at once is its own behaviour.
+- **The probe overwrites the Claude client's prose stats slot.** Harmless today — a turn copies
+  its stats right after its own call, and no turn completes during a pause.
+- **From the review of this round (2026-11-14), not fixed:** a turn attempted during a pause
+  still drains the queues and runs the RAG refresh before the client refuses it (one embedding
+  per mic release; a pre-check would change a line count an existing test asserts). A return
+  while the game is frozen (Esc) starts no turn — the kept lines wait for the next player
+  line, as dice results do. "The turn was kept" reaches the cog as a session flag, not in
+  the turn's return value. Dice results and GM notes of two turns in flight can swap order.
+  A turn whose call began during a pause and fails after it ended is kept without a new ⏸.
+  `ON_FAILURE` exists in `config.py` and in `failover.py` (a test holds them equal).
 
 Live-unverified.

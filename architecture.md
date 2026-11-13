@@ -7,7 +7,8 @@ interaction, dice and turn mechanics as text buttons, German play language. You 
 ruleset/adventure as PDFs; the DM learns the setting (RAG) and the mechanics (a per-system
 **profile** it proposes from the rulebook) and runs the game. It runs locally by default;
 an optional second LLM backend (Claude, over the operator's own subscription, never an API key)
-can take over the narration, and the local path stays complete as its fallback (ADR 061).
+can take over the narration; when it fails the game pauses until it answers again, and the local
+path stays complete as the way back (ADR 061).
 
 **The first campaign** is Warhammer 40,000 with **Imperium Maledictum**, in the grimdark
 tone of Dan Abnett's *Eisenhorn* — but that is just the first loaded system + tone layer,
@@ -131,7 +132,7 @@ filtering protects regardless.
 | LLM | **Ollama** (local/5080) + `httpx` | DM system prompt + history + RAG context + JSON state |
 | Embeddings | **`bge-m3`** via Ollama | for the rulebook RAG — multilingual (German questions must hit English rule text; `nomic-embed-text` (D28) failed that live, ADR 019). The store's meta table pins the model |
 | LLM, optional second backend | `claude-agent-sdk` (drives the installed native `claude` CLI) | `ClaudeClient` behind the `LLMClient` seam (`dmbot/llm/client.py`): Opus for prose, Haiku for schema-constrained side calls, on the operator's own subscription login, never an API key. Imported lazily — the Ollama path never loads it. The dependency is the only way to use the subscription without an API key (golden rule #9 → ADR 061, which also lists where the SDK differs from the plan) |
-| LLM failover | `dmbot/llm/failover.py` (own code, no dependency) | With `DM_LLM_BACKEND=claude` the brain talks to a `FailoverClient(ClaudeClient, OllamaClient)`: a backend error re-issues the same call on Ollama, one ⚠ line reaches the table per outage, the primary is retried after `DM_LLM_FAILOVER_COOLDOWN_S` (or the reported rate-limit reset). Streaming fails over only before the first delta. `check_claude` pings both tiers at boot |
+| LLM failover | `dmbot/llm/failover.py` (own code, no dependency) | With `DM_LLM_BACKEND=claude` the brain talks to a `FailoverClient(ClaudeClient, OllamaClient)`: what a backend error means is `DM_LLM_ON_FAILURE`. `pause` (default): the game waits — one ⏸ notice in chat and voice per outage, no call reaches Ollama, the turn core keeps the unanswered turn's player lines, and the DMCog's watcher probes the primary at a doubling interval (`DM_LLM_PAUSE_RETRY_S` → 300 s, or the reported rate-limit reset) and answers the kept turn itself after a pause shorter than `DM_LLM_PAUSE_AUTO_TURN_S`. `fallback`: the same call is re-issued on Ollama, one ⚠ line per outage, the primary is retried after `DM_LLM_FAILOVER_COOLDOWN_S`. In both positions a stream is only taken off the primary before its first delta, and `!backend ollama` pins the local model for the session. `check_claude` pings both tiers at boot |
 | PDF→Markdown (ingestion prep) | `pymupdf4llm` (on PyMuPDF) | **offline** step: converts a legally-owned rulebook PDF to clean Markdown (reconstructs reading order, renders tables) so RAG chunks aren't multi-column layout garbage (CLAUDE.md). CLI `tools/pdf_to_md.py` → `data/pdfs/md/`, **not** the bot runtime; feeds Phase-10 ingestion (golden rule #9) |
 | RAG store | **`sqlite-vec`** (`data/vectordb/rag.db`) | searchable rulebook chunks, cosine KNN + relevance threshold; built offline via `python -m dmbot.rag.ingest`. Played-session transcripts join at runtime (`dmbot.rag.ingest_session` on `!leave`, own vec table + FTS5 mirror, hybrid retrieval — ADR 054). The adventure stays OUT (scene cards instead, ADR 019) |
 | TTS | `coqui-tts` (XTTS v2) **default**, `piper-tts` fallback | XTTS (default): ~58 built-in speakers + voice cloning, rich but heavy (**pulls torch/torchaudio/torchcodec — from the CUDA `cu130` index** (covers Ada + Blackwell) so it runs on the GPU, not the CPU-only build; transformers pinned <5); device per `TTS_DEVICE` (cuda/cpu), auto-degrades to CPU if CUDA is absent or OOMs. Piper: fast, lean, fixed German voice (`de_DE-thorsten`) → WAV — the fallback when XTTS won't load. Selectable per `TTS_ENGINE` (golden rule #9: the CUDA torch stack is the cost of GPU XTTS → ADR 009) |
@@ -701,8 +702,8 @@ fixed the markers.
 - **Rule hallucination:** contained by RAG + code-side dice/success logic.
 - **Subscription policy (Claude backend):** using the Agent SDK on a personal subscription is
   permitted for individual use today and can change without notice. Mitigation: the Ollama path
-  is never removed, and the failover turns a policy change into a quality loss, not a lost
-  evening (ADR 061).
+  is never removed: `DM_LLM_BACKEND=ollama` or `!backend ollama` plays on locally, so a policy
+  change costs quality, not the evening (ADR 061).
 - **Windows specifics:** (a) **no `/tmp`** — build WAV paths via `tempfile.gettempdir()`,
   never hardcoded. (b) **Opus DLL** — discord.py voice (send *and* receive) needs libopus;
   on Windows you may have to ship the DLL and call `discord.opus.load_opus(...)`

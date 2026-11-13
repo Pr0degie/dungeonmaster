@@ -477,6 +477,10 @@ CLAUDE_MODEL_FALLBACK=
 CLAUDE_NUM_CTX=24576
 CLAUDE_CLI_PATH=
 CLAUDE_ALLOW_API_KEY=0
+# fällt Claude aus, pausiert das Spiel (keine Nemo-Erzählung); Gate-Punkt 5 prüft genau das
+DM_LLM_ON_FAILURE=pause
+DM_LLM_PAUSE_RETRY_S=30
+DM_LLM_PAUSE_AUTO_TURN_S=180
 DM_LLM_FAILOVER_COOLDOWN_S=600
 
 # Kampagne, Stimme, Logs
@@ -534,10 +538,11 @@ Protokoll vermerken.
 | Wann | Befehl | Wozu |
 |---|---|---|
 | nach `!j` | `!uhren` | Kontrolle: antwortet „Uhren sind abgeschaltet (`DM_CLOCKS=0`)" |
-| nach `!j` | `!fäden` · `!automatik` · `!backend` | Kontrolle: keine Fäden, sechs Schalter an, Primär Claude und nicht degradiert |
-| Gate 5 | `!backend claude` | nach dem erzwungenen Failover sofort zurück auf Opus |
-| Notfall | `!backend ollama` | den Rest des Abends lokal spielen |
-| Notfall | `!backend auto` | wieder dem Failover folgen |
+| nach `!j` | `!fäden` · `!automatik` · `!backend` | Kontrolle: keine Fäden, sechs Schalter an, Modus „auto (bei Ausfall: Pause)“, Primär Claude, kein Ausfall |
+| Gate 5 | `!backend` | während der erzwungenen Pause: „Spiel pausiert seit …, nächster Versuch …“ |
+| Notfall | `!backend claude` | nach einer ⏸-Zeile sofort neu versuchen, ohne auf den nächsten Ping zu warten |
+| Notfall | `!backend ollama` | den Rest des Abends lokal spielen (bewusst auf Nemo, auch mitten in einer Pause) |
+| Notfall | `!backend auto` | wieder dem Schalter `DM_LLM_ON_FAILURE` folgen |
 
 ### 9.4 Sollbild beim Start
 
@@ -551,7 +556,8 @@ rulebook RAG store found — retrieval is on
 Die 🧪-Zeile fehlt (Overlay aus). Steht statt der zweiten Zeile `Claude preflight FAILED`, wird
 nicht gespielt, sondern repariert: die Zeile nennt, welche Stufe fehlschlug und warum
 ([conventions.md „LLM not answering on the Claude backend?"](conventions.md)). Der Bot würde
-trotzdem starten und aus Nemo antworten — das wäre dann aber der falsche Abend.
+trotzdem starten und beim ersten Zug pausieren (in der Stellung `fallback`: aus Nemo antworten)
+— das wäre dann aber der falsche Abend.
 
 ### 9.5 Gate-Punkte 0–9
 
@@ -569,11 +575,23 @@ die `.env` und brauchen je einen Neustart, deshalb stehen sie hinten.
       Fakt (`📌 Fakt aufgenommen (…)`).
 - [ ] **4 — Recap.** `!wrap` → `📜 **Was bisher geschah:**` auf Deutsch, gespeichert
       (`recap.debug.md` in der Sitzungsmappe).
-- [ ] **5 — Failover.** Bot stoppen, `CLAUDE_MODEL_NARRATION=opus-gibts-nicht`, starten: die
-      Bootzeile meldet `narration opus-gibts-nicht: FAILED · aux haiku: OK`. Ein Zug → **genau
-      eine** ⚠-Zeile im Chat, Nemo antwortet (der erste lokale Zug lädt das Modell, 10–15 s).
-      Zweiter Zug: keine zweite ⚠-Zeile. Dann `.env` zurück auf `opus`, Neustart, ein Zug auf Opus.
-      *Variante ohne Neustart:* Netz kurz trennen, ein Zug, Netz wieder an, `!backend claude`.
+- [ ] **5 — Pause statt Nemo** (ADR 061, vierter Nachtrag vom 13.11.; Schalter
+      `DM_LLM_ON_FAILURE=pause`). Ohne Neustart: in einer PowerShell **als Administrator**
+      `claude.exe` das Netz sperren —
+      `New-NetFirewallRule -DisplayName "dm-claude-aus" -Direction Outbound -Action Block -Program "$env:USERPROFILE\.local\bin\claude.exe"`.
+      Die Regel trennt auch offene Claude-Code-Sitzungen, solange sie steht. Dann ein Zug →
+      **genau eine** ⏸-Zeile im Chat und ein gesprochener Satz, **keine** Erzählantwort; die
+      Zeit vom Zug bis zur ⏸-Zeile notieren (ein Netzausfall kann bis zum 120-s-Timeout des
+      Clients brauchen — das ist die Messung). `ollama ps` zeigt **kein** `mistral-nemo`,
+      `!backend` zeigt „Spiel pausiert seit …, nächster Versuch …“. Innerhalb etwa einer Minute
+      die Regel löschen (`Remove-NetFirewallRule -DisplayName "dm-claude-aus"`): **genau eine**
+      ▶-Zeile und ein gesprochener Satz, danach beantwortet der DM von selbst die Zeile des
+      unbeantworteten Zugs, auf Opus. Die Pings liegen 30 s nach der ⏸-Zeile, dann in
+      wachsendem Abstand; war die Pause länger als 180 s, sagt die ▶-Zeile „… darum warte ich
+      auf eure nächste Zeile“, und erst die nächste Spielerzeile löst die Antwort aus, die die
+      vorgemerkte Zeile mit beantwortet — ebenfalls bestanden, den Fall notieren.
+      *Stellung `fallback` (nicht Teil dieses Abends):* dieselbe Sperre → genau eine ⚠-Zeile,
+      Nemo antwortet; nach dem Löschen der Regel und `!backend claude` wieder Opus.
 - [ ] **6 — Verbrauch.** Stand der Verbrauchsanzeige auf claude.ai nach dem Abend, Differenz zum
       Wert aus 9.1 notieren. Steht im Log eine `Claude rate limit warning`-Zeile, mit ablegen.
 - [ ] **7 — Marker-Sonde für Phase 12.** Je ein paar Züge:
@@ -630,8 +648,9 @@ Würfelknopf notieren, alle drei Werte, nicht den Mittelwert.
 Select-String -Path logs\debug.log -Pattern '\[classifier\]'
 ```
 
-Diese Zahl entscheidet in Phase 12, ob der Router früher im Zug starten muss. Züge nach einem
-Failover messen Nemo, nicht Haiku — die Züge aus Gate-Punkt 5 nicht mitzählen.
+Diese Zahl entscheidet in Phase 12, ob der Router früher im Zug starten muss. Die Züge aus
+Gate-Punkt 5 nicht mitzählen (in der Pause antwortet niemand; nach `!backend ollama` misst
+die Zeile Nemo, nicht Haiku).
 
 **C — Anteil ✂ an allen Erzählzügen.**
 Jeder Erzählzug schreibt genau eine `[latency]`-Zeile; ein an der Ausgabegrenze abgeschnittener
@@ -643,12 +662,12 @@ $cut  = (Select-String -Path logs\debug.log -Pattern '\[latency\].* cut ').Count
 "$cut von $alle"
 ```
 
-Beide Zahlen notieren, nicht nur den Quotienten. Züge, die auf Nemo liefen (nach einem Failover),
-tragen nie `cut` — die Züge aus Gate-Punkt 5 deshalb vorher abziehen.
+Beide Zahlen notieren, nicht nur den Quotienten. Züge, die auf Nemo liefen (nach `!backend ollama`),
+tragen nie `cut` — solche Züge und die aus Gate-Punkt 5 deshalb vorher abziehen.
 
 ### 9.7 Bekannte Risiken dieses Abends
 
-- **`[latency]` nach einem Failover.** Solange der Rückfall aktiv ist, teilen sich auf dem
+- **`[latency]` auf Nemo** (nur nach `!backend ollama` oder in der Stellung `fallback`). Solange Nemo antwortet, teilen sich auf dem
   Ollama-Pfad Erzählung und Klassifikatoren wie bisher einen Statistik-Platz. Eine
   `[latency]`-Zeile aus dieser Zeit kann die Zahlen eines Klassifikators zeigen. Auf dem
   Claude-Pfad ist das seit dieser Runde getrennt. Für die Messungen nur Züge auf Opus verwenden.
@@ -657,7 +676,10 @@ tragen nie `cut` — die Züge aus Gate-Punkt 5 deshalb vorher abziehen.
 - **Die CLI läuft nach einem Abbruch bis zu fünf Sekunden nach** (Pause, Sprecher-Etikett,
   Schnitt an der Ausgabegrenze). Der Zug wartet nicht darauf; im Task-Manager können kurz
   mehrere `claude.exe` stehen.
-- **Erster Nemo-Zug nach einem Failover ist langsam** (Modell wird geladen). Kein Fehler.
+- **Erster Nemo-Zug nach `!backend ollama` ist langsam** (Modell wird geladen). Kein Fehler.
+- **Die Pause ist live-unverifiziert.** Offen sind: wie lange ein Netzausfall bis zur ⏸-Zeile
+  braucht; ob der gesprochene Pausen-Satz sauber hinter einem abgebrochenen Zug liegt; dass ein
+  Neustart während der Pause die vorgemerkten Zeilen verliert (bekannt, ADR 061).
 - **`spawn` enthält einen Versionsaufruf.** Das SDK ruft vor jedem Start `claude -v` auf; die
   Zeit steckt in `spawn=`. Nichts ändern, nur beim Lesen der Zahl wissen.
 - **Klassifikator-Timeouts dauern auf Claude etwa 5 s länger** als die eingestellten 20 s (das

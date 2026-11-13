@@ -802,7 +802,7 @@ class DiceCog(commands.Cog):
             answer = await self._rt._brain.answer_rules(question, context, system_name=system_name)
         except Exception:
             log.exception("rules question LLM call failed")
-            await ctx.send("Der Regel-Assistent ist gerade nicht erreichbar (läuft Ollama? siehe Log).")
+            await ctx.send("Der Regel-Assistent ist gerade nicht erreichbar (das LLM antwortet nicht — `!backend` zeigt den Zustand, Details im Log).")
             return
         if not answer:
             await ctx.send(f"Keine klare Regelauskunft möglich zu: *{question}*")

@@ -887,12 +887,13 @@ class DeliveryPipeline:
         if answer is not None:  # "" = a marker-only turn → still deliver (posts the dice button)
             await self._deliver_answer(channel, guild_id, answer, timing)
 
-    async def _run_and_deliver(self, channel, guild_id: int | None) -> None:
+    async def _run_and_deliver(self, channel, guild_id: int | None, *, kind: str = "roll") -> None:
         """Run a DM turn and deliver it — used after a dice roll feeds its result back in so the
-        DM narrates the consequence (architecture §9)."""
+        DM narrates the consequence (architecture §9), and by the backend watcher when the LLM
+        answers again after a short pause (``kind="resume"``: the kept turn is answered)."""
         if self._rt._paused:  # frozen — the roll result is already posted; narration waits for resume
             return
-        timing = self._begin_turn(self._rt._brain_channel(channel), kind="roll")
+        timing = self._begin_turn(self._rt._brain_channel(channel), kind=kind)
         if not self._rt.deliver_seamless() and self._use_streaming():
             timing.streamed = True
             try:

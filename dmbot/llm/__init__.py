@@ -5,9 +5,12 @@
 
 from __future__ import annotations
 
+import logging
 from importlib import metadata
 
 from .client import LLMClient, OllamaClient
+
+log = logging.getLogger(__name__)
 
 
 def _app_version() -> str:
@@ -21,9 +24,10 @@ def build_llm_client(config) -> LLMClient:
     """The LLM client for this bot, from ``config.llm_backend``.
 
     ``ollama`` → the ``OllamaClient`` alone, built exactly as before the seam existed.
-    ``claude`` → ``FailoverClient(ClaudeClient, OllamaClient)``: Claude answers, Ollama takes
-    over loudly when it cannot. The Claude modules are imported only on that branch, so the
-    Ollama path never touches them (or the SDK).
+    ``claude`` → ``FailoverClient(ClaudeClient, OllamaClient)``: Claude answers. What happens
+    when it cannot is ``config.llm_on_failure``: ``pause`` (the game waits, nothing is sent to
+    Ollama) or ``fallback`` (Ollama takes over loudly). The Claude modules are imported only on
+    that branch, so the Ollama path never touches them (or the SDK).
     """
     ollama = OllamaClient(
         config.ollama_host,
@@ -46,7 +50,21 @@ def build_llm_client(config) -> LLMClient:
         allow_api_key=config.claude_allow_api_key,
         app_version=_app_version(),
     )
-    return FailoverClient(claude, ollama, cooldown_s=config.llm_failover_cooldown_s)
+    # Said at boot, so the position the evening runs on is a fact in the log, not an assumption.
+    if config.llm_on_failure == "pause":
+        log.info("LLM backend: claude; when it fails the game pauses (DM_LLM_ON_FAILURE=pause, "
+                 "first retry after %s s, own turn after a return within %s s).",
+                 config.llm_pause_retry_s, config.llm_pause_auto_turn_s)
+    else:
+        log.info("LLM backend: claude; when it fails %s takes over for %s s "
+                 "(DM_LLM_ON_FAILURE=fallback).", config.ollama_model, config.llm_failover_cooldown_s)
+    return FailoverClient(
+        claude, ollama,
+        cooldown_s=config.llm_failover_cooldown_s,
+        on_failure=config.llm_on_failure,
+        pause_retry_s=config.llm_pause_retry_s,
+        pause_auto_turn_s=config.llm_pause_auto_turn_s,
+    )
 
 
 def recap_cap(config, client):

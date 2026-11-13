@@ -12,13 +12,12 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** Kommentare/Docstrings in `dmbot/` entschlackt, keine Codezeile geändert (13.11.).
-  Danach ADR 066 als Entwurf (ein Schema-Call für die drei Post-Turn-Klassifikatoren?) — offene Entscheidung —
-  und eine `[aux]`-Logzeile je Schema-Call auf Claude (nur Logging).
-  Letzte Verhaltensänderung: D138 / ADR 062 Nachtrag. Details: „Last session“.
-- **Suite:** 1428 Tests grün, 4 xfail; `dm-eval` Exit 0.
-- **Live-unverifiziert:** D138, D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134, die `[aux]`-Zeile — Prüfpunkte
-  N1–N8 und Messung D in [phase-11-abend.md](docs/phase-11-abend.md).
+- **Newest round:** Fällt Claude aus, pausiert der Bot, statt mit Nemo weiterzuerzählen (D139 / ADR 061 vierter
+  Nachtrag, 13.11.) — Schalter `DM_LLM_ON_FAILURE`, Standard `pause`. Davor am selben Tag: Kommentare in `dmbot/`
+  entschlackt, ADR 066 als Entwurf (offene Entscheidung), `[aux]`-Logzeile je Schema-Call. Details: „Last session“.
+- **Suite:** 1491 Tests grün, 4 xfail; `dm-eval` Exit 0.
+- **Live-unverifiziert:** D139 (Pause statt Nemo — Durchgang 3), D138, D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134,
+  die `[aux]`-Zeile — Prüfpunkte N1–N8 und Messung D in [phase-11-abend.md](docs/phase-11-abend.md).
 - **Next concrete step:** der fünfte Lauf mit Bot A; vorher drei Entscheidungen von Tobi und die Vorbereitung —
   Abschnitt „Next concrete step“.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
@@ -36,58 +35,24 @@ _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-a
 
 ## Last session
 
-**Kommentare entschlackt, keine Codezeile geändert (2026-11-13).** Ein Commit pro Paket; vor jedem Commit verglich
-ein Skript den Syntaxbaum ohne Docstrings mit HEAD (identisch), Befehls-Hilfetexte unverändert; pytest (1427 grün,
-4 xfail), ruff (F) sauber. `dmbot/` 22 951 → 22 834 Zeilen — der Großteil der Kommentare ist Wissen, nicht Historie.
-- Herleitungen, die nur in `docs/plans/` standen, sind jetzt Nachträge: ADR 003 (Sprecher-Identität), ADR 041
-  Addendum 3 (Figuren von außen), ADR 057 (Szenenkarte, Spieler-Panel, Anzeigenamen), Lesson
-  `incidents-become-preflights` (B13, `TTS_SPEAKER`).
-- Veraltete Verweise behoben, u. a. Auto-Recap als D56 statt D57, Methoden aus `runtime.py`/`dmcog.py`, die jetzt in
-  `dmbot/session/` bzw. `voice/delivery.py` liegen; `test-on-change.sh` beschreibt keinen Stop-Hook mehr.
-- Gleicher Tag, nur Doku: [ADR 066](docs/decisions/066-one-post-turn-classifier-call.md) als **Draft** — sollen
-  Szenen-, Fakten- und NSC-Klassifikator als ein Schema-Call laufen? Zahlen aus dem debug.log und dem Journal vom
-  13.11.; steht unter „Open questions“ als offene Entscheidung. Dazu gebaut: `ClaudeClient` schreibt je Schema-Call
-  eine `[aux]`-Zeile mit den Zahlen dieses Calls (`in=`, `cache=`, `out=`, `turns=`, `spawn=`, `api=`, `total=`,
-  `fields=` als Kennung) — nicht aus `last_aux_stats` gelesen, weil sich drei parallele Klassifikatoren den Slot
-  teilen. Ein Test; pytest 1428 grün, `dm-eval` Exit 0, ruff (F) sauber. Die Prüfpunkte für den Abend stehen jetzt
-  im Beipackzettel (N1–N8, Messung D).
-
-**NSC-Sichtungen: richtige Szene, keine Doppelgänger von Karten-NSCs (2026-11-13, D138 / ADR 062 Nachtrag,
-live-unverifiziert).** Am Tisch: Wen die Erzählung bei einer Ankunft zeigt, steht in der neuen Szene und ist dort Ziel
-und im Prompt; eine Karten-NSC, die unter ihrer Rolle gemeldet wird, bekommt keinen zweiten Eintrag mit Standardwerten.
-Fünf Commits, nach jedem pytest (zuletzt 1427 grün, 4 xfail), ruff (F), `dm-eval` (Exit 0).
-- Befund aus dem Lauf 01:59–02:01: „Türwächter“ und „Frau hinter der Sichtklappe“ waren Bree Marlok, „Blinder Greis“
-  Alter Fenk. Die Frau wurde abgelegt, 22 s bevor der `<<ORT>>`-Knopf kam; die anderen beiden standen als anwesend in
-  der Liste, der Klassifikator sah aber nur Namen, keine Rollen.
-- `close_turn` legt unter dem Zeiger ab, wie er nach dem Urteil steht; die Figuren des offenen Zugs folgen jedem
-  Wechsel bis zur nächsten Zuggrenze (Klassifikator, später Knopf, `!ort`, ↩).
-- Der Klassifikator bekommt die Karten-NSCs der Szene und der erreichbaren Ausgänge als „Name — Rolle“. Code führt
-  eine Sichtung mit einer solchen Person zusammen (Statblock, Name, Rolle). Person ist, wer auf einer Szenenkarte
-  steht und nicht `generic` ist; jeder andere Statblock bleibt Vorlage.
-- Nachgezogen (Punkt 9 im Nachtrag): Eine Karten-Figur der verlassenen Szene folgt dem Wechsel nicht und bekommt in
-  der neuen Szene keinen Eintrag. Preis: Geht sie wirklich mit, steht sie erst dort, wenn ein Folgezug sie meldet.
-- Aus dem `/code-review` von `b71c12f` behoben: Der Flag-Zwang nimmt niemanden mit; tote Karten-Figuren sind keine
-  Kandidaten; das Betreten einer Szene setzt das `scene`-Feld ihrer Karten-Figuren zurück (Punkte 6, 8, 10).
-  Kurznamen: optionales `aliases` am Statblock in `npcs.json`, exakter Vergleich, kein Abgleich über Namensteile.
-  Listen stehen in beiden `npcs.json` (Debug-Kampagne 7 Statblöcke, Chemical Burn 3 — dessen Daten sind per
-  `.gitignore` nur lokal); geprüft: beide laden, kein Alias passt auf zwei Karten-Figuren.
-- Schlechter als vorher: Wer vor dem Aufbruch in der alten Szene gesehen wird und keine Karten-Figur ist, landet in
-  der neuen. Offen: Ob der Prompt wirkt, zeigt erst ein Lauf („Next concrete step“, Punkt 2). Tests: drei xfails
-  grün, dreizehn neue in `tests/test_turn_boundary.py` und `tests/test_npc_router.py`.
-
-**Satzschnitt: ein gekappter Zug endet am letzten ganzen Satz (2026-11-13, D137 / ADR 061 Nachtrag, live-unverifiziert).**
-Am Tisch: Ein NSC-Satz auf `?“` oder `!“` vor dem Schnitt wird gesprochen und gespeichert; ein angefangener letzter Satz
-fällt in Sprache, History, Journal und Chat gleichermaßen weg. Zwei Commits (`af5056e` und der Folge-Commit), nach jedem
-pytest (1411 grün, 7 xfail), ruff (F), `dm-eval` (Exit 0).
-- Befund: Die sieben ✂-Züge vom 13.11. waren Schnitte am Sprechbudget (748 Zeichen); verloren gingen ganze Sätze auf
-  `?“`/`!“` (Satzende-Lücke, `86ccdc0`). Den Schnitt am letzten Satz gab es schon in `finalize`.
-- Eine Regel: `textsplit.SENTENCE_END`/`split_sentences`, `sanitize` importiert sie (offener Punkt 12 erledigt).
-- `finalize_answer_trimmed` zählt die weggefallenen Zeichen; der Turn-Kern schreibt die ✂-Zeile (`caller_reports_cut`),
-  der Claude-Client nur noch für Recap, `!rules` und NSC-Gedächtnis.
-- Tests: `tests/test_sentence_cut.py` (Stream, Batch, Ein-Satz-Fall, beide Live-Rohtexte), Satzende-Tests in
-  `tests/test_tts_chunk.py`, Client-Test in `tests/test_claude_client.py`.
-
-_Ältere `## Last session`-Einträge: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Last session (Verlauf)`._
+**Fällt Claude aus, pausiert der Bot, statt mit Nemo weiterzuerzählen (2026-11-13, D139 / ADR 061 vierter Nachtrag,
+live-unverifiziert).** Am Tisch: beim Ausfall eine ⏸-Zeile und ein gesprochener Satz, keine Nemo-Antwort, die Zeilen des
+unbeantworteten Zugs bleiben vorgemerkt; bei der Rückkehr eine ▶-Zeile, und nach einer Pause unter 180 s beantwortet
+der DM den Zug von selbst. pytest 1491 grün (63 neu in `tests/test_llm_pause.py`), 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
+- Schalter `DM_LLM_ON_FAILURE=pause|fallback`, Standard `pause`; `fallback` ist der bisherige Weg, unverändert.
+  `!backend ollama` bleibt der Notgriff und schaltet die Sitzung bewusst auf Nemo.
+- Die Entscheidung liegt in `llm/failover.py` (`LLMPausedError`, `retry_in()`, `probe()`); keine Aufrufstelle nennt
+  ein Backend. Der Zugkern stellt Zeilen, Würfelergebnisse und Regie-Notizen zurück (`DMBrain._hold_turn`), der
+  Watcher im `DMCog` pingt (30 s, Verdopplung bis 300 s), sagt an und startet den Zug.
+- Am Abend: Durchgang 3 im Beipackzettel erzeugt den Ausfall jetzt mit einer Firewall-Regel (PowerShell als
+  Administrator) statt mit einem falschen Modellnamen, weil nur so eine Rückkehr ohne Neustart möglich ist.
+- Offen (im Nachtrag): Zeit bis zur ⏸-Zeile bei einem Netzausfall ist ungemessen; vorgemerkte Zeilen überleben
+  keinen Neustart; die Live-`.env` kennt die drei neuen Schlüssel noch nicht (Defaults greifen, `dm-sync` meldet sie).
+- `/code-review` vor dem Commit (14.11.): zehn Befunde, alle aus dieser Runde. Sechs mit Test behoben — nur die
+  Stufe, die ausfiel, beendet die Pause (kein ▶/⏸-Wechsel je Zug bei einem Haiku-Ausfall); ein verspätet
+  scheiternder Ping löst keine zweite Ansage aus; zwei Züge in der Luft behalten Reihenfolge und Zug-Zeiger;
+  ein Nebencall (`!rules`, Recap), der die Pause beendet, lässt den vorgemerkten Zug nicht liegen; der eigene Zug
+  läuft als eigene Task; `DM_LLM_PAUSE_RETRY_S` unter 1 ist ein Startfehler. Der Rest steht unter „Open questions“.
 
 ## Next concrete step
 
@@ -324,6 +289,21 @@ aus dem Live-Lauf 01:48–02:16; alle gab es schon vor dem Umbau. Die Tests steh
 15. (D137) Unter Ollama schreibt ein gekappter Zug keine ✂-Zeile: `OllamaClient` liest `done_reason` nicht und meldet
     kein `truncated`. Gekürzt wird der Zug trotzdem (der Schnitt am letzten Satz gilt für jede Antwort). Bewusst
     weggelassen (Tobi, 13.11.); Fix wäre `done_reason == "length"` → `truncated` in `client.py`. Kein Test.
+
+**Aus dem Review der Pause (2026-11-14, D139 / ADR 061 vierter Nachtrag) — offen, nicht angefasst:**
+- **Ein Zug in der Pause leert erst die Puffer und fragt die RAG ab, bevor der Client ablehnt.** Kostet je
+  Mikro-Freigabe ein Embedding. Eine Vorab-Abfrage würde die Zeilenzahl ändern, die ein Test dieser Runde prüft.
+- **Rückkehr bei eingefrorenem Spiel (Esc):** kein eigener Zug; die vorgemerkten Zeilen warten auf die nächste
+  Spielerzeile, wie Würfelergebnisse heute schon.
+- **„Zug vorgemerkt“ ist ein Sitzungs-Flag, kein Rückgabewert.** Es wird jetzt erst am Ende eines Zugs
+  geschrieben; ein eigener Rückgabewert hieße, alle 13 Aufrufstellen von `respond`/`redo` anzufassen.
+- **Würfelergebnisse und Regie-Notizen zweier gleichzeitig laufender Züge** können die Reihenfolge tauschen.
+- **Ein Zug, dessen Call in der Pause begann und nach ihrem Ende scheitert,** wird vorgemerkt, ohne dass eine
+  neue ⏸-Zeile kommt; die nächste Spielerzeile beantwortet ihn mit.
+- **`ON_FAILURE` steht in `config.py` und in `failover.py`**; ein Test hält beide gleich.
+- **Bestand schon vorher (nicht aus dieser Runde):** Auf dem reinen Ollama-Pfad und in der Stellung `fallback`
+  landet ein gestreamter Zug, der vor dem ersten Delta scheitert, mit leerer Antwort in der History, und seine
+  Spielerzeilen sind verbraucht (`_stream_once` fängt jeden Fehler).
 
 **Aus dem Review von `b71c12f` (2026-11-13, ADR 062 Nachtrag) — offen, bewusst nicht angefasst (Tobi):**
 - **↩ trägt die falschen Figuren (Review Nr. 6).** Beginnt innerhalb der Undo-Minute schon der nächste Zug, trägt ↩

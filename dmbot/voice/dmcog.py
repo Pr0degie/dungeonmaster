@@ -37,6 +37,7 @@ class DMCog(commands.Cog):
         runtime.auto_dm_turn = self._delivery._auto_dm_turn        # hook: VoiceCog mic release runs a DM turn
         runtime.speak = self._delivery._speak                      # hook: LoreCog !lore tts reads the compendium aloud
         self._backend_watch: asyncio.Task | None = None  # posts the failover's table notices (ADR 061)
+        self._resume_turn: asyncio.Task | None = None    # the DM turn answered after a short backend pause
         self._gpu_watch: asyncio.Task | None = None      # posts the one GPU-fault notice (D125)
 
     async def cog_load(self) -> None:
@@ -76,26 +77,91 @@ class DMCog(commands.Cog):
             log.exception("could not post the GPU fault notice")
 
     async def _watch_backend(self, client) -> None:
-        """Post each backend switch (⚠ degraded / ✅ recovered) to the game channel — once per
-        switch, because the failover queues one notice per switch, not per turn (ADR 061)."""
+        """Post each backend switch (⚠ degraded / ✅ recovered, ⏸ paused / ▶ back) to the game
+        channel — once per switch, because the failover queues one notice per switch, not per
+        turn (ADR 061).
+
+        In the ``pause`` position this loop is also what notices the return while nobody speaks:
+        it sleeps until the client's next attempt is due, lets the client probe, and — when a
+        short pause ended, by the probe or by a call that got through — starts the DM turn the
+        table is waiting for. When to probe, what the probe is and whether a turn may follow are
+        the client's decisions; whether a turn is waiting is the brain's.
+
+        The turn runs as its own task: this loop's one job stays posting and probing, so a
+        second outage during that turn is announced at once, not after its playback."""
+        retry_in = getattr(client, "retry_in", None)
+        take_resume = getattr(client, "take_resume", None)
         while True:
-            await client.degraded_event.wait()
-            for notice in client.take_notices():
-                channel = self._rt._text_channel
-                if channel is None:
-                    log.warning("LLM backend notice (no channel joined yet): %s", notice)
-                    continue
+            try:
                 try:
-                    await channel.send(notice)
+                    await asyncio.wait_for(client.degraded_event.wait(), retry_in() if retry_in else None)
+                except TimeoutError:
+                    await client.probe()
+                await self._post_backend_notices(client)
+                if take_resume is not None and take_resume():
+                    self._start_waiting_turn()
+            except Exception:
+                log.exception("LLM backend watcher: this round failed — it keeps watching")
+                await asyncio.sleep(1.0)  # never a tight loop on a persistent error
+
+    async def _post_backend_notices(self, client) -> None:
+        for notice in client.take_notices():
+            channel = self._rt._text_channel
+            if channel is None:
+                log.warning("LLM backend notice (no channel joined yet): %s", notice)
+                continue
+            # "Back after a long pause, by a call that got through": if that call was a side call
+            # and a turn still waits, say that the bot waits for the next line.
+            alternative = getattr(notice, "if_waiting", None)
+            if alternative is not None and self._turn_waiting(channel):
+                notice = alternative
+            try:
+                await channel.send(notice)
+            except Exception:
+                log.exception("could not post the LLM backend notice: %s", notice)
+            spoken = getattr(notice, "spoken", "")
+            if spoken:
+                # A fixed sentence, no LLM involved. Best-effort: the chat line above is the notice.
+                try:
+                    await self._rt.speak(spoken, self._guild_id(channel), speech_transform=self._rt.speech_transform())
                 except Exception:
-                    log.exception("could not post the LLM backend notice: %s", notice)
+                    log.exception("could not speak the LLM backend notice")
+
+    @staticmethod
+    def _guild_id(channel) -> int | None:
+        guild = getattr(channel, "guild", None)
+        return guild.id if guild is not None else None
+
+    def _turn_waiting(self, channel) -> bool:
+        return self._rt._brain.waiting_turn(self._rt._brain_channel(channel))
+
+    def _start_waiting_turn(self) -> None:
+        """The backend is back after a short pause: answer what the table said before and during
+        it — the kept player lines, dice results and GM notes — in one DM turn of its own task.
+        Nothing starts when no turn is waiting: the outage hit a side call, or the call that
+        ended the pause is that turn and is being answered already."""
+        channel = self._rt._text_channel
+        if channel is None or not self._turn_waiting(channel):
+            return
+        task = asyncio.create_task(
+            self._delivery._run_and_deliver(channel, self._guild_id(channel), kind="resume")
+        )
+        self._resume_turn = task  # keep a reference; a failure is logged, never raised into the loop
+        task.add_done_callback(self._log_resume_turn)
+
+    @staticmethod
+    def _log_resume_turn(task: asyncio.Task) -> None:
+        if not task.cancelled() and task.exception() is not None:
+            log.error("the DM turn after the backend pause failed", exc_info=task.exception())
 
     @commands.command(name="backend")
     async def backend(self, ctx: commands.Context, *, arg: str = "") -> None:
         """`!backend` — which LLM backend answers (ADR 061). Bare: primary/fallback, whether the
         pair is degraded and until when, and who answered the last call. `!backend claude` /
         `!backend ollama` pins that side, `!backend auto` follows the failover again. Applies to
-        this session only, nothing is written to `.env`."""
+        this session only, nothing is written to `.env`. With `DM_LLM_ON_FAILURE=pause` a failed
+        primary pauses the game instead of switching; `!backend ollama` is then the deliberate
+        way onto the local model for the rest of the session."""
         client = self._rt._brain.client
         if not hasattr(client, "force"):
             await ctx.send(
@@ -114,9 +180,20 @@ class DMCog(commands.Cog):
         if wanted:
             client.force(modes[wanted])
             status = client.status()
-        mode = {"auto": "auto (Failover aktiv)", "primary": f"fest auf {status.primary}",
+        pauses = status.on_failure == "pause"
+        mode = {"auto": "auto (bei Ausfall: Pause)" if pauses else "auto (Failover aktiv)",
+                "primary": f"fest auf {status.primary}",
                 "fallback": f"fest auf {status.fallback}"}[status.mode]
-        if status.degraded_until is not None:
+        if status.paused_since is not None and status.mode == "fallback":
+            # Pinned onto the local model during a pause: it narrates, nothing probes.
+            state = (f"⚠ {status.primary} ausgefallen — {status.fallback} erzählt, solange "
+                     f"`!backend {status.fallback}` gilt — {status.last_error}")
+        elif status.paused_since is not None:
+            since = time.strftime("%H:%M", time.localtime(status.paused_since))
+            retry = time.strftime("%H:%M:%S", time.localtime(status.degraded_until))
+            state = (f"⏸ {status.primary} ausgefallen, Spiel pausiert seit {since}, nächster Versuch "
+                     f"{retry} — {status.last_error}")
+        elif status.degraded_until is not None:
             until = time.strftime("%H:%M", time.localtime(status.degraded_until))
             state = f"⚠ {status.primary} ausgefallen, Ersatz bis etwa {until} — {status.last_error}"
         else:
@@ -211,7 +288,7 @@ class DMCog(commands.Cog):
                 await ctx.send("(Der Spielleiter schweigt — Fehler bei der Antwort, siehe Log.)")
                 return
             if answer is None:  # None = nothing to respond to; "" = a marker-only turn (dice posted)
-                await ctx.send("(Nichts zu beantworten.)")
+                await self._nothing_answered(ctx, channel_id, "(Nichts zu beantworten.)")
             return
         try:
             async with ctx.typing():
@@ -226,9 +303,21 @@ class DMCog(commands.Cog):
             await ctx.send("(Der Spielleiter schweigt — Fehler bei der Antwort, siehe Log.)")
             return
         if answer is None:
-            await ctx.send("(Nichts zu beantworten.)")
+            await self._nothing_answered(ctx, channel_id, "(Nichts zu beantworten.)")
             return
         await self._delivery._deliver_answer(ctx.channel, guild_id, answer, timing)
+
+    async def _nothing_answered(self, ctx: commands.Context, channel_id: int, text: str) -> None:
+        """A turn command came back with no turn. Normally that gets ``text``; while the LLM
+        backend is paused the turn was put aside, the table already has its one ⏸ notice, and the
+        command is only acknowledged with a reaction."""
+        if not self._rt._brain.turn_held(channel_id):
+            await ctx.send(text)
+            return
+        try:
+            await ctx.message.add_reaction("⏸")
+        except Exception:
+            log.debug("could not react to a turn command during the backend pause", exc_info=True)
 
     @commands.command(name="redo", aliases=["r"])
     async def redo(self, ctx: commands.Context) -> None:
@@ -249,7 +338,7 @@ class DMCog(commands.Cog):
                 await ctx.send("(Fehler beim Neu-Erzählen, siehe Log.)")
                 return
             if answer is None:
-                await ctx.send("Nichts zum Wiederholen — erst eine Runde mit `!dm` spielen.")
+                await self._nothing_answered(ctx, channel_id, "Nichts zum Wiederholen — erst eine Runde mit `!dm` spielen.")
             return
         try:
             async with ctx.typing():
@@ -263,7 +352,7 @@ class DMCog(commands.Cog):
             await ctx.send("(Fehler beim Neu-Erzählen, siehe Log.)")
             return
         if answer is None:
-            await ctx.send("Nichts zum Wiederholen — erst eine Runde mit `!dm` spielen.")
+            await self._nothing_answered(ctx, channel_id, "Nichts zum Wiederholen — erst eine Runde mit `!dm` spielen.")
             return
         await self._delivery._deliver_answer(ctx.channel, guild_id, answer, timing)
 

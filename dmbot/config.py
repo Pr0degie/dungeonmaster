@@ -15,6 +15,8 @@ from dotenv import load_dotenv
 from .memory.state import TURN_ADVANCE_MINUTES
 
 LLM_BACKENDS = ("ollama", "claude")
+# What the Claude backend does when Claude cannot answer (ADR 061, amendment 2026-11-13 fourth).
+LLM_ON_FAILURE = ("pause", "fallback")
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +86,9 @@ class Config:
     claude_cli_path: str = ""
     claude_allow_api_key: bool = False
     llm_failover_cooldown_s: int = 600
+    llm_on_failure: str = "pause"
+    llm_pause_retry_s: int = 30
+    llm_pause_auto_turn_s: int = 180
     # Consequence clocks (ADR 047/059). Default on.
     clocks: bool = True
     # Post each DM-routed player line to the text channel (story readable in Discord).
@@ -125,7 +130,30 @@ class Config:
                 "DMbot's token (never commit .env)."
             )
 
+        # A retry wait of 0 would make the pause's watcher start one CLI after another.
+        llm_pause_retry_s = int(os.environ.get("DM_LLM_PAUSE_RETRY_S", "30") or "30")
+        if llm_pause_retry_s < 1:
+            raise RuntimeError(
+                f"DM_LLM_PAUSE_RETRY_S={llm_pause_retry_s} must be at least 1 (seconds before the "
+                "first retry of a pause)."
+            )
+        llm_pause_auto_turn_s = int(os.environ.get("DM_LLM_PAUSE_AUTO_TURN_S", "180") or "180")
+        if llm_pause_auto_turn_s < 0:
+            raise RuntimeError(
+                f"DM_LLM_PAUSE_AUTO_TURN_S={llm_pause_auto_turn_s} must not be negative "
+                "(0 = the bot never answers the kept turn on its own)."
+            )
+
         bot_a_raw = os.environ.get("BOT_A_USER_ID", "").strip()
+
+        # Claude out: pause the game, or let the local model narrate. A typo must not pick one
+        # silently — the difference only shows in the middle of an evening.
+        llm_on_failure = os.environ.get("DM_LLM_ON_FAILURE", "pause").strip().lower() or "pause"
+        if llm_on_failure not in LLM_ON_FAILURE:
+            raise RuntimeError(
+                f"DM_LLM_ON_FAILURE={llm_on_failure!r} is not a known position — use one of: "
+                f"{', '.join(LLM_ON_FAILURE)}."
+            )
 
         # The primary LLM backend (ADR 061). A typo must not silently mean "ollama" — the operator
         # would play a whole evening on the wrong model without noticing.
@@ -384,6 +412,11 @@ class Config:
             in ("1", "true", "yes", "on"),
             # How long the pair stays on the fallback after the primary failed, before retrying.
             llm_failover_cooldown_s=int(os.environ.get("DM_LLM_FAILOVER_COOLDOWN_S", "600") or "600"),
+            llm_on_failure=llm_on_failure,
+            # The pause position: seconds before the first retry (it doubles, up to 300), and the
+            # longest pause after which the bot still answers the waiting turn on its own.
+            llm_pause_retry_s=llm_pause_retry_s,
+            llm_pause_auto_turn_s=llm_pause_auto_turn_s,
             # Consequence clocks (ADR 047/059). ON by default; DM_CLOCKS=0 hides the subsystem:
             # no seeding from the adventure, no clock line in the prompt or the pressure panel,
             # <<UHR>> is still stripped but ignored, !uhr answers with a hint. Non-destructive —

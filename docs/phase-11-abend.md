@@ -21,7 +21,7 @@ läuft auf Tobis Rechner.
 | Kein API-Key | in `cmd`: `echo %ANTHROPIC_API_KEY%` | es steht wörtlich `%ANTHROPIC_API_KEY%` da |
 | Ollama | `ollama list` | `mistral-nemo` und `bge-m3` sind da |
 | Sandbox leer | in `data/sessions/<channel-id>/` alle Dateien mit `.debug` im Namen löschen, dann `uv run python -m dmbot.rag.ingest_session --wipe-debug <channel-id>` | nichts ohne `.debug` wurde angefasst |
-| `.env` | Block aus [§9.2](testabend-ablauf.md) eintragen | `DM_LLM_BACKEND=claude`, `DM_NPC_MEMORY=0`, `DM_CONSISTENCY_GUARD=0`, `DM_DEBUG_OVERLAY=0`, `DM_CLOCKS=0`, `DM_FLAG_CONFIRM=0`, `DM_LOG_FILE=1` |
+| `.env` | Block aus [§9.2](testabend-ablauf.md) eintragen | `DM_LLM_BACKEND=claude`, `DM_LLM_ON_FAILURE=pause`, `DM_NPC_MEMORY=0`, `DM_CONSISTENCY_GUARD=0`, `DM_DEBUG_OVERLAY=0`, `DM_CLOCKS=0`, `DM_FLAG_CONFIRM=0`, `DM_LOG_FILE=1` |
 | Altes Log weg | Bot aus; in PowerShell im Repo-Ordner: `Rename-Item logs\debug.log "debug-bis-$(Get-Date -Format yyyy-MM-dd).log"` | `logs\debug.log` gibt es nicht mehr; der Bot legt beim Start eine leere an, der Abend beginnt mit einer leeren Datei |
 | Verbrauch | claude.ai → Verbrauchsanzeige | Stand notiert: ______ |
 
@@ -35,8 +35,8 @@ Claude preflight OK — narration opus: OK · aux haiku: OK (CLI …)
 ```
 
 Steht dort `FAILED`, `refused` oder `not found`: **nicht spielen**, erst reparieren (die Zeile sagt,
-was fehlt; Tabelle in SETUP.md B10). Der Bot würde sonst still mit Nemo laufen, und der Abend
-wäre wertlos.
+was fehlt; Tabelle in SETUP.md B10). Der Bot würde sonst beim ersten Zug pausieren (in der
+Stellung `fallback`: still mit Nemo laufen), und der Abend wäre wertlos.
 
 Dann im Discord, direkt nach `!j`:
 
@@ -45,14 +45,15 @@ Dann im Discord, direkt nach `!j`:
 | `!uhren` | „Uhren sind abgeschaltet (`DM_CLOCKS=0`)" |
 | `!fäden` | leer |
 | `!automatik` | alle sechs **an** (szene, flaggen, fakten, nscs, zeit, panel) |
-| `!backend` | Primär: claude, nicht degradiert |
+| `!backend` | Modus: auto (bei Ausfall: Pause) · Primär: claude · kein Ausfall |
 
 ---
 
 ## Was getestet wird
 
-Reihenfolge so spielen. Durchgang 1 ist der eigentliche Abend, Durchgang 2 und 3 brauchen je
-einen Neustart und dauern zusammen etwa zehn Minuten.
+Reihenfolge so spielen. Durchgang 1 ist der eigentliche Abend. Durchgang 2 braucht einen
+Neustart davor und einen danach, Durchgang 3 eine PowerShell als Administrator; zusammen
+dauern beide etwa zehn Minuten.
 
 ### Durchgang 1 — das Spiel (ohne Neustart)
 
@@ -74,7 +75,9 @@ Worauf du beim Zuhören achtest (alles notieren, nichts reparieren):
 - Spricht der DM für eine Spielerfigur?
 - Erinnert er wiederholt an dasselbe, ohne dass etwas weitergeht?
 - Wie lange dauert es von „fertig gesprochen" bis zum ersten Ton, gefühlt?
-- Eine ⚠-Zeile im Chat, die du nicht selbst ausgelöst hast → Claude ist ausgefallen, Uhrzeit notieren.
+- Eine ⏸-Zeile im Chat, die du nicht selbst ausgelöst hast → Claude ist ausgefallen, das Spiel
+  pausiert. Uhrzeit notieren, nichts tun: Der Bot meldet sich mit ▶ zurück. Dauert es zu lange,
+  siehe Notgriffe.
 
 #### Seit dem 12.11. geändert, am Tisch beobachten
 
@@ -118,25 +121,44 @@ eine Probe brauchen.
 - **Notieren:** Ja oder Nein, bei wie vielen von wie vielen Handlungen.
 - Danach `DM_ROLL_ROUTER=1` zurücksetzen.
 
-### Durchgang 3 — fällt der Bot sauber auf Nemo zurück? (Punkt 5)
+### Durchgang 3 — pausiert der Bot sauber, wenn Claude ausfällt? (Punkt 5)
 
-Bot stoppen, in `.env` `CLAUDE_MODEL_NARRATION=opus-gibts-nicht`, starten.
+Nach Durchgang 2 läuft der Bot wieder mit `DM_ROLL_ROUTER=1`; `!j`, ein Zug auf Opus zur
+Kontrolle. Der Ausfall wird ohne Neustart erzeugt und wieder aufgehoben: eine Firewall-Regel
+sperrt `claude.exe` das Netz. Dafür vorher eine **PowerShell als Administrator** öffnen. Die
+Regel trennt auch offene Claude-Code-Sitzungen auf dem Rechner, solange sie steht.
+
+```
+New-NetFirewallRule -DisplayName "dm-claude-aus" -Direction Outbound -Action Block -Program "$env:USERPROFILE\.local\bin\claude.exe"
+Remove-NetFirewallRule -DisplayName "dm-claude-aus"
+```
+
+Die erste Zeile ist der Ausfall, die zweite die Rückkehr. Liegt `claude.exe` woanders: Pfad aus
+`where.exe claude` einsetzen.
 
 | Schritt | Soll |
 |---|---|
-| Bootzeile | `Claude preflight FAILED — narration opus-gibts-nicht: FAILED · aux haiku: OK` |
-| `!j`, ein Zug | **genau eine** ⚠-Zeile im Chat; Nemo antwortet (erster Zug 10–15 s langsamer) |
-| zweiter Zug | Antwort kommt, **keine** zweite ⚠-Zeile |
-| `!backend` | zeigt den Grund und bis wann |
+| Regel setzen, dann ein Zug (Mikro oder `!dm …`) | **genau eine** ⏸-Zeile im Chat und ein gesprochener Satz („Die Spielleitung ist gerade nicht erreichbar, das Spiel pausiert.“); **keine** Erzählantwort, kein „(Der Spielleiter schweigt …)“. Zeit vom Zug bis zur ⏸-Zeile notieren (bis zu zwei Minuten sind möglich) |
+| `ollama ps` in einem zweiten Terminal | **kein** `mistral-nemo` (nur `bge-m3` darf dort stehen) |
+| `!backend` | „bei Ausfall: Pause“, „Spiel pausiert seit …, nächster Versuch …“ |
+| Regel löschen — **innerhalb etwa einer Minute nach der ⏸-Zeile** — und warten | **genau eine** ▶-Zeile („… es geht weiter.“) und ein gesprochener Satz; gleich danach beantwortet der DM **von selbst** die Zeile aus dem ersten Schritt, auf Opus |
+| ein normaler Zug | Opus antwortet; keine weitere ⏸- oder ▶-Zeile |
 
-Danach `.env` zurück auf `opus`, Neustart, ein Zug: Opus antwortet wieder.
+Der Bot versucht es 30 s nach der ⏸-Zeile wieder, dann mit wachsendem Abstand (60 s, 120 s, …).
+Kommt die ▶-Zeile erst nach mehr als drei Minuten Pause, lautet sie „… darum warte ich auf eure
+nächste Zeile“ und der DM antwortet nicht von selbst. Dann eine Zeile sprechen: Die Antwort muss
+die Zeile aus dem ersten Schritt mit beantworten. Auch das ist bestanden; im Protokoll vermerken,
+welcher der beiden Fälle es war.
+
+Zum Schluss prüfen, dass die Regel weg ist: `Get-NetFirewallRule -DisplayName "dm-claude-aus"`
+muss einen Fehler melden („keine … gefunden“).
 
 ### Nach dem Abend
 
 | # | Was | Wie |
 |---|---|---|
 | 6 | Verbrauch | Anzeige auf claude.ai, Differenz zum Startwert |
-| 6b | Was die Klassifikatoren davon kosten (ADR 066) | Messung D unten; dazu: kam eine ⚠-Zeile wegen eines Verbrauchslimits, und nach wie vielen Zügen? |
+| 6b | Was die Klassifikatoren davon kosten (ADR 066) | Messung D unten; dazu: kam eine ⏸-Zeile wegen eines Verbrauchslimits („Limit bis etwa …“), und nach wie vielen Zügen? |
 | 8 | Anteil abgeschnittener Antworten | Messung C unten |
 | — | Logs sichern, **bevor** der Bot wieder startet | `logs/debug.log`, `logs/transcript.log`, `logs/terminal.log` |
 
@@ -144,7 +166,7 @@ Danach `.env` zurück auf `opus`, Neustart, ein Zug: Opus antwortet wieder.
 
 ## Die vier Messungen (nach dem Abend, in PowerShell im Repo-Ordner)
 
-Nur Züge aus Durchgang 1 werten. Durchgang 3 lief auf Nemo. Alle vier Messungen laufen auf
+Nur Züge aus Durchgang 1 werten. Durchgang 3 ist die Pause-Probe. Alle vier Messungen laufen auf
 der Kopie `logs\debug-d1.log` (Schritt zwischen Durchgang 1 und 2), nicht auf dem Gesamt-Log.
 
 **A — Wie schnell ist ein Opus-Zug?**
@@ -212,7 +234,8 @@ Schritt „Altes Log weg“ unter „Vor dem Start“.
 | 3b Szenenwechsel von selbst | ☐ ja ☐ nein |
 | 3c harter Fakt | ☐ ja ☐ nein |
 | 4 Recap | ☐ ja ☐ nein |
-| 5 Failover, genau eine ⚠-Zeile | ☐ ja ☐ nein |
+| 5 Pause: genau eine ⏸-Zeile, keine Nemo-Antwort, `ollama ps` ohne `mistral-nemo` | ☐ ja ☐ nein — Zeit bis ⏸: ____ s |
+| 5 Rückkehr: genau eine ▶-Zeile, die Spielerzeile wird beantwortet | ☐ ja ☐ nein — ☐ von selbst ☐ nach der nächsten Zeile |
 | 6 Verbrauch vorher / nachher | ______ / ______ |
 | 7a `<<TEST>>` ohne Router | ☐ ja ☐ nein — ___ von ___ |
 | 7b `<<ERLEDIGT>>` angewendet | ☐ ja ☐ nein — ___ von ___ |
@@ -253,7 +276,8 @@ Schritt „Altes Log weg“ unter „Vor dem Start“.
 | Problem | Befehl |
 |---|---|
 | Claude spinnt, Abend retten | `!backend ollama` (Rest des Abends lokal) |
-| Nach einer ⚠-Zeile sofort zurück | `!backend claude` |
+| ⏸-Pause dauert zu lange, Abend lokal retten | `!backend ollama` (Nemo erzählt, auch die vorgemerkten Zeilen) |
+| Nach einer ⏸-Zeile sofort neu versuchen | `!backend claude` |
 | Ein Klassifikator stört | `!automatik fakten aus` bzw. `szene aus` |
 | Falscher Szenenwechsel | ↩-Knopf (eine Minute), sonst `!ort <id>` |
 | Falscher Fakt | `!fakt weg <Text>` |

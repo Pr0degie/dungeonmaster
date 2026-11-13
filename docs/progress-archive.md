@@ -12,6 +12,63 @@ offene Fragen) steht in [`../progress.md`](../progress.md), das Decision-Log in
 
 _Index, aus `progress.md` verschoben (2026-10-25):_ Ältere `## Last session`-Einträge (`DM_CLOCKS`-Schalter D118 2026-10-06, Charakter-Akten `docs/characters.html` + Umbenennung Rene Redo 2026-08-22, Vierter Charakter Vinzentius Kabelbrand D105 2026-08-22 [90-Punkte-Bogen gegen das Profil gerechnet, Deployment in beide `characters.json`, Augmetik-Check reaktiviert], Playtest-Triage nach dem ersten Debug-Abend 2026-08-15 [Fehlstart in der Live-Kampagne, `session_file()`-Naht, Sanitize, Testabend-Doku, Kommando-Fehlermeldung → ADR 056], Doku-Drift-Sweep 2026-07-18 [5 Drift-Funde, alle gefixt; ADR-Renumber 019/020], Debug-Sandbox + Gate G10 2026-07-17 [`.debug`-Archive → `session_debug`-Source, `--wipe-debug` → ADR 055], Session-RAG-Runde D101 2026-07-17 [Ingest + Hybrid-Retrieval + Kalibrierung, Verifier-Fund `session_chunks_vec` → ADR 054], Journal-Runde D100 2026-07-17 [Scene-Events + `time_minutes` im Journal → ADR 053], Content-Runde Debug-Kampagne „Die Mitternachtsfracht“ 2026-07-11 [adventure/npcs/testplan lokal, `validate.py` RESULT: OK, Gate-Abdeckung G1–G9 → Runbook], D99 🧪-Debug-Overlay-Runde 2026-07-11 [Sidecar-Loader `testplan.py`, edit-in-place-Panel, Invisibility-Pin → ADR 052], Live-Gate-Triage 2026-07-11 [alle 8 Gates + Tuning-Checks in EIN Abend-Drehbuch gemerged, `docs/live-run-script.md`; Checklisten-Korrekturen per Code-Sweep], Workflow-Migration Runde 4/5 2026-07-11 [roadmap-Modell-Tabelle → Effort-first-Block + konservativer Skill-Sweep], Doc-Diet-Runde 2026-07-11 [State header + Rotation + Decision-Log-Diät], D98 Marker-Registry-Konsolidierung [`MarkerSpec`-Tabelle + eine generische Naht, marker-weise migriert → ADR 051], D97 Chekhov-Liste [Fäden-Schema + Wrap-up-Extraktion + Top-3-Injektion + ChekhovCog → ADR 050], D96 NPC-Agenden [`goal` + `agenda_log` + Extraktor-Erweiterung → ADR 049], D95 Ingame-Zeit [Minuten-Zähler + `<<ZEIT>>`-Marker + Fristen + Druck-Panel → ADR 048], D94 Consequence Clocks [`<<UHR id>>`-Marker + ClockCog + Druck-Panel + Voll-Uhr-`[Regie]`-Note → ADR 047], D93 Replay-Eval-Harness [Replay-Journal + `uv run dm-eval`, 6 Diff-Kategorien, synthetische Goldens → ADR 046], D92 Konsistenz-Wächter [deterministischer Pre-Delivery-Check, Regenerate-once, fail-open → ADR 045], D91 NPC-Gedächtnis [NpcMemory-Schema + Extraktor + Lügen-Flip/Gossip + Prompt-Block → ADR 044], D90 `dm-sync`-Entry-Point [Package-Move + hatchling, byte-identischer `[sync]`-Block], D89 Sync-Check-Fingerprint-Tool [`[sync]`-Block, Ingest-Stempel, SETUP.md-Sync-Sektion], D88 `/author-adventure`-Authoring-Skill [5-Pass-Workflow + `validate.py`, Dry-Run-Abnahme gegen Chemical Burn], D87 Stateful Scene Cards [`<<ERLEDIGT>>`-Flags, tote NSCs, gated Exits → ADR 043], D85+D86 Spielbarkeits-Tuning [repeat_penalty + Roll-Router-Carve-out, `intro_guard`-Retry], D84 `!intro`-Meta-Auftakt-Strip + Temp 0.7, D83 `!intro`-Temperatur + Direktive, D82 Default-Party-Fix, D81 Scene-/Lore-Sub-Cogs, D80 Deepening #4–#6 [prompt_assembly/seed_session/clear_panel], D79 Deepening #1+#2 [`combat.py`-Auslagerung + `segments.py`-Verdrahtung], D78 Skill-Tooling-Runde [4 Claude-Code-Skills: /tdd, /grill-me, /improve-architecture, /to-prd], D77 Dev-Gates [Lint-Stop-Hook + blockierender git-pre-commit + Review/Simplify-Checkliste], D76 `disconnect_voice`-Kontrakt + neuer Delivery-Test, D75 One-Shot-Setup, D74
 
+_Aus `progress.md` rotiert (2026-11-14, Review der Pause D139):_
+
+**Kommentare entschlackt, keine Codezeile geändert (2026-11-13).** Ein Commit pro Paket; vor jedem Commit verglich
+ein Skript den Syntaxbaum ohne Docstrings mit HEAD (identisch), Befehls-Hilfetexte unverändert; pytest (1427 grün,
+4 xfail), ruff (F) sauber. `dmbot/` 22 951 → 22 834 Zeilen — der Großteil der Kommentare ist Wissen, nicht Historie.
+- Herleitungen, die nur in `docs/plans/` standen, sind jetzt Nachträge: ADR 003 (Sprecher-Identität), ADR 041
+  Addendum 3 (Figuren von außen), ADR 057 (Szenenkarte, Spieler-Panel, Anzeigenamen), Lesson
+  `incidents-become-preflights` (B13, `TTS_SPEAKER`).
+- Veraltete Verweise behoben, u. a. Auto-Recap als D56 statt D57, Methoden aus `runtime.py`/`dmcog.py`, die jetzt in
+  `dmbot/session/` bzw. `voice/delivery.py` liegen; `test-on-change.sh` beschreibt keinen Stop-Hook mehr.
+- Gleicher Tag, nur Doku: [ADR 066](docs/decisions/066-one-post-turn-classifier-call.md) als **Draft** — sollen
+  Szenen-, Fakten- und NSC-Klassifikator als ein Schema-Call laufen? Zahlen aus dem debug.log und dem Journal vom
+  13.11.; steht unter „Open questions“ als offene Entscheidung. Dazu gebaut: `ClaudeClient` schreibt je Schema-Call
+  eine `[aux]`-Zeile mit den Zahlen dieses Calls (`in=`, `cache=`, `out=`, `turns=`, `spawn=`, `api=`, `total=`,
+  `fields=` als Kennung) — nicht aus `last_aux_stats` gelesen, weil sich drei parallele Klassifikatoren den Slot
+  teilen. Ein Test; pytest 1428 grün, `dm-eval` Exit 0, ruff (F) sauber. Die Prüfpunkte für den Abend stehen jetzt
+  im Beipackzettel (N1–N8, Messung D).
+
+_Aus `progress.md` rotiert (2026-11-13, Pause statt Nemo D139):_
+
+**NSC-Sichtungen: richtige Szene, keine Doppelgänger von Karten-NSCs (2026-11-13, D138 / ADR 062 Nachtrag,
+live-unverifiziert).** Am Tisch: Wen die Erzählung bei einer Ankunft zeigt, steht in der neuen Szene und ist dort Ziel
+und im Prompt; eine Karten-NSC, die unter ihrer Rolle gemeldet wird, bekommt keinen zweiten Eintrag mit Standardwerten.
+Fünf Commits, nach jedem pytest (zuletzt 1427 grün, 4 xfail), ruff (F), `dm-eval` (Exit 0).
+- Befund aus dem Lauf 01:59–02:01: „Türwächter“ und „Frau hinter der Sichtklappe“ waren Bree Marlok, „Blinder Greis“
+  Alter Fenk. Die Frau wurde abgelegt, 22 s bevor der `<<ORT>>`-Knopf kam; die anderen beiden standen als anwesend in
+  der Liste, der Klassifikator sah aber nur Namen, keine Rollen.
+- `close_turn` legt unter dem Zeiger ab, wie er nach dem Urteil steht; die Figuren des offenen Zugs folgen jedem
+  Wechsel bis zur nächsten Zuggrenze (Klassifikator, später Knopf, `!ort`, ↩).
+- Der Klassifikator bekommt die Karten-NSCs der Szene und der erreichbaren Ausgänge als „Name — Rolle“. Code führt
+  eine Sichtung mit einer solchen Person zusammen (Statblock, Name, Rolle). Person ist, wer auf einer Szenenkarte
+  steht und nicht `generic` ist; jeder andere Statblock bleibt Vorlage.
+- Nachgezogen (Punkt 9 im Nachtrag): Eine Karten-Figur der verlassenen Szene folgt dem Wechsel nicht und bekommt in
+  der neuen Szene keinen Eintrag. Preis: Geht sie wirklich mit, steht sie erst dort, wenn ein Folgezug sie meldet.
+- Aus dem `/code-review` von `b71c12f` behoben: Der Flag-Zwang nimmt niemanden mit; tote Karten-Figuren sind keine
+  Kandidaten; das Betreten einer Szene setzt das `scene`-Feld ihrer Karten-Figuren zurück (Punkte 6, 8, 10).
+  Kurznamen: optionales `aliases` am Statblock in `npcs.json`, exakter Vergleich, kein Abgleich über Namensteile.
+  Listen stehen in beiden `npcs.json` (Debug-Kampagne 7 Statblöcke, Chemical Burn 3 — dessen Daten sind per
+  `.gitignore` nur lokal); geprüft: beide laden, kein Alias passt auf zwei Karten-Figuren.
+- Schlechter als vorher: Wer vor dem Aufbruch in der alten Szene gesehen wird und keine Karten-Figur ist, landet in
+  der neuen. Offen: Ob der Prompt wirkt, zeigt erst ein Lauf („Next concrete step“, Punkt 2). Tests: drei xfails
+  grün, dreizehn neue in `tests/test_turn_boundary.py` und `tests/test_npc_router.py`.
+
+**Satzschnitt: ein gekappter Zug endet am letzten ganzen Satz (2026-11-13, D137 / ADR 061 Nachtrag, live-unverifiziert).**
+Am Tisch: Ein NSC-Satz auf `?“` oder `!“` vor dem Schnitt wird gesprochen und gespeichert; ein angefangener letzter Satz
+fällt in Sprache, History, Journal und Chat gleichermaßen weg. Zwei Commits (`af5056e` und der Folge-Commit), nach jedem
+pytest (1411 grün, 7 xfail), ruff (F), `dm-eval` (Exit 0).
+- Befund: Die sieben ✂-Züge vom 13.11. waren Schnitte am Sprechbudget (748 Zeichen); verloren gingen ganze Sätze auf
+  `?“`/`!“` (Satzende-Lücke, `86ccdc0`). Den Schnitt am letzten Satz gab es schon in `finalize`.
+- Eine Regel: `textsplit.SENTENCE_END`/`split_sentences`, `sanitize` importiert sie (offener Punkt 12 erledigt).
+- `finalize_answer_trimmed` zählt die weggefallenen Zeichen; der Turn-Kern schreibt die ✂-Zeile (`caller_reports_cut`),
+  der Claude-Client nur noch für Recap, `!rules` und NSC-Gedächtnis.
+- Tests: `tests/test_sentence_cut.py` (Stream, Batch, Ein-Satz-Fall, beide Live-Rohtexte), Satzende-Tests in
+  `tests/test_tts_chunk.py`, Client-Test in `tests/test_claude_client.py`.
+
+_Ältere `## Last session`-Einträge: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Last session (Verlauf)`._
+
 _Aus `progress.md` rotiert (2026-11-13, NSC-Sichtungen D138):_
 
 **Fünf offene `DMBrain`-Befunde behoben, Züge über das gespeicherte Objekt erkannt (2026-11-13, kein D-Eintrag,

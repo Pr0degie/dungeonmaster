@@ -93,6 +93,7 @@ async def _claude_ping(config, model: str, timeout: float) -> None:
     client whose narration model is ``model``: a schema call would cost the aux tier a tool
     round trip just to say OK."""
     from .claude_client import ClaudeClient
+    from .failover import PING_MESSAGES, PING_OPTIONS, PING_SYSTEM  # the pause probe is this ping
 
     client = ClaudeClient(
         narration_model=model,
@@ -105,9 +106,7 @@ async def _claude_ping(config, model: str, timeout: float) -> None:
         timeout=timeout,
     )
     try:
-        await client.chat(
-            "Antworte nur mit: OK", [{"role": "user", "content": "ping"}], options={"num_predict": 8}
-        )
+        await client.chat(PING_SYSTEM, list(PING_MESSAGES), options=dict(PING_OPTIONS))
     finally:
         await client.aclose()
 
@@ -132,30 +131,37 @@ def check_claude(config, *, timeout: float = 60.0) -> bool:
     unless ``CLAUDE_ALLOW_API_KEY=1`` (the CLI ranks the key above the subscription login and would
     bill the API silently); (2) the CLI is found and runs; (3) a minimal call completes on the
     narration model and on the aux model, i.e. the login works and both names are valid. The
-    boot line names both outcomes. On False the bot still starts — the failover answers from Ollama, and this
-    message is why. Call it before the bot's event loop starts (it runs its own for the ping).
+    boot line names both outcomes. On False the bot still starts — the first DM turn then pauses the
+    game or is answered from Ollama (``DM_LLM_ON_FAILURE``), and this message is why; each message
+    says which. Call it before the bot's event loop starts (it runs its own for the ping).
     """
+    # What a failed check means at the table depends on the switch — say the true one.
+    if getattr(config, "llm_on_failure", "pause") == "pause":
+        then = "The game will pause at the first DM turn (DM_LLM_ON_FAILURE=pause)"
+    else:
+        then = "DM turns fall back to Ollama"
     if os.environ.get("ANTHROPIC_API_KEY", "").strip() and not config.claude_allow_api_key:
         log.error(
             "Claude backend refused: ANTHROPIC_API_KEY is set, and the claude CLI would bill the "
             "API instead of your subscription. Remove the variable from the environment / .env "
-            "(or set CLAUDE_ALLOW_API_KEY=1 if that is really intended). DM turns fall back to Ollama."
+            "(or set CLAUDE_ALLOW_API_KEY=1 if that is really intended). %s.", then,
         )
         return False
 
     cli = _find_claude_cli(config.claude_cli_path)
     if cli is None:
         log.error(
-            "Claude CLI not found (%s) — DM turns fall back to Ollama. Install Claude Code natively "
+            "Claude CLI not found (%s) — %s. Install Claude Code natively "
             "on this machine and log in once; see SETUP.md 'Claude backend'.",
             f"CLAUDE_CLI_PATH={config.claude_cli_path}" if config.claude_cli_path else "not on PATH",
+            then,
         )
         return False
     if sys.platform == "win32" and cli.lower().endswith((".cmd", ".bat")):
         log.error(
             "Claude CLI at %s is npm's batch shim — the Agent SDK refuses to run it on Windows. "
             "Install the native claude.exe (irm https://claude.ai/install.ps1 | iex) or point "
-            "CLAUDE_CLI_PATH at one. DM turns fall back to Ollama.", cli,
+            "CLAUDE_CLI_PATH at one. %s.", cli, then,
         )
         return False
     try:
@@ -164,8 +170,8 @@ def check_claude(config, *, timeout: float = 60.0) -> bool:
         ).stdout.strip()
     except Exception as exc:  # noqa: BLE001 — any failure means "not usable", report it
         log.error(
-            "Claude CLI at %s does not run (%s) — DM turns fall back to Ollama.",
-            cli, exc.__class__.__name__,
+            "Claude CLI at %s does not run (%s) — %s.",
+            cli, exc.__class__.__name__, then,
         )
         return False
 
@@ -190,8 +196,8 @@ def check_claude(config, *, timeout: float = 60.0) -> bool:
             )
             hint = f"The login works, so check the model name ({names})."
         log.error(
-            "Claude preflight FAILED — %s (CLI %s). DM turns fall back to Ollama. %s Cause: %s",
-            outcome, version, hint, causes,
+            "Claude preflight FAILED — %s (CLI %s). %s. %s Cause: %s",
+            outcome, version, then, hint, causes,
         )
         return False
 
