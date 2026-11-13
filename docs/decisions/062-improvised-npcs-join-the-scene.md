@@ -147,8 +147,9 @@ group that never goes there keeps her.
 - A card figure reported under a short form of her name ("Fenk", "Bree", "Cassia") with no
   statblock is recognised only where the adventure authors that short form in the statblock's
   `aliases` (#8). Names are deliberately not matched by their parts, so a short form nobody
-  wrote down still becomes a second entry beside the full name. The mechanism is built; the
-  alias lists of the two adventures are proposed and not yet in the data.
+  wrote down still becomes a second entry beside the full name. Both adventures carry alias
+  lists since 2026-11-13 (seven statblocks in the debug campaign, three in Chemical Burn,
+  whose data is local and not in the repository); a new adventure needs its own.
 - A sighting with no statblock whose label is not the role stays a second entry, as "Blinder
   Greis", "Türwächter" and "Frau hinter der Sichtklappe" did. #7 is the only lever there, and it
   is a prompt: **whether it works is shown only by a live run.** Check scene: the pawn hall —
