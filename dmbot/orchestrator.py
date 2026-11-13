@@ -535,7 +535,7 @@ class DMBrain:
         """Assemble ``(system, messages, options)`` for one DM turn — the shared head both the
         batch (:meth:`_chat_once`) and streaming (:meth:`_stream_once`) calls use, so they
         can't drift. The system-prompt slice order lives in :func:`assemble_system_prompt`; the
-        ``.get()`` cache reads stay here so the per-turn vs cached timing is unchanged. Labels
+        session's blocks are read here, per call, so a block set mid-turn reaches a retry. Labels
         become Ollama stop sequences (the anti-puppeting guard). ``temperature`` is only set by the
         opening turns (D83), which pin a lower value for steadier instruction-following; a normal
         turn passes ``None`` → the model default (unchanged)."""

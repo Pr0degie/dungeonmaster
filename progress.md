@@ -51,7 +51,13 @@ Turn-Ablauf arbeitet, liest jetzt einen Pfad statt zwei; am Tisch ändert sich n
 - Beibehalten und an der Stelle kommentiert: ein unterdrückter Echo-Zug schreibt im Batch-Pfad kein `markers` ins
   Replay, im Stream-Pfad ein leeres.
 - Nicht angefasst (außerhalb des Auftrags): zwei Docstrings in `dmbot/llm/stream_assembler.py` und je ein Kommentar
-  in `tests/test_autorecap.py` und `tests/test_consistency.py` nennen noch `_generate` / `_stream_and_store`.
+  in `tests/test_autorecap.py` und `tests/test_consistency.py` nennen noch `_generate` / `_stream_and_store`,
+  `dmbot/rules/marker.py:310` noch das Suffix `_pending_<kind>`.
+- `/code-review` auf `ddaae08..9ec06b6`: keine Regression durch den Umbau. **Offen (Tobi), nichts geändert** — sieben
+  Altbefunde, die der Umbau unverändert übernommen hat: `!redo` nach einem nicht gespeicherten Zug löscht den Zug davor;
+  `clear_history` verliert einen Zug, der während der Kompaktierung noch läuft (Listentausch, und Kopfzählung am
+  History-Limit); ein Opening mitten in der Sitzung erbt die alte `last_action`; der verworfene Konsistenz-Retry und
+  der Intro-Retry lassen Marker stehen; ein leerer Echo-Retry wird im Batch-Pfad als leerer Zug gespeichert.
 - **Live-unverifiziert.**
 
 **Kontext nach Neustart, Recap-Grenze (2026-11-13, D136 / ADR 061 Nachtrag).** Nach einem Neustart ist der Kontext
