@@ -2,7 +2,7 @@
 
 Pure and ``DMBrain``-state-free, extracted from ``orchestrator.py`` (ADR 034, E4).
 :func:`finalize_answer` is the single post-processing path shared by the batch turn
-(``DMBrain._generate`` / ``_chat_once``) and the streaming :meth:`StreamAssembler.finish`, so the
+(``DMBrain._chat_once``) and the streaming :meth:`StreamAssembler.finish`, so the
 stored history is identical for the same raw text (the parity guarantee). :class:`StreamAssembler`
 turns raw LLM deltas into speakable, already-sanitised sentences with the ADR-017 hold-back rules.
 ``DMBrain`` re-imports both from ``orchestrator`` (back-compat shim).
@@ -43,7 +43,7 @@ def finalize_answer_markers(
 ) -> tuple[str, dict[str, list]]:
     """The full non-streaming post-processing of a raw LLM answer → (clean spoken answer,
     ``{kind: parsed requests}`` keyed by the marker registry, ADR 051). The single source of
-    truth shared by the batch path (:meth:`DMBrain._generate`) and the streaming assembler's
+    truth shared by the batch path (:meth:`DMBrain._chat_once`) and the streaming assembler's
     :meth:`StreamAssembler.finish` — so the two can never drift and the stored history is
     identical for the same raw text (the parity guarantee, ADR 017)."""
     answer = _sanitize(_cut_at_labels(raw, labels)) or _sanitize(raw)

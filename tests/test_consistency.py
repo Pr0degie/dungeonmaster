@@ -283,7 +283,7 @@ def test_empty_retry_keeps_first_answer_and_its_markers() -> None:
     state = _state(_npc("Grendel", wounds=0))
     first = "Grendel sagt: Zieh! <<TEST Kampf für Timo>>"
     # the consistency retry echoes the player line twice — the echo guard's OWN retry also
-    # misfires, so _generate returns None and the guard keeps the first answer
+    # misfires, so _guarded_answer returns None and the guard keeps the first answer
     client = _SeqClient([first, "Ich sehe mich um.", "Ich sehe mich um."])
     brain = DMBrain(client, profile=_IM)
     brain.add_player_line(1, "Timo", "Ich sehe mich um.")

@@ -98,7 +98,7 @@ def test_clear_history_preserves_a_turn_appended_during_summarize() -> None:
         """While 'summarizing', a concurrent turn lands in the live history (a dice consequence)."""
 
         async def chat(self, system, messages, options=None, format=None) -> str:
-            # Simulate the dice-button turn that appended mid-await (what _stream_and_store does):
+            # Simulate the dice-button turn that appended mid-await (what _run_turn does):
             # it lands on the live list AFTER summarize captured its transcript synchronously.
             holder["brain"]._session(ch).history.append({"role": "user", "content": "[Würfel] Erfolg"})
             holder["brain"]._session(ch).history.append({"role": "assistant", "content": "Die Tür springt auf."})

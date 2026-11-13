@@ -307,7 +307,7 @@ class MarkerSpec:
     ``markers.<kind>`` key order in the ``history.jsonl`` replay journal (ADR 046) — do not
     re-sort."""
 
-    kind: str      # journal key + ``_pending_<kind>``/``take_pending_<kind>`` suffix
+    kind: str      # journal key, ``ChannelSession.pending`` key + ``take_pending_<kind>`` suffix
     keyword: str   # the ``<<KEYWORD …>>`` grammar word (documentation; the extractor owns matching)
     # Normalised call shape ``(text, profile) -> (clean, requests)``; profile-free extractors
     # simply ignore the second argument.
