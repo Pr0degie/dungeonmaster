@@ -89,9 +89,11 @@ in the "already present" list, but the classifier only ever saw their names, nev
 8. **Code decides identity**, over the same candidate set taken from the scene the sighting
    lands in. In order: the label is a known NPC's name → that NPC moves (unchanged). The
    statblock or the label names a candidate → the sighting is that person, under their own name
-   and with their statblock. The label equals a candidate's role or its leading words
-   ("Schreinschwester" for "Schreinschwester der Aschenheiligen") and fits no second candidate →
-   the same. Otherwise #2 applies.
+   and with their statblock. The label is exactly one of a candidate's authored `aliases`
+   ("Fenk" for Alter Fenk; an optional list on the statblock in `npcs.json`) → the same. The
+   label equals a candidate's role or its leading words ("Schreinschwester" for
+   "Schreinschwester der Aschenheiligen") → the same. An alias or a role that fits two
+   candidates identifies nobody; names are never matched by their parts. Otherwise #2 applies.
    **Who is a single person is read from the data, never from the name:** a figure that a scene
    card lists in `npcs_here` is one person. A statblock no scene card lists stays a template
    that lends its numbers to as many improvised people as the narration shows. One exception,
@@ -143,9 +145,10 @@ group that never goes there keeps her.
 
 **Not covered.**
 - A card figure reported under a short form of her name ("Fenk", "Bree", "Cassia") with no
-  statblock still becomes a second entry beside the full name. The adventure data has no field
-  for short names or aliases, and names are deliberately not matched by their parts. An
-  optional `aliases` list on the statblock, matched exactly like the name, would close it.
+  statblock is recognised only where the adventure authors that short form in the statblock's
+  `aliases` (#8). Names are deliberately not matched by their parts, so a short form nobody
+  wrote down still becomes a second entry beside the full name. The mechanism is built; the
+  alias lists of the two adventures are proposed and not yet in the data.
 - A sighting with no statblock whose label is not the role stays a second entry, as "Blinder
   Greis", "Türwächter" and "Frau hinter der Sichtklappe" did. #7 is the only lever there, and it
   is a prompt: **whether it works is shown only by a live run.** Check scene: the pawn hall —

@@ -20,7 +20,7 @@ import discord
 from ..discord_ui.scene import retire_scene_proposal
 from ..discord_ui.undo import SceneUndoView
 from ..llm.director_msgs import scene_rejected_note_de
-from ..llm.npc_router import card_person
+from ..llm.npc_router import Candidate, card_person
 from ..llm.scene_router import SceneExit
 from ..memory import history as history_store
 from ..memory.state import WorldState
@@ -66,8 +66,8 @@ class SceneFlowMixin:
             self._journal_scene_event(state)
             # The card's people are at home here, wherever a sighting had put them: one filed
             # in a neighbouring scene (ADR 062, amendment #8) must not stay there for good.
-            for name, _ in self._card_people(scene.id).values():
-                npc = state.find(name)
+            for person in self._card_people(scene.id).values():
+                npc = state.find(person.name)
                 if npc is not None and npc.is_npc:
                     npc.scene = ""
             cid = next((c for c, st in self._state.items() if st is state), None)
@@ -288,10 +288,10 @@ class SceneFlowMixin:
                 self.replay_note(channel, key, note)
         return out.get("scene"), out.get("fact"), out.get("npc")
 
-    def _npc_candidates(self, state: WorldState, scene_id: str) -> list[tuple[str, str]]:
-        """The single people a sighting in ``scene_id`` may turn out to be, as ``(name, role)``:
-        the card NPCs of that scene and of every exit reachable from it right now (ADR 062,
-        amendment 2026-11-13 #7/#8). The classifier is offered them with their role, and code
+    def _npc_candidates(self, state: WorldState, scene_id: str) -> list[Candidate]:
+        """The single people a sighting in ``scene_id`` may turn out to be, with role and
+        authored aliases: the card NPCs of that scene and of every exit reachable from it right
+        now (ADR 062, amendment 2026-11-13 #7/#8). The classifier is offered them, and code
         merges a sighting only into one of them.
 
         The data decides who is a person: a figure on a scene card's ``npcs_here`` is one; a
@@ -300,22 +300,22 @@ class SceneFlowMixin:
         scene = self._adventure.get_scene(scene_id) if self._adventure is not None else None
         if scene is None:
             return []
-        people: dict[str, tuple[str, str]] = {}
+        people: dict[str, Candidate] = {}
         for sid in (scene.id, *self._exit_labels(scene, state)):
             for key, person in self._card_people(sid, living_in=state).items():
                 people.setdefault(key, person)
         return list(people.values())
 
     def _card_people(self, scene_id: str, *,
-                     living_in: WorldState | None = None) -> dict[str, tuple[str, str]]:
-        """The single people on one scene's card, ``{casefolded name: (name, role)}`` — its
+                     living_in: WorldState | None = None) -> dict[str, Candidate]:
+        """The single people on one scene's card, ``{casefolded name: Candidate}`` — its
         ``npcs_here`` minus the statblocks flagged ``generic`` (see :meth:`_npc_candidates`).
 
         With ``living_in`` the dead of that state are left out: nobody new *is* a corpse. A
         second Schreinschwester after Vall's death was merged into the dead entry and was in
         neither the prompt nor the target picker (review of b71c12f)."""
         card = self._adventure.get_scene(scene_id) if self._adventure is not None else None
-        people: dict[str, tuple[str, str]] = {}
+        people: dict[str, Candidate] = {}
         for raw in (card.npcs_here if card is not None else ()):
             name = raw.strip()
             block = self._adventure.npc(name)
@@ -324,7 +324,8 @@ class SceneFlowMixin:
             known = living_in.find(name) if living_in is not None else None
             if known is not None and known.is_npc and known.wounds <= 0:
                 continue
-            people.setdefault(name.casefold(), (name, block.role_de if block else ""))
+            people.setdefault(name.casefold(), Candidate(
+                name, block.role_de if block else "", block.aliases if block else ()))
         return people
 
     def _apply_npc_sightings(self, channel, state: WorldState, verdict, scene_id: str, *,

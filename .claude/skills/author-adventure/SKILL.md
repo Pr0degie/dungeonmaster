@@ -72,7 +72,8 @@ compendium. Goal: a 50-page adventure costs an afternoon of *redigieren*, not da
               "roleplaying_de": "…", "attack_skill": "Nahkampf", "attack_value": 35,
               "weapon": "Kettenmesser", "damage": "1d10+3",
               "faction": "…",                 // optional: gossip group for NPC memory (ADR 044)
-              "goal_de": "…" } ] }            // optional: agenda goal, one sentence (ADR 049)
+              "goal_de": "…",                 // optional: agenda goal, one sentence (ADR 049)
+              "aliases": ["…"] } ] }          // optional: short names the narration uses (ADR 062)
 ```
 
 Schema gotchas (from `adventure.py` / ADR 043):
@@ -149,7 +150,11 @@ plural drift — the smoke test caught `Dregs` vs `Dreg`).
 Optional fields: `faction` (ADR 044) groups NPCs for memory gossip — set it where the book
 gives an affiliation (gang, cult, Ecclesiarchy). `goal_de` (ADR 049) makes the NPC an
 **agenda NPC** that acts offscreen between scenes — reserve it for the 2–5 NPCs that drive
-the plot (one German sentence, what they *want*), never for extras.
+the plot (one German sentence, what they *want*), never for extras. `aliases` (ADR 062,
+amendment 2026-11-13) lists the short names the narration will use for a scene-card NPC
+("Fenk" for "Alter Fenk"), so a sighting under that name is not registered as a second
+person. Only names that fit this one figure: no titles ("Schwester", "Alter"), nothing that
+could mean two NPCs of the adventure.
 
 ### 4. Summary pass
 `summary_de`: the ~300-token German GM digest of the whole arc — premise, the party's hook,

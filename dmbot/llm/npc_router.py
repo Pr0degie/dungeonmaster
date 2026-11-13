@@ -24,7 +24,7 @@ import re
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import Any, NamedTuple
 
 log = logging.getLogger(__name__)
 
@@ -74,6 +74,15 @@ class NpcVerdict:
     failure: NpcFailure | None = None
 
 
+class Candidate(NamedTuple):
+    """A scene-card person the classifier is offered and code may merge a sighting into. A
+    plain ``(name, role)`` tuple is accepted wherever candidates are."""
+
+    name: str
+    role: str = ""
+    aliases: tuple[str, ...] = ()
+
+
 ChatFn = Callable[..., Awaitable[str]]
 
 
@@ -102,15 +111,18 @@ def npc_schema(roster: Sequence[str] | None) -> dict:
 
 def npc_system(
     *, party: Sequence[str], roster: Sequence[str], present: Sequence[str],
-    candidates: Sequence[tuple[str, str]] = (),
+    candidates: Sequence[tuple] = (),
 ) -> str:
     """The classifier's system prompt — German, stateless, no narration.
 
     ``candidates`` are the scene-card NPCs of the current scene and of the exits reachable from
-    it, as ``(name, role)``: a bare name told the model nothing on 2026-11-13, when "Alter Fenk"
-    stood in the list and came back as a new "Blinder Greis"."""
-    people = "".join(f"\n  · {name} — {role}" if role else f"\n  · {name}"
-                     for name, role in candidates)
+    it (:class:`Candidate`), shown with role and short names: a bare name told the model nothing
+    on 2026-11-13, when "Alter Fenk" stood in the list and came back as a new "Blinder Greis"."""
+    people = "".join(
+        f"\n  · {c.name}" + (f" — {c.role}" if c.role else "")
+        + (f" (auch: {', '.join(c.aliases)})" if c.aliases else "")
+        for c in (Candidate(*entry) for entry in candidates)
+    )
     known = (
         "- Figuren dieses Ortes und der Nachbarorte, mit Rolle:" + people + "\n"
         "  Passt eine Person der Antwort nach Rolle, Ort oder Beschreibung auf eine dieser "
@@ -194,19 +206,26 @@ def _words(text: str) -> list[str]:
     return [w for w in (t.strip(".,;:!?()„“\"'").casefold() for t in text.split()) if w]
 
 
-def card_person(sighting: Sighting, candidates: Sequence[tuple[str, str]]) -> str:
+def card_person(sighting: Sighting, candidates: Sequence[tuple]) -> str:
     """Which scene-card NPC a sighting *is* — her name, or ``""`` for somebody else (ADR 062,
     amendment 2026-11-13 #8). Code decides identity; the verdict only names people.
 
-    In order: the statblock names a candidate; the label is a candidate's name; the label is a
-    candidate's role or its leading words ("Schreinschwester" for "Schreinschwester der
-    Aschenheiligen"). A label that fits two candidates' roles identifies nobody."""
-    by_name = {_key(name): name for name, _ in candidates if name}
+    In order: the statblock names a candidate; the label is a candidate's name; the label is
+    exactly one of a candidate's authored aliases ("Fenk"); the label is a candidate's role or
+    its leading words ("Schreinschwester" for "Schreinschwester der Aschenheiligen"). An alias
+    or a role that fits two candidates identifies nobody. Names are never matched by their
+    parts."""
+    people = [Candidate(*entry) for entry in candidates]
+    by_name = {_key(c.name): c.name for c in people if c.name}
     for probe in (sighting.statblock, sighting.label):
         if probe and _key(probe) in by_name:
             return by_name[_key(probe)]
+    called = _key(sighting.label)
+    hits = {c.name for c in people if any(_key(alias) == called for alias in c.aliases)}
+    if hits:
+        return hits.pop() if len(hits) == 1 else ""
     label = _words(sighting.label)
-    hits = {name for name, role in candidates if label and _words(role)[:len(label)] == label}
+    hits = {c.name for c in people if label and _words(c.role)[:len(label)] == label}
     return hits.pop() if len(hits) == 1 else ""
 
 
@@ -217,7 +236,7 @@ async def classify_present_npcs(
     party: Sequence[str],
     roster: Sequence[str],
     present: Sequence[str],
-    candidates: Sequence[tuple[str, str]] = (),
+    candidates: Sequence[tuple] = (),
     timeout: float | None = NPC_ROUTER_TIMEOUT,
 ) -> NpcVerdict:
     """Ask who newly appears in person this turn and return a validated verdict. Never raises."""

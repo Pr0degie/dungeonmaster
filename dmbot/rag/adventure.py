@@ -233,10 +233,18 @@ class AdventureNpc:
     # :meth:`Adventure.npc_names`, so the consistency guard (ADR 045) never presence-checks it.
     # A named individual stays False, however minor.
     generic: bool = False
+    # Short names the narration uses for this person ("Fenk" for "Alter Fenk"). Authored data,
+    # optional: a sighting whose label is exactly one of them is this person (ADR 062, amendment
+    # 2026-11-13). Never derived from the name's parts — "Alter" or "Schwester" fit too many.
+    aliases: tuple[str, ...] = ()
 
     @classmethod
     def from_dict(cls, d: dict) -> "AdventureNpc":
+        raw_aliases = d.get("aliases") or ()
+        if isinstance(raw_aliases, str):
+            raw_aliases = (raw_aliases,)
         return cls(
+            aliases=tuple(a.strip() for a in raw_aliases if isinstance(a, str) and a.strip()),
             name=str(d.get("name", "") or ""),
             role_de=str(d.get("role_de", "") or ""),
             wounds=int(d.get("wounds", 10) or 10),

@@ -1347,7 +1347,8 @@ def test_the_presence_classifier_is_offered_the_card_people_here_and_at_the_open
     state.scene_id = "schrein"                           # its exit to the pier is still gated
     _run(rt.close_turn(_FakeChannel(), "Die Schwester fegt Asche."))
 
-    here_and_next, gated = (call["candidates"] for call in brain.npc_calls)
+    here_and_next, gated = ([(c.name, c.role) for c in call["candidates"]]
+                            for call in brain.npc_calls)
     assert here_and_next == [("Seneschall Kaad", "Zöllner"), ("Schwester Vall", "Schreinschwester")]
     assert gated == [("Schwester Vall", "Schreinschwester")]
 
@@ -1366,7 +1367,7 @@ def test_a_statblock_that_is_no_single_person_stays_a_template_for_numbers() -> 
 
     _run(rt.close_turn(_FakeChannel(), "Drei Kerle treten aus dem Schatten."))
 
-    assert ("Kettenknecht", "Knecht") not in brain.npc_calls[0]["candidates"]
+    assert "Kettenknecht" not in [c.name for c in brain.npc_calls[0]["candidates"]]
     assert {n.name: n.wounds for n in state.npcs} == {"Kettenmann": 8, "Narbengesicht": 6,
                                                       "Knecht": 10}
 
@@ -1505,3 +1506,30 @@ def test_a_dead_card_figure_is_nobody_a_newcomer_can_be() -> None:
     newcomer = state.find("Schreinschwester")
     assert newcomer is not None and newcomer.wounds == 10
     assert [n.name for n in rt._scene_npcs(state)] == ["Schreinschwester"]
+
+
+def test_a_label_that_is_an_authored_alias_is_that_card_figure() -> None:
+    """``aliases`` on the statblock in npcs.json: "Fenk" is Alter Fenk. Only what the author
+    wrote counts — "Alter", a part of his name, is somebody else."""
+    from dmbot.llm.npc_router import npc_system
+
+    fenk = AdventureNpc.from_dict({"name": "Alter Fenk", "role_de": "Blinder Vogelhändler",
+                                   "wounds": 5, "aliases": ["Fenk", "  ", 7]})
+    assert fenk.aliases == ("Fenk",)                     # read from the data, junk dropped
+    adv = _adventure(fenk)
+    adv.get_scene("schrein").npcs_here.append("Alter Fenk")
+    state = _state(adv, scene_id="schrein")
+    channel = _FakeChannel()
+    brain = _npc_brain(("fenk", ""), ("Alter", ""))
+    rt = _runtime(adv, state, brain, channel, _npc_router=True, _scene_router=False,
+                  _profile=_IMPROVISED)
+    rt._set_scene(state, "schrein")                      # registers Schwester Vall and Alter Fenk
+
+    _run(rt.close_turn(channel, "Fenk hebt den Kopf. Neben ihm hustet ein Alter."))
+
+    candidates = brain.npc_calls[0]["candidates"]
+    assert ("Alter Fenk", "Blinder Vogelhändler", ("Fenk",)) in candidates
+    assert "Alter Fenk — Blinder Vogelhändler (auch: Fenk)" in npc_system(
+        party=["Fridolin"], roster=[], present=[], candidates=candidates)
+    assert [(n.name, n.wounds) for n in state.npcs] == [
+        ("Schwester Vall", 10), ("Alter Fenk", 5), ("Alter", 10)]   # no second Fenk
