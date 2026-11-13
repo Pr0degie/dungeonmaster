@@ -12,7 +12,7 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** offene `DMBrain`-Befunde behoben (13.11., bisher Nr. 2/3 und 9 der „Open questions“,
+- **Newest round:** offene `DMBrain`-Befunde behoben (13.11., bisher Nr. 2/3, 9 und 1 der „Open questions“,
   **live-unverifiziert**) — Details unter „Last session“.
   Davor: `DMBrain` entdoppelt (13.11., reiner Umbau von `orchestrator.py`, kein D-Eintrag) — `ChannelSession`
   pro Channel statt 17 Dicts, ein Turn-Kern (`_run_turn`) für Batch und Streaming, `_pending_<kind>`-Aliase weg; Schnittstelle
@@ -48,6 +48,9 @@ Befund, die xfail-Markierung fiel jeweils mit dem Fix; nach jedem pytest, ruff (
   Ein Zug, der während des Recaps läuft oder am Limit dazukommt, bleibt in der History. **Live-unverifiziert.**
 - Nr. 9 (Schlusssatz auf `?“`): `_SENTENCE_END` in `llm/sanitize.py` kennt jetzt `“` und `«` als schließende
   Anführungszeichen; `_trim_to_last_sentence` schneidet einen solchen Satz nicht mehr ab. **Live-unverifiziert.**
+- Nr. 1 (`!redo`): `_redo` löscht das letzte History-Paar nur noch, wenn dessen Spielerzeile die des
+  wiederholten Zugs ist; nach einem unterdrückten oder fehlgeschlagenen Zug bleibt der Zug davor stehen.
+  **Live-unverifiziert.**
 
 **`DMBrain` entdoppelt (2026-11-13, reiner Umbau von `dmbot/orchestrator.py`, kein D-Eintrag).** Wer am
 Turn-Ablauf arbeitet, liest jetzt einen Pfad statt zwei; am Tisch ändert sich nichts. Sechs Commits
@@ -263,11 +266,11 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 
 ## Open questions / to clarify
 
-**Offene `DMBrain`-Befunde (2026-11-13) — dokumentiert; Nr. 2, 3 und 9 behoben (13.11., live-unverifiziert), der Rest offen.** Nr. 1–7 stammen aus
+**Offene `DMBrain`-Befunde (2026-11-13) — dokumentiert; Nr. 1, 2, 3 und 9 behoben (13.11., live-unverifiziert), der Rest offen.** Nr. 1–7 stammen aus
 `/code-review` auf `ddaae08..9ec06b6` (aus dem Code hergeleitet; der Umbau hat sie unverändert übernommen), Nr. 8–11
 aus dem Live-Lauf 01:48–02:16; alle gab es schon vor dem Umbau. Die Tests stehen als `xfail(strict=True)` in
 `tests/test_orchestrator_open_findings.py`; der Fix muss die Markierung entfernen.
-1. `!redo` nach einem nicht gespeicherten Zug löscht den Zug davor —
+1. **Behoben 13.11., live-unverifiziert.** `!redo` nach einem nicht gespeicherten Zug löschte den Zug davor —
    `test_redo_after_a_suppressed_turn_keeps_the_turn_before_it`.
 2. **Behoben 13.11., live-unverifiziert.** `clear_history` tauschte die geleerte Liste aus; ein Zug, der dann noch läuft, geht verloren —
    `test_a_turn_still_in_flight_survives_the_compaction_wipe`. Der bestehende Test

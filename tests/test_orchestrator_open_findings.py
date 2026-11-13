@@ -119,10 +119,6 @@ def test_a_turn_appended_during_summarize_survives_at_the_history_cap() -> None:
 
 # ---- redo ----------------------------------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason=(
-    "redo drops the last history pair on a role check alone; after a turn that was never "
-    "stored (echo-suppressed, or the LLM call failed) that pair is the turn BEFORE the one "
-    "being redone (code review 2026-11-13, finding 1)"))
 def test_redo_after_a_suppressed_turn_keeps_the_turn_before_it() -> None:
     ch = 1
     brain = DMBrain(_Script([

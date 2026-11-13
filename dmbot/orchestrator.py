@@ -388,8 +388,11 @@ class DMBrain:
             len(history) >= 2
             and history[-1]["role"] == "assistant"
             and history[-2]["role"] == "user"
+            and history[-2]["content"] == user_msg
         ):
-            del history[-2:]  # drop the turn we're redoing so it isn't duplicated
+            # Drop the turn we're redoing so it isn't duplicated — only if it was stored: after a
+            # suppressed or failed turn the last pair is the turn BEFORE it (finding 1).
+            del history[-2:]
         self._drop_pending(channel_id)  # the redo supersedes the old turn's marker requests
         await self._refresh_rag(channel_id, user_msg)
         return await self._run_turn(session, user_msg, labels, history, sink=sink, check=check)
