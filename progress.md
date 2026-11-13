@@ -14,7 +14,7 @@ is on-demand._
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
 - **Newest round:** `DMBrain` entdoppelt (13.11., reiner Umbau von `orchestrator.py`, kein D-Eintrag) — `ChannelSession`
   pro Channel statt 17 Dicts, ein Turn-Kern (`_run_turn`) für Batch und Streaming, `_pending_<kind>`-Aliase weg; Schnittstelle
-  unverändert. 1381 Tests grün, 10 xfail (3 NSC-Sichtung, ADR 062; 7 `DMBrain`-Altbefunde), `dm-eval` Exit 0. **Live-unverifiziert.**
+  unverändert. 1381 Tests grün, 10 xfail (3 NSC-Sichtung, ADR 062; 7 `DMBrain`-Altbefunde), `dm-eval` Exit 0. Live gesehen 13.11. (22 Züge), `!leave` steht aus.
   Davor (13.11., D136 / ADR 061 Nachtrag): Auto-Recap markiert sich im Autosave-Journal, Recap unter Claude mit eigener
   Grenze — beides live gesehen, der Neustart danach noch nicht.
   Davor (12.11., D135 / ADR 065): `runtime.py` in sieben Mixin-Module unter `dmbot/session/` zerlegt (1949 → 844 Zeilen).
@@ -69,7 +69,20 @@ Turn-Ablauf arbeitet, liest jetzt einen Pfad statt zwei; am Tisch ändert sich n
      `test_a_discarded_weak_opening_leaves_no_markers_behind`.
   7. Ein leerer Echo-Retry wird im Batch-Pfad als leerer Zug gespeichert —
      `test_an_empty_echo_retry_stores_no_empty_turn`.
-- **Live-unverifiziert.**
+- **Live gesehen (2026-11-13, 01:48–02:08, 22 Züge über Claude, alle gestreamt):** normaler Zug, `!redo` (ein Paar im
+  Speicher, Journal-Record mit `redo: true`), drei Proben (Router-Wurf, Manifestation, Wurf mit Schicksalspunkt) mit
+  `[Würfel]`-Folgezug ohne neue Probe, `[Regie]`-Hinweis genau einmal, Szenenwechsel, Auto-Recap (02:05:47–02:06:01,
+  1156 Zeichen, nicht gekappt, `compact`-Ereignis `keep: 0`, Prompt danach 14.792 statt 21.505 Tokens). Keine
+  Tracebacks, keine Echo- oder Konsistenz-Meldung, kein Failover, kein 429. **Offen:** `!leave` (Rotation,
+  Session-Ingest) steht bis 02:15 nicht im Log, der Bot war noch im Kanal. `CLAUDE_NUM_CTX` stand auf 24576, nicht 18000.
+- **Im selben Lauf, schon vor dem Umbau so (Tobi, nichts geändert):**
+  - Altbefund 3 ist eingetreten: beim Recap-Start stand die History genau am Limit (40 Nachrichten), Zug 20 („Ich
+    erzähle ihr, wer mich schickt.“, fertig 02:05:49) kam während des Zusammenfassens dazu. Er fehlt im Recap; laut
+    Code hat `clear_history` ihn mitgelöscht (im Log nicht direkt sichtbar). Im Journal steht er hinter dem
+    `compact`-Ereignis, ein Neustart lädt ihn wieder.
+  - Die Replay-Felder im Journal (`lines`/`results`/`raw`/`markers`) gehören bei 13 von 22 Zügen zum Folgezug, weil der
+    schon lief, bevor die Wiedergabe des Zugs endete; 7 weitere Records haben gar keine (31.10.: 6 von 21 falsch).
+  - 7 von 22 Antworten bei 220 Tokens gekappt (✂); der Spieler hat es um 02:01 bemängelt.
 
 **Kontext nach Neustart, Recap-Grenze (2026-11-13, D136 / ADR 061 Nachtrag).** Nach einem Neustart ist der Kontext
 nicht mehr sofort voll, und der Recap verliert sein Ende nicht mehr. Befund aus `debug.log`: acht der letzten zehn
