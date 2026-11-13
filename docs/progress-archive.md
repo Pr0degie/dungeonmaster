@@ -12,6 +12,31 @@ offene Fragen) steht in [`../progress.md`](../progress.md), das Decision-Log in
 
 _Index, aus `progress.md` verschoben (2026-10-25):_ Ältere `## Last session`-Einträge (`DM_CLOCKS`-Schalter D118 2026-10-06, Charakter-Akten `docs/characters.html` + Umbenennung Rene Redo 2026-08-22, Vierter Charakter Vinzentius Kabelbrand D105 2026-08-22 [90-Punkte-Bogen gegen das Profil gerechnet, Deployment in beide `characters.json`, Augmetik-Check reaktiviert], Playtest-Triage nach dem ersten Debug-Abend 2026-08-15 [Fehlstart in der Live-Kampagne, `session_file()`-Naht, Sanitize, Testabend-Doku, Kommando-Fehlermeldung → ADR 056], Doku-Drift-Sweep 2026-07-18 [5 Drift-Funde, alle gefixt; ADR-Renumber 019/020], Debug-Sandbox + Gate G10 2026-07-17 [`.debug`-Archive → `session_debug`-Source, `--wipe-debug` → ADR 055], Session-RAG-Runde D101 2026-07-17 [Ingest + Hybrid-Retrieval + Kalibrierung, Verifier-Fund `session_chunks_vec` → ADR 054], Journal-Runde D100 2026-07-17 [Scene-Events + `time_minutes` im Journal → ADR 053], Content-Runde Debug-Kampagne „Die Mitternachtsfracht“ 2026-07-11 [adventure/npcs/testplan lokal, `validate.py` RESULT: OK, Gate-Abdeckung G1–G9 → Runbook], D99 🧪-Debug-Overlay-Runde 2026-07-11 [Sidecar-Loader `testplan.py`, edit-in-place-Panel, Invisibility-Pin → ADR 052], Live-Gate-Triage 2026-07-11 [alle 8 Gates + Tuning-Checks in EIN Abend-Drehbuch gemerged, `docs/live-run-script.md`; Checklisten-Korrekturen per Code-Sweep], Workflow-Migration Runde 4/5 2026-07-11 [roadmap-Modell-Tabelle → Effort-first-Block + konservativer Skill-Sweep], Doc-Diet-Runde 2026-07-11 [State header + Rotation + Decision-Log-Diät], D98 Marker-Registry-Konsolidierung [`MarkerSpec`-Tabelle + eine generische Naht, marker-weise migriert → ADR 051], D97 Chekhov-Liste [Fäden-Schema + Wrap-up-Extraktion + Top-3-Injektion + ChekhovCog → ADR 050], D96 NPC-Agenden [`goal` + `agenda_log` + Extraktor-Erweiterung → ADR 049], D95 Ingame-Zeit [Minuten-Zähler + `<<ZEIT>>`-Marker + Fristen + Druck-Panel → ADR 048], D94 Consequence Clocks [`<<UHR id>>`-Marker + ClockCog + Druck-Panel + Voll-Uhr-`[Regie]`-Note → ADR 047], D93 Replay-Eval-Harness [Replay-Journal + `uv run dm-eval`, 6 Diff-Kategorien, synthetische Goldens → ADR 046], D92 Konsistenz-Wächter [deterministischer Pre-Delivery-Check, Regenerate-once, fail-open → ADR 045], D91 NPC-Gedächtnis [NpcMemory-Schema + Extraktor + Lügen-Flip/Gossip + Prompt-Block → ADR 044], D90 `dm-sync`-Entry-Point [Package-Move + hatchling, byte-identischer `[sync]`-Block], D89 Sync-Check-Fingerprint-Tool [`[sync]`-Block, Ingest-Stempel, SETUP.md-Sync-Sektion], D88 `/author-adventure`-Authoring-Skill [5-Pass-Workflow + `validate.py`, Dry-Run-Abnahme gegen Chemical Burn], D87 Stateful Scene Cards [`<<ERLEDIGT>>`-Flags, tote NSCs, gated Exits → ADR 043], D85+D86 Spielbarkeits-Tuning [repeat_penalty + Roll-Router-Carve-out, `intro_guard`-Retry], D84 `!intro`-Meta-Auftakt-Strip + Temp 0.7, D83 `!intro`-Temperatur + Direktive, D82 Default-Party-Fix, D81 Scene-/Lore-Sub-Cogs, D80 Deepening #4–#6 [prompt_assembly/seed_session/clear_panel], D79 Deepening #1+#2 [`combat.py`-Auslagerung + `segments.py`-Verdrahtung], D78 Skill-Tooling-Runde [4 Claude-Code-Skills: /tdd, /grill-me, /improve-architecture, /to-prd], D77 Dev-Gates [Lint-Stop-Hook + blockierender git-pre-commit + Review/Simplify-Checkliste], D76 `disconnect_voice`-Kontrakt + neuer Delivery-Test, D75 One-Shot-Setup, D74
 
+_Aus `progress.md` rotiert (2026-11-13, Satzschnitt-Runde D137):_
+
+**`DMBrain` entdoppelt (2026-11-13, reiner Umbau von `dmbot/orchestrator.py`, kein D-Eintrag).** Wer am
+Turn-Ablauf arbeitet, liest jetzt einen Pfad statt zwei; am Tisch ändert sich nichts. Sechs Commits
+(`648b3a0` bis `a42c03d`), nach jedem pytest, ruff (F) und `dm-eval` — dessen Ausgabe blieb gleich.
+- `ChannelSession` hält den Zustand eines Channels (History, Buffer, Pending-Marker, Prompt-Blöcke, Replay) statt
+  17 Dicts; `DMBrain._session(ch)` legt sie unter dem Lock an. `reset()` setzt dieselben Felder zurück wie vorher.
+- Ein Turn-Kern: `_guarded_answer` (erster Versuch über `_chat_once` oder `_stream_once`, Echo-Guard, Marker) und
+  `_run_turn` (Intro-Guard, Konsistenz-Guard, History-Eintrag). `respond`, `redo`, `respond_opening` und ihre
+  Streaming-Zwillinge sind Hüllen über `_respond`, `_redo`, `_opening`; `_generate` und `_stream_and_store` sind weg.
+- Die `_pending_<kind>`-Aliase sind weg, die sechs `take_pending_<kind>`-Wrapper bleiben (Cogs, Delivery, `dm-eval`).
+- Beibehalten und an der Stelle kommentiert: ein unterdrückter Echo-Zug schreibt im Batch-Pfad kein `markers` ins
+  Replay, im Stream-Pfad ein leeres.
+- `/code-review` auf `ddaae08..9ec06b6`: keine Regression durch den Umbau. Es fand sieben Altfehler, die der Umbau
+  unverändert übernommen hat; der Live-Lauf brachte vier weitere Punkte. Alle elf stehen unter „Open questions“,
+  neun mit `xfail(strict=True)`-Test in `tests/test_orchestrator_open_findings.py`. Nichts davon ist behoben.
+- **Live gesehen (2026-11-13, 01:48–02:08, 22 Züge über Claude, alle gestreamt):** normaler Zug, `!redo` (ein Paar im
+  Speicher, Journal-Record mit `redo: true`), drei Proben (Router-Wurf, Manifestation, Wurf mit Schicksalspunkt) mit
+  `[Würfel]`-Folgezug ohne neue Probe, `[Regie]`-Hinweis genau einmal, Szenenwechsel, Auto-Recap (02:05:47–02:06:01,
+  1156 Zeichen, nicht gekappt, `compact`-Ereignis `keep: 0`, Prompt danach 14.792 statt 21.505 Tokens). Keine
+  Tracebacks, keine Echo- oder Konsistenz-Meldung, kein Failover, kein 429. `!leave` um 02:16:34: Journal rotiert nach
+  `history.20261113-021634.debug.jsonl`, Session-Ingest 02:16:37 mit 22 Chunks (Store gleich den neu gebauten Chunks,
+  Redo-Antwort drin, ersetzte Antwort nicht). `CLAUDE_NUM_CTX` stand auf 24576, nicht 18000. Befund 3 (Zug fällt am
+  History-Limit aus dem Kontext) ist in diesem Lauf eingetreten.
+
 _Aus `progress.md` rotiert (2026-11-13, Wrap-up der `DMBrain`-Befund-Runde):_
 
 **Kontext nach Neustart, Recap-Grenze (2026-11-13, D136 / ADR 061 Nachtrag).** Nach einem Neustart ist der Kontext

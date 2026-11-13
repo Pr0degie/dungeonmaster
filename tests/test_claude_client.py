@@ -23,6 +23,7 @@ from dmbot.llm.claude_client import (
     render_transcript,
 )
 from dmbot.llm.client import LLMBackendError
+from dmbot.llm.cut_report import caller_reports_cut
 
 _USER = [{"role": "user", "content": "Timo: Ich öffne die Tür."}]
 _SCHEMA = {"type": "object", "properties": {"probe": {"type": "string"}}, "required": ["probe"]}
@@ -399,6 +400,26 @@ def test_narration_is_cut_at_the_first_max_tokens_stop(fake, client, caplog):
     assert query.closed == 1 and query.yielded == 6
     warnings = [r.getMessage() for r in caplog.records]
     assert warnings == ["✂ Antwort an der Ausgabegrenze abgeschnitten (220/220 Tokens)"]
+
+
+def test_a_dm_turn_leaves_the_cut_line_to_the_turn_core(fake, client, caplog):
+    """Within ``caller_reports_cut`` (a DM turn) the client writes no ✂ line — the turn core does,
+    with the dropped characters — but hands the numbers over in ``last_stats``."""
+    fake(
+        _INIT, _start(input_tokens=600), _delta("Der Gang "), _delta("ist lang"),
+        _assistant(sdk.TextBlock("Der Gang ist lang")), _stop("max_tokens", 220),
+        _result(result="nie erreicht"),
+    )
+
+    async def turn():
+        with caller_reports_cut():
+            return await _drain(client.chat_stream("s", _USER, options={"num_predict": 220}))
+
+    with caplog.at_level(logging.WARNING, logger="dmbot.llm.claude_client"):
+        asyncio.run(turn())
+    assert client.last_stats["truncated"] is True
+    assert client.last_stats["cut_tokens"] == 220 and client.last_stats["cap"] == 220
+    assert [r.getMessage() for r in caplog.records] == []
 
 
 def test_batch_narration_is_cut_the_same_way(fake, client, caplog):

@@ -379,8 +379,16 @@ def _trim_to_last_sentence(text: str) -> str:
     """If a turn was cut mid-sentence (it hit the ``num_predict`` cap), drop the dangling
     fragment so TTS doesn't read half a sentence aloud. Only trims when there *is* a complete
     sentence to fall back to and real text follows it; a fully-punctuated answer is unchanged."""
+    return _trim_to_last_sentence_counted(text)[0]
+
+
+def _trim_to_last_sentence_counted(text: str) -> tuple[str, int]:
+    """:func:`_trim_to_last_sentence` plus the number of characters of the dropped fragment
+    (surrounding whitespace not counted) — 0 when nothing was dropped. The ✂ line of a cut turn
+    names it (ADR 061, amendment 2026-11-13, second)."""
     ends = list(_SENTENCE_END.finditer(text))
     if not ends:
-        return text  # nothing to fall back to — leave it rather than nuke the whole turn
+        return text, 0  # nothing to fall back to — leave it rather than nuke the whole turn
     last = ends[-1].end()
-    return text[:last].strip() if text[last:].strip() else text
+    fragment = text[last:].strip()
+    return (text[:last].strip(), len(fragment)) if fragment else (text, 0)

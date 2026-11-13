@@ -47,6 +47,7 @@ from pathlib import Path
 from typing import Any
 
 from .client import LLMBackendError
+from .cut_report import caller_reports
 
 log = logging.getLogger(__name__)
 
@@ -506,6 +507,10 @@ class ClaudeClient:
         else:
             shown = "?"
         if call.narration:
+            stats = self.last_stats
+            stats["cut_tokens"], stats["cap"] = shown, call.cap
+            if caller_reports():
+                return  # a DM turn: the turn core writes the line, with the dropped characters
             # Measured, not fixed (ADR 061): every end-of-answer marker sits where the cap cuts.
             log.warning("✂ Antwort an der Ausgabegrenze abgeschnitten (%s/%s Tokens)", shown, call.cap or "?")
         else:

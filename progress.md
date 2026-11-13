@@ -12,11 +12,11 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** fünf offene `DMBrain`-Befunde behoben (Nr. 1–4, 9), Züge über das gespeicherte Objekt erkannt
-  statt über Zähler oder Text (13.11., **live-unverifiziert**). 1399 Tests grün, 7 xfail (3 NSC-Sichtung, ADR 062;
-  4 offene `DMBrain`-Befunde), `dm-eval` Exit 0.
-  Davor (13.11.): `DMBrain` entdoppelt (reiner Umbau, live gesehen, 22 Züge); D136 / ADR 061 Nachtrag (Auto-Recap im
-  Journal markiert, Recap-Grenze unter Claude, live gesehen). D135 / ADR 065 (12.11.), D134 (31.10., live-unverifiziert).
+- **Newest round:** D137 / ADR 061 Nachtrag — eine Satzende-Regel für Sanitizer, Stream und TTS; ein gekappter Zug
+  endet am letzten ganzen Satz, die ✂-Zeile nennt die weggefallenen Zeichen (13.11., **live-unverifiziert**).
+  1411 Tests grün, 7 xfail, `dm-eval` Exit 0.
+  Davor (13.11.): fünf offene `DMBrain`-Befunde behoben (live-unverifiziert); `DMBrain` entdoppelt (live gesehen);
+  D136 / ADR 061 Nachtrag (live gesehen). D135 / ADR 065 (12.11.), D134 (31.10., live-unverifiziert).
 - **Next concrete step:** der fünfte Lauf mit Bot A (die Neustart-Probe ist bestanden); vorher entscheiden, welche der neun
   noch offenen `DMBrain`-Punkte („Open questions“) behoben werden, und in `#bot-commands` die alten GIF-Sätze löschen (nur die
   von 01:49 zählen). Prüfliste: Abschnitt „Next concrete step“; dort auch die Entscheidung zum nächsten Sprach-Trigger.
@@ -35,6 +35,18 @@ _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-a
 
 ## Last session
 
+**Satzschnitt: ein gekappter Zug endet am letzten ganzen Satz (2026-11-13, D137 / ADR 061 Nachtrag, live-unverifiziert).**
+Am Tisch: Ein NSC-Satz auf `?“` oder `!“` vor dem Schnitt wird gesprochen und gespeichert; ein angefangener letzter Satz
+fällt in Sprache, History, Journal und Chat gleichermaßen weg. Zwei Commits (`af5056e` und der Folge-Commit), nach jedem
+pytest (1411 grün, 7 xfail), ruff (F), `dm-eval` (Exit 0).
+- Befund: Die sieben ✂-Züge vom 13.11. waren Schnitte am Sprechbudget (748 Zeichen); verloren gingen ganze Sätze auf
+  `?“`/`!“` (Satzende-Lücke, `86ccdc0`). Den Schnitt am letzten Satz gab es schon in `finalize`.
+- Eine Regel: `textsplit.SENTENCE_END`/`split_sentences`, `sanitize` importiert sie (offener Punkt 12 erledigt).
+- `finalize_answer_trimmed` zählt die weggefallenen Zeichen; der Turn-Kern schreibt die ✂-Zeile (`caller_reports_cut`),
+  der Claude-Client nur noch für Recap, `!rules` und NSC-Gedächtnis.
+- Tests: `tests/test_sentence_cut.py` (Stream, Batch, Ein-Satz-Fall, beide Live-Rohtexte), Satzende-Tests in
+  `tests/test_tts_chunk.py`, Client-Test in `tests/test_claude_client.py`.
+
 **Fünf offene `DMBrain`-Befunde behoben, Züge über das gespeicherte Objekt erkannt (2026-11-13, kein D-Eintrag,
 alles live-unverifiziert).** Am Tisch: ein Schlusssatz auf `?“` wird wieder gesprochen, ein Zug während des Auto-Recaps
 bleibt im Kontext und im Journal, `!redo` löscht nie mehr den Zug davor, ein Opening mitten in der Sitzung würfelt nicht.
@@ -48,40 +60,17 @@ Sechs Commits (`d87b673` bis `69ab361`), nach jedem pytest, ruff (F), `dm-eval` 
 - Tests: fünf xfails grün, `tests/test_turn_identity.py`, `tests/test_journal_per_delivery_path.py` (Batch und Stream ×
   Zug/Redo/Opening, je genau ein Journal-Eintrag). 1399 grün, 7 xfail. Offen aus dem Review: Nr. 12–14 („Open questions“).
 
-**`DMBrain` entdoppelt (2026-11-13, reiner Umbau von `dmbot/orchestrator.py`, kein D-Eintrag).** Wer am
-Turn-Ablauf arbeitet, liest jetzt einen Pfad statt zwei; am Tisch ändert sich nichts. Sechs Commits
-(`648b3a0` bis `a42c03d`), nach jedem pytest, ruff (F) und `dm-eval` — dessen Ausgabe blieb gleich.
-- `ChannelSession` hält den Zustand eines Channels (History, Buffer, Pending-Marker, Prompt-Blöcke, Replay) statt
-  17 Dicts; `DMBrain._session(ch)` legt sie unter dem Lock an. `reset()` setzt dieselben Felder zurück wie vorher.
-- Ein Turn-Kern: `_guarded_answer` (erster Versuch über `_chat_once` oder `_stream_once`, Echo-Guard, Marker) und
-  `_run_turn` (Intro-Guard, Konsistenz-Guard, History-Eintrag). `respond`, `redo`, `respond_opening` und ihre
-  Streaming-Zwillinge sind Hüllen über `_respond`, `_redo`, `_opening`; `_generate` und `_stream_and_store` sind weg.
-- Die `_pending_<kind>`-Aliase sind weg, die sechs `take_pending_<kind>`-Wrapper bleiben (Cogs, Delivery, `dm-eval`).
-- Beibehalten und an der Stelle kommentiert: ein unterdrückter Echo-Zug schreibt im Batch-Pfad kein `markers` ins
-  Replay, im Stream-Pfad ein leeres.
-- `/code-review` auf `ddaae08..9ec06b6`: keine Regression durch den Umbau. Es fand sieben Altfehler, die der Umbau
-  unverändert übernommen hat; der Live-Lauf brachte vier weitere Punkte. Alle elf stehen unter „Open questions“,
-  neun mit `xfail(strict=True)`-Test in `tests/test_orchestrator_open_findings.py`. Nichts davon ist behoben.
-- **Live gesehen (2026-11-13, 01:48–02:08, 22 Züge über Claude, alle gestreamt):** normaler Zug, `!redo` (ein Paar im
-  Speicher, Journal-Record mit `redo: true`), drei Proben (Router-Wurf, Manifestation, Wurf mit Schicksalspunkt) mit
-  `[Würfel]`-Folgezug ohne neue Probe, `[Regie]`-Hinweis genau einmal, Szenenwechsel, Auto-Recap (02:05:47–02:06:01,
-  1156 Zeichen, nicht gekappt, `compact`-Ereignis `keep: 0`, Prompt danach 14.792 statt 21.505 Tokens). Keine
-  Tracebacks, keine Echo- oder Konsistenz-Meldung, kein Failover, kein 429. `!leave` um 02:16:34: Journal rotiert nach
-  `history.20261113-021634.debug.jsonl`, Session-Ingest 02:16:37 mit 22 Chunks (Store gleich den neu gebauten Chunks,
-  Redo-Antwort drin, ersetzte Antwort nicht). `CLAUDE_NUM_CTX` stand auf 24576, nicht 18000. Befund 3 (Zug fällt am
-  History-Limit aus dem Kontext) ist in diesem Lauf eingetreten.
-
 _Ältere `## Last session`-Einträge: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Last session (Verlauf)`._
 
 ## Next concrete step
 
-**Vor dem Abend entscheiden (Tobi):** (1) Sprechbudget — 748 Zeichen griffen bei vier von fünf Opus-Antworten am
-12./13.11.; dazu die Lücke, dass ein Satz auf `.“` vor dem Schnitt mit wegfällt (ADR 061, Nachtrag 13.11.).
-Am 13.11. (01:48–02:16) waren zusätzlich 7 von 22 Antworten an der Ausgabegrenze von 220 Tokens gekappt (✂); der
-Spieler hat es um 02:01 bemängelt.
+**Vor dem Abend entscheiden (Tobi):** (1) Sprechbudget (`DM_NUM_PREDICT`) — 748 Zeichen griffen bei vier von fünf
+Opus-Antworten am 12./13.11. und bei 7 von 22 am 13.11. (01:48–02:16; ✂ „220/220“ = Sprechbudget); der Spieler hat
+es um 02:01 bemängelt. Ein gekappter Zug endet jetzt am letzten ganzen Satz (D137, live-unverifiziert); am Abend auf
+die ✂-Zeile mit „… Zeichen am Ende weggefallen“ achten.
 (2) Ob die drei NSC-xfails (ADR 062, „Open questions“) vor dem Abend behoben werden — sie treffen jeden Zug, in dem
 die Gruppe an einem neuen Ort ankommt und dort jemanden sieht.
-(3) Welche der neun noch offenen `DMBrain`-Punkte („Open questions“: Nr. 5–8, 10–14) vorher behoben werden.
+(3) Welche der noch offenen `DMBrain`-Punkte („Open questions“: Nr. 5–8, 10, 11, 13–15) vorher behoben werden.
 Nr. 1–4 und 9 sind behoben (13.11., live-unverifiziert); am Abend darauf achten: Schlusssatz auf `?“` wird
 gesprochen, ein Zug während des Auto-Recaps bleibt im Kontext, `!redo` nach unterdrücktem Zug, Opening mitten in der Sitzung.
 
@@ -239,7 +228,7 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 
 ## Open questions / to clarify
 
-**Offene `DMBrain`-Befunde (2026-11-13) — dokumentiert; Nr. 1–4 und 9 behoben (13.11., live-unverifiziert), der Rest offen; Nr. 12–14 kamen aus dem `/code-review` der Fixes.** Nr. 1–7 stammen aus
+**Offene `DMBrain`-Befunde (2026-11-13) — dokumentiert; Nr. 1–4, 9 und 12 behoben (13.11., live-unverifiziert), der Rest offen; Nr. 12–14 kamen aus dem `/code-review` der Fixes.** Nr. 1–7 stammen aus
 `/code-review` auf `ddaae08..9ec06b6` (aus dem Code hergeleitet; der Umbau hat sie unverändert übernommen), Nr. 8–11
 aus dem Live-Lauf 01:48–02:16; alle gab es schon vor dem Umbau. Die Tests stehen als `xfail(strict=True)` in
 `tests/test_orchestrator_open_findings.py`; der Fix muss die Markierung entfernen.
@@ -281,10 +270,8 @@ aus dem Live-Lauf 01:48–02:16; alle gab es schon vor dem Umbau. Die Tests steh
     (17 mit Zügen) endete einer so. Die rotierte Datei enthielt 57 Züge aus vier Tagen (30.10.: 10, 31.10.: 21,
     12.11.: 2, 13.11.: 24); der Session-Ingest hat sie als 22 Chunks unter „Session vom 13.11.“ abgelegt. Bis
     dahin war nichts davon im Kampagnengedächtnis. Kein Test.
-12. (Review `e4cb0a2..fdf64c6`) `tts/textsplit.py` kennt `“` und `«` nicht als Satzende (`_SENTENCE_BOUNDARY`,
-    `_ENDS_SENTENCE`, `_SENTENCE_SPLIT`), `llm/sanitize._SENTENCE_END` seit Fix 9 schon — zwei Satzende-Regeln, die sich
-    widersprechen. Folge: Latenz, kein Textverlust (zwei Sätze wie „…?“ Dann …“ gehen als ein Stück an die
-    Sprachausgabe). **Die Satzende-Regel wird in der Satzschnitt-Runde vereinheitlicht.** Kein Test.
+12. **Behoben 13.11. (`af5056e`, D137), live-unverifiziert.** `tts/textsplit.py` und `llm/sanitize.py` hatten zwei
+    Satzende-Regeln, die sich bei `“` und `«` widersprachen; jetzt eine (`textsplit.SENTENCE_END`).
 13. (Review `e4cb0a2..fdf64c6`) Ein `!start`/`!intro` mitten in einem laufenden Spielerzug setzt seit Fix 4
     `last_action` zurück; `_queue_markers` liest den Wert erst beim Einreihen, der Spielerzug verliert seinen
     `<<TEST>>`. Selten (jemand tippt `!start`, während der DM streamt). Kern: `queued` gehört pro Zug in den
@@ -295,6 +282,9 @@ aus dem Live-Lauf 01:48–02:16; alle gab es schon vor dem Umbau. Die Tests steh
     (Ein unterdrückter Zug ist nicht betroffen: er steht mit leerer Antwort im Journal, der Redo ersetzt genau ihn.
     Ein Stream-Fehler ohne Text speichert ein leeres Paar — Speicher und Journal stimmen, das leere Paar steht aber bis
     zum Redo in der History.) Aus dem Code hergeleitet. Kein Test.
+15. (D137) Unter Ollama schreibt ein gekappter Zug keine ✂-Zeile: `OllamaClient` liest `done_reason` nicht und meldet
+    kein `truncated`. Gekürzt wird der Zug trotzdem (der Schnitt am letzten Satz gilt für jede Antwort). Bewusst
+    weggelassen (Tobi, 13.11.); Fix wäre `done_reason == "length"` → `truncated` in `client.py`. Kein Test.
 
 **Aus dem Debug-Lauf (2026-11-13, Zug von 00:40) — dokumentiert und reproduziert, nicht behoben (ADR 062):**
 Belege: [npc-sighting-stale-scene-2026-11-13.md](docs/plans/npc-sighting-stale-scene-2026-11-13.md). Die drei Tests

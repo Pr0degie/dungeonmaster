@@ -20,7 +20,7 @@ from .sanitize import (
     _sanitize,
     _sanitize_leading,
     _strip_leading_label,
-    _trim_to_last_sentence,
+    _trim_to_last_sentence_counted,
 )
 from ..rules.marker import (
     ClockTickRequest,
@@ -41,11 +41,24 @@ log = logging.getLogger(__name__)
 def finalize_answer_markers(
     raw: str, labels: list[str], profile: SystemProfile | None
 ) -> tuple[str, dict[str, list]]:
+    """:func:`finalize_answer_trimmed` without the count of dropped characters."""
+    answer, markers, _dropped = finalize_answer_trimmed(raw, labels, profile)
+    return answer, markers
+
+
+def finalize_answer_trimmed(
+    raw: str, labels: list[str], profile: SystemProfile | None
+) -> tuple[str, dict[str, list], int]:
     """The full non-streaming post-processing of a raw LLM answer → (clean spoken answer,
     ``{kind: parsed requests}`` keyed by the marker registry, ADR 051). The single source of
     truth shared by the batch path (:meth:`DMBrain._chat_once`) and the streaming assembler's
     :meth:`StreamAssembler.finish` — so the two can never drift and the stored history is
-    identical for the same raw text (the parity guarantee, ADR 017)."""
+    identical for the same raw text (the parity guarantee, ADR 017).
+
+    The third value is how many characters a dangling last fragment had that was dropped — any
+    answer that ends mid-sentence is cut back to its last complete sentence, whether or not the
+    backend reported a cut (ADR 061, amendment 2026-11-13, second). The turn core names it in the
+    ✂ line."""
     answer = _sanitize(_cut_at_labels(raw, labels)) or _sanitize(raw)
     answer = _drop_puppet_speech(answer, labels)  # the DM speaks NSCs, never the players (D113)
     # The meta filter (D112) can eat an entire answer — the model wrote nothing but assistant
@@ -55,8 +68,8 @@ def finalize_answer_markers(
     meta_only = bool(raw.strip()) and not answer.strip()
     answer = _strip_leading_label(answer, labels)  # kill a leaked leading "Name:"/"DM:" label
     answer, markers = extract_all(answer, profile)  # strip every <<…>> marker in registry order
-    answer = _trim_to_last_sentence(answer)
-    return (META_FALLBACK_DE if meta_only else answer), markers
+    answer, dropped = _trim_to_last_sentence_counted(answer)
+    return (META_FALLBACK_DE if meta_only else answer), markers, dropped
 
 
 def finalize_answer(
@@ -98,6 +111,7 @@ class StreamResult:
     remaining: list[str]
     answer: str
     markers: dict[str, list]
+    dropped: int = 0  # characters of a dangling last fragment cut from ``answer``
 
     def __getattr__(self, name: str) -> list:
         # Back-compat accessors (ADR 051): result.<kind> reads markers[<kind>]. Only reached
@@ -188,7 +202,7 @@ class StreamAssembler:
     def finish(self) -> StreamResult:
         """Stream ended (or aborted): compute the canonical answer + marker requests and return
         whatever of it hasn't been spoken yet (the held-back tail / final sentence)."""
-        answer, markers = finalize_answer_markers(self._raw, self._labels, self._profile)
+        answer, markers, dropped = finalize_answer_trimmed(self._raw, self._labels, self._profile)
         sentences, tail = split_completed(answer)
         all_sentences = [s for s in (*sentences, tail) if s]
         if all_sentences[: len(self._emitted)] == self._emitted:
@@ -204,4 +218,4 @@ class StreamAssembler:
                 len(self._emitted),
             )
             remaining = all_sentences
-        return StreamResult(remaining=remaining, answer=answer, markers=markers)
+        return StreamResult(remaining=remaining, answer=answer, markers=markers, dropped=dropped)

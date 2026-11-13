@@ -65,7 +65,10 @@ from .llm.scene_router import SceneVerdict, classify_scene_move
 from .llm.consistency import Violation, retry_nudge_de
 from .llm.intro_guard import INTRO_RETRY_NUDGE
 from .llm.turn_actions import group_by_speaker
-from .llm.stream_assembler import StreamAssembler, finalize_answer, finalize_answer_markers  # noqa: F401
+from .llm.stream_assembler import (  # noqa: F401
+    StreamAssembler, finalize_answer, finalize_answer_markers, finalize_answer_trimmed,
+)
+from .llm.cut_report import caller_reports_cut
 
 log = logging.getLogger(__name__)
 
@@ -600,7 +603,8 @@ class DMBrain:
         building block of :meth:`_guarded_answer`: a batch turn's first attempt, and the
         echo-guard retry of every turn, streamed ones included."""
         system, messages, options = self._build_request(session, user_msg, labels, history_prefix, num_predict=num_predict, temperature=temperature)
-        raw = await self._client.chat(system, messages, options=options)
+        with caller_reports_cut():  # the ✂ line is written below, with the dropped characters
+            raw = await self._client.chat(system, messages, options=options)
         # narration call's token counts (for [latency]).
         self.last_llm_stats = self._client.last_stats
         # Debug aid (lands in debug.log only — 🪵 is filtered off the console + terminal mirror):
@@ -610,7 +614,9 @@ class DMBrain:
         # Replay capture (ADR 046): the raw text with markers intact. Each call overwrites, so
         # after an echo-guard/consistency retry the KEPT answer's raw is what the autosave gets.
         session.replay_gen = {"raw": raw}
-        return finalize_answer_markers(raw, labels, self._profile)
+        answer, markers, dropped = finalize_answer_trimmed(raw, labels, self._profile)
+        self._log_cut(dropped)
+        return answer, markers
 
     @staticmethod
     def _answer_problem(answer: str, user_msg: str, prev_answer: str) -> tuple[str, str] | None:
@@ -650,28 +656,44 @@ class DMBrain:
         errored = False
         spoke_any = False
         agen = self._client.chat_stream(system, messages, options=options)
-        try:
-            async for delta in agen:
-                for sentence in assembler.feed(delta):
-                    if has_speakable_content(sentence):  # skip a lone "."/quote/backtick (don't synth it)
-                        await sink.on_sentence(sentence)
-                        spoke_any = True
-                if assembler.stopped:
-                    break  # a mid-text speaker label — abort the stream, keep the narration
-                if sink.should_abort is not None and sink.should_abort():
-                    break  # paused (ADR 013): stop emitting; resume won't replay
-        except Exception:
-            log.exception("streaming turn failed mid-generation — keeping the partial answer")
-            errored = True
-        finally:
-            await agen.aclose()  # closes the httpx stream (the client-side stop)
+        with caller_reports_cut():  # the ✂ line is written below, with the dropped characters
+            try:
+                async for delta in agen:
+                    for sentence in assembler.feed(delta):
+                        if has_speakable_content(sentence):  # skip a lone "."/quote/backtick (don't synth it)
+                            await sink.on_sentence(sentence)
+                            spoke_any = True
+                    if assembler.stopped:
+                        break  # a mid-text speaker label — abort the stream, keep the narration
+                    if sink.should_abort is not None and sink.should_abort():
+                        break  # paused (ADR 013): stop emitting; resume won't replay
+            except Exception:
+                log.exception("streaming turn failed mid-generation — keeping the partial answer")
+                errored = True
+            finally:
+                await agen.aclose()  # closes the httpx stream (the client-side stop)
         self.last_llm_stats = self._client.last_stats
         log.info("🪵 LLM roh (stream): %s", assembler.raw.replace("\n", " ⏎ "))
         # Replay capture (ADR 046) — an echo-guard retry overwrites this via _chat_once, so the
         # kept answer's raw wins (batch-path parity).
         session.replay_gen = {"raw": assembler.raw}
         result = assembler.finish()
+        self._log_cut(result.dropped)
         return _Attempt(result.answer, result.markers, list(result.remaining), spoke_any, errored)
+
+    def _log_cut(self, dropped: int) -> None:
+        """The ✂ line of a turn the backend reported as cut at its output cap or spoken budget,
+        naming how many characters of the dangling last sentence fell away (0: the answer ended
+        on a sentence end anyway). Written here, not in the client, because only
+        ``finalize_answer_trimmed`` knows the count (ADR 061, amendment 2026-11-13, second).
+        Ollama reports no cut, so no line there (progress.md, open point)."""
+        stats = self.last_llm_stats or {}
+        if not stats.get("truncated"):
+            return
+        log.warning(
+            "✂ Antwort an der Ausgabegrenze abgeschnitten (%s/%s Tokens), %d Zeichen am Ende weggefallen",
+            stats.get("cut_tokens", "?"), stats.get("cap") or "?", dropped,
+        )
 
     async def _guarded_answer(
         self,

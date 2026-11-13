@@ -52,9 +52,12 @@ embeddings and as the fallback.
 - Narration calls: `effort="low"`, per-request cap `num_predict` + 1024 thinking headroom, the
   spoken budget held on the text at Nemo's 3.4 chars/token, **streamed calls only**; batch prose
   (recap, `!rules`) is held only by the request cap.
-- Since 2026-11-13 (last amendment): the recap call has its own cap on this backend (2000 tokens
+- Since 2026-11-13: the recap call has its own cap on this backend (2000 tokens
   + headroom), the recap prompt names a hard length (1200 characters), and the `[ctx]` line
   says that nothing is truncated here.
+- Since 2026-11-13 (second amendment): a turn that ends on a fragment is cut back to its last
+  complete sentence in the turn core (one sentence-end rule for sanitizer, stream and TTS), and
+  the turn's ✂ line names how many characters fell away.
 - Stats: separate slots for prose and schema calls; the boot ping checks both models.
 - The live evening is isolated (17 old gates parked, optional layers off — one variable). Known
   gaps and the deliberately deferred review findings: the "review of the whole round" amendment.
@@ -390,3 +393,48 @@ full stop, so a complete sentence ending in `.“` right before the cut is dropp
 fragment (seen once that evening). Left for the round that decides the spoken budget.
 
 Live-unverified: the recap under the new cap and prompt, and a restart after an auto-recap.
+
+
+## Amendment (2026-11-13, second) — a cut turn ends on its last complete sentence
+
+Found in the run of 2026-11-13 (01:48–02:16): 7 of 22 turns logged `✂ … (220/220 Tokens)`. All
+seven were cuts at the **spoken budget of 748 characters** (3.4 × 220), not at the output cap —
+for a budget cut the line shows the cap itself as the count. The fragment after the cut was
+already neither spoken nor stored: `_trim_to_last_sentence` in `finalize_answer_markers`, the
+seam the batch turn and `StreamAssembler.finish` share, drops it on both backends. What the table
+lost were **complete sentences**: the sentence-end rule did not accept `“` after `?`/`!`, so the
+NSC line right before the cut counted as part of the fragment and went with it (02:01:01:
+„Bevor wir über Ware reden, Schätzchen: In wessen Auftrag kommst du?“; 01:52:46: the sister's
+shout ending in `!“`). `86ccdc0` (02:40, after the run) fixed that rule in the sanitizer;
+`tts/textsplit.py` still had its own, which disagreed.
+
+Decided:
+
+- **The cut stays in the turn core**, in `finalize_answer_trimmed` (formerly
+  `finalize_answer_markers`, which remains as its two-value view). Not in the client: it cuts at a
+  character count, knows no sentences, and in a stream the deltas have already been passed on. Not
+  in the `StreamAssembler` alone: the batch path does not go through it. Recap, `!rules` and schema
+  calls do not go through `finalize` and are untouched.
+- **Every answer that ends on a fragment is trimmed**, not only one the backend reports as cut
+  (Tobi, 13.11.). That also covers a stop-label abort and Ollama's `num_predict` cut, and the
+  `dm-eval` replay needs no cut flag. An answer that is one unfinished sentence stays as it is —
+  no silent turn. Sentences already spoken are safe by construction: the assembler holds back the
+  latest completed sentence, so the fragment is never spoken, and history, journal and chat get
+  the same trimmed answer.
+- **One sentence-end rule** (`af5056e`): `textsplit.SENTENCE_END` and `split_sentences` —
+  terminator, any closing quotes or brackets (`“` and `«` included), then whitespace or the end.
+  `llm/sanitize.py` imports both; `split_completed` (stream), `chunk_text` (TTS) and the Discord
+  splitter use them. `rag/retrieve.py` keeps its own chunk-boundary set (it also counts `:` and `;`).
+- **The ✂ line of a DM turn comes from the turn core** and names the dropped characters:
+  `✂ Antwort an der Ausgabegrenze abgeschnitten (220/220 Tokens), 37 Zeichen am Ende weggefallen`
+  (0: the cut happened to fall on a sentence end, or the answer was one unfinished sentence). The
+  turn core wraps its call in `caller_reports_cut()` (`dmbot/llm/cut_report.py`, a context
+  variable, so neither the `LLMClient` protocol nor `OllamaClient` changes). Inside it
+  `ClaudeClient` writes no narration ✂ line and hands `cut_tokens`/`cap` over in `last_stats`;
+  outside it (recap, `!rules`, NSC memory) the client writes its line as before.
+
+Not changed: the budget (`DM_NUM_PREDICT`, Tobi's to set) and the persona. Known gaps: Ollama
+reports no cut (`done_reason` is not read), so a turn there gets no ✂ line (open point in
+`progress.md`); a budget cut still shows the cap as its token count.
+
+Live-unverified.
