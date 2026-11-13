@@ -534,7 +534,7 @@ Protokoll vermerken.
 | Wann | Befehl | Wozu |
 |---|---|---|
 | nach `!j` | `!uhren` | Kontrolle: antwortet „Uhren sind abgeschaltet (`DM_CLOCKS=0`)" |
-| nach `!j` | `!fäden` · `!automatik` · `!backend` | Kontrolle: keine Fäden, fünf Schalter an, Primär Claude und nicht degradiert |
+| nach `!j` | `!fäden` · `!automatik` · `!backend` | Kontrolle: keine Fäden, sechs Schalter an, Primär Claude und nicht degradiert |
 | Gate 5 | `!backend claude` | nach dem erzwungenen Failover sofort zurück auf Opus |
 | Notfall | `!backend ollama` | den Rest des Abends lokal spielen |
 | Notfall | `!backend auto` | wieder dem Failover folgen |
@@ -558,7 +558,7 @@ trotzdem starten und aus Nemo antworten — das wäre dann aber der falsche Aben
 Abhaken und die Beweiszeile aus `logs/debug.log` dazulegen. Reihenfolge wie hier; 5 und 7 ändern
 die `.env` und brauchen je einen Neustart, deshalb stehen sie hinten.
 
-- [ ] **0 — Aufbau.** `.env` wie 9.2, Sandbox leer, Uhren per `DM_CLOCKS=0` aus (9.3). `!automatik` zeigt fünf
+- [ ] **0 — Aufbau.** `.env` wie 9.2, Sandbox leer, Uhren per `DM_CLOCKS=0` aus (9.3). `!automatik` zeigt sechs
       Schalter an, `!fäden` ist leer, `!backend` nennt Claude als Primär.
 - [ ] **1 — Boot.** Beide Preflight-Zeilen wie in 9.4. Während des Spiels `nvidia-smi`: XTTS liegt
       auf der GPU, `ollama ps` zeigt **kein** `mistral-nemo` (nur `bge-m3`).

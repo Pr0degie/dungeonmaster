@@ -43,7 +43,7 @@ Dann im Discord, direkt nach `!j`:
 |---|---|
 | `!uhren` | „Uhren sind abgeschaltet (`DM_CLOCKS=0`)" |
 | `!fäden` | leer |
-| `!automatik` | alle fünf **an** (szene, flaggen, fakten, zeit, panel) |
+| `!automatik` | alle sechs **an** (szene, flaggen, fakten, nscs, zeit, panel) |
 | `!backend` | Primär: claude, nicht degradiert |
 
 ---
@@ -75,6 +75,25 @@ Worauf du beim Zuhören achtest (alles notieren, nichts reparieren):
 - Wie lange dauert es von „fertig gesprochen" bis zum ersten Ton, gefühlt?
 - Eine ⚠-Zeile im Chat, die du nicht selbst ausgelöst hast → Claude ist ausgefallen, Uhrzeit notieren.
 
+#### Seit dem 12.11. geändert, am Tisch beobachten
+
+Gebaut und nur durch Tests belegt (D134, D137, D138, `DMBrain`-Befunde Nr. 1–4, 9, 12). Keine Gates des
+Abends: nichts davon erzwingen, nur notieren, wenn die Lage eintritt. Diese Punkte stehen nur
+hier, nicht in testabend-ablauf.md §9. D135 (Umbau ohne Verhaltensänderung) und D136 (am 13.11.
+live belegt: Auto-Recap ohne Schnitt, Neustart danach) brauchen keinen Punkt. Vor dem Start die vier Alteinträge des Laufs vom 13.11.
+aus dem Spielstand nehmen: Schreinschwester, Frau hinter der Sichtklappe, Türwächter, Blinder Greis.
+
+| # | Was | Wie | Gut, wenn | Beweis im Log |
+|---|---|---|---|---|
+| N1 | **Karten-Figuren ohne Doppelgänger** (D138) | Prüfszene Pfandhalle: mit Alter Fenk am Eingang („Fenk") und Bree Marlok hinter der Sichtklappe reden | beide bleiben je ein Eintrag; kein „Blinder Greis", „Türwächter", „Frau hinter der Sichtklappe" | `👥 anwesend in 'pfandhalle': Bree Marlok (gemeldet als „…“)` oder `[classifier] npcs … → none`. Schlecht: `… (neu, Standardwerte)` für eine der beiden |
+| N2 | **Szenenwechsel über den spät bestätigten Knopf** (D138) | die Erzählung zeigt bei der Ankunft jemand Neuen; den Ortswechsel-Knopf erst danach bestätigen | die Person steht in der neuen Szene, nicht in der verlassenen | `👥 mit der Gruppe nach '<szene>': <Name>` |
+| N3 | **`!redo` nach zwei gleichen Zeilen** (Befund 1) | nur wenn der DM zweimal die Spielerzeile wiederholt und der Zug stumm bleibt: dann `!redo` | der Zug **davor** ist danach noch im Verlauf (der DM weiß noch, was davor geschah) | `echo guard: the retry misfired again — suppressing the turn`, danach der Redo-Zug |
+| N4 | **Ein Zug während des Auto-Recaps** (Befund 2, 3) | wenn `🧵 … Auto-Recap` läuft, normal weitersprechen | der DM kennt diesen Zug im nächsten noch | zwischen `🧵 Kontext bei … — Auto-Recap` und `🧵 Auto-Recap fertig` steht eine `[latency]`-Zeile |
+| N5 | **Antworten enden auf ganzen Sätzen** (D137) | zuhören und im Chat mitlesen | kein halber Satz, auch nicht nach einem Schnitt; Stimme und Chat enden gleich | `✂ Antwort an der Ausgabegrenze abgeschnitten (220/220 Tokens), … Zeichen am Ende weggefallen` |
+| N6 | **Wörtliche Rede klingt am Satzende natürlich** (Befund 9, 12) | auf NSC-Sätze achten, die auf `?“`, `!“` oder `.“` enden | der Satz wird gesprochen und steht im Chat; keine Pause oder Betonung an der falschen Stelle | keine Logzeile, nur Ohr und Chat |
+| N7 | **Opening mitten in der Sitzung** (Befund 4) | nur falls nötig: `!start` oder `!intro` nach einem Spielerzug | das Opening bringt keinen 🎲-Knopf mit | keine Logzeile |
+| N8 | **Sprachbefehl „… war ein sehr böser Junge"** (D134) | nur wenn Tobi es am Abend will; braucht „Mitglieder verschieben" | der Genannte fliegt aus dem Voice-Kanal, der DM hört die Zeile nicht | `⚡ <Name> war ein sehr böser Junge — vom Voice-Kanal getrennt` |
+
 ### Durchgang 2 — setzt Opus den Würfel-Marker selbst? (Punkt 7a)
 
 Bot stoppen, in `.env` `DM_ROLL_ROUTER=0`, starten, `!j`. Drei, vier Züge mit Handlungen, die
@@ -102,12 +121,13 @@ Danach `.env` zurück auf `opus`, Neustart, ein Zug: Opus antwortet wieder.
 | # | Was | Wie |
 |---|---|---|
 | 6 | Verbrauch | Anzeige auf claude.ai, Differenz zum Startwert |
+| 6b | Was die Klassifikatoren davon kosten (ADR 066) | Messung D unten; dazu: kam eine ⚠-Zeile wegen eines Verbrauchslimits, und nach wie vielen Zügen? |
 | 8 | Anteil abgeschnittener Antworten | Messung C unten |
 | — | Logs sichern, **bevor** der Bot wieder startet | `logs/debug.log`, `logs/transcript.log`, `logs/terminal.log` |
 
 ---
 
-## Die drei Messungen (nach dem Abend, in PowerShell im Repo-Ordner)
+## Die vier Messungen (nach dem Abend, in PowerShell im Repo-Ordner)
 
 Nur Züge aus Durchgang 1 werten. Durchgang 3 lief auf Nemo.
 
@@ -139,6 +159,32 @@ $cut  = (Select-String -Path logs\debug.log -Pattern '\[latency\].* cut ').Count
 Ist das mehr als eine seltene Ausnahme, sagen 7a und 7b wenig aus: der Marker stand dann dort,
 wo geschnitten wird.
 
+**D — Was kosten die Klassifikatoren pro Zug? (ADR 066)**
+
+Jeder Schema-Call auf Claude schreibt eine `[aux]`-Zeile: `in=` (Input-Tokens, Cache mitgezählt),
+`cache=`, `out=`, `turns=`, `spawn=`, `api=`, `total=`. `fields=` sagt, welcher Call es war:
+`ziel` Szene, `art,sache,an,von` Fakten, `npcs` NSCs, `needs_test,skill,difficulty` Würfel-Router.
+
+```
+$aux   = Select-String -Path logs\debug.log -Pattern '\[aux\] \S+ fields=(\S+) in=(\d+) cache=(\d+) out=(\d+) turns=(\d+) spawn=(\d+)ms'
+$zuege = (Select-String -Path logs\debug.log -Pattern '\[latency\]').Count
+$aux | Group-Object { $_.Matches[0].Groups[1].Value } | ForEach-Object {
+  $in    = ($_.Group | ForEach-Object { [int]$_.Matches[0].Groups[2].Value } | Measure-Object -Sum).Sum
+  $cache = ($_.Group | ForEach-Object { [int]$_.Matches[0].Groups[3].Value } | Measure-Object -Sum).Sum
+  $spawn = ($_.Group | ForEach-Object { [int]$_.Matches[0].Groups[6].Value } | Measure-Object -Average).Average
+  "{0}: {1} Calls, in je Call {2:N0}, davon Cache {3:N0}, spawn {4:N0} ms" -f $_.Name, $_.Count, ($in / $_.Count), ($cache / $_.Count), $spawn
+}
+$summe = ($aux | ForEach-Object { [int]$_.Matches[0].Groups[2].Value } | Measure-Object -Sum).Sum
+"alle: {0} Calls in {1} Zuegen, {2:N0} Input-Tokens je Zug" -f $aux.Count, $zuege, ($summe / $zuege)
+```
+
+Notieren: die Zeile je Call-Art und die Summenzeile. Der Vergleichswert aus ADR 066 ist eine
+Schätzung: Szene, Fakten und NSCs zusammen 3800–4900 Input-Tokens je Zug. Liegt die Messung
+deutlich darüber oder kam am Abend ein Verbrauchslimit, ist das der Anlass, ADR 066 neu zu
+entscheiden. Die Datei enthält auch ältere Läufe; die haben noch keine `[aux]`-Zeilen, aber
+`[latency]`-Zeilen — für eine saubere Zahl vorher `logs\debug.log` wegsichern oder nur den Teil
+ab dem Start des Abends auswerten.
+
 ---
 
 ## Protokoll zum Ausfüllen
@@ -159,6 +205,20 @@ wo geschnitten wird.
 | A `spawn` / `first_audio` (kalt) | ______ / ______ |
 | A `spawn` / `first_audio` (warm) | ______ / ______ |
 | B drei Werte in ms | ______ · ______ · ______ |
+| 6b Verbrauchslimit erreicht | ☐ nein ☐ ja, nach ___ Zügen |
+| D Szene (`ziel`): in je Call / Cache / spawn | ______ / ______ / ______ |
+| D Fakten (`art,…`): in je Call / Cache / spawn | ______ / ______ / ______ |
+| D NSCs (`npcs`): in je Call / Cache / spawn | ______ / ______ / ______ |
+| D Würfel-Router: in je Call / Cache / spawn | ______ / ______ / ______ |
+| D alle Aux-Calls: Input-Tokens je Zug | ______ |
+| N1 Karten-Figuren ohne Doppelgänger | ☐ ja ☐ nein ☐ nicht eingetreten |
+| N2 Wechsel über späten Knopf | ☐ ja ☐ nein ☐ nicht eingetreten |
+| N3 `!redo` nach zwei gleichen Zeilen | ☐ ja ☐ nein ☐ nicht eingetreten |
+| N4 Zug während des Auto-Recaps | ☐ ja ☐ nein ☐ nicht eingetreten |
+| N5 ganze Sätze am Ende | ☐ ja ☐ nein — Uhrzeiten: ______ |
+| N6 wörtliche Rede am Satzende | ☐ ja ☐ nein — Uhrzeiten: ______ |
+| N7 Opening mitten in der Sitzung | ☐ ja ☐ nein ☐ nicht eingetreten |
+| N8 Sprachbefehl | ☐ ja ☐ nein ☐ nicht probiert |
 
 **9 — Urteil des Tisches, wörtlich, drei Sätze je Spieler:**
 
