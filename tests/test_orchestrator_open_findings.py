@@ -1,10 +1,10 @@
-"""Open findings in DMBrain and its turn path, pinned as strict xfails — nothing here is fixed.
+"""Open findings in DMBrain and its turn path, pinned as strict xfails until fixed.
 
 The code review of the orchestrator de-duplication (2026-11-13, ``ddaae08..9ec06b6``) found
 seven faults the refactor carried over unchanged; the live run of the same night (01:48–02:16)
 added two more, at the bottom of this file. Each test asserts the WANTED behaviour and fails
-today; ``strict=True`` turns the test red the moment a fix lands, so the mark gets removed
-with it.
+until fixed; ``strict=True`` turns the test red the moment a fix lands, so the mark gets
+removed with it — a test without the mark is a fixed finding.
 
 Seen live: review finding 3 (turn 20 of that run, 02:05:49 — the history stood exactly at its
 cap when the auto-recap began, and the turn that landed during the summary is in neither the
@@ -66,10 +66,6 @@ def _contents(brain: DMBrain, ch: int) -> list[str]:
 
 # ---- compaction vs. a concurrent turn ------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason=(
-    "clear_history swaps in a fresh list once the compaction has emptied the history; a turn "
-    "still in flight holds the old list and appends its pair there — lost from both the recap "
-    "and the history (code review 2026-11-13, finding 2)"))
 def test_a_turn_still_in_flight_survives_the_compaction_wipe() -> None:
     ch = 1
 
@@ -91,10 +87,6 @@ def test_a_turn_still_in_flight_survives_the_compaction_wipe() -> None:
     assert _contents(brain, ch)[-1] == "Die Tür springt auf."
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "compact_consumed counts from the head, but at the history cap _append_turn trims the head "
-    "when the concurrent turn lands — clear_history then deletes that turn too (code review "
-    "2026-11-13, finding 3)"))
 def test_a_turn_appended_during_summarize_survives_at_the_history_cap() -> None:
     ch = 1
 

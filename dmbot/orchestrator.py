@@ -752,7 +752,11 @@ class DMBrain:
         stored = answer
         if errored and stored:
             stored = f"{stored} … [Antwort unterbrochen]"  # noted in history; never spoken
-        self._append_turn(history, user_msg, stored)
+        trimmed = self._append_turn(history, user_msg, stored)
+        if trimmed and session.compact_consumed is not None and history is session.history:
+            # A summarize is out and the cap just trimmed messages it counted from the head —
+            # shift its count so clear_history doesn't delete this turn as well (finding 3).
+            session.compact_consumed = max(0, session.compact_consumed - trimmed)
         return answer
 
     def _queue_markers(self, session: ChannelSession, markers: dict[str, list]) -> None:
@@ -803,11 +807,14 @@ class DMBrain:
         stacking) the previous answer in history."""
         return await self._redo(channel_id, sink=_Sink(on_sentence, should_abort))
 
-    def _append_turn(self, history: list[dict[str, str]], user_msg: str, answer: str) -> None:
+    def _append_turn(self, history: list[dict[str, str]], user_msg: str, answer: str) -> int:
+        """Append the pair; return how many messages the history cap trimmed from the head."""
         history.append({"role": "user", "content": user_msg})
         history.append({"role": "assistant", "content": answer})
-        if len(history) > self._max_messages:  # keep the tail; recaps will cover the rest later
-            del history[: len(history) - self._max_messages]
+        trimmed = max(0, len(history) - self._max_messages)
+        if trimmed:  # keep the tail; recaps will cover the rest later
+            del history[:trimmed]
+        return trimmed
 
     def take_pending(self, kind: str, channel_id: int) -> list:
         """Return and clear the queued requests of one marker-registry kind (ADR 051). The
@@ -1144,9 +1151,9 @@ class DMBrain:
         With no recorded count (a direct call, not via the auto-compaction) it falls back to a full
         wipe; the count is clamped to the current length in case the list shrank meanwhile.
 
-        A wipe swaps in a NEW list rather than emptying the old one: a turn still in flight holds
-        the old list and appends to it, so its pair stays out of the fresh history (unchanged from
-        the per-channel dict, where the wipe dropped the key)."""
+        The compaction path empties the live list in place: a turn still in flight holds that list
+        and appends its pair there, and the recap never saw it (finding 2). Only the direct full
+        wipe swaps in a new list."""
         session = self._session(channel_id)
         consumed, session.compact_consumed = session.compact_consumed, None
         if consumed is None:
@@ -1155,8 +1162,6 @@ class DMBrain:
             history = session.history
             n = min(consumed, len(history))
             del history[:n]  # keep any turn appended after summarize captured its transcript
-            if not history:
-                session.history = []  # emptied → a fresh list (full-clear parity)
         session.last_turn = None
 
     async def answer_rules(self, question: str, context: str, *, system_name: str) -> str | None:

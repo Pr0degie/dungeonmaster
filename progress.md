@@ -12,7 +12,9 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** `DMBrain` entdoppelt (13.11., reiner Umbau von `orchestrator.py`, kein D-Eintrag) — `ChannelSession`
+- **Newest round:** offene `DMBrain`-Befunde behoben (13.11., bisher Nr. 2/3 der „Open questions“,
+  **live-unverifiziert**) — Details unter „Last session“.
+  Davor: `DMBrain` entdoppelt (13.11., reiner Umbau von `orchestrator.py`, kein D-Eintrag) — `ChannelSession`
   pro Channel statt 17 Dicts, ein Turn-Kern (`_run_turn`) für Batch und Streaming, `_pending_<kind>`-Aliase weg; Schnittstelle
   unverändert. 1381 Tests grün, 12 xfail (3 NSC-Sichtung, ADR 062; 9 offene `DMBrain`-Befunde), `dm-eval` Exit 0. Live gesehen 13.11. (22 Züge bis `!leave`).
   Davor (13.11., D136 / ADR 061 Nachtrag): Auto-Recap markiert sich im Autosave-Journal, Recap unter Claude mit eigener
@@ -38,6 +40,12 @@ Nicht verifiziert: Opus mit vollem Systemprompt, ein ganzer Zug mit Stimme, alle
 _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Current focus (Verlauf)`._
 
 ## Last session
+
+**Offene `DMBrain`-Befunde behoben (2026-11-13, kein D-Eintrag, alles live-unverifiziert).** Ein Commit pro
+Befund, die xfail-Markierung fiel jeweils mit dem Fix; nach jedem pytest, ruff (F) und `dm-eval` (Exit 0, Goldens unverändert).
+- Nr. 2 + 3 (Kompaktierung): `clear_history` leert im Kompaktierungs-Pfad die Liste an Ort und Stelle statt sie
+  auszutauschen, und `_run_turn` verschiebt `compact_consumed` um das, was das History-Limit vorne abschneidet.
+  Ein Zug, der während des Recaps läuft oder am Limit dazukommt, bleibt in der History. **Live-unverifiziert.**
 
 **`DMBrain` entdoppelt (2026-11-13, reiner Umbau von `dmbot/orchestrator.py`, kein D-Eintrag).** Wer am
 Turn-Ablauf arbeitet, liest jetzt einen Pfad statt zwei; am Tisch ändert sich nichts. Sechs Commits
@@ -253,17 +261,17 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 
 ## Open questions / to clarify
 
-**Offene `DMBrain`-Befunde (2026-11-13) — dokumentiert, nichts behoben (Tobi entscheidet).** Nr. 1–7 stammen aus
+**Offene `DMBrain`-Befunde (2026-11-13) — dokumentiert; Nr. 2 und 3 behoben (13.11., live-unverifiziert), der Rest offen.** Nr. 1–7 stammen aus
 `/code-review` auf `ddaae08..9ec06b6` (aus dem Code hergeleitet; der Umbau hat sie unverändert übernommen), Nr. 8–11
 aus dem Live-Lauf 01:48–02:16; alle gab es schon vor dem Umbau. Die Tests stehen als `xfail(strict=True)` in
 `tests/test_orchestrator_open_findings.py`; der Fix muss die Markierung entfernen.
 1. `!redo` nach einem nicht gespeicherten Zug löscht den Zug davor —
    `test_redo_after_a_suppressed_turn_keeps_the_turn_before_it`.
-2. `clear_history` tauscht die geleerte Liste aus; ein Zug, der dann noch läuft, geht verloren —
+2. **Behoben 13.11., live-unverifiziert.** `clear_history` tauschte die geleerte Liste aus; ein Zug, der dann noch läuft, geht verloren —
    `test_a_turn_still_in_flight_survives_the_compaction_wipe`. Der bestehende Test
    `test_clear_history_preserves_a_turn_appended_during_summarize` deckt nur den Zug ab, der während des
    Zusammenfassens schon fertig wurde.
-3. Am History-Limit löscht `clear_history` den Zug, der während des Zusammenfassens dazukam (Kopfzählung) —
+3. **Behoben 13.11., live-unverifiziert.** Am History-Limit löschte `clear_history` den Zug, der während des Zusammenfassens dazukam (Kopfzählung) —
    `test_a_turn_appended_during_summarize_survives_at_the_history_cap`.
    Live eingetreten (2026-11-13): beim Recap-Start stand die History genau am Limit (40 Nachrichten), Zug 20
    („Ich erzähle ihr, wer mich schickt.“, fertig 02:05:49) kam während des Zusammenfassens dazu. Er fehlt im
