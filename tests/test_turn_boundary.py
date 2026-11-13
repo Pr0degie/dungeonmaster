@@ -1445,3 +1445,63 @@ def test_a_card_figure_that_came_along_is_placed_once_the_next_turn_reports_her(
 
     assert state.find("Seneschall Kaad").scene == "schrein"
     assert "Seneschall Kaad" in [n.name for n in rt._scene_npcs(state)]
+
+
+# ---- three findings of the review of b71c12f (ADR 062, amendment 2026-11-13) -----------------
+
+def test_the_flag_gate_takes_nobody_along() -> None:
+    """The gate moves on because the room is played out; the narration went nowhere. Whoever
+    the answer showed was seen in the room that was just left."""
+    adv = _adventure()
+    state = _state(adv)
+    channel = _FakeChannel()
+    rt = _runtime(adv, state, _npc_brain(("Schreiber", "")), channel, _npc_router=True,
+                  _scene_router=False, _profile=_IMPROVISED)
+    for element in ("zeichen", "vollmacht"):             # the Zoll-Sakristei is exhausted
+        rt._set_scene_flag(state, element, resolved=True)
+
+    _run(rt.close_turn(channel, "Aus dem Hinterzimmer tritt ein Schreiber."))
+
+    assert state.scene_id == "schrein"                   # the flag gate moved the pointer
+    assert state.find("Schreiber").scene == "zollhaus"
+    assert "Schreiber" not in [n.name for n in rt._scene_npcs(state)]
+
+
+def test_entering_a_scene_brings_its_card_figures_home() -> None:
+    """A sighting that fits a neighbouring scene's card figure files her where the group is.
+    Without a move she stays there — until the group enters her own scene."""
+    adv = _adventure()
+    state = _state(adv)                                  # zollhaus; the shrine is its exit
+    channel = _FakeChannel()
+    rt = _runtime(adv, state, _npc_brain(("Schreinschwester", "")), channel, _npc_router=True,
+                  _scene_router=False, _profile=_IMPROVISED)
+
+    _run(rt.close_turn(channel, "Eine Schreinschwester huscht am Fenster der Sakristei vorbei."))
+    vall = state.find("Schwester Vall")
+    assert vall.scene == "zollhaus" and vall in rt._scene_npcs(state)
+
+    rt._brain = _npc_brain()                             # her turn ends; nobody new after that
+    _run(rt.close_turn(channel, "Stille."))
+    _run(rt.move_scene(channel, "schrein", trigger=MoveTrigger.COMMAND, announce=False))
+    _run(rt.move_scene(channel, "zollhaus", trigger=MoveTrigger.COMMAND, announce=False))
+
+    assert not vall.scene
+    assert [n.name for n in rt._scene_npcs(state)] == ["Seneschall Kaad"]   # Vall is in her shrine
+
+
+def test_a_dead_card_figure_is_nobody_a_newcomer_can_be() -> None:
+    adv = _adventure()
+    state = _state(adv, scene_id="schrein")
+    channel = _FakeChannel()
+    brain = _npc_brain(("Schreinschwester", ""))
+    rt = _runtime(adv, state, brain, channel, _npc_router=True, _scene_router=False,
+                  _profile=_IMPROVISED)
+    rt._set_scene(state, "schrein")                      # registers Schwester Vall
+    state.find("Schwester Vall").wounds = 0
+
+    _run(rt.close_turn(channel, "Eine junge Schreinschwester tritt aus der Sakristei."))
+
+    assert brain.npc_calls[0]["candidates"] == []        # the dead are not on offer either
+    newcomer = state.find("Schreinschwester")
+    assert newcomer is not None and newcomer.wounds == 10
+    assert [n.name for n in rt._scene_npcs(state)] == ["Schreinschwester"]

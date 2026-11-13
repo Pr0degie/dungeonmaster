@@ -78,8 +78,10 @@ in the "already present" list, but the classifier only ever saw their names, nev
 6. **A sighting belongs to the scene the pointer stands on when the turn is over, not the one
    it began in.** `close_turn` files the sightings under the pointer as it stands when the
    verdict comes back. Until the next turn boundary begins, the NPCs filed in this turn follow
-   every pointer move: the classifier's own move in the same turn, the `<<ORT>>` button
-   confirmed late, `!ort`, the ↩ undo (which takes them back).
+   a move the narration carried — the classifier's own move in the same turn, the `<<ORT>>`
+   button confirmed late — and one the operator sets with `!ort`; the ↩ undo takes them back.
+   **The flag gate takes nobody along:** it moves on because a room is played out, the
+   narration went nowhere, and whoever the answer showed was seen in the room just left.
 7. **Candidates carry their role.** The classifier is given the scene-card people of the current
    scene and of every exit reachable right now (the set the scene classifier gets) as
    "name — role", and is told that a person who fits one of them is that figure. The roster is
@@ -96,6 +98,8 @@ in the "already present" list, but the classifier only ever saw their names, nev
    also data: a statblock the adventure flags `generic` stays a template even on a card —
    "Kettenbund-Schläger" stands on a card of the debug campaign, and merging every thug of that
    fight into one entry would undo #1.
+   **A dead card figure is no candidate**, for the classifier or for code: nobody new is a
+   corpse. A second Schreinschwester after Vall's death gets an entry of her own.
    Outside the candidate set a statblock is a template as before: a misjudged verdict must not
    pull a plot NPC from across the adventure into the room.
 9. **A card figure of the scene being left stays there.** Added the same day, because #6 and
@@ -108,6 +112,12 @@ in the "already present" list, but the classifier only ever saw their names, nev
    sighting recognised as one of them stays in that scene, and no entry is created in the new
    one — also when the pointer had already moved before the verdict came back.
    Statblocks flagged `generic` are no persons (#8); neither rule touches them.
+10. **Entering a scene brings its card figures home.** When the pointer moves into a scene, the
+    `scene` field of that card's people is cleared: they are present there through the card,
+    and no longer wherever a sighting had filed them.
+
+Points 6 (flag gate), 8 (the dead) and 10 came out of the code review of `b71c12f`, the same
+day.
 
 **Behaviour change.** Until now a sighting with a card NPC's statblock became a second NPC with
 that statblock's numbers; now it is that NPC.
@@ -124,8 +134,18 @@ The price of #9: a card figure who really goes with the group — Kaad walks the
 shrine — stays behind in the state. It heals when a later turn in the new scene reports her:
 she is not listed as present there, so the sighting passes and places her. The error #9
 replaces did not heal by itself.
+The lasting part of #8: a sighting that fits a neighbouring scene's card figure by role or
+statblock files that plot NPC where the group stands. If no move follows — the button is not
+pressed, the verdict is rejected, the person was somebody else — she stays present there, with
+her card name in the prompt's scene line and in the target picker, turn after turn. Nothing
+clears it except #10, when the group enters her own scene, or a later sighting elsewhere; a
+group that never goes there keeps her.
 
 **Not covered.**
+- A card figure reported under a short form of her name ("Fenk", "Bree", "Cassia") with no
+  statblock still becomes a second entry beside the full name. The adventure data has no field
+  for short names or aliases, and names are deliberately not matched by their parts. An
+  optional `aliases` list on the statblock, matched exactly like the name, would close it.
 - A sighting with no statblock whose label is not the role stays a second entry, as "Blinder
   Greis", "Türwächter" and "Frau hinter der Sichtklappe" did. #7 is the only lever there, and it
   is a prompt: **whether it works is shown only by a live run.** Check scene: the pawn hall —

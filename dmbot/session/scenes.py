@@ -53,8 +53,7 @@ class SceneFlowMixin:
         scene = self._adventure.get_scene(scene_id)
         if scene is None:
             return None
-        left = state.scene_id
-        changed = left != scene.id
+        changed = state.scene_id != scene.id
         state.scene_id = scene.id
         if scene.title_de:
             state.set_location(scene.title_de)  # keep the prose state block in sync
@@ -65,11 +64,21 @@ class SceneFlowMixin:
         self._register_scene_npcs(state, scene)
         if changed:
             self._journal_scene_event(state)
+            # The card's people are at home here, wherever a sighting had put them: one filed
+            # in a neighbouring scene (ADR 062, amendment #8) must not stay there for good.
+            for name, _ in self._card_people(scene.id).values():
+                npc = state.find(name)
+                if npc is not None and npc.is_npc:
+                    npc.scene = ""
             cid = next((c for c, st in self._state.items() if st is state), None)
             if cid is not None:
                 self._scene_turns[cid] = 0  # the guidance impulse fires again on the first turn here
-                self._carry_turn_sightings(cid, state, left)
         return scene
+
+    #: The movers the people of the open turn follow (ADR 062, amendment #6): the narration
+    #: carried the move (classifier, ``<<ORT>>`` button) or the operator set it (``!ort``). The
+    #: flag gate moves on because a room is played out — nobody was narrated anywhere.
+    _CARRYING_TRIGGERS = (MoveTrigger.CLASSIFIER, MoveTrigger.MARKER, MoveTrigger.COMMAND)
 
     def _carry_turn_sightings(self, cid: int, state: WorldState, left: str) -> None:
         """The NPCs filed in the turn that is still open follow the pointer from ``left`` to
@@ -77,7 +86,8 @@ class SceneFlowMixin:
         ``<<ORT>>`` button confirmed after the verdict, ``!ort``, the ↩ undo. Live 2026-11-13 the
         button came 22 s after the sighting and the woman at the pawn hall's door stayed in the
         shrine. Whoever has been placed elsewhere since stays there, and so does a person on the
-        card of ``left``: that scene is where she belongs (amendment #9). The caller persists."""
+        card of ``left``: that scene is where she belongs (amendment #9). The caller decides
+        whether this move carries anyone (:attr:`_CARRYING_TRIGGERS`) and persists."""
         moved: list[str] = []
         home = self._card_people(left)
         for name in self._turn_sightings.get(cid, ()):
@@ -292,20 +302,29 @@ class SceneFlowMixin:
             return []
         people: dict[str, tuple[str, str]] = {}
         for sid in (scene.id, *self._exit_labels(scene, state)):
-            for key, person in self._card_people(sid).items():
+            for key, person in self._card_people(sid, living_in=state).items():
                 people.setdefault(key, person)
         return list(people.values())
 
-    def _card_people(self, scene_id: str) -> dict[str, tuple[str, str]]:
+    def _card_people(self, scene_id: str, *,
+                     living_in: WorldState | None = None) -> dict[str, tuple[str, str]]:
         """The single people on one scene's card, ``{casefolded name: (name, role)}`` — its
-        ``npcs_here`` minus the statblocks flagged ``generic`` (see :meth:`_npc_candidates`)."""
+        ``npcs_here`` minus the statblocks flagged ``generic`` (see :meth:`_npc_candidates`).
+
+        With ``living_in`` the dead of that state are left out: nobody new *is* a corpse. A
+        second Schreinschwester after Vall's death was merged into the dead entry and was in
+        neither the prompt nor the target picker (review of b71c12f)."""
         card = self._adventure.get_scene(scene_id) if self._adventure is not None else None
         people: dict[str, tuple[str, str]] = {}
         for raw in (card.npcs_here if card is not None else ()):
             name = raw.strip()
             block = self._adventure.npc(name)
-            if name and not (block is not None and block.generic):
-                people.setdefault(name.casefold(), (name, block.role_de if block else ""))
+            if not name or (block is not None and block.generic):
+                continue
+            known = living_in.find(name) if living_in is not None else None
+            if known is not None and known.is_npc and known.wounds <= 0:
+                continue
+            people.setdefault(name.casefold(), (name, block.role_de if block else ""))
         return people
 
     def _apply_npc_sightings(self, channel, state: WorldState, verdict, scene_id: str, *,
@@ -325,7 +344,8 @@ class SceneFlowMixin:
             return
         defaults = (self._profile.improvised_npc() if self._profile is not None
                     else {"wounds": 10, "toughness_bonus": 0, "armour": 0})
-        home = self._card_people(began_in) if began_in and began_in != scene_id else {}
+        home = (self._card_people(began_in, living_in=state)
+                if began_in and began_in != scene_id else {})
         candidates = [*self._npc_candidates(state, scene_id), *home.values()]
         placed: list[str] = []
         filed: list[str] = []
@@ -500,6 +520,8 @@ class SceneFlowMixin:
         moved = self._set_scene(state, scene_id)
         if moved is None:
             return None
+        if old_scene != moved.id and trigger in self._CARRYING_TRIGGERS:
+            self._carry_turn_sightings(cid, state, old_scene)
         self._persist_and_refresh(channel)
         log.info("scene → %s (%s) [%s]", moved.id, moved.title_de,
                  getattr(trigger, "value", trigger) or "auto")

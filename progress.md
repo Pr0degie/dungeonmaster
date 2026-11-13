@@ -14,8 +14,8 @@ is on-demand._
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
 - **Newest round:** D138 / ADR 062 Nachtrag — eine gesichtete Figur landet in der Szene, in der der Zug endet, und
   folgt einem Wechsel bis zum nächsten Zug; Karten-NSCs werden an Statblock, Name oder Rolle erkannt statt doppelt
-  angelegt; eine Karten-Figur der verlassenen Szene bleibt dort (13.11., **live-unverifiziert**). 1423 Tests grün,
-  4 xfail, `dm-eval` Exit 0.
+  angelegt; eine Karten-Figur der verlassenen Szene bleibt dort (13.11., **live-unverifiziert**). 1426 Tests grün,
+  4 xfail, `dm-eval` Exit 0. Vier Review-Punkte offen („Open questions“).
   Davor (13.11.): D137 / ADR 061 Nachtrag, Satzschnitt (live-unverifiziert); fünf offene `DMBrain`-Befunde behoben (live-unverifiziert); `DMBrain` entdoppelt (live gesehen);
   D136 / ADR 061 Nachtrag (live gesehen). D135 / ADR 065 (12.11.), D134 (31.10., live-unverifiziert).
 - **Next concrete step:** der fünfte Lauf mit Bot A (die Neustart-Probe ist bestanden); vorher entscheiden, welche der neun
@@ -39,7 +39,7 @@ _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-a
 **NSC-Sichtungen: richtige Szene, keine Doppelgänger von Karten-NSCs (2026-11-13, D138 / ADR 062 Nachtrag,
 live-unverifiziert).** Am Tisch: Wen die Erzählung bei einer Ankunft zeigt, steht in der neuen Szene und ist dort Ziel
 und im Prompt; eine Karten-NSC, die unter ihrer Rolle gemeldet wird, bekommt keinen zweiten Eintrag mit Standardwerten.
-Zwei Commits, nach jedem pytest (zuletzt 1423 grün, 4 xfail), ruff (F), `dm-eval` (Exit 0).
+Drei Commits, nach jedem pytest (zuletzt 1426 grün, 4 xfail), ruff (F), `dm-eval` (Exit 0).
 - Befund aus dem Lauf 01:59–02:01: „Türwächter“ und „Frau hinter der Sichtklappe“ waren Bree Marlok, „Blinder Greis“
   Alter Fenk. Die Frau wurde abgelegt, 22 s bevor der `<<ORT>>`-Knopf kam; die anderen beiden standen als anwesend in
   der Liste, der Klassifikator sah aber nur Namen, keine Rollen.
@@ -50,9 +50,11 @@ Zwei Commits, nach jedem pytest (zuletzt 1423 grün, 4 xfail), ruff (F), `dm-eva
   steht und nicht `generic` ist; jeder andere Statblock bleibt Vorlage.
 - Nachgezogen (Punkt 9 im Nachtrag): Eine Karten-Figur der verlassenen Szene folgt dem Wechsel nicht und bekommt in
   der neuen Szene keinen Eintrag. Preis: Geht sie wirklich mit, steht sie erst dort, wenn ein Folgezug sie meldet.
+- Aus dem `/code-review` von `b71c12f` behoben: Der Flag-Zwang nimmt niemanden mit; tote Karten-Figuren sind keine
+  Kandidaten; das Betreten einer Szene setzt das `scene`-Feld ihrer Karten-Figuren zurück (Punkte 6, 8, 10).
 - Schlechter als vorher: Wer vor dem Aufbruch in der alten Szene gesehen wird und keine Karten-Figur ist, landet in
   der neuen. Offen: Ob der Prompt wirkt, zeigt erst ein Lauf („Next concrete step“, Punkt 2). Tests: drei xfails
-  grün, neun neue in `tests/test_turn_boundary.py` und `tests/test_npc_router.py`.
+  grün, zwölf neue in `tests/test_turn_boundary.py` und `tests/test_npc_router.py`.
 
 **Satzschnitt: ein gekappter Zug endet am letzten ganzen Satz (2026-11-13, D137 / ADR 061 Nachtrag, live-unverifiziert).**
 Am Tisch: Ein NSC-Satz auf `?“` oder `!“` vor dem Schnitt wird gesprochen und gespeichert; ein angefangener letzter Satz
@@ -292,6 +294,19 @@ aus dem Live-Lauf 01:48–02:16; alle gab es schon vor dem Umbau. Die Tests steh
 15. (D137) Unter Ollama schreibt ein gekappter Zug keine ✂-Zeile: `OllamaClient` liest `done_reason` nicht und meldet
     kein `truncated`. Gekürzt wird der Zug trotzdem (der Schnitt am letzten Satz gilt für jede Antwort). Bewusst
     weggelassen (Tobi, 13.11.); Fix wäre `done_reason == "length"` → `truncated` in `client.py`. Kein Test.
+
+**Aus dem Review von `b71c12f` (2026-11-13, ADR 062 Nachtrag) — offen, bewusst nicht angefasst (Tobi):**
+- **↩ trägt die falschen Figuren (Review Nr. 6).** Beginnt innerhalb der Undo-Minute schon der nächste Zug, trägt ↩
+  dessen Sichtungen zurück und lässt die Figuren stehen, die der zurückgenommene Wechsel mitgenommen hat. Fix-Idee:
+  die mitgenommenen Namen am `SceneUndo` merken. Kein Test.
+- **Die Liste der Zug-Sichtungen überlebt `!leave`/`!join` (Nr. 7).** `_turn_sightings` leert nur die nächste
+  Zuggrenze; ein `!ort` vor dem ersten Zug der neuen Sitzung nimmt die Figuren des letzten Zugs mit. Überlappen zwei
+  Zuggrenzen (Klassifikator bis 20 s), folgen die Figuren des älteren Zugs. Kein Test.
+- **Der Prompt verlangt, was das Schema nicht erlaubt (Nr. 8).** „statblock = deren Name“ gilt für jede Kandidatin,
+  das Schema lässt nur Statblock-Namen zu. Heute ohne Wirkung: Jede Karten-Figur beider Abenteuer hat einen
+  Statblock. Kein Test.
+- **Deutsche Log-Zeilen (Nr. 10).** Die neuen Zeilen in `session/scenes.py` („mit der Gruppe nach“, „gemeldet als“,
+  „bleibt in“) sind deutsch wie ihre Nachbarn; CLAUDE.md verlangt englische Logs.
 
 **Aus der Würfel-Animation (2026-10-30/31) — offen:**
 - **Würfel dreht sich nicht:** Tobis Prototyp integriert `angle` nie (`w` wird berechnet, `angle += w*dt`
