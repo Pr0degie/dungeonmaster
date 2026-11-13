@@ -19,30 +19,49 @@ import unicodedata
 # Stay safely under XTTS's 253-char German limit.
 TTS_CHAR_LIMIT = 240
 
-_SENTENCE_SPLIT = re.compile(r"(?<=[.!?…])\s+")
+# The one sentence-end rule of the bot: terminal punctuation, then any closing quotes/brackets,
+# then whitespace or the end of the text. German „…“ and »…« are included — a line like
+# „Wer schickt dich?“ ends a sentence. Every sentence split uses it: the TTS chunker, the streaming
+# assembler (ADR 017, via :func:`split_completed`), the Discord splitter, and in
+# ``dmbot/llm/sanitize.py`` the sentence filters and the trim of a dangling last fragment. Before
+# 2026-11-13 the sanitizer and this module each had their own rule and disagreed on “ and «.
+_TERMINATOR = "[.!?…]"
+_CLOSER = r'["»«“”’)\]]'
+SENTENCE_END = re.compile(rf"{_TERMINATOR}{_CLOSER}*(?=\s|$)")
+_ENDS_SENTENCE = re.compile(rf"{_TERMINATOR}{_CLOSER}*$")  # the same rule, anchored at the end
 
-# Split after terminal punctuation + any closing quote/bracket + whitespace. Used by the streaming
-# assembler (ADR 017) to tell a *complete* sentence (it ends on a terminator) from a still-growing
-# fragment — the single home for sentence-boundary logic, so the assembler doesn't re-roll its own.
-_SENTENCE_BOUNDARY = re.compile(r'(?<=[.!?…])["»”’)\]]*\s+')
-_ENDS_SENTENCE = re.compile(r'[.!?…]["»”’)\]]*$')
+
+def split_sentences(text: str) -> list[str]:
+    """Slice ``text`` at every :data:`SENTENCE_END`; the last piece is whatever follows the final
+    end (a fragment without a terminator of its own), if anything does. Slicing, not ``re.split``:
+    the boundary swallows the closing quote, and a split would drop it — an NSC's line would come
+    back missing its final ``“``. Pieces are not stripped."""
+    out: list[str] = []
+    start = 0
+    for match in SENTENCE_END.finditer(text):
+        out.append(text[start:match.end()])
+        start = match.end()
+    if text[start:].strip():
+        out.append(text[start:])
+    return out
 
 
 def split_completed(text: str) -> tuple[list[str], str]:
     """Split ``text`` into (completed sentences, trailing fragment).
 
-    A *completed* sentence ends on terminal punctuation (optionally a closing quote/bracket); the
-    trailing fragment is whatever follows the last terminator with no terminator of its own (the
-    part still being generated mid-stream). ``("", "")``-safe: empty input → ``([], "")``.
+    A *completed* sentence ends on :data:`SENTENCE_END`; the trailing fragment is whatever follows
+    the last end with no end of its own (the part still being generated mid-stream).
+    ``("", "")``-safe: empty input → ``([], "")``.
     """
     text = text.strip()
     if not text:
         return [], ""
-    parts = [p for p in _SENTENCE_BOUNDARY.split(text) if p]
+    parts = [p.strip() for p in split_sentences(text) if p.strip()]
     if not parts:
         return [], ""
     tail = "" if _ENDS_SENTENCE.search(parts[-1]) else parts.pop()
-    return [p.strip() for p in parts if p.strip()], tail.strip()
+    return parts, tail
+
 
 # What the voice may SAY: the prosody-bearing punctuation we keep (intonation + pauses the players
 # want — "durch die Betonung erkennt man es sowieso") plus the word hyphen "-" (Hive-Stadt).
@@ -105,7 +124,7 @@ def chunk_text(text: str, limit: int = TTS_CHAR_LIMIT) -> list[str]:
     together where they fit, so prosody stays natural."""
     chunks: list[str] = []
     current = ""
-    for sentence in _SENTENCE_SPLIT.split(text.strip()):
+    for sentence in split_sentences(text.strip()):
         sentence = sentence.strip()
         while len(sentence) > limit:
             cut = sentence.rfind(", ", 0, limit)
@@ -136,10 +155,6 @@ def chunk_text(text: str, limit: int = TTS_CHAR_LIMIT) -> list[str]:
 # long DM answer — especially the `!intro` monologue, which runs on a larger length budget — must be
 # posted as several messages.
 DISCORD_CHAR_LIMIT = 2000
-
-# Sentence terminators we break *after* (the terminator stays with the head); the trailing space or
-# newline is dropped because the next piece is left-stripped.
-_DISCORD_SENTENCE_END = (". ", "! ", "? ", "… ", ".\n", "!\n", "?\n")
 
 
 def split_for_discord(text: str, limit: int = DISCORD_CHAR_LIMIT) -> list[str]:
@@ -175,9 +190,11 @@ def _discord_cut(window: str, limit: int) -> int:
         i = window.rfind(sep)
         if i >= soft_min:
             return i
-    end = max(window.rfind(s) for s in _DISCORD_SENTENCE_END)   # keep the terminator with the head
-    if end >= soft_min:
-        return end + 1
+    # The latest sentence end; terminator and closing quote stay with the head. A match touching
+    # the window's edge proves nothing — the text may go on without a space ("3.5").
+    ends = [m for m in SENTENCE_END.finditer(window) if m.end() < len(window)]
+    if ends and ends[-1].start() >= soft_min:
+        return ends[-1].end()
     i = window.rfind(" ")
     if i >= soft_min:
         return i

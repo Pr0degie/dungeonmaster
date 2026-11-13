@@ -8,6 +8,7 @@ from dmbot.tts.textsplit import (
     chunk_text,
     has_speakable_content,
     normalize_for_tts,
+    split_completed,
     split_for_discord,
 )
 
@@ -137,3 +138,40 @@ def test_discord_hard_cuts_an_unbroken_run() -> None:
     assert all(len(p) <= DISCORD_CHAR_LIMIT for p in pieces)
     assert "".join(pieces) == text                    # verbatim, just sliced
     assert len(pieces) == 3                            # 2000 + 2000 + 1000
+
+
+# --- The one sentence-end rule (progress.md open point 12) ---------------------------------------
+# textsplit and the sanitizer used to disagree on the German closing quotes “ and «. Every split
+# below runs on textsplit.SENTENCE_END, which llm/sanitize.py imports.
+
+
+def test_split_completed_ends_a_sentence_on_a_german_closing_quote() -> None:
+    sentences, tail = split_completed("„Wer schickt dich?“ Dann schweigt sie. »Geh!« Und du")
+    assert sentences == ["„Wer schickt dich?“", "Dann schweigt sie.", "»Geh!«"]
+    assert tail == "Und du"
+
+
+def test_split_completed_keeps_a_finished_quote_as_the_last_sentence() -> None:
+    assert split_completed("Sie lacht. „Nein.“") == (["Sie lacht.", "„Nein.“"], "")
+
+
+def test_chunk_text_breaks_after_a_closing_quote() -> None:
+    first = "„" + "Wort " * 30 + "warum?“"
+    second = "Dann " + "Wort " * 30 + "Ende."
+    assert chunk_text(f"{first} {second}") == [first, second]
+
+
+def test_discord_breaks_after_a_closing_quote() -> None:
+    head = "Wort " * 190
+    text = head + "„Letztes Wort?“ Danach kommt der zweite Teil des Auftakts ganz in Ruhe."
+    pieces = split_for_discord(text, limit=1000)
+    assert pieces[0].endswith("„Letztes Wort?“")
+    assert pieces[1].startswith("Danach kommt")
+
+
+def test_sanitizer_uses_the_same_rule() -> None:
+    from dmbot.llm import sanitize
+    from dmbot.tts import textsplit
+
+    assert sanitize._SENTENCE_END is textsplit.SENTENCE_END
+    assert sanitize._sentences is textsplit.split_sentences

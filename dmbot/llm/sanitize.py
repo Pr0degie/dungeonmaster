@@ -1,6 +1,7 @@
 """Spoken-answer sanitisers — strip the small-model tics that would otherwise be read aloud.
 
-Pure, regex-only (no project deps) so it stays unit-testable and an agent tuning these German-text
+Pure, regex-only (its one project import is the shared sentence-end rule from the equally pure
+``dmbot.tts.textsplit``) so it stays unit-testable and an agent tuning these German-text
 guards loads ~130 focused lines, not the whole orchestrator. Extracted from ``orchestrator.py``
 (ADR 034); ``finalize_answer`` (still in orchestrator) and the streaming assembler call these.
 Covers a leading role label / markdown / self-correction frame / "Als Spielleitung beschreibe
@@ -14,6 +15,7 @@ from __future__ import annotations
 
 import re
 
+from ..tts.textsplit import SENTENCE_END as _SENTENCE_END, split_sentences as _sentences
 
 # Models sometimes prefix a "Spielleitung:" label or wrap text in markdown bold despite the
 # prompt; that would be read out literally by TTS, so strip it as a safety net.
@@ -126,20 +128,7 @@ META_FALLBACK_DE = "Ich habe das nicht mitbekommen — sagt es noch einmal."
 # A quote character anywhere in the sentence means someone is speaking in the fiction: hands off.
 _QUOTE_CHARS = "\"'„“”»«‚‘’"
 
-def _sentences(text: str) -> list[str]:
-    """Split into sentences by slicing at the ends found by :data:`_SENTENCE_END`.
-
-    Slicing, not ``re.split``: the boundary pattern swallows a closing quote, and a split would
-    drop it — an NSC's line would come back missing its final ``"``.
-    """
-    out: list[str] = []
-    start = 0
-    for match in _SENTENCE_END.finditer(text):
-        out.append(text[start:match.end()])
-        start = match.end()
-    if text[start:].strip():
-        out.append(text[start:])
-    return out
+# ``_sentences`` (imported above) is ``textsplit.split_sentences``: the one sentence-end rule.
 
 
 def _drop_meta_sentences(text: str) -> str:
@@ -384,11 +373,6 @@ def _sanitize(text: str) -> str:
     # leading (incl. the meta-preamble that may precede an enclosing quote) → unwrap a whole-answer
     # "…" envelope → trailing (so the now-unblocked "Was tut ihr?" closer strips). D84.
     return _sanitize_trailing(_unwrap_enclosing_quotes(_sanitize_leading(text)))
-
-
-# Sentence-ending punctuation, optionally followed by a closing quote/bracket — German closing
-# quotes “ and « included, or a final ?“ reads as a dangling fragment and gets trimmed.
-_SENTENCE_END = re.compile(r"[.!?…](?:[\"»«“”’)\]]+)?(?=\s|$)")
 
 
 def _trim_to_last_sentence(text: str) -> str:
