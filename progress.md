@@ -13,10 +13,12 @@ is on-demand._
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
 - **Newest round:** Kommentare/Docstrings in `dmbot/` entschlackt, keine Codezeile geändert (13.11.).
-  Danach ADR 066 als Entwurf (ein Schema-Call für die drei Post-Turn-Klassifikatoren?) — offene Entscheidung.
+  Danach ADR 066 als Entwurf (ein Schema-Call für die drei Post-Turn-Klassifikatoren?) — offene Entscheidung —
+  und eine `[aux]`-Logzeile je Schema-Call auf Claude (nur Logging).
   Letzte Verhaltensänderung: D138 / ADR 062 Nachtrag. Details: „Last session“.
-- **Suite:** 1427 Tests grün, 4 xfail; `dm-eval` Exit 0.
-- **Live-unverifiziert:** D138, D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134.
+- **Suite:** 1428 Tests grün, 4 xfail; `dm-eval` Exit 0.
+- **Live-unverifiziert:** D138, D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134, die `[aux]`-Zeile — Prüfpunkte
+  N1–N8 und Messung D in [phase-11-abend.md](docs/phase-11-abend.md).
 - **Next concrete step:** der fünfte Lauf mit Bot A; vorher drei Entscheidungen von Tobi und die Vorbereitung —
   Abschnitt „Next concrete step“.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
@@ -44,7 +46,11 @@ ein Skript den Syntaxbaum ohne Docstrings mit HEAD (identisch), Befehls-Hilfetex
   `dmbot/session/` bzw. `voice/delivery.py` liegen; `test-on-change.sh` beschreibt keinen Stop-Hook mehr.
 - Gleicher Tag, nur Doku: [ADR 066](docs/decisions/066-one-post-turn-classifier-call.md) als **Draft** — sollen
   Szenen-, Fakten- und NSC-Klassifikator als ein Schema-Call laufen? Zahlen aus dem debug.log und dem Journal vom
-  13.11.; steht unter „Open questions“ als offene Entscheidung.
+  13.11.; steht unter „Open questions“ als offene Entscheidung. Dazu gebaut: `ClaudeClient` schreibt je Schema-Call
+  eine `[aux]`-Zeile mit den Zahlen dieses Calls (`in=`, `cache=`, `out=`, `turns=`, `spawn=`, `api=`, `total=`,
+  `fields=` als Kennung) — nicht aus `last_aux_stats` gelesen, weil sich drei parallele Klassifikatoren den Slot
+  teilen. Ein Test; pytest 1428 grün, `dm-eval` Exit 0, ruff (F) sauber. Die Prüfpunkte für den Abend stehen jetzt
+  im Beipackzettel (N1–N8, Messung D).
 
 **NSC-Sichtungen: richtige Szene, keine Doppelgänger von Karten-NSCs (2026-11-13, D138 / ADR 062 Nachtrag,
 live-unverifiziert).** Am Tisch: Wen die Erzählung bei einer Ankunft zeigt, steht in der neuen Szene und ist dort Ziel
@@ -87,14 +93,10 @@ _Ältere `## Last session`-Einträge: siehe [docs/progress-archive.md](docs/prog
 
 **Vor dem Abend entscheiden (Tobi):** (1) Sprechbudget (`DM_NUM_PREDICT`) — 748 Zeichen griffen bei vier von fünf
 Opus-Antworten am 12./13.11. und bei 7 von 22 am 13.11. (01:48–02:16; ✂ „220/220“ = Sprechbudget); der Spieler hat
-es um 02:01 bemängelt. Ein gekappter Zug endet jetzt am letzten ganzen Satz (D137, live-unverifiziert); am Abend auf
-die ✂-Zeile mit „… Zeichen am Ende weggefallen“ achten.
-(2) NSC-Sichtungen sind behoben (D138, live-unverifiziert). Prüfszene am Abend: die Pfandhalle — Alter Fenk am Eingang
-und Bree Marlok hinter der Klappe dürfen nicht als neue Einträge zurückkommen. Vorher die vier Alteinträge des Laufs
-aus dem Spielstand nehmen (Schreinschwester, Frau hinter der Sichtklappe, Türwächter, Blinder Greis).
-(3) Welche der noch offenen `DMBrain`-Punkte („Open questions“: Nr. 5–8, 10, 11, 13–15) vorher behoben werden.
-Nr. 1–4 und 9 sind behoben (13.11., live-unverifiziert); am Abend darauf achten: Schlusssatz auf `?“` wird
-gesprochen, ein Zug während des Auto-Recaps bleibt im Kontext, `!redo` nach unterdrücktem Zug, Opening mitten in der Sitzung.
+es um 02:01 bemängelt. Ein gekappter Zug endet jetzt am letzten ganzen Satz (D137, live-unverifiziert).
+(2) Welche der noch offenen `DMBrain`-Punkte („Open questions“: Nr. 5–8, 10, 11, 13–15) vorher behoben werden.
+Was am Tisch zu beobachten ist (D134, D137, D138, Befunde Nr. 1–4, 9, 12) und die Messung der Aux-Tokens für ADR 066
+stehen im Beipackzettel: [phase-11-abend.md](docs/phase-11-abend.md), Punkte N1–N8 und Messung D.
 
 **Der fünfte Lauf.** Vorher: Bot A starten (am 30./31.10. lief er nicht, der DM erzählte stumm), in `#bot-commands`
 die alten Würfel-GIF-Sätze löschen (gültig sind die 8 Nachrichten von 2026-10-31 01:49), Sandbox leeren. Am Tisch
@@ -259,8 +261,9 @@ Schritt, wenn ein Lauf die Kosten zeigt, A nur mit Replay-Beleg für Nemo.
   Zuggrenze heute, ein Call spart 1400–1600 davon (6–7 % des Zugs, Haiku-Stufe) und 2 von 5 Starts, keine Zeit.
 - Dagegen: drei Pflicht-Entscheidungen fallen gemeinsam aus, der Szenen-Kontext (vorige Erzählung) erreicht Fakten-
   und NSC-Frage, D138 und der Claude-Abend sind noch unverifiziert, `dm-eval` sieht die drei Klassifikatoren nicht.
-- Unabhängig davon, je eine kleine Entscheidung: Aux-Stats (`last_aux_stats`) in die `[classifier]`-Zeile loggen;
-  `CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK` messen; Fakten-Klassifikator bei „nichts“ ohne `sache`-Satz.
+- Die Aux-Tokens sind ab dem nächsten Lauf messbar (`[aux]`-Zeile, 13.11.; Messung D im Beipackzettel).
+  Unabhängig davon, je eine kleine Entscheidung: `CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK` messen;
+  Fakten-Klassifikator bei „nichts“ ohne `sache`-Satz.
 - Nebenbefund, Ursache ungeprüft: 4 der 25 Journal-Records vom 13.11. tragen keine `scene_router`/`facts`/`npcs`-Notizen,
   obwohl das Log für jede Zuggrenze drei Verdikte zeigt.
 

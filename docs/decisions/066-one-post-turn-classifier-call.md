@@ -53,6 +53,8 @@ backend, Haiku as the aux model) and the journal `history.20261113-021634.debug.
 `[latency]` line belong to the narration call. An aux call logs one `[classifier]` line with its
 total time and verdict; `ClaudeClient.last_aux_stats` holds its token counts and nothing reads
 them. The token numbers below are therefore computed from the prompts, not read from the log.
+(Closed the same day for the next run: every schema call on Claude now writes an `[aux]` line
+with its own tokens, cache reads and spawn time — ADR 061, amendment 2026-11-13, third.)
 
 **Computed** (the three prompts rebuilt for the 25 turns from the journal and the
 `debug-kampagne` adventure with the real prompt builders; system prompt plus user message plus
@@ -142,8 +144,10 @@ pair is degraded or pinned.
 Three calls, as built. No saving; nothing new to verify. Cheaper levers that couple nothing
 remain open, each a small decision of its own:
 
-- Log the aux stats (`last_aux_stats`: input tokens, cache reads, spawn) in the `[classifier]`
-  line. Without it no option can be judged on measured tokens.
+- Log the aux stats (input tokens, cache reads, spawn) per call. Without it no option can be
+  judged on measured tokens. **Built 2026-11-13** as the `[aux]` line, written by the client from
+  the call's own numbers; the shared `last_aux_stats` slot cannot say which of three parallel
+  calls it holds.
 - `CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK` removes the `claude -v` probe before every spawn — about
   half of all process starts, on every call, with no prompt change (ADR 061: "measure first").
 - Tell the fact classifier to leave `sache` empty on "nichts". It is the slowest of the three
@@ -212,14 +216,16 @@ Build it through the `dmbot.llm` hook, with shared question builders and the jou
 **A only on evidence.** Nemo gains least and risks most. A needs a Nemo replay that does not
 exist yet, for the separate calls as much as for the combined one.
 
-Worth doing regardless of this ADR: the aux stats in the log, and the two small levers under C.
+Worth doing regardless of this ADR: the aux stats in the log (done), and the two small levers
+under C.
 
 ## What a live run has to show
 
-Before any merge, on the code as it is (the next run, plus the aux-stats log line):
+Before any merge, on the code as it is (the next run; the read-along sheet
+`docs/phase-11-abend.md` carries these as measurement D and point N1):
 
 1. Aux input tokens, cache reads and spawn time per classifier call — the measured version of
-   the estimate table.
+   the estimate table, read from the `[aux]` lines.
 2. Whether a usage limit is reached in an evening, and how many turns in.
 3. D138 at the table: Alter Fenk and Bree Marlok in the pawn hall come back as themselves.
 

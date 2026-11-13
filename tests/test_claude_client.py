@@ -375,6 +375,24 @@ def test_a_schema_call_never_writes_the_narration_slot(fake, client):
     assert client.last_aux_stats["model"] == "haiku"
 
 
+def test_every_schema_call_logs_one_aux_line_with_its_own_numbers(fake, client, caplog):
+    """The evening reads the aux tokens per turn from these lines (ADR 066). Three classifiers
+    share ``last_aux_stats``, so the line must come from the call itself — and a narration call
+    writes none."""
+    with caplog.at_level(logging.INFO, logger="dmbot.llm.claude_client"):
+        fake(_INIT, _result(structured_output={"probe": "ja"}, num_turns=2, usage={
+            "input_tokens": 40, "cache_read_input_tokens": 900, "output_tokens": 9}))
+        asyncio.run(client.chat("ROUTER", _USER, format=_SCHEMA))
+        fake(_INIT, _result(result="Die Tür knarrt."))
+        asyncio.run(client.chat("s", _USER))
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("[aux]")]
+    assert len(lines) == 1
+    assert lines[0].startswith(
+        "[aux] haiku fields=probe in=940 cache=900 out=9 turns=2 spawn="
+    )
+    assert "api=700ms total=" in lines[0] and not lines[0].endswith(" cut")
+
+
 def test_a_schema_call_before_any_narration_leaves_the_narration_slot_empty(fake, client):
     fake(_INIT, _result(structured_output={"probe": "ja"}))
     asyncio.run(client.chat("ROUTER", _USER, format=_SCHEMA))

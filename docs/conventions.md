@@ -228,6 +228,10 @@ hier (ich schlage `/simplify` vor, wenn ein Batch die Trigger trifft)._
 - **`[classifier]` log line (both backends):** every side call logs `[classifier] roll|scene|fact
   <N>ms → <verdict>` from `DMBrain` — the wall time of the whole call, so „how long until the
   dice button" is a grep, not a stopwatch.
+- **`[aux]` log line (Claude backend only):** every completed schema call logs `[aux] <model>
+  fields=<schema fields> in=… cache=… out=… turns=… spawn=…ms api=…ms total=…ms` from
+  `ClaudeClient` — the call's own tokens; `fields` tells the callers apart (ADR 061, amendment
+  2026-11-13, third).
 - Keep the latency chain lean (LAN/Tailscale). Streaming TTS is a later optimization, not
   an MVP must.
 - **Two machines drift** — the must-haves that git doesn't carry (`data/adventures/`,

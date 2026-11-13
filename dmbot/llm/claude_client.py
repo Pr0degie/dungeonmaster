@@ -176,6 +176,7 @@ class _Call:
     text_budget: int | None = None  # streamed narration: the spoken budget in characters
     text_chars: int = 0
     budget_cut: bool = False  # the cut came from the text budget, not a max_tokens stop
+    fields: str = ""  # a schema call's top-level field names — tells the ``[aux]`` lines apart
 
 
 class ClaudeClient:
@@ -428,13 +429,35 @@ class ClaudeClient:
             if thinking is not None:
                 call.thinking_tokens = thinking
 
-    def _store_stats(self, call: _Call, *, truncated: bool) -> None:
-        """Put the call's stats into its tier's slot (see ``__init__``)."""
+    def _store_stats(self, call: _Call, *, truncated: bool) -> dict:
+        """Put the call's stats into its tier's slot (see ``__init__``) and return them."""
         stats = self._stats(call, truncated=truncated)
         if call.narration:
             self.last_stats = stats
         else:
             self.last_aux_stats = stats
+        return stats
+
+    @staticmethod
+    def _log_aux(call: _Call, stats: dict) -> None:
+        """One ``[aux]`` line per completed schema call, from that call's own numbers. Logging
+        only. It is written here and not read from ``last_aux_stats`` by the caller: the three
+        post-turn classifiers run side by side and share that slot, so a reader could not tell
+        whose numbers it holds. ``fields`` are the schema's top-level names — what tells a scene
+        verdict (``ziel``) from a fact verdict in the log. ``in`` counts cache reads in, like
+        ``ctx=`` in the ``[latency]`` line; ``total`` is spawn to result."""
+        def shown(value: object) -> object:
+            return "?" if value is None else value
+
+        log.info(
+            "[aux] %s fields=%s in=%s cache=%s out=%s turns=%s spawn=%sms api=%sms total=%dms%s",
+            call.model, call.fields or "—", shown(stats["prompt_eval_count"]),
+            stats["cache_read"], shown(stats["eval_count"]),
+            call.result.num_turns if call.result is not None else "?",
+            shown(stats["spawn_ms"]), shown(stats["api_ms"]),
+            round((time.monotonic() - call.started) * 1000),
+            " cut" if stats["truncated"] else "",
+        )
 
     def _stats(self, call: _Call, *, truncated: bool) -> dict:
         """The ``last_stats`` dict: Ollama's three keys plus the Claude extras."""
@@ -493,7 +516,9 @@ class ClaudeClient:
                 if output_tokens is not None and call.narration else output_tokens
             )
             truncated = bool(call.cap and text_tokens is not None and text_tokens >= call.cap)
-        self._store_stats(call, truncated=truncated)
+        stats = self._store_stats(call, truncated=truncated)
+        if not call.narration:
+            self._log_aux(call, stats)
         if not truncated:
             return
         if call.budget_cut:
@@ -545,6 +570,8 @@ class ClaudeClient:
                 f"Claude call could not be prepared ({exc.__class__.__name__}): {exc}"
             ) from exc
         call = _Call(model=model, cap=cap, narration=format is None, started=time.monotonic())
+        if isinstance(format, dict):
+            call.fields = ",".join(format.get("properties") or ())
         if spoken and cap:
             # Only a streamed turn is spoken as it arrives. Batch prose — the recap above all —
             # is held only by the per-request cap: a recap cut at the spoken budget loses exactly

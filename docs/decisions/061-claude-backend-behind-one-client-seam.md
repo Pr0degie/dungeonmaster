@@ -58,7 +58,8 @@ embeddings and as the fallback.
 - Since 2026-11-13 (second amendment): a turn that ends on a fragment is cut back to its last
   complete sentence in the turn core (one sentence-end rule for sanitizer, stream and TTS), and
   the turn's ✂ line names how many characters fell away.
-- Stats: separate slots for prose and schema calls; the boot ping checks both models.
+- Stats: separate slots for prose and schema calls; the boot ping checks both models. Since
+  2026-11-13 (third amendment) every schema call also logs one `[aux]` line with its own tokens.
 - The live evening is isolated (17 old gates parked, optional layers off — one variable). Known
   gaps and the deliberately deferred review findings: the "review of the whole round" amendment.
 
@@ -436,5 +437,24 @@ Decided:
 Not changed: the budget (`DM_NUM_PREDICT`, Tobi's to set) and the persona. Known gaps: Ollama
 reports no cut (`done_reason` is not read), so a turn there gets no ✂ line (open point in
 `progress.md`); a budget cut still shows the cap as its token count.
+
+Live-unverified.
+
+## Amendment (2026-11-13, third) — every schema call logs its own numbers
+
+ADR 066 (draft) asked what the classifiers cost per turn, and the log could not say: an aux
+call's tokens went into `last_aux_stats`, which nothing read. Reading that slot from
+`DMBrain`'s `[classifier]` line would not have worked either — the three post-turn classifiers
+run side by side and share it.
+
+So `ClaudeClient` writes one INFO line when a schema call completes, from that call's own record:
+
+`[aux] haiku fields=ziel in=1234 cache=0 out=12 turns=1 spawn=700ms api=2100ms total=3800ms`
+
+`fields` are the schema's top-level names and identify the call (`ziel` scene, `art,sache,an,von`
+fact, `npcs` presence, `needs_test,skill,difficulty` roll router). `in` counts cache reads in,
+like `ctx=` in the `[latency]` line; `turns` above 1 means the model answered in prose before the
+tool call; ` cut` is appended when the call ran out of cap. Logging only: no stats key, no return
+value and no call path changed. A schema call answered by Ollama writes no such line.
 
 Live-unverified.
