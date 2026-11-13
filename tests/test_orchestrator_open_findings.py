@@ -1,17 +1,26 @@
-"""Open findings in DMBrain, pinned as strict xfails — nothing here is fixed.
+"""Open findings in DMBrain and its turn path, pinned as strict xfails — nothing here is fixed.
 
 The code review of the orchestrator de-duplication (2026-11-13, ``ddaae08..9ec06b6``) found
-seven faults the refactor carried over unchanged. Each test below asserts the WANTED behaviour
-and fails today; ``strict=True`` turns the test red the moment a fix lands, so the mark gets
-removed with it. All seven were derived from the code, none was seen live. Listed in
-``progress.md`` under "Last session".
+seven faults the refactor carried over unchanged; the live run of the same night (01:48–02:16)
+added two more, at the bottom of this file. Each test asserts the WANTED behaviour and fails
+today; ``strict=True`` turns the test red the moment a fix lands, so the mark gets removed
+with it.
 
-Public API only: the tests drive ``DMBrain`` the way the cogs do.
+Seen live: review finding 3 (turn 20 of that run, 02:05:49 — the history stood exactly at its
+cap when the auto-recap began, and the turn that landed during the summary is in neither the
+recap nor the history) and the two live-run findings. The other six review findings were
+derived from the code and have not been seen live. All are listed in ``progress.md`` under
+"Last session".
+
+Public API only — the tests drive ``DMBrain`` the way the cogs do. The journal test also calls
+the cog's autosave, the way the delivery pipeline does after playback.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -19,6 +28,9 @@ from dmbot.llm.consistency import check
 from dmbot.memory.state import Combatant, WorldState
 from dmbot.orchestrator import DMBrain, build_opening_director_msg
 from dmbot.rules import profile as profile_mod
+from dmbot.voice.dmcog import DMCog
+
+from fakes import make_runtime
 
 _IM = profile_mod.load("imperium_maledictum")
 
@@ -38,6 +50,11 @@ class _Script:
         if callable(answer):
             answer = await answer()
         return answer
+
+    async def chat_stream(self, system, messages, options=None):
+        answer = await self.chat(system, messages, options)
+        for i in range(0, len(answer), 9):
+            yield answer[i:i + 9]
 
     async def aclose(self) -> None:
         pass
@@ -212,3 +229,68 @@ def test_an_empty_echo_retry_stores_no_empty_turn() -> None:
     assert asyncio.run(brain.respond(ch)) == ""  # content-less to the cog
 
     assert brain.history_len(ch) == 0
+
+
+# ---- live run 2026-11-13 -------------------------------------------------------------------
+
+@pytest.mark.xfail(strict=True, reason=(
+    "the replay capture (lines/results/raw/markers, ADR 046) is one slot per channel that the "
+    "autosave reads after playback; a turn that starts while the previous one is still being "
+    "spoken overwrites it, so the previous turn's journal record carries the next turn's "
+    "fields and the next turn's record has none — live 2026-11-13: 13 of 22 records (2026-10-31: "
+    "6 of 21)"))
+def test_a_turn_started_during_playback_leaves_the_previous_turns_replay_fields(tmp_path) -> None:
+    ch = 7
+    journal = tmp_path / "history.jsonl"
+    brain = DMBrain(_Script(["Die Tür schwingt auf.", "Dahinter liegt ein dunkler Gang."]))
+    cog = object.__new__(DMCog)  # __init__ skipped (the test_subcogs pattern)
+    cog._rt = make_runtime(
+        _autosave=True, _brain_channel=lambda channel: ch, _brain=brain,
+        _state={ch: WorldState()}, _history_path=lambda cid: journal,
+    )
+    channel = SimpleNamespace(id=ch)
+
+    brain.add_player_line(ch, "Timo", "Ich öffne die Tür.")
+    first = asyncio.run(brain.respond(ch))
+    first_user = brain.last_user_msg(ch)  # snapshotted at generation end, as delivery does (D43)
+    # The first answer is still being spoken when the player declares the next action.
+    brain.add_player_line(ch, "Timo", "Ich gehe hinein.")
+    second = asyncio.run(brain.respond(ch))
+    second_user = brain.last_user_msg(ch)
+    # Each turn is autosaved when its own playback ends.
+    asyncio.run(cog._autosave_turn(channel, first, user_msg=first_user))
+    asyncio.run(cog._autosave_turn(channel, second, user_msg=second_user))
+
+    recs = [json.loads(line) for line in journal.read_text(encoding="utf-8").splitlines()]
+    assert [(r["user_msg"], r["answer"]) for r in recs] == [
+        ("Timo: Ich öffne die Tür.", "Die Tür schwingt auf."),
+        ("Timo: Ich gehe hinein.", "Dahinter liegt ein dunkler Gang."),
+    ]  # the pairs themselves are right (D43)
+
+    assert (recs[0].get("lines"), recs[0].get("raw")) == (
+        [["Timo", "Ich öffne die Tür."]], "Die Tür schwingt auf.")
+    assert (recs[1].get("lines"), recs[1].get("raw")) == (
+        [["Timo", "Ich gehe hinein."]], "Dahinter liegt ein dunkler Gang.")
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "_SENTENCE_END accepts ” ’ » after the terminator but not the German closing quote “ (nor «), "
+    "so _trim_to_last_sentence takes a complete final sentence ending on ?“ .“ or !“ for a "
+    "dangling fragment and drops it — not spoken, not posted, not stored, with no output cut "
+    "involved; live 2026-11-13: 5 of 22 answers (turn 20, 02:05:49), 15 of 136 earlier in the log"))
+def test_a_final_sentence_ending_on_the_german_closing_quote_is_spoken_and_stored() -> None:
+    ch = 1
+    last = "Wessen Namen soll ich neben deinen schreiben?“"
+    raw = f"Bree legt den Federkiel quer über die Seite. „Na dann“, sagt sie leise, „ich höre. {last}"
+    brain = DMBrain(_Script([raw]))
+    brain.add_player_line(ch, "Timo", "Ich erzähle ihr, wer mich schickt.")
+    spoken: list[str] = []
+
+    async def on_sentence(sentence: str) -> None:
+        spoken.append(sentence)
+
+    answer = asyncio.run(brain.respond_streaming(ch, on_sentence=on_sentence))
+
+    assert answer.endswith(last)           # what is posted
+    assert spoken[-1].endswith(last)       # what is spoken
+    assert _contents(brain, ch)[-1].endswith(last)  # what is stored

@@ -14,7 +14,7 @@ is on-demand._
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
 - **Newest round:** `DMBrain` entdoppelt (13.11., reiner Umbau von `orchestrator.py`, kein D-Eintrag) — `ChannelSession`
   pro Channel statt 17 Dicts, ein Turn-Kern (`_run_turn`) für Batch und Streaming, `_pending_<kind>`-Aliase weg; Schnittstelle
-  unverändert. 1381 Tests grün, 10 xfail (3 NSC-Sichtung, ADR 062; 7 `DMBrain`-Altbefunde), `dm-eval` Exit 0. Live gesehen 13.11. (22 Züge bis `!leave`).
+  unverändert. 1381 Tests grün, 12 xfail (3 NSC-Sichtung, ADR 062; 9 offene `DMBrain`-Befunde), `dm-eval` Exit 0. Live gesehen 13.11. (22 Züge bis `!leave`).
   Davor (13.11., D136 / ADR 061 Nachtrag): Auto-Recap markiert sich im Autosave-Journal, Recap unter Claude mit eigener
   Grenze — beides live gesehen, der Neustart danach noch nicht.
   Davor (12.11., D135 / ADR 065): `runtime.py` in sieben Mixin-Module unter `dmbot/session/` zerlegt (1949 → 844 Zeilen).
@@ -83,6 +83,22 @@ Turn-Ablauf arbeitet, liest jetzt einen Pfad statt zwei; am Tisch ändert sich n
     `compact`-Ereignis, ein Neustart lädt ihn wieder.
   - Die Replay-Felder im Journal (`lines`/`results`/`raw`/`markers`) gehören bei 13 von 22 Zügen zum Folgezug, weil der
     schon lief, bevor die Wiedergabe des Zugs endete; 7 weitere Records haben gar keine (31.10.: 6 von 21 falsch).
+    Ein Golden aus so einem Journal wäre falsch. xfail:
+    `test_a_turn_started_during_playback_leaves_the_previous_turns_replay_fields`.
+  - Ein vollständiger Schlusssatz auf `?“`, `.“` oder `!“` fällt weg — nicht gesprochen, nicht gepostet, nicht
+    gespeichert, auch ohne ✂-Schnitt: `_SENTENCE_END` kennt `“` (und `«`) nicht, `_trim_to_last_sentence` hält den
+    Satz für ein Bruchstück. 5 von 22 Antworten im Lauf (Zug 20: „Wessen Namen soll ich neben deinen schreiben?“),
+    15 von 136 davor im Log. Weiter als der offene Punkt im Eintrag darunter, der nur den Schnitt-Fall nennt. xfail:
+    `test_a_final_sentence_ending_on_the_german_closing_quote_is_spoken_and_stored`.
+  - `!redo` eines Zugs mit Regie-Impuls läuft ohne den Impuls: der Redo-Prompt war 133 Tokens kleiner (15.266 statt
+    15.399). Der Impuls der Szene `schrein` hat 257 Zeichen, bei den 1,95 Zeichen je Token des Laufs sind das 132.
+    Nach dem Join steht `_scene_turns` auf 0, der Originalzug trägt den Impuls; `close_turn` zählt hoch und frischt
+    den Kontext auf, bevor das Redo seinen Prompt baut. Das Redo zählt außerdem als eigener Szenenzug. Aus Code und
+    Größe hergeleitet, der Prompt selbst wird nicht geloggt. Kein Test.
+  - Das Journal rotiert nur bei `!leave` (`voicecog.leave`), nicht beim Beenden: von 19 Starts seit dem 30.10.
+    (17 mit Zügen) endete einer so. Die rotierte Datei enthielt 57 Züge aus vier Tagen (30.10.: 10, 31.10.: 21,
+    12.11.: 2, 13.11.: 24); der Session-Ingest hat sie als 22 Chunks unter „Session vom 13.11.“ abgelegt. Bis
+    dahin war nichts davon im Kampagnengedächtnis. Kein Test.
   - 7 von 22 Antworten bei 220 Tokens gekappt (✂); der Spieler hat es um 02:01 bemängelt.
 
 **Kontext nach Neustart, Recap-Grenze (2026-11-13, D136 / ADR 061 Nachtrag).** Nach einem Neustart ist der Kontext
