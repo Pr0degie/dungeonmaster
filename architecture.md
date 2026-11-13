@@ -413,8 +413,8 @@ importance −1, no re-gossip). While an NPC is in the current scene, its top-K 
 > block and the attack target picker all use this one definition; NPCs elsewhere are never targets.
 > A sighting is filed under the scene the pointer stands on when the turn is over and follows a
 > move until the next turn boundary; one that is a scene-card person of that scene or of a
-> reachable exit (by statblock, name or role) is that person, never a second entry (amendment
-> 2026-11-13).
+> reachable exit (by statblock, name or role) is that person, never a second entry. A card
+> person of the scene being left stays there (amendment 2026-11-13).
 
 > **Fate (ADR 063).** Player characters carry `fate_total` / `fate_spent` in the state (profile
 > block `fate`, IM 3 at start; spent Fate recovers on `!join`). A failed test by a character with

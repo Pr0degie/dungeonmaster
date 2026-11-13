@@ -76,10 +76,14 @@ class SceneFlowMixin:
         where it stands now (ADR 062, amendment 2026-11-13 #6): the classifier's own move, the
         ``<<ORT>>`` button confirmed after the verdict, ``!ort``, the ↩ undo. Live 2026-11-13 the
         button came 22 s after the sighting and the woman at the pawn hall's door stayed in the
-        shrine. Whoever has been placed elsewhere since stays there. The caller persists."""
+        shrine. Whoever has been placed elsewhere since stays there, and so does a person on the
+        card of ``left``: that scene is where she belongs (amendment #9). The caller persists."""
         moved: list[str] = []
+        home = self._card_people(left)
         for name in self._turn_sightings.get(cid, ()):
             npc = state.find(name)
+            if npc is not None and npc.name.strip().casefold() in home:
+                continue
             if left and npc is not None and npc.is_npc and npc.scene == left:
                 npc.scene = state.scene_id
                 moved.append(npc.name)
@@ -193,7 +197,8 @@ class SceneFlowMixin:
             # Under the pointer as it stands NOW, not ``classified_from``: an answer that narrates
             # an arrival shows the people of the new scene. A move still to come in this turn —
             # the verdict just below, a late button — takes them along (ADR 062, amendment #6).
-            self._apply_npc_sightings(channel, state, npc_verdict, state.scene_id)
+            self._apply_npc_sightings(channel, state, npc_verdict, state.scene_id,
+                                      began_in=classified_from)
             if scene_verdict is not None and state.scene_id != classified_from:
                 # Someone moved the pointer while the classifier was thinking (``!ort``, the
                 # ``<<ORT>>`` button, an undo). The verdict was built against the *old* scene's
@@ -287,27 +292,41 @@ class SceneFlowMixin:
             return []
         people: dict[str, tuple[str, str]] = {}
         for sid in (scene.id, *self._exit_labels(scene, state)):
-            card = self._adventure.get_scene(sid)
-            for raw in (card.npcs_here if card is not None else ()):
-                name = raw.strip()
-                block = self._adventure.npc(name)
-                if name and not (block is not None and block.generic):
-                    people.setdefault(name.casefold(), (name, block.role_de if block else ""))
+            for key, person in self._card_people(sid).items():
+                people.setdefault(key, person)
         return list(people.values())
 
-    def _apply_npc_sightings(self, channel, state: WorldState, verdict, scene_id: str) -> None:
+    def _card_people(self, scene_id: str) -> dict[str, tuple[str, str]]:
+        """The single people on one scene's card, ``{casefolded name: (name, role)}`` — its
+        ``npcs_here`` minus the statblocks flagged ``generic`` (see :meth:`_npc_candidates`)."""
+        card = self._adventure.get_scene(scene_id) if self._adventure is not None else None
+        people: dict[str, tuple[str, str]] = {}
+        for raw in (card.npcs_here if card is not None else ()):
+            name = raw.strip()
+            block = self._adventure.npc(name)
+            if name and not (block is not None and block.generic):
+                people.setdefault(name.casefold(), (name, block.role_de if block else ""))
+        return people
+
+    def _apply_npc_sightings(self, channel, state: WorldState, verdict, scene_id: str, *,
+                             began_in: str = "") -> None:
         """Place the people the presence classifier saw into ``scene_id`` (ADR 062 #2): a known
         NPC moves there, a new one is registered with its adventure statblock or the profile's
         improvised defaults. A sighting that is one of the scene-card people around
         (:meth:`_npc_candidates`) is that person under their own name, never a second entry
         (amendment 2026-11-13 #8). Code decides scene, identity and numbers; the verdict only
-        names people. The names filed are remembered so they can follow a move in this turn."""
+        names people. The names filed are remembered so they can follow a move in this turn.
+
+        ``began_in`` is the scene the turn started in. When the pointer has left it meanwhile,
+        its card people are candidates too, and a sighting that is one of them stays there: the
+        fence who sees the group off does not turn up in the warehouse (amendment #9)."""
         sightings = getattr(verdict, "sightings", None)
         if not sightings or not scene_id:
             return
         defaults = (self._profile.improvised_npc() if self._profile is not None
                     else {"wounds": 10, "toughness_bonus": 0, "armour": 0})
-        candidates = self._npc_candidates(state, scene_id)
+        home = self._card_people(began_in) if began_in and began_in != scene_id else {}
+        candidates = [*self._npc_candidates(state, scene_id), *home.values()]
         placed: list[str] = []
         filed: list[str] = []
         for sighting in sightings:
@@ -319,8 +338,10 @@ class SceneFlowMixin:
             statblock = person or sighting.statblock
             block = (self._adventure.npc(statblock)
                      if self._adventure is not None and statblock else None)
+            name = person or sighting.label
+            stays = name.casefold() in home
             npc, new = state.place_npc(
-                person or sighting.label, scene_id,
+                name, began_in if stays else scene_id,
                 wounds=block.wounds if block else defaults["wounds"],
                 toughness_bonus=block.toughness_bonus if block else defaults["toughness_bonus"],
                 armour=block.armour if block else defaults["armour"],
@@ -331,6 +352,8 @@ class SceneFlowMixin:
             notes = [f"neu, {block.name if block else 'Standardwerte'}"] if new else []
             if person and person.casefold() != sighting.label.casefold():
                 notes.append(f"gemeldet als „{sighting.label}“")
+            if stays:
+                notes.append(f"bleibt in '{began_in}'")
             placed.append(f"{npc.name} ({'; '.join(notes)})" if notes else npc.name)
         if not filed:
             return

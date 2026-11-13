@@ -98,6 +98,16 @@ in the "already present" list, but the classifier only ever saw their names, nev
    fight into one entry would undo #1.
    Outside the candidate set a statblock is a template as before: a misjudged verdict must not
    pull a plot NPC from across the adventure into the room.
+9. **A card figure of the scene being left stays there.** Added the same day, because #6 and
+   #8 together carried her along: Bree Marlok sees the group off in the pawn hall, the answer
+   ends in the warehouse, the verdict reports her under another label, #8 merges the sighting
+   into her and #6 takes her to the warehouse — into its prompt line and its target picker.
+   a) A person on the card (`npcs_here`) of the scene the pointer leaves does not follow the
+   move.
+   b) The identity check of #8 also takes the card people of the scene the turn began in. A
+   sighting recognised as one of them stays in that scene, and no entry is created in the new
+   one — also when the pointer had already moved before the verdict came back.
+   Statblocks flagged `generic` are no persons (#8); neither rule touches them.
 
 **Behaviour change.** Until now a sighting with a card NPC's statblock became a second NPC with
 that statblock's numbers; now it is that NPC.
@@ -110,6 +120,10 @@ code's call (golden rule #3). Accepted because every live case was an arrival an
 that narrates a move ends at the destination.
 Also: a second person with a card NPC's role (another Schreinschwester in the shrine) gets no
 entry of their own, and a wrong candidate statblock now merges instead of duplicating.
+The price of #9: a card figure who really goes with the group — Kaad walks them down to the
+shrine — stays behind in the state. It heals when a later turn in the new scene reports her:
+she is not listed as present there, so the sighting passes and places her. The error #9
+replaces did not heal by itself.
 
 **Not covered.**
 - A sighting with no statblock whose label is not the role stays a second entry, as "Blinder

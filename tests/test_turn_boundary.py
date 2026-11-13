@@ -1369,3 +1369,79 @@ def test_a_statblock_that_is_no_single_person_stays_a_template_for_numbers() -> 
     assert ("Kettenknecht", "Knecht") not in brain.npc_calls[0]["candidates"]
     assert {n.name: n.wounds for n in state.npcs} == {"Kettenmann": 8, "Narbengesicht": 6,
                                                       "Knecht": 10}
+
+
+# ---- a card figure of the scene being left stays there (ADR 062, amendment #9) ---------------
+# Kaad stands on zollhaus's card and sees the group off; the answer ends in the shrine. The
+# verdict reports him by his role, as the verdicts of 2026-11-13 did.
+
+_FAREWELL = "Kaad nickt euch zum Abschied zu. Dann steigt ihr hinab und tretet in den Schrein."
+
+
+def _leaving_kaad(*sightings, adv: Adventure | None = None, **over):
+    adv = adv or _adventure()
+    state = _state(adv)
+    channel = _FakeChannel()
+    brain = _npc_brain(*(sightings or (("Zöllner", ""),)))
+    rt = _runtime(adv, state, brain, channel, _npc_router=True, _profile=_IMPROVISED, **over)
+    rt._set_scene(state, "zollhaus")                     # registers Kaad from the card
+    return state, channel, brain, rt
+
+
+def _kaad_stayed_behind(state: WorldState, rt: SessionRuntime) -> bool:
+    return (state.scene_id == "schrein" and state.find("Seneschall Kaad").scene == "zollhaus"
+            and [n.name for n in rt._scene_npcs(state)] == ["Schwester Vall"]
+            and [n.name for n in rt._scene_npcs(state, "zollhaus")] == ["Seneschall Kaad"])
+
+
+def test_a_card_figure_of_the_scene_left_does_not_follow_the_classifiers_move() -> None:
+    kettenknecht = AdventureNpc(name="Kettenknecht", role_de="Knecht", wounds=6, generic=True)
+    adv = _adventure(kettenknecht)
+    adv.get_scene("zollhaus").npcs_here.append("Kettenknecht")
+    state, channel, brain, rt = _leaving_kaad(("Zöllner", ""), ("Narbengesicht", "Kettenknecht"),
+                                              adv=adv)
+    brain._scene = SceneVerdict(target_id="schrein")     # the scene classifier: the group arrived
+
+    _run(rt.close_turn(channel, _FAREWELL))
+
+    assert state.find("Zöllner") is None                 # he is Kaad, not somebody new
+    assert state.find("Seneschall Kaad").scene == "zollhaus"
+    assert "Seneschall Kaad" not in [n.name for n in rt._scene_npcs(state)]
+    # A generic statblock is no person, on a card or not: the thug it lent numbers to goes along.
+    assert state.find("Narbengesicht").scene == "schrein"
+
+
+def test_a_card_figure_of_the_scene_left_does_not_follow_a_late_button() -> None:
+    state, channel, _, rt = _leaving_kaad(_scene_router=False)
+
+    _run(rt.close_turn(channel, _FAREWELL))
+    _run(rt.move_scene(channel, "schrein", trigger=MoveTrigger.MARKER, announce=False))
+
+    assert _kaad_stayed_behind(state, rt)
+
+
+def test_a_card_figure_of_the_scene_left_gets_no_entry_in_the_scene_arrived_in() -> None:
+    """The pointer moved while the classifier was thinking: the sighting lands in the shrine,
+    where Kaad is no candidate. The scene the turn began in still knows him."""
+    state, channel, brain, rt = _leaving_kaad(_scene_router=False)
+    _arriving_meanwhile(rt, state, brain)
+
+    _run(rt.close_turn(channel, _FAREWELL))
+
+    assert _kaad_stayed_behind(state, rt)
+    assert [n.name for n in state.npcs] == ["Seneschall Kaad", "Schwester Vall"]  # no "Zöllner"
+
+
+def test_a_card_figure_that_came_along_is_placed_once_the_next_turn_reports_her() -> None:
+    """The price of the rule: Kaad really walks the group down, and stays behind in the state
+    for one turn. The next sighting in the new scene puts him there."""
+    state, channel, brain, rt = _leaving_kaad()
+    brain._scene = SceneVerdict(target_id="schrein")
+    _run(rt.close_turn(channel, "Kaad geht voran, die Stufen hinab, und tritt mit euch in den Schrein."))
+    assert _kaad_stayed_behind(state, rt)
+
+    rt._brain = _npc_brain(("Seneschall Kaad", ""))      # not listed as present in the shrine
+    _run(rt.close_turn(channel, "Kaad mustert den leeren Sockel und schüttelt den Kopf."))
+
+    assert state.find("Seneschall Kaad").scene == "schrein"
+    assert "Seneschall Kaad" in [n.name for n in rt._scene_npcs(state)]

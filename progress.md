@@ -14,7 +14,8 @@ is on-demand._
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
 - **Newest round:** D138 / ADR 062 Nachtrag — eine gesichtete Figur landet in der Szene, in der der Zug endet, und
   folgt einem Wechsel bis zum nächsten Zug; Karten-NSCs werden an Statblock, Name oder Rolle erkannt statt doppelt
-  angelegt (13.11., **live-unverifiziert**). 1419 Tests grün, 4 xfail, `dm-eval` Exit 0.
+  angelegt; eine Karten-Figur der verlassenen Szene bleibt dort (13.11., **live-unverifiziert**). 1423 Tests grün,
+  4 xfail, `dm-eval` Exit 0.
   Davor (13.11.): D137 / ADR 061 Nachtrag, Satzschnitt (live-unverifiziert); fünf offene `DMBrain`-Befunde behoben (live-unverifiziert); `DMBrain` entdoppelt (live gesehen);
   D136 / ADR 061 Nachtrag (live gesehen). D135 / ADR 065 (12.11.), D134 (31.10., live-unverifiziert).
 - **Next concrete step:** der fünfte Lauf mit Bot A (die Neustart-Probe ist bestanden); vorher entscheiden, welche der neun
@@ -38,7 +39,7 @@ _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-a
 **NSC-Sichtungen: richtige Szene, keine Doppelgänger von Karten-NSCs (2026-11-13, D138 / ADR 062 Nachtrag,
 live-unverifiziert).** Am Tisch: Wen die Erzählung bei einer Ankunft zeigt, steht in der neuen Szene und ist dort Ziel
 und im Prompt; eine Karten-NSC, die unter ihrer Rolle gemeldet wird, bekommt keinen zweiten Eintrag mit Standardwerten.
-Ein Commit, pytest (1419 grün, 4 xfail), ruff (F), `dm-eval` (Exit 0).
+Zwei Commits, nach jedem pytest (zuletzt 1423 grün, 4 xfail), ruff (F), `dm-eval` (Exit 0).
 - Befund aus dem Lauf 01:59–02:01: „Türwächter“ und „Frau hinter der Sichtklappe“ waren Bree Marlok, „Blinder Greis“
   Alter Fenk. Die Frau wurde abgelegt, 22 s bevor der `<<ORT>>`-Knopf kam; die anderen beiden standen als anwesend in
   der Liste, der Klassifikator sah aber nur Namen, keine Rollen.
@@ -47,9 +48,11 @@ Ein Commit, pytest (1419 grün, 4 xfail), ruff (F), `dm-eval` (Exit 0).
 - Der Klassifikator bekommt die Karten-NSCs der Szene und der erreichbaren Ausgänge als „Name — Rolle“. Code führt
   eine Sichtung mit einer solchen Person zusammen (Statblock, Name, Rolle). Person ist, wer auf einer Szenenkarte
   steht und nicht `generic` ist; jeder andere Statblock bleibt Vorlage.
-- Schlechter als vorher: Wer vor dem Aufbruch in der alten Szene gesehen wird, landet in der neuen.
-- Offen: Ob der Prompt wirkt, zeigt erst ein Lauf („Next concrete step“, Punkt 2). Tests: drei xfails grün, fünf neue
-  in `tests/test_turn_boundary.py` und `tests/test_npc_router.py`.
+- Nachgezogen (Punkt 9 im Nachtrag): Eine Karten-Figur der verlassenen Szene folgt dem Wechsel nicht und bekommt in
+  der neuen Szene keinen Eintrag. Preis: Geht sie wirklich mit, steht sie erst dort, wenn ein Folgezug sie meldet.
+- Schlechter als vorher: Wer vor dem Aufbruch in der alten Szene gesehen wird und keine Karten-Figur ist, landet in
+  der neuen. Offen: Ob der Prompt wirkt, zeigt erst ein Lauf („Next concrete step“, Punkt 2). Tests: drei xfails
+  grün, neun neue in `tests/test_turn_boundary.py` und `tests/test_npc_router.py`.
 
 **Satzschnitt: ein gekappter Zug endet am letzten ganzen Satz (2026-11-13, D137 / ADR 061 Nachtrag, live-unverifiziert).**
 Am Tisch: Ein NSC-Satz auf `?“` oder `!“` vor dem Schnitt wird gesprochen und gespeichert; ein angefangener letzter Satz
