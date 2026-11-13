@@ -2,9 +2,8 @@
 then edited in place), the clock panel, the sweep of panels left by earlier runs, and the
 operator channel the 🧪 debug overlay posts into.
 
-A mixin, split out of dmbot/runtime.py for context-leanness (ADR 065): the methods are still
-methods of the one ``SessionRuntime`` object — ``self`` is the runtime, all state is created in
-its ``__init__`` — and every moved body is byte-identical.
+A mixin (ADR 065): its methods are methods of the one ``SessionRuntime`` object — ``self`` is
+the runtime, all state is created in its ``__init__``.
 
 Two renderers stay in runtime.py: ``_panel_text`` and ``update_debug_overlay`` read the debug
 sidecar, and the ADR 052 pin allows only runtime.py to name it.

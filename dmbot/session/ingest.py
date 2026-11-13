@@ -1,9 +1,8 @@
 """Campaign memory for :class:`~dmbot.runtime.SessionRuntime`: rotated session journals are
 ingested into the RAG store in the background (ADR 054), on ``!leave`` and as a ``!join`` catch-up.
 
-A mixin, split out of dmbot/runtime.py for context-leanness (ADR 065): the methods are still
-methods of the one ``SessionRuntime`` object — ``self`` is the runtime, all state is created in
-its ``__init__`` — and every moved body is byte-identical.
+A mixin (ADR 065): its methods are methods of the one ``SessionRuntime`` object — ``self`` is
+the runtime, all state is created in its ``__init__``.
 
 ``_session_ingest_source`` (which RAG source a channel's sessions go to) stays in runtime.py next
 to ``is_debug_run``: it checks for the debug sidecar, and the ADR 052 pin allows only runtime.py

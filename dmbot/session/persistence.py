@@ -2,9 +2,8 @@
 channel's world state, save it on every change and refresh what the brain is told about it
 (state summary, scene card, psyker and augmetic blocks, scene guidance), plus the Chekhov list.
 
-A mixin, split out of dmbot/runtime.py for context-leanness (ADR 065): the methods are still
-methods of the one ``SessionRuntime`` object — ``self`` is the runtime, all state is created in
-its ``__init__`` — and every moved body is byte-identical. Where the session files live
+A mixin (ADR 065): its methods are methods of the one ``SessionRuntime`` object — ``self`` is
+the runtime, all state is created in its ``__init__``. Where the session files live
 (``session_file`` and the ``_*_path`` helpers) stays in runtime.py, next to ``_DATA_DIR``.
 """
 from __future__ import annotations
@@ -72,8 +71,7 @@ class PersistenceMixin:
             )
         # Which registered NPCs are actually HERE (D107). Once scene NPCs are registered on entry
         # the roster keeps growing, and an unscoped "NSCs in der Szene" line would hand the model
-        # the seneschal from scene one as present in scene four — the contradiction of 2026-08-22.
-        # Since ADR 062 "here" also counts the people seen in this scene in person, so an
+        # the seneschal from scene one as present in scene four (ADR 057). Since ADR 062 "here" also counts the people seen in this scene in person, so an
         # improvised thug is not listed as "anderswo" right after he walked in.
         summary = world_state_summary_de(
             state,
@@ -99,11 +97,9 @@ class PersistenceMixin:
     def _guidance_due(self, channel_id: int) -> bool:
         """Whether the current scene's standing GM guidance rides in the next prompt.
 
-        ADR 019 put ``guidance_de`` in *every* turn's card. Live (2026-08-22, findings A5/B6) the
-        model treated it as a standing order and made the seneschal say the deadline line in eight
-        of ten answers — the guidance was also the only characterisation input it had. The loader
-        now renders it as a one-off impulse and leaves the WHEN to the caller: first turn in a
-        scene, then every ``DM_GUIDANCE_EVERY``-th turn. 1 = every turn (pre-D107), 0 = never."""
+        Guidance in *every* turn's card is read as a standing order and parroted (ADR 059). The
+        loader renders it as a one-off impulse and leaves the WHEN to the caller: first turn in a
+        scene, then every ``DM_GUIDANCE_EVERY``-th turn. 1 = every turn, 0 = never."""
         if self._guidance_every <= 0:
             return False
         return self._scene_turns.get(channel_id, 0) % self._guidance_every == 0

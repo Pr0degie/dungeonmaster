@@ -1,9 +1,8 @@
 """NPC memory (ADR 044) for :class:`~dmbot.runtime.SessionRuntime`: which NPCs a scene holds,
 and the extraction — at scene exit and wrap-up — of what they would remember.
 
-A mixin, split out of dmbot/runtime.py for context-leanness (ADR 065): the methods are still
-methods of the one ``SessionRuntime`` object — ``self`` is the runtime, all state is created in
-its ``__init__`` — and every moved body is byte-identical.
+A mixin (ADR 065): its methods are methods of the one ``SessionRuntime`` object — ``self`` is
+the runtime, all state is created in its ``__init__``.
 """
 from __future__ import annotations
 

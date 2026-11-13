@@ -2,9 +2,8 @@
 :class:`~dmbot.runtime.SessionRuntime`: tick/untick a clock, advance the session's clock by a
 scene change or a narrated turn.
 
-A mixin, split out of dmbot/runtime.py for context-leanness (ADR 065): the methods are still
-methods of the one ``SessionRuntime`` object — ``self`` is the runtime, all state is created in
-its ``__init__`` — and every moved body is byte-identical. The clock *panel* lives in
+A mixin (ADR 065): its methods are methods of the one ``SessionRuntime`` object — ``self`` is
+the runtime, all state is created in its ``__init__``. The clock *panel* lives in
 ``session/panels.py``.
 """
 from __future__ import annotations
@@ -91,9 +90,7 @@ class ClocksMixin:
     async def advance_turn_time(self, channel) -> int:
         """The per-turn heartbeat of the in-game clock (ADR 059 #2).
 
-        Small and unconditional: through the whole live run of 2026-08-22 the clock read "Tag 1,
-        08:00, Morgen" while the fiction played the night before midnight, because time only moved
-        when the model emitted a ``<<ZEIT>>`` marker and it emitted none in 22 turns. The marker
-        keeps its job (deliberate jumps, ADR 059 #3) — it is now an accelerator on a clock that
-        already runs. ``DM_TURN_TIME_ADVANCE=0`` disables it."""
+        Small and unconditional: a clock moved only by the ``<<ZEIT>>`` marker stands still when
+        the model emits none. The marker keeps its job (deliberate jumps, ADR 059 #3) — an
+        accelerator on a clock that already runs. ``DM_TURN_TIME_ADVANCE=0`` disables it."""
         return await self._advance_time(channel, self._turn_time_advance)

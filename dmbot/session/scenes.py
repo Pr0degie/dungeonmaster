@@ -5,9 +5,8 @@ classifiers run in one shared latency window, and a validated verdict moves the 
 a hard fact. All four scene movers (classifier, flag gate, ``!ort``, the demoted ``<<ORT>>``
 marker) go through the same :meth:`SceneFlowMixin.move_scene`.
 
-A mixin, split out of dmbot/runtime.py for context-leanness (ADR 065): the methods are still
-methods of the one ``SessionRuntime`` object — ``self`` is the runtime, all state is created in
-its ``__init__`` — and every moved body is byte-identical.
+A mixin (ADR 065): its methods are methods of the one ``SessionRuntime`` object — ``self`` is
+the runtime, all state is created in its ``__init__``.
 """
 from __future__ import annotations
 
@@ -57,10 +56,10 @@ class SceneFlowMixin:
         state.scene_id = scene.id
         if scene.title_de:
             state.set_location(scene.title_de)  # keep the prose state block in sync
-        # Entering a scene registers its NPCs as present (PRD block 3, story 21) — the single
-        # switch that finally feeds NPC memory (ADR 044), agendas (ADR 049) and the consistency
-        # guard (ADR 045), none of which ever ran because state.npcs was always empty. Done here,
-        # in the one deterministic pointer mover, so all four movers get it.
+        # Entering a scene registers its NPCs as present (PRD block 3, story 21) — the switch that
+        # feeds NPC memory (ADR 044), agendas (ADR 049) and the consistency guard (ADR 045), all
+        # of which need a populated state.npcs. Done here, in the one deterministic pointer
+        # mover, so all four movers get it.
         self._register_scene_npcs(state, scene)
         if changed:
             self._journal_scene_event(state)
@@ -83,9 +82,8 @@ class SceneFlowMixin:
     def _carry_turn_sightings(self, cid: int, state: WorldState, left: str) -> None:
         """The NPCs filed in the turn that is still open follow the pointer from ``left`` to
         where it stands now (ADR 062, amendment 2026-11-13 #6): the classifier's own move, the
-        ``<<ORT>>`` button confirmed after the verdict, ``!ort``, the ↩ undo. Live 2026-11-13 the
-        button came 22 s after the sighting and the woman at the pawn hall's door stayed in the
-        shrine. Whoever has been placed elsewhere since stays there, and so does a person on the
+        ``<<ORT>>`` button confirmed after the verdict, ``!ort``, the ↩ undo. Whoever has been
+        placed elsewhere since stays there, and so does a person on the
         card of ``left``: that scene is where she belongs (amendment #9). The caller decides
         whether this move carries anyone (:attr:`_CARRYING_TRIGGERS`) and persists."""
         moved: list[str] = []
@@ -311,9 +309,8 @@ class SceneFlowMixin:
         """The single people on one scene's card, ``{casefolded name: Candidate}`` — its
         ``npcs_here`` minus the statblocks flagged ``generic`` (see :meth:`_npc_candidates`).
 
-        With ``living_in`` the dead of that state are left out: nobody new *is* a corpse. A
-        second Schreinschwester after Vall's death was merged into the dead entry and was in
-        neither the prompt nor the target picker (review of b71c12f)."""
+        With ``living_in`` the dead of that state are left out: nobody new *is* a corpse (ADR 062,
+        amendment #8)."""
         card = self._adventure.get_scene(scene_id) if self._adventure is not None else None
         people: dict[str, Candidate] = {}
         for raw in (card.npcs_here if card is not None else ()):
@@ -469,7 +466,7 @@ class SceneFlowMixin:
 
     async def report_rejected_move(self, channel, verdict) -> None:
         """Make a refused scene change loud (ADR 057 #5) — a director note for the next turn AND
-        an operator-visible line, never the single ``log.info`` of 2026-08-22.
+        an operator-visible line, never just a ``log.info``.
 
         Spoiler discipline decides where each half lands: the ``[Regie]`` note (model-facing) and
         the log carry the reachable exits and the element that would unlock a gated one, and the
@@ -510,8 +507,8 @@ class SceneFlowMixin:
         Deterministic pointer + NPC registration (``_set_scene``), persist + prompt refresh, NPC
         memory mining for the scene just left (ADR 044), the scene-change time cost (ADR 048 #10),
         the 🧪 overlay and the player panel — plus, when ``announce``, the channel line and the
-        one-minute ↩ control of ADR 057 #4. The change happens FIRST and is undone on click: the
-        evening proved that a confirmation nobody knows about is the same as no mechanism."""
+        one-minute ↩ control of ADR 057 #4. The change happens FIRST and is undone on click: a
+        confirmation nobody knows about is the same as no mechanism."""
         cid = self._brain_channel(channel)
         state = self._state.get(cid)
         if state is None:

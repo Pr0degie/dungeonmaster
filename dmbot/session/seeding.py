@@ -2,9 +2,8 @@
 channel's characters and world state, the adventure's start state, the turn order, the speaker
 identities and the restored conversation history.
 
-A mixin, split out of dmbot/runtime.py for context-leanness (ADR 065): the methods are still
-methods of the one ``SessionRuntime`` object — ``self`` is the runtime, all state is created in
-its ``__init__`` — and every moved body is byte-identical.
+A mixin (ADR 065): its methods are methods of the one ``SessionRuntime`` object — ``self`` is
+the runtime, all state is created in its ``__init__``.
 """
 from __future__ import annotations
 
@@ -99,10 +98,9 @@ class SeedingMixin:
             self._state[cid].start_fate_session(default=profile.fate_start())
         # Adventure (Phase 10a): point a fresh session at the start scene; a loaded state keeps
         # its stored pointer (the plot position survives restarts like HP does) — unless that
-        # pointer names a scene the loaded adventure doesn't have. That happened live (2026-08-15,
-        # ADR 056): the stored pointer belonged to the previous campaign, every get_scene() came
-        # back None, and the evening ran with no scene card and no 🧪 overlay (it only fires on a
-        # scene change, which never came). A foreign pointer re-seeds to the start scene, loudly.
+        # pointer names a scene the loaded adventure doesn't have (a previous campaign's): every
+        # get_scene() would return None, so no scene card and no 🧪 overlay all evening. A foreign
+        # pointer re-seeds to the start scene, loudly (ADR 056 #4).
         if self._adventure is not None:
             stored = self._state[cid].scene_id
             if stored and self._adventure.get_scene(stored) is None:
