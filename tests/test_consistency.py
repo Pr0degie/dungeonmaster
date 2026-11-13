@@ -241,7 +241,7 @@ def test_violation_regenerates_once_with_korrektur_nudge() -> None:
     assert answer == "Grendels Leiche liegt still da."
     assert len(client.calls) == 2 and "KORREKTUR" in client.calls[1]
     # only the kept answer lands in history, paired with the ORIGINAL user message
-    hist = brain._history[1]
+    hist = brain._session(1).history
     assert hist[-1]["content"] == answer and "KORREKTUR" not in hist[-2]["content"]
 
 

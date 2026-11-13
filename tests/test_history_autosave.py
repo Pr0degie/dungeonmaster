@@ -195,7 +195,7 @@ def test_restore_history_into_an_empty_brain():
     ch = 1
     n = brain.restore_history(ch, [("Timo: a", "A1"), ("Timo: b", "A2")])
     assert n == 2
-    assert brain._history[ch] == [
+    assert brain._session(ch).history == [
         {"role": "user", "content": "Timo: a"},
         {"role": "assistant", "content": "A1"},
         {"role": "user", "content": "Timo: b"},
@@ -206,12 +206,12 @@ def test_restore_history_into_an_empty_brain():
 def test_restore_history_is_a_noop_when_history_is_nonempty():
     brain = DMBrain(object())
     ch = 1
-    brain._history[ch] = [
+    brain._session(ch).history = [
         {"role": "user", "content": "x"},
         {"role": "assistant", "content": "y"},
     ]
     assert brain.restore_history(ch, [("a", "b")]) == 0
-    assert len(brain._history[ch]) == 2  # untouched
+    assert len(brain._session(ch).history) == 2  # untouched
 
 
 def test_restore_history_respects_the_history_cap():
@@ -220,7 +220,7 @@ def test_restore_history_respects_the_history_cap():
     turns = [(f"u{i}", f"a{i}") for i in range(5)]
     n = brain.restore_history(ch, turns)
     assert n == 2  # only the last 2 turns kept (4 messages = _max_messages)
-    assert brain._history[ch][0]["content"] == "u3"
+    assert brain._session(ch).history[0]["content"] == "u3"
 
 
 # ---- compaction marker: a restart must not restore what the recap already covers ---------------

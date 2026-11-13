@@ -110,7 +110,7 @@ def test_respond_retries_an_echo_with_the_nudge_and_stores_the_clean_answer() ->
     # the retry call carried the corrective nudge…
     assert _ECHO_NUDGE in client.calls[1][-1]["content"]
     # …but history stores the ORIGINAL user_msg with the clean answer
-    history = brain._history[ch]
+    history = brain._session(ch).history
     assert _ECHO_NUDGE not in history[-2]["content"]
     assert history[-1]["content"] == answer
 
@@ -123,7 +123,7 @@ def test_respond_suppresses_a_double_echo_and_keeps_history_clean() -> None:
     answer = asyncio.run(brain.respond(ch))
     assert answer == ""  # content-less to the cog: nothing posted/spoken
     assert client.calls == 2  # exactly one retry
-    assert brain._history.get(ch, []) == []  # the poison pair never enters history
+    assert brain._session(ch).history == []  # the poison pair never enters history
 
 
 # --- respond_streaming(): same guard at finish() ---------------------------------------------------
@@ -163,7 +163,7 @@ def test_streaming_echo_is_retried_and_the_clean_answer_spoken_and_stored() -> N
     answer = asyncio.run(brain.respond_streaming(ch, on_sentence=on_sentence))
     assert answer == "Die Klinge des Kultisten blitzt auf, als er zurückweicht."
     assert spoken == [answer]  # the echo was never spoken; the retry was
-    assert brain._history[ch][-1]["content"] == answer
+    assert brain._session(ch).history[-1]["content"] == answer
 
 
 def test_streaming_double_echo_is_suppressed_nothing_spoken_or_stored() -> None:
@@ -179,7 +179,7 @@ def test_streaming_double_echo_is_suppressed_nothing_spoken_or_stored() -> None:
     answer = asyncio.run(brain.respond_streaming(ch, on_sentence=on_sentence))
     assert answer == ""
     assert spoken == []
-    assert brain._history.get(ch, []) == []
+    assert brain._session(ch).history == []
 
 
 # --- results-only turns carry the narrate-the-consequence directive -------------------------------
@@ -227,6 +227,6 @@ def test_restore_history_skips_empty_answers() -> None:
         ("Timo: Ich schaue mich um.", "Der Gang liegt still vor euch."),
     ])
     assert restored == 1
-    history = brain._history[7]
+    history = brain._session(7).history
     assert len(history) == 2
     assert history[0]["content"] == "Timo: Ich schaue mich um."

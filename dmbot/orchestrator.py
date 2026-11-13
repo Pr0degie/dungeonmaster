@@ -16,7 +16,7 @@ import logging
 import threading
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import asdict
+from dataclasses import asdict, dataclass, field
 
 from .llm.client import LLMClient
 from .llm.persona import load_system_prompt
@@ -85,6 +85,70 @@ def _markers_dict(markers: dict[str, list], *, queued: bool) -> dict:
     }
 
 
+@dataclass
+class ChannelSession:
+    """Everything :class:`DMBrain` keeps for one voice channel. One object per channel, created
+    on first touch (:meth:`DMBrain._session`) and reset in place by :meth:`DMBrain.reset`."""
+
+    # The running conversation, user/assistant pairs, capped at ``max_history_turns``.
+    history: list[dict[str, str]] = field(default_factory=list)
+    # Transcribed player lines waiting for the next turn. Written from the STT thread, read on
+    # the event loop — touch it only under ``DMBrain._lock``.
+    buffer: list[tuple[str, str]] = field(default_factory=list)
+    # How many history messages the last :meth:`DMBrain.summarize` folded into the recap. The
+    # auto-compaction clears history right after the (awaited) summarize, but a dice-button turn
+    # can append to the live list *during* that await — :meth:`DMBrain.clear_history` removes
+    # only these first N messages so that concurrent turn survives both the recap and the
+    # history (Finding #4). Cleared once consumed; None → clear_history does a full wipe.
+    compact_consumed: int | None = None
+    # One-shot GM directives injected into the NEXT turn's user message as "[Regie] …" lines
+    # (ADR 047: "clock X is full — the consequence hits now"). Code-queued only, drained by
+    # _prepare_turn like dice results, exempt from the player-line cap.
+    gm_notes: list[str] = field(default_factory=list)
+    # Test results fed back in (engine roll → narrate consequence): prepended to the next turn,
+    # exempt from the player-line cap.
+    test_results: list[str] = field(default_factory=list)
+    # A light "who plays whom" hint (display name → character) appended to the system prompt,
+    # so the model stops confusing player and character names (open item F).
+    alias_hint: str = ""
+    # Every character + player name at the table (CharacterStore.speaker_labels). They join the
+    # turn's own speakers as cut-labels + stop sequences, so a puppeted "Seskin: …"/"Pr0degie: …"
+    # script the model tacks on is truncated — the deterministic guard behind the persona's
+    # no-puppeting rule (the live fix; nemo ignores the soft rule). Survives :meth:`DMBrain.reset`.
+    known_speakers: list[str] = field(default_factory=list)
+    # Memory (Phase 9): the stored session recap + a compact world-state block, injected into the
+    # system prompt after the persona (docs/conventions.md order: core → tone → recap → JSON state →
+    # history). Set by the cog from the world state, refreshed when state changes.
+    recap: str = ""
+    state_summary: str = ""
+    # The adventure block (stage 1+2 of the hybrid, ADR 019): always-on adventure summary +
+    # the current scene card, selected by code from WorldState.scene_id. Set by the cog.
+    adventure_block: str = ""
+    # The NPC-memory block (ADR 044): what the current scene's NPCs remember, rendered by the
+    # runtime from the world state (top-K per NPC). Set alongside the state summary.
+    npc_memory_block: str = ""
+    # The turn's ``## Regelwerk`` block (stage 3, ADR 019) — refreshed per turn, mostly empty.
+    rag_block: str = ""
+    # The last turn's (user_msg, labels), so !redo can re-generate it when the DM misunderstood —
+    # same input, a fresh answer that replaces the last one in history.
+    last_turn: tuple[str, list[str]] | None = None
+    # The last player action (name, text) consumed — the roll-detection router (ADR 014)
+    # classifies it after the narration turn. None when a turn had no player line (e.g. a
+    # test-result feedback turn), so the router skips it.
+    last_action: tuple[str, str] | None = None
+    # Every speaker's action of that same turn, one entry each (D111). ``last_action`` is its
+    # last element and stays for callers that only ask "was there an action?"; the router walks
+    # this list so a turn with several declarations produces a test button per declaring
+    # character instead of only for whoever spoke last.
+    last_actions: list[tuple[str, str]] = field(default_factory=list)
+    # Replay capture (ADR 046): the structured input of the turn in flight (player lines +
+    # drained dice-result lines, set by _prepare_turn/_prepare_opening) and the generation side
+    # (the kept answer's raw LLM text + the markers it queued). Drained into the history autosave
+    # by take_replay_turn; the eval harness (dm-eval) replays them. Survive :meth:`DMBrain.reset`.
+    replay_turn: dict | None = None
+    replay_gen: dict | None = None
+
+
 class DMBrain:
     """Per-channel history + a pending-player-lines buffer, driving one Ollama client."""
 
@@ -112,7 +176,6 @@ class DMBrain:
         # campaign-memory half (ADR 054) to this channel's played sessions. None →
         # no retrieval (pre-10a behaviour, and what most unit tests use).
         self._retriever = retriever
-        self._rag_block: dict[int, str] = {}
         # Active system profile (Phase 8). When set, DM answers are scanned for <<TEST …>> markers
         # (rules/marker), which are stripped from the spoken text and surfaced as pending tests.
         # None → no dice flow (pre-Phase-8 behaviour, kept for the existing unit tests).
@@ -123,22 +186,15 @@ class DMBrain:
         # sending the whole pile drowns the real action. Keep only the most recent lines so the
         # latest intent dominates. 0 = unbounded. Tunable via DM_MAX_LINES.
         self._max_buffer_lines = max_buffer_lines
-        self._history: dict[int, list[dict[str, str]]] = {}
-        self._buffer: dict[int, list[tuple[str, str]]] = {}
-        # How many history messages the last :meth:`summarize` folded into the recap, per channel.
-        # The auto-compaction clears history right after the (awaited) summarize, but a dice-button
-        # turn can append to the live list *during* that await — :meth:`clear_history` removes only
-        # these first N messages so that concurrent turn survives both the recap and the history
-        # (Finding #4). Cleared once consumed; absent → clear_history falls back to a full wipe.
-        self._compact_consumed: dict[int, int] = {}
+        # Per-channel state: one :class:`ChannelSession` each, reached through :meth:`_session`.
+        self._sessions: dict[int, ChannelSession] = {}
         # The keyed pending-marker store (ADR 051): one inner {channel: [requests]} dict per
         # registry kind, drained by dicecog (tests/manifests) and the delivery pipeline (the
         # rest). The legacy ``_pending_<kind>`` attributes stay as live ALIASES of the inner
         # dicts — tests poke them directly, and they keep debugger views familiar.
         self._pending: dict[str, dict[int, list]] = {}
         # Pending dice tests parsed from the last DM turn (per channel) — the cog drains these and
-        # posts a dice button for each. Test results fed back in (engine roll → narrate consequence)
-        # are buffered here and prepended to the next turn, exempt from the player-line cap.
+        # posts a dice button for each.
         self._pending["tests"] = self._pending_tests = {}
         # Pending psychic Manifest requests parsed from the last DM turn (ADR 022) — drained by the
         # cog exactly like dice tests, each posting a "manifest" button that rolls the Manifest Test.
@@ -156,54 +212,14 @@ class DMBrain:
         # Pending time-advance requests (ADR 048) — drained by the delivery pipeline, which
         # honours only the first valid one per turn, clamps to +12h and confirms/auto-applies.
         self._pending["zeit"] = self._pending_zeit = {}
-        # One-shot GM directives injected into the NEXT turn's user message as "[Regie] …" lines
-        # (ADR 047: "clock X is full — the consequence hits now"). Code-queued only, drained by
-        # _prepare_turn like dice results, exempt from the player-line cap.
-        self._gm_notes: dict[int, list[str]] = {}
-        self._test_results: dict[int, list[str]] = {}
-        # A light "who plays whom" hint (display name → character) appended to the system prompt,
-        # so the model stops confusing player and character names (open item F). Set per channel.
-        self._alias_hint: dict[int, str] = {}
-        # Every character + player name at the table (CharacterStore.speaker_labels). They join the
-        # turn's own speakers as cut-labels + stop sequences (see _generate / respond), so a puppeted
-        # "Seskin: …"/"Pr0degie: …" script the model tacks on is truncated — the deterministic guard
-        # behind the persona's no-puppeting rule (the live fix; nemo ignores the soft rule).
-        self._known_speakers: dict[int, list[str]] = {}
-        # Memory (Phase 9): the stored session recap + a compact world-state block, injected into the
-        # system prompt after the persona (docs/conventions.md order: core → tone → recap → JSON state →
-        # history). Set per channel by the cog from the world state, refreshed when state changes.
-        self._recap: dict[int, str] = {}
-        self._state_summary: dict[int, str] = {}
-        # The adventure block (stage 1+2 of the hybrid, ADR 019): always-on adventure summary +
-        # the current scene card, selected by code from WorldState.scene_id. Set by the cog.
-        self._adventure_block: dict[int, str] = {}
-        # The NPC-memory block (ADR 044): what the current scene's NPCs remember, rendered by the
-        # runtime from the world state (top-K per NPC). Set alongside the state summary.
-        self._npc_memory_block: dict[int, str] = {}
-        # The last turn's (user_msg, labels) per channel, so !redo can re-generate it when the DM
-        # misunderstood — same input, a fresh answer that replaces the last one in history.
-        self._last_turn: dict[int, tuple[str, list[str]]] = {}
-        # The last player action (name, text) consumed per channel — the roll-detection router
-        # (ADR 014) classifies it after the narration turn. None when a turn had no player line
-        # (e.g. a test-result feedback turn), so the router skips it.
-        self._last_action: dict[int, tuple[str, str] | None] = {}
-        # Every speaker's action of that same turn, one entry each (D111). ``_last_action``
-        # is its last element and stays for callers that only ask "was there an action?";
-        # the router walks this list so a turn with several declarations produces a test
-        # button per declaring character instead of only for whoever spoke last.
-        self._last_actions: dict[int, list[tuple[str, str]]] = {}
-        self._lock = threading.Lock()  # buffer written from STT thread, read on event loop
+        # Guards session creation and every ``ChannelSession.buffer`` access: the buffer is written
+        # from the STT thread and read on the event loop.
+        self._lock = threading.Lock()
         # Token stats (prompt_eval_count / eval_count / num_ctx) from the most recent *narration*
         # call — set only by _generate (respond/redo), so the router's classify_test and summarize
         # calls don't overwrite it. The cog reads it right after respond()/redo() for the [latency]
         # line. None until the first turn.
         self.last_llm_stats: dict | None = None
-        # Replay capture (ADR 046): per channel, the structured input of the turn in flight
-        # (player lines + drained dice-result lines, set by _prepare_turn/_prepare_opening) and
-        # the generation side (the kept answer's raw LLM text + the markers it queued). Drained
-        # into the history autosave by take_replay_turn; the eval harness (dm-eval) replays them.
-        self._replay_turn: dict[int, dict] = {}
-        self._replay_gen: dict[int, dict] = {}
         # The roll router's last classify_test verdict: {"raw": <constrained-JSON text>,
         # "decision": <TestRequest as dict> | None}. Stateless like the call itself — the dice
         # cog copies it into the turn's replay notes right after classifying. None until then
@@ -222,19 +238,32 @@ class DMBrain:
         """How many turns the in-memory history keeps — used to bound the autosave restore (D41)."""
         return self._max_messages // 2
 
+    def _session(self, channel_id: int) -> ChannelSession:
+        """The channel's :class:`ChannelSession`, created on first touch. Creation takes the lock
+        because the STT thread reaches this through :meth:`add_player_line` — so never call it
+        while holding the lock."""
+        session = self._sessions.get(channel_id)
+        if session is None:
+            with self._lock:
+                session = self._sessions.setdefault(channel_id, ChannelSession())
+        return session
+
     def add_player_line(self, channel_id: int, name: str, text: str) -> None:
         """Buffer a transcribed player line for the next DM turn (STT thread-safe)."""
+        session = self._session(channel_id)
         with self._lock:
-            self._buffer.setdefault(channel_id, []).append((name, text))
+            session.buffer.append((name, text))
 
     def pending_count(self, channel_id: int) -> int:
+        session = self._session(channel_id)
         with self._lock:
-            return len(self._buffer.get(channel_id, []))
+            return len(session.buffer)
 
     def _drain(self, channel_id: int) -> list[tuple[str, str]]:
+        session = self._session(channel_id)
         with self._lock:
-            lines = self._buffer.get(channel_id, [])
-            self._buffer[channel_id] = []
+            lines = session.buffer
+            session.buffer = []
             return lines
 
     def _prepare_turn(
@@ -262,14 +291,15 @@ class DMBrain:
 
         # GM notes (ADR 047, e.g. "clock full — consequence now") ride whatever turn comes next.
         # Drained AFTER the nothing-to-respond-to guard, so an empty auto-turn can't swallow them.
-        notes = self._gm_notes.pop(channel_id, [])
+        session = self._session(channel_id)
+        notes, session.gm_notes = session.gm_notes, []
 
         # Remember the latest player action for the roll-detection router (ADR 014); None on a
         # results-only turn so the router doesn't re-fire on a stale action after a dice roll.
-        self._last_action[channel_id] = lines[-1] if lines else None
-        self._last_actions[channel_id] = group_by_speaker(lines)
+        session.last_action = lines[-1] if lines else None
+        session.last_actions = group_by_speaker(lines)
         # Replay capture (ADR 046): the structured turn input, post-cap — what dm-eval re-feeds.
-        self._replay_turn[channel_id] = {
+        session.replay_turn = {
             "lines": [[n, t] for n, t in lines], "results": list(results), "notes": list(notes),
         }
 
@@ -286,11 +316,9 @@ class DMBrain:
         # fabricating replies / scripting several turns: this turn's own speakers + every known
         # character/player at the table (so an appended "Seskin: …"/"Pr0degie: …" puppet script is
         # cut even when those names didn't speak this turn) + the generic role labels. Deduped.
-        known = self._known_speakers.get(channel_id, [])
-        labels = list(dict.fromkeys([name for name, _ in lines] + known + _ROLE_LABELS))
-        self._last_turn[channel_id] = (user_msg, labels)
-        history = self._history.setdefault(channel_id, [])
-        return user_msg, labels, history
+        labels = list(dict.fromkeys([name for name, _ in lines] + session.known_speakers + _ROLE_LABELS))
+        session.last_turn = (user_msg, labels)
+        return user_msg, labels, session.history
 
     async def _refresh_rag(self, channel_id: int, user_msg: str) -> None:
         """Fetch the turn's ``## Regelwerk`` block for ``user_msg`` (stage 3, ADR 019). Empty for
@@ -302,10 +330,7 @@ class DMBrain:
         except Exception:
             log.exception("rag refresh failed — turn continues without it")
             block = ""
-        if block:
-            self._rag_block[channel_id] = block
-        else:
-            self._rag_block.pop(channel_id, None)
+        self._session(channel_id).rag_block = block or ""
 
     async def respond(
         self, channel_id: int, *, extra_text: str | None = None,
@@ -333,11 +358,12 @@ class DMBrain:
         """Re-generate the **last** DM turn (same player input, a fresh answer) — for when the DM
         misunderstood. Drops the previous answer + its user turn from history first, so the new one
         replaces it rather than stacking. ``None`` if there is no turn to redo yet."""
-        last = self._last_turn.get(channel_id)
+        session = self._session(channel_id)
+        last = session.last_turn
         if last is None:
             return None
         user_msg, labels = last
-        history = self._history.setdefault(channel_id, [])
+        history = session.history
         if (
             len(history) >= 2
             and history[-1]["role"] == "assistant"
@@ -406,19 +432,18 @@ class DMBrain:
 
         Unlike :meth:`_prepare_turn` this consumes no buffered player lines and adds no
         ``Spieler:`` line — the opening is a GM-side *director* instruction, not a player action.
-        Crucially it leaves ``_last_action[channel_id]`` untouched (so it stays None), which makes
+        Crucially it leaves the session's ``last_action`` untouched (so it stays None), which makes
         :meth:`_generate` / :meth:`_stream_and_store` skip queuing any ``<<TEST>>``/``<<ORT>>``
         marker the model might emit — i.e. **no dice on a briefing** (the task's dice-suppression
-        requirement) falls out of the existing results-only guard for free. Records ``_last_turn``
+        requirement) falls out of the existing results-only guard for free. Records ``last_turn``
         so the opening can be ``!redo``-ne like any turn, and reuses the same labels (known table
         speakers + role labels) so the anti-puppeting stop sequences still apply."""
-        known = self._known_speakers.get(channel_id, [])
-        labels = list(dict.fromkeys(known + _ROLE_LABELS))
-        self._last_turn[channel_id] = (director_msg, labels)
-        history = self._history.setdefault(channel_id, [])
+        session = self._session(channel_id)
+        labels = list(dict.fromkeys(session.known_speakers + _ROLE_LABELS))
+        session.last_turn = (director_msg, labels)
         # Replay capture (ADR 046): an opening turn re-feeds its director_msg, not player lines.
-        self._replay_turn[channel_id] = {"lines": [], "results": [], "opening": True}
-        return director_msg, labels, history
+        session.replay_turn = {"lines": [], "results": [], "opening": True}
+        return director_msg, labels, session.history
 
     async def respond_opening(self, channel_id: int, director_msg: str, num_predict: int | None = None,
                               temperature: float | None = None,
@@ -482,14 +507,15 @@ class DMBrain:
         become Ollama stop sequences (the anti-puppeting guard). ``temperature`` is only set by the
         opening turns (D83), which pin a lower value for steadier instruction-following; a normal
         turn passes ``None`` → the model default (unchanged)."""
+        session = self._session(channel_id)
         system = assemble_system_prompt(
             load_system_prompt(),
-            recap=self._recap.get(channel_id),
-            adventure=self._adventure_block.get(channel_id),
-            state_summary=self._state_summary.get(channel_id),
-            npc_memory=self._npc_memory_block.get(channel_id),
-            rag=self._rag_block.get(channel_id),
-            alias_hint=self._alias_hint.get(channel_id),
+            recap=session.recap,
+            adventure=session.adventure_block,
+            state_summary=session.state_summary,
+            npc_memory=session.npc_memory_block,
+            rag=session.rag_block,
+            alias_hint=session.alias_hint,
         )
         messages = [*history_prefix, {"role": "user", "content": user_msg}]
         options = {"stop": [f"\n{label}:" for label in labels], "num_predict": num_predict or self._num_predict}
@@ -520,7 +546,7 @@ class DMBrain:
         log.info("🪵 LLM roh: %s", raw.replace("\n", " ⏎ "))
         # Replay capture (ADR 046): the raw text with markers intact. Each call overwrites, so
         # after an echo-guard/consistency retry the KEPT answer's raw is what the autosave gets.
-        self._replay_gen[channel_id] = {"raw": raw}
+        self._session(channel_id).replay_gen = {"raw": raw}
         return finalize_answer_markers(raw, labels, self._profile)
 
     @staticmethod
@@ -581,14 +607,17 @@ class DMBrain:
         the turn answered a player action. ``<<UHR>>``/``<<ZEIT>>`` are exempt (ADR 047/048): the
         post-roll consequence turn is the canonical tick/advance moment, and neither triggers a
         new roll/turn — no loop to guard."""
-        queued = self._last_action.get(channel_id) is not None
+        session = self._session(channel_id)
+        queued = session.last_action is not None
         for spec in MARKER_SPECS:
             reqs = markers[spec.kind]
             if reqs and (queued or not spec.suppressible):
                 self._pending[spec.kind].setdefault(channel_id, []).extend(reqs)
         # Replay capture (ADR 046): what this turn actually queued (empty when suppressed) —
         # the marker Soll dm-eval compares against.
-        self._replay_gen.setdefault(channel_id, {})["markers"] = _markers_dict(markers, queued=queued)
+        if session.replay_gen is None:
+            session.replay_gen = {}
+        session.replay_gen["markers"] = _markers_dict(markers, queued=queued)
 
     async def respond_streaming(
         self,
@@ -621,11 +650,12 @@ class DMBrain:
     ) -> str | None:
         """Streaming variant of :meth:`redo`: re-stream the last turn's input, replacing (not
         stacking) the previous answer in history."""
-        last = self._last_turn.get(channel_id)
+        session = self._session(channel_id)
+        last = session.last_turn
         if last is None:
             return None
         user_msg, labels = last
-        history = self._history.setdefault(channel_id, [])
+        history = session.history
         if (
             len(history) >= 2
             and history[-1]["role"] == "assistant"
@@ -678,7 +708,7 @@ class DMBrain:
         log.info("🪵 LLM roh (stream): %s", assembler.raw.replace("\n", " ⏎ "))
         # Replay capture (ADR 046) — an echo-guard retry below overwrites this via _chat_once,
         # so the kept answer's raw wins (batch-path parity).
-        self._replay_gen[channel_id] = {"raw": assembler.raw}
+        self._session(channel_id).replay_gen = {"raw": assembler.raw}
         result = assembler.finish()
         answer, markers, remaining = result.answer, result.markers, list(result.remaining)
         suppressed = False
@@ -772,24 +802,21 @@ class DMBrain:
         ADR 047 — e.g. "clock X is full, the consequence hits now"). Code-queued only, never
         LLM-written; drained by ``_prepare_turn`` like dice results."""
         if note:
-            self._gm_notes.setdefault(channel_id, []).append(note)
+            self._session(channel_id).gm_notes.append(note)
 
     def discard_gm_notes(self, channel_id: int, *, containing: str) -> int:
         """Drop still-queued GM notes containing ``containing`` (ADR 047: ``!uhr zurück`` from a
         full clock must retract the not-yet-fired consequence note). Returns how many went."""
-        notes = self._gm_notes.get(channel_id, [])
-        keep = [n for n in notes if containing not in n]
-        dropped = len(notes) - len(keep)
-        if keep:
-            self._gm_notes[channel_id] = keep
-        else:
-            self._gm_notes.pop(channel_id, None)
+        session = self._session(channel_id)
+        keep = [n for n in session.gm_notes if containing not in n]
+        dropped = len(session.gm_notes) - len(keep)
+        session.gm_notes = keep
         return dropped
 
     def last_action(self, channel_id: int) -> tuple[str, str] | None:
         """The latest player action (display-name, text) the last turn answered, or None — the
         roll-detection router (ADR 014) classifies this. None on a results-only turn."""
-        return self._last_action.get(channel_id)
+        return self._session(channel_id).last_action
 
     def last_actions(self, channel_id: int) -> list[tuple[str, str]]:
         """Every speaker's action of the turn just answered, one ``(display-name, text)`` each.
@@ -798,30 +825,32 @@ class DMBrain:
         in which two players each declared something can produce a test for both — before D111
         only the last speaker of a turn could ever be asked to roll.
         """
-        return list(self._last_actions.get(channel_id) or ())
+        return list(self._session(channel_id).last_actions)
 
     def take_replay_turn(self, channel_id: int) -> dict | None:
         """Return and clear the last turn's replay-journal fields (ADR 046): the structured
         input (``lines``/``results``/``opening``), the kept answer's ``raw`` LLM text and the
         ``markers`` it queued. ``None`` when nothing was captured (e.g. a stubbed brain path).
         The autosave merges this into the turn record; ``load_recent`` ignores the extras."""
-        turn = self._replay_turn.pop(channel_id, None)
-        gen = self._replay_gen.pop(channel_id, None)
+        session = self._session(channel_id)
+        turn, session.replay_turn = session.replay_turn, None
+        gen, session.replay_gen = session.replay_gen, None
         if turn is None and gen is None:
             return None
         return {**(turn or {}), **(gen or {})}
 
     def last_user_msg(self, channel_id: int) -> str | None:
         """The user message of the most recent turn (for history autosave, D41), or None."""
-        last = self._last_turn.get(channel_id)
+        last = self._session(channel_id).last_turn
         return last[0] if last else None
 
     def restore_history(self, channel_id: int, turns: list[tuple[str, str]]) -> int:
         """Restore prior ``(user_msg, answer)`` turns into this channel's history on join — crash
         recovery (D41). Only fills an **empty** history (never clobbers a live session) and respects
-        the history cap. Returns how many turns were restored. Note: ``_last_turn`` is *not*
+        the history cap. Returns how many turns were restored. Note: ``last_turn`` is *not*
         restored, so ``!redo`` is unavailable for the restored last turn (known limitation)."""
-        if self._history.get(channel_id):
+        session = self._session(channel_id)
+        if session.history:
             return 0
         history: list[dict[str, str]] = []
         for user_msg, answer in turns:
@@ -831,7 +860,7 @@ class DMBrain:
             history.append({"role": "assistant", "content": answer})
         if len(history) > self._max_messages:
             history = history[len(history) - self._max_messages:]
-        self._history[channel_id] = history
+        session.history = history
         return len(history) // 2
 
     @staticmethod
@@ -955,27 +984,23 @@ class DMBrain:
     def add_test_result(self, channel_id: int, line: str) -> None:
         """Buffer a rolled test result (a German summary line) to feed the next turn so the DM
         narrates its consequence (architecture §9: 'back into the next prompt')."""
-        self._test_results.setdefault(channel_id, []).append(line)
+        self._session(channel_id).test_results.append(line)
 
     def _drain_test_results(self, channel_id: int) -> list[str]:
-        return self._test_results.pop(channel_id, [])
+        session = self._session(channel_id)
+        results, session.test_results = session.test_results, []
+        return results
 
     def set_alias_hint(self, channel_id: int, hint: str) -> None:
         """Set (or clear, with '') the 'who plays whom' hint appended to this channel's prompt."""
-        if hint:
-            self._alias_hint[channel_id] = hint
-        else:
-            self._alias_hint.pop(channel_id, None)
+        self._session(channel_id).alias_hint = hint or ""
 
     def set_known_speakers(self, channel_id: int, names: list[str]) -> None:
         """Register every character + player name at the table (CharacterStore.speaker_labels). They
         join the turn's own speakers as cut-labels + stop sequences, so a puppeted "Seskin: …" /
         "Pr0degie: …" script the model appends is truncated — the deterministic backstop to the
         persona's no-puppeting rule. An empty list clears it."""
-        if names:
-            self._known_speakers[channel_id] = list(names)
-        else:
-            self._known_speakers.pop(channel_id, None)
+        self._session(channel_id).known_speakers = list(names or ())
 
     def set_context(
         self, channel_id: int, *, recap: str = "", state_summary: str = "",
@@ -986,22 +1011,11 @@ class DMBrain:
         (summary + current scene card, Phase 10a) and the NPC-memory block (what the scene's NPCs
         remember, ADR 044). Empty strings clear them. The cog calls this on join (from the loaded
         state) and after every state change."""
-        if recap:
-            self._recap[channel_id] = recap
-        else:
-            self._recap.pop(channel_id, None)
-        if state_summary:
-            self._state_summary[channel_id] = state_summary
-        else:
-            self._state_summary.pop(channel_id, None)
-        if adventure_block:
-            self._adventure_block[channel_id] = adventure_block
-        else:
-            self._adventure_block.pop(channel_id, None)
-        if npc_memory_block:
-            self._npc_memory_block[channel_id] = npc_memory_block
-        else:
-            self._npc_memory_block.pop(channel_id, None)
+        session = self._session(channel_id)
+        session.recap = recap or ""
+        session.state_summary = state_summary or ""
+        session.adventure_block = adventure_block or ""
+        session.npc_memory_block = npc_memory_block or ""
 
     async def summarize(self, channel_id: int, *, prior_recap: str = "") -> str | None:
         """Produce a German "Was bisher geschah" recap from this channel's history (the `wrap up`
@@ -1013,13 +1027,14 @@ class DMBrain:
         the new recap supersedes-and-extends it. Both the rolling auto-compaction (D57) AND ``!wrap up``
         pass the current recap so neither loses the part an earlier (auto-)recap already folded away;
         "" gives a plain summary of the visible history (e.g. a session's very first recap)."""
-        history = self._history.get(channel_id) or []
+        session = self._session(channel_id)
+        history = session.history
         if not history:
             return None
         # Record how many messages this recap consumes *before* the await, so a turn appended to the
         # live list while the LLM runs is preserved by clear_history (Finding #4). build_recap_user
         # reads the list synchronously here; the await below is where a concurrent append can land.
-        self._compact_consumed[channel_id] = len(history)
+        session.compact_consumed = len(history)
         user = build_recap_user(history, prior_recap)
         cap = self._recap_num_predict() if self._recap_num_predict is not None else None
         raw = await self._client.chat(
@@ -1040,17 +1055,17 @@ class DMBrain:
     def current_recap(self, channel_id: int) -> str:
         """The recap currently injected into this channel's prompt (set via :meth:`set_context`), or
         "" if none. The auto-compaction (D56) reads it to make the next recap cumulative."""
-        return self._recap.get(channel_id, "")
+        return self._session(channel_id).recap
 
     def history_len(self, channel_id: int) -> int:
         """Number of stored messages (user + assistant) in this channel's history — lets the cog see
         whether a compaction actually shrank the running history."""
-        return len(self._history.get(channel_id) or [])
+        return len(self._session(channel_id).history)
 
     def history_messages(self, channel_id: int, start: int = 0) -> list[dict[str, str]]:
         """A copy of this channel's history messages from index ``start`` on — the NPC-memory
         extractor's input window (ADR 044): the turns of the scene just left."""
-        return [dict(m) for m in (self._history.get(channel_id) or [])[start:]]
+        return [dict(m) for m in self._session(channel_id).history[start:]]
 
     @property
     def client(self) -> "LLMClient":
@@ -1065,24 +1080,29 @@ class DMBrain:
         pending tests/results and the buffer untouched — only the turn-by-turn history is cleared,
         because the just-generated cumulative recap now carries that thread forward. The next prompt
         is then persona + adventure + (longer) recap + state + empty history, safely under budget, so
-        the persona/adventure are never the truncated head again. ``_last_turn`` is also cleared so a
+        the persona/adventure are never the truncated head again. ``last_turn`` is also cleared so a
         stale ``!redo`` can't replay a turn that's no longer in history.
 
         Removes only the messages the matching :meth:`summarize` actually folded into the recap
-        (recorded in ``_compact_consumed``): a dice-button turn appended to the live list *during*
+        (recorded in ``compact_consumed``): a dice-button turn appended to the live list *during*
         the summarize await would otherwise be lost from both the recap and the history (Finding #4).
         With no recorded count (a direct call, not via the auto-compaction) it falls back to a full
-        wipe; the count is clamped to the current length in case the list shrank meanwhile."""
-        consumed = self._compact_consumed.pop(channel_id, None)
-        history = self._history.get(channel_id)
-        if consumed is None or history is None:
-            self._history.pop(channel_id, None)  # no recorded count → original full-clear behaviour
+        wipe; the count is clamped to the current length in case the list shrank meanwhile.
+
+        A wipe swaps in a NEW list rather than emptying the old one: a turn still in flight holds
+        the old list and appends to it, so its pair stays out of the fresh history (unchanged from
+        the per-channel dict, where the wipe dropped the key)."""
+        session = self._session(channel_id)
+        consumed, session.compact_consumed = session.compact_consumed, None
+        if consumed is None:
+            session.history = []  # no recorded count → original full-clear behaviour
         else:
+            history = session.history
             n = min(consumed, len(history))
             del history[:n]  # keep any turn appended after summarize captured its transcript
             if not history:
-                self._history.pop(channel_id, None)  # empty list → drop the key (full-clear parity)
-        self._last_turn.pop(channel_id, None)
+                session.history = []  # emptied → a fresh list (full-clear parity)
+        session.last_turn = None
 
     async def answer_rules(self, question: str, context: str, *, system_name: str) -> str | None:
         """Answer a player's rules question (``!rules <frage>``) in German, grounded ONLY in the
@@ -1107,22 +1127,26 @@ class DMBrain:
 
     def reset(self, channel_id: int) -> None:
         """Forget a channel's history and pending lines (e.g. new session)."""
+        # Reset in place, field by field: the session object stays, so a line the STT thread
+        # buffers during the reset lands in the new buffer. ``known_speakers`` and the replay
+        # capture are deliberately not touched — they never were.
+        session = self._session(channel_id)
         with self._lock:
-            self._buffer.pop(channel_id, None)
-        self._history.pop(channel_id, None)
-        self._last_turn.pop(channel_id, None)
-        self._compact_consumed.pop(channel_id, None)
+            session.buffer = []
+        session.history = []
+        session.last_turn = None
+        session.compact_consumed = None
         self._drop_pending(channel_id)
-        self._gm_notes.pop(channel_id, None)
-        self._test_results.pop(channel_id, None)
-        self._last_action.pop(channel_id, None)
-        self._last_actions.pop(channel_id, None)
-        self._alias_hint.pop(channel_id, None)
-        self._recap.pop(channel_id, None)
-        self._state_summary.pop(channel_id, None)
-        self._adventure_block.pop(channel_id, None)
-        self._npc_memory_block.pop(channel_id, None)
-        self._rag_block.pop(channel_id, None)
+        session.gm_notes = []
+        session.test_results = []
+        session.last_action = None
+        session.last_actions = []
+        session.alias_hint = ""
+        session.recap = ""
+        session.state_summary = ""
+        session.adventure_block = ""
+        session.npc_memory_block = ""
+        session.rag_block = ""
 
     async def aclose(self) -> None:
         await self._client.aclose()

@@ -117,7 +117,7 @@ def test_prepare_turn_injects_and_records_gm_notes() -> None:
     assert "[Regie] Die Uhr „Alarm“ ist voll" in user_msg
     assert "Timo: Ich lausche." in user_msg
     # replay capture (ADR 046): dm-eval re-feeds the notes to compose the same user_msg
-    assert brain._replay_turn[1]["notes"] == [
+    assert brain._session(1).replay_turn["notes"] == [
         "Die Uhr „Alarm“ ist voll — die Konsequenz tritt JETZT ein."
     ]
     # one-shot: the next turn does not repeat the note
@@ -150,4 +150,4 @@ def test_reset_drops_pending_gm_notes_and_uhr_queue() -> None:
     brain.add_gm_note(1, "Hinweis.")
     brain._pending_uhr[1] = [object()]
     brain.reset(1)
-    assert brain._gm_notes == {} and brain._pending_uhr == {}
+    assert brain._session(1).gm_notes == [] and brain._pending_uhr == {}

@@ -165,7 +165,7 @@ def test_respond_streaming_stores_the_canonical_answer_and_speaks_it():
     raw = "".join(deltas)
     expected, _, _, _, _, _, _ = finalize_answer(raw, ["Timo", *_ROLE_LABELS], None)
     assert answer == expected  # the trailing "Was tut ihr?" is stripped
-    assert brain._history[ch][-1]["content"] == answer  # stored == returned
+    assert brain._session(ch).history[-1]["content"] == answer  # stored == returned
     assert _norm(" ".join(spoken)) == _norm(answer)  # spoken == stored
     assert brain.last_llm_stats == {"prompt_eval_count": 10, "eval_count": 5, "num_ctx": 8192}
 
@@ -212,12 +212,12 @@ def test_redo_streaming_replaces_the_last_turn_without_stacking():
         pass
 
     a1 = asyncio.run(brain.respond_streaming(ch, on_sentence=noop))
-    n = len(brain._history[ch])
+    n = len(brain._session(ch).history)
     a2 = asyncio.run(brain.redo_streaming(ch, on_sentence=noop))
     assert a1 == "Antwort 1." and a2 == "Antwort 2."
-    assert len(brain._history[ch]) == n  # replaced, not stacked
-    assert brain._history[ch][-1]["content"] == "Antwort 2."
-    assert brain._history[ch][-2]["content"] == "Timo: Ich öffne die Tür."
+    assert len(brain._session(ch).history) == n  # replaced, not stacked
+    assert brain._session(ch).history[-1]["content"] == "Antwort 2."
+    assert brain._session(ch).history[-2]["content"] == "Timo: Ich öffne die Tür."
 
 
 class _DyingStreamClient:
@@ -246,6 +246,6 @@ def test_stream_dies_mid_turn_keeps_partial_and_notes_history():
 
     answer = asyncio.run(brain.respond_streaming(ch, on_sentence=on_s))  # must NOT raise
     assert "Du öffnest die Tür" in answer
-    stored = brain._history[ch][-1]["content"]
+    stored = brain._session(ch).history[-1]["content"]
     assert "[Antwort unterbrochen]" in stored  # the marker note lives in history, not the spoken text
     assert "[Antwort unterbrochen]" not in " ".join(spoken)

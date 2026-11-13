@@ -100,14 +100,14 @@ def test_clear_history_preserves_a_turn_appended_during_summarize() -> None:
         async def chat(self, system, messages, options=None, format=None) -> str:
             # Simulate the dice-button turn that appended mid-await (what _stream_and_store does):
             # it lands on the live list AFTER summarize captured its transcript synchronously.
-            holder["brain"]._history[ch].append({"role": "user", "content": "[Würfel] Erfolg"})
-            holder["brain"]._history[ch].append({"role": "assistant", "content": "Die Tür springt auf."})
+            holder["brain"]._session(ch).history.append({"role": "user", "content": "[Würfel] Erfolg"})
+            holder["brain"]._session(ch).history.append({"role": "assistant", "content": "Die Tür springt auf."})
             return await super().chat(system, messages, options=options, format=format)
 
     brain = DMBrain(_AppendDuringChat())
     holder["brain"] = brain
     # Seed a clean, known 2-message history so the consumed-count maths is unambiguous.
-    brain._history[ch] = [
+    brain._session(ch).history = [
         {"role": "user", "content": "Timo: Wir schleichen vor."},
         {"role": "assistant", "content": "Ihr steht vor einer Tür."},
     ]
@@ -118,7 +118,7 @@ def test_clear_history_preserves_a_turn_appended_during_summarize() -> None:
     brain.clear_history(ch)
     # Only the 2 summarized messages are gone; the dice turn appended during the await survives.
     assert brain.history_len(ch) == 2
-    assert brain._history[ch][-1]["content"] == "Die Tür springt auf."
+    assert brain._session(ch).history[-1]["content"] == "Die Tür springt auf."
 
 
 def test_clear_history_after_summarize_with_no_concurrent_append_clears_everything() -> None:

@@ -64,7 +64,7 @@ def test_opening_turn_runs_and_suppresses_dice() -> None:
     # the director instruction was the turn's user message (not a buffered "Spieler:" line)
     assert client.last_user_content == build_opening_director_msg()
     # and it landed in history so the thread continues / is redo-able
-    assert brain._history[ch][-1]["content"] == answer
+    assert brain._session(ch).history[-1]["content"] == answer
 
 
 def test_opening_turn_stored_for_redo() -> None:
@@ -85,4 +85,4 @@ def test_opening_turn_stored_for_redo() -> None:
     assert asyncio.run(brain.respond_opening(ch, build_opening_director_msg())) == "Auftakt 1"
     # the opening is a normal turn → !redo can re-roll it with the same director input
     assert asyncio.run(brain.redo(ch)) == "Auftakt 2"
-    assert brain._history[ch][-2]["content"] == build_opening_director_msg()
+    assert brain._session(ch).history[-2]["content"] == build_opening_director_msg()

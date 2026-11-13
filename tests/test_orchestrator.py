@@ -190,12 +190,12 @@ def test_redo_reruns_last_turn_without_stacking_history() -> None:
     ch = 1
     brain.add_player_line(ch, "Timo", "Ich öffne die Tür.")
     assert asyncio.run(brain.respond(ch)) == "Antwort 1"
-    hist_len = len(brain._history[ch])
+    hist_len = len(brain._session(ch).history)
 
     assert asyncio.run(brain.redo(ch)) == "Antwort 2"  # fresh generation, same input
-    assert len(brain._history[ch]) == hist_len  # replaced the last turn, not stacked
-    assert brain._history[ch][-2]["content"] == "Timo: Ich öffne die Tür."
-    assert brain._history[ch][-1]["content"] == "Antwort 2"
+    assert len(brain._session(ch).history) == hist_len  # replaced the last turn, not stacked
+    assert brain._session(ch).history[-2]["content"] == "Timo: Ich öffne die Tür."
+    assert brain._session(ch).history[-1]["content"] == "Antwort 2"
 
 
 def test_redo_without_prior_turn_returns_none() -> None:
