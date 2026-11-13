@@ -13,6 +13,7 @@ is on-demand._
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
 - **Newest round:** Kommentare/Docstrings in `dmbot/` entschlackt, keine Codezeile geändert (13.11.).
+  Danach ADR 066 als Entwurf (ein Schema-Call für die drei Post-Turn-Klassifikatoren?) — offene Entscheidung.
   Letzte Verhaltensänderung: D138 / ADR 062 Nachtrag. Details: „Last session“.
 - **Suite:** 1427 Tests grün, 4 xfail; `dm-eval` Exit 0.
 - **Live-unverifiziert:** D138, D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134.
@@ -41,6 +42,9 @@ ein Skript den Syntaxbaum ohne Docstrings mit HEAD (identisch), Befehls-Hilfetex
   `incidents-become-preflights` (B13, `TTS_SPEAKER`).
 - Veraltete Verweise behoben, u. a. Auto-Recap als D56 statt D57, Methoden aus `runtime.py`/`dmcog.py`, die jetzt in
   `dmbot/session/` bzw. `voice/delivery.py` liegen; `test-on-change.sh` beschreibt keinen Stop-Hook mehr.
+- Gleicher Tag, nur Doku: [ADR 066](docs/decisions/066-one-post-turn-classifier-call.md) als **Draft** — sollen
+  Szenen-, Fakten- und NSC-Klassifikator als ein Schema-Call laufen? Zahlen aus dem debug.log und dem Journal vom
+  13.11.; steht unter „Open questions“ als offene Entscheidung.
 
 **NSC-Sichtungen: richtige Szene, keine Doppelgänger von Karten-NSCs (2026-11-13, D138 / ADR 062 Nachtrag,
 live-unverifiziert).** Am Tisch: Wen die Erzählung bei einer Ankunft zeigt, steht in der neuen Szene und ist dort Ziel
@@ -245,6 +249,20 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 ---
 
 ## Open questions / to clarify
+
+**Offene Entscheidung (Tobi): ein Schema-Call für Szenen-, Fakten- und NSC-Klassifikator? —
+[ADR 066](docs/decisions/066-one-post-turn-classifier-call.md), Draft vom 2026-11-13, nichts gebaut.**
+Optionen: A zusammenlegen auf beiden Backends, B nur auf Claude, C lassen. Empfehlung: **C jetzt**, B als nächster
+Schritt, wenn ein Lauf die Kosten zeigt, A nur mit Replay-Beleg für Nemo.
+- Gemessen am 13.11. (25 Zuggrenzen, Haiku): 3 Aux-Calls pro Zuggrenze, 4,88 CLI-Starts pro Zug, letztes Verdikt nach
+  4,75 s (Median), kein Fehlschlag. Geschätzt, weil das Log keine Aux-Tokens führt: 3800–4900 Input-Tokens pro
+  Zuggrenze heute, ein Call spart 1400–1600 davon (6–7 % des Zugs, Haiku-Stufe) und 2 von 5 Starts, keine Zeit.
+- Dagegen: drei Pflicht-Entscheidungen fallen gemeinsam aus, der Szenen-Kontext (vorige Erzählung) erreicht Fakten-
+  und NSC-Frage, D138 und der Claude-Abend sind noch unverifiziert, `dm-eval` sieht die drei Klassifikatoren nicht.
+- Unabhängig davon, je eine kleine Entscheidung: Aux-Stats (`last_aux_stats`) in die `[classifier]`-Zeile loggen;
+  `CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK` messen; Fakten-Klassifikator bei „nichts“ ohne `sache`-Satz.
+- Nebenbefund, Ursache ungeprüft: 4 der 25 Journal-Records vom 13.11. tragen keine `scene_router`/`facts`/`npcs`-Notizen,
+  obwohl das Log für jede Zuggrenze drei Verdikte zeigt.
 
 **Offene `DMBrain`-Befunde (2026-11-13) — dokumentiert; Nr. 1–4, 9 und 12 behoben (13.11., live-unverifiziert), der Rest offen; Nr. 12–14 kamen aus dem `/code-review` der Fixes.** Nr. 1–7 stammen aus
 `/code-review` auf `ddaae08..9ec06b6` (aus dem Code hergeleitet; der Umbau hat sie unverändert übernommen), Nr. 8–11
