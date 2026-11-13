@@ -12,10 +12,11 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** Kontext nach Neustart (13.11., D136 / ADR 061 Nachtrag) — der Auto-Recap markiert sich im
-  Autosave-Journal, ein Neustart lädt nur noch Züge danach; Recap unter Claude mit eigener Grenze und harter Länge;
-  `/code-review`-Befunde behoben. 1381 Tests grün, 3 xfail (NSC-Sichtung, ADR 062 — „Open questions“), `dm-eval`
-  Exit 0. Recap und Journal-Ereignis live gesehen, der Neustart danach noch nicht.
+- **Newest round:** `DMBrain` entdoppelt (13.11., reiner Umbau von `orchestrator.py`, kein D-Eintrag) — `ChannelSession`
+  pro Channel statt 17 Dicts, ein Turn-Kern (`_run_turn`) für Batch und Streaming, `_pending_<kind>`-Aliase weg; Schnittstelle
+  unverändert. 1381 Tests grün, 3 xfail (NSC-Sichtung, ADR 062 — „Open questions“), `dm-eval` Exit 0. **Live-unverifiziert.**
+  Davor (13.11., D136 / ADR 061 Nachtrag): Auto-Recap markiert sich im Autosave-Journal, Recap unter Claude mit eigener
+  Grenze — beides live gesehen, der Neustart danach noch nicht.
   Davor (12.11., D135 / ADR 065): `runtime.py` in sieben Mixin-Module unter `dmbot/session/` zerlegt (1949 → 844 Zeilen).
   Davor D134 (31.10., Sprachbefehl „sehr böser Junge“, **live-unverifiziert**) und D128–D133 / **ADR 064** (Würfel, live gesehen).
 - **Davor (2026-10-25):** D123–D127 (improvisierte NSCs, XTTS-Sperre, Schicksalspunkte, Würfel-Thumbnails) —
@@ -38,6 +39,21 @@ _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-a
 
 ## Last session
 
+**`DMBrain` entdoppelt (2026-11-13, reiner Umbau von `dmbot/orchestrator.py`, kein D-Eintrag).** Wer am
+Turn-Ablauf arbeitet, liest jetzt einen Pfad statt zwei; am Tisch ändert sich nichts. Sechs Commits
+(`648b3a0` bis `a42c03d`), nach jedem pytest, ruff (F) und `dm-eval` — dessen Ausgabe blieb gleich.
+- `ChannelSession` hält den Zustand eines Channels (History, Buffer, Pending-Marker, Prompt-Blöcke, Replay) statt
+  17 Dicts; `DMBrain._session(ch)` legt sie unter dem Lock an. `reset()` setzt dieselben Felder zurück wie vorher.
+- Ein Turn-Kern: `_guarded_answer` (erster Versuch über `_chat_once` oder `_stream_once`, Echo-Guard, Marker) und
+  `_run_turn` (Intro-Guard, Konsistenz-Guard, History-Eintrag). `respond`, `redo`, `respond_opening` und ihre
+  Streaming-Zwillinge sind Hüllen über `_respond`, `_redo`, `_opening`; `_generate` und `_stream_and_store` sind weg.
+- Die `_pending_<kind>`-Aliase sind weg, die sechs `take_pending_<kind>`-Wrapper bleiben (Cogs, Delivery, `dm-eval`).
+- Beibehalten und an der Stelle kommentiert: ein unterdrückter Echo-Zug schreibt im Batch-Pfad kein `markers` ins
+  Replay, im Stream-Pfad ein leeres.
+- Nicht angefasst (außerhalb des Auftrags): zwei Docstrings in `dmbot/llm/stream_assembler.py` und je ein Kommentar
+  in `tests/test_autorecap.py` und `tests/test_consistency.py` nennen noch `_generate` / `_stream_and_store`.
+- **Live-unverifiziert.**
+
 **Kontext nach Neustart, Recap-Grenze (2026-11-13, D136 / ADR 061 Nachtrag).** Nach einem Neustart ist der Kontext
 nicht mehr sofort voll, und der Recap verliert sein Ende nicht mehr. Befund aus `debug.log`: acht der letzten zehn
 Auto-Recaps waren der erste Zug nach einem Neustart (23.200–24.000 von 24.576 Tokens), sechs der letzten sieben Recaps
@@ -59,23 +75,6 @@ waren am Ende gekappt (gespeichert: 2344 Zeichen, endet mit „Kurz darauf brach
 - **Offen (Tobi), nichts geändert:** das Sprechbudget (748 Zeichen) griff am 12.11. bei allen drei Antworten. Das
   abgeschnittene Satzstück wird weder gesprochen noch gepostet. Lücke dabei: ein vollständiger Satz, der auf `.“`
   endet, fällt direkt vor dem Schnitt mit weg (`_SENTENCE_END` kennt das deutsche Schlusszeichen nicht).
-
-**`runtime.py` in Module zerlegt (2026-11-12, D135 / ADR 065).** Wer an Szenenfluss, Panels oder Seeding arbeitet,
-lädt jetzt nur noch dieses Modul statt 1949 Zeilen; am Tisch ändert sich nichts. Sieben byte-exakte Moves, je ein
-Commit: `dmbot/session/` mit `ingest`, `clocks`, `npcs`, `panels`, `persistence`, `seeding`, `scenes` (1097 Zeilen).
-`SessionRuntime` erbt die Gruppen als Mixins — ein Objekt, `self` bleibt die Runtime, Cogs und Tests unverändert.
-Nach jedem Move: Byte-Prüfung gegen HEAD, 1365 Tests grün, ruff (F) sauber, `dm-eval` Exit 0. Live nicht gesehen;
-einziger sichtbarer Unterschied sind die Logger-Namen (`session.scenes` statt `runtime`).
-- **Entschieden (Tobi):** 844 statt ≤ 800 Zeilen sind akzeptiert. Der ADR-052-Pin
-  `test_testplan_is_only_reachable_from_the_runtime` erlaubt das Wort „testplan“ nur in `runtime.py`; deshalb bleiben
-  `_session_ingest_source`, `update_debug_overlay` und `_panel_text` (63 Zeilen) dort. Die Erlaubnisliste wird nicht
-  erweitert: sie vergleicht `p.name`, `ingest.py` gäbe auch `dmbot/rag/ingest.py` frei.
-- **Zurückgestellt:** die öffentliche Cog-Schnittstelle (446 Zugriffe auf Runtime-Privates) — Zahlen und die 21
-  schreibenden Attribute stehen in ADR 065 und [runtime-split.md](docs/plans/runtime-split.md).
-- **Live-Fund am selben Abend (23:37):** `!join` brach am Ende mit „Must be 2000 or fewer“ ab — der gespeicherte
-  Recap der Debug-Sitzung ist 2455 Zeichen lang und ging ungeteilt an Discord (kein Refactor-Effekt; der Lauf zeigte
-  nebenbei, dass Seeding und Persistenz aus `dmbot/session/` laufen). `!join` und `!wrap` teilen den Recap jetzt mit
-  `split_for_discord`; der Fehler-Log nennt den Befehl und schreibt den Traceback. Live noch nicht nachgeprüft.
 
 _Ältere `## Last session`-Einträge: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Last session (Verlauf)`._
 
