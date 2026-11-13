@@ -1,7 +1,7 @@
 """Pre-uploaded throw GIFs (ADR 064): upload once to a storage channel, then only point at them.
 
 Editing a message with a ~300 KB attachment took ~1.2 s of the ~1.8 s between the 🎲 click and the
-GIF showing (2026-10-30, live). An edit that only points at an already uploaded file skips that.
+GIF showing. An edit that only points at an already uploaded file skips that.
 So the 75 flight-only GIFs (25 trajectories × red/gold/green, no landing — one GIF serves every
 result) are uploaded **once** into a storage channel (``DM_DICE_ASSET_CHANNEL``, a name such as
 ``botcommands`` or a channel id), ten per message. The message ids are kept in

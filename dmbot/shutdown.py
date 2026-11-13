@@ -1,10 +1,8 @@
 """Step-wise shutdown progress (console) + abandonable worker threads.
 
-Why this exists: Ctrl+C used to paint a bare "Shutting down..." dots line, so the operator
-could not tell *what* was being torn down, how many steps remained, or which one was slow.
-Worse, TTS synthesis ran via ``asyncio.to_thread`` on asyncio's default executor, whose
-threads are non-daemon — the interpreter joins them at exit, so a mid-sentence GPU synth
-(near-permanent while streaming, ADR 017) held Ctrl+C hostage for its full remaining time.
+Why (ADR 020): the operator must see *what* is being torn down and which step is slow, and
+``asyncio.to_thread``'s non-daemon executor threads are joined at exit, so a mid-sentence GPU
+synth (near-permanent while streaming, ADR 017) would hold Ctrl+C hostage.
 
 Two pieces:
 

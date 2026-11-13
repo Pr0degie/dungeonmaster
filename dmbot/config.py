@@ -75,7 +75,7 @@ class Config:
     speech_mode: str
     speech_punct: str
     speech_prebuffer: int
-    # LLM backend (ADR 061). Defaults keep the pre-round bot: Ollama only, nothing else read.
+    # LLM backend (ADR 061). Defaults: Ollama only, nothing else read.
     llm_backend: str = "ollama"
     claude_model_narration: str = "opus"
     claude_model_aux: str = "haiku"
@@ -84,7 +84,7 @@ class Config:
     claude_cli_path: str = ""
     claude_allow_api_key: bool = False
     llm_failover_cooldown_s: int = 600
-    # Consequence clocks (ADR 047/059). Default on = the bot of before.
+    # Consequence clocks (ADR 047/059). Default on.
     clocks: bool = True
     # Post each DM-routed player line to the text channel (story readable in Discord).
     post_player_lines: bool = True
@@ -189,9 +189,8 @@ class Config:
             # XTTS device: "cpu" (safe, slower) or "cuda" (fast, needs free VRAM).
             tts_device=os.environ.get("TTS_DEVICE", "cpu").strip(),
             # Hard cap on a DM turn's length (Ollama num_predict, ~tokens). The persona asks for
-            # 2–4 sentences; this is the deterministic ceiling against monologues. Back to 220
-            # (D43): the 160 squeeze (ADR 016) predates streaming — first audio now plays after the
-            # first sentence regardless of turn length, and the praised sessions ran at 220. The
+            # 2–4 sentences; this is the deterministic ceiling against monologues. 220, not 160
+            # (D43/ADR 018): with streaming, first audio no longer waits on turn length. The
             # speaker-label stops stay as the backstop against scripted-party runaways. The
             # orchestrator trims a capped turn to its last full sentence. Tune by ear.
             dm_num_predict=int(os.environ.get("DM_NUM_PREDICT", "220")),
@@ -201,10 +200,9 @@ class Config:
             # One-off command (not a per-turn cost), so a generous default is safe; tune by ear.
             dm_intro_num_predict=int(os.environ.get("DM_INTRO_NUM_PREDICT", "800")),
             # Sampling temperature for the !intro opening monologue only (D83). The opening turns
-            # otherwise run at the model default (~0.8). 0.5 (D83) steadied instruction-following but
-            # read flat/formulaic; with the meta-open + quote-wrap now stripped deterministically (D84),
-            # the higher-temp downside is caught, so the default is raised to 0.7 for the richer,
-            # atmospheric weaving the table liked. Tune by ear: toward 0.8 = more flair, 0.3 = flatter.
+            # otherwise run at the model default (~0.8). 0.7, not 0.5: the deterministic meta-open
+            # strip catches the higher-temp downside (D84/ADR 041). Tune by ear: toward 0.8 = more
+            # flair, 0.3 = flatter.
             dm_intro_temperature=float(os.environ.get("DM_INTRO_TEMPERATURE", "0.7")),
             # Cap on how many buffered player lines a !dm turn sends. Continuous transcription
             # (no wake word) piles up table talk + jokes between turns; sending all of it drowns
@@ -221,7 +219,7 @@ class Config:
             # data/sessions/<id>/characters.json — names a data/sessions/<name>/ whose characters.json
             # is used as the fallback. Defaults to the committed "_default" party, so a teammate's
             # clone AND any new/other voice channel load the real party instead of the generic
-            # _example one (the party is no longer bound to one channel id). Empty → _example.
+            # _example one. Empty → _example.
             default_party=os.environ.get("DM_DEFAULT_PARTY", "_default").strip(),
             # Push-to-talk: the whole table is always transcribed + logged, but only speech said
             # while the Discord mic button is engaged is routed to the DM (tap before talking to
@@ -242,7 +240,7 @@ class Config:
             # Roll-detection router (ADR 014): after the narration turn, a separate constrained-JSON
             # call classifies the player's action → which test (skill + difficulty) and posts the
             # dice button — far more reliable than the model's inline <<TEST>> marker, which stays as
-            # a fallback. ON by default (validated live, 2026-06-08); DM_ROLL_ROUTER=0 disables it.
+            # a fallback. ON by default; DM_ROLL_ROUTER=0 disables it.
             roll_router=os.environ.get("DM_ROLL_ROUTER", "1").strip().lower()
             in ("1", "true", "yes", "on"),
             # Streaming pipeline (ADR 017): stream the LLM answer and speak it sentence-by-sentence,
@@ -262,7 +260,7 @@ class Config:
             # AND retrieval of played sessions entirely.
             session_memory=os.environ.get("DM_SESSION_MEMORY", "1").strip().lower()
             in ("1", "true", "yes", "on"),
-            # Rolling auto-recap / context handoff (D56): when a turn's prompt nears the num_ctx cap
+            # Rolling auto-recap / context handoff (D57): when a turn's prompt nears the num_ctx cap
             # (the early signal before Ollama truncates the prompt HEAD — the persona + adventure),
             # auto-summarise the running history into a cumulative recap, persist it like !wrap up,
             # and clear the in-memory history so the next prompt is persona + adventure + recap +
@@ -319,18 +317,16 @@ class Config:
             fact_router=os.environ.get("DM_FACT_ROUTER", "1").strip().lower()
             in ("1", "true", "yes", "on"),
             # In-game minutes each narrated turn costs (ADR 059 #2). Small on purpose: the clock
-            # must not outrun the fiction, it only has to move at all — on 2026-08-22 it stood at
-            # 08:00 for 22 turns. 0 disables the per-turn advance (the scene-change advance and
-            # the <<ZEIT>> marker stay).
+            # must not outrun the fiction, it only has to move at all. 0 disables the per-turn
+            # advance (the scene-change advance and the <<ZEIT>> marker stay).
             turn_time_advance=max(0, int(os.environ.get("DM_TURN_TIME_ADVANCE", str(TURN_ADVANCE_MINUTES))
                                          or TURN_ADVANCE_MINUTES)),
             # How long the "Zurücknehmen" control under an automatic scene change stays live
             # (seconds, ADR 057 #4). 0 posts the announcement without an undo button.
             scene_undo_seconds=max(0, int(os.environ.get("DM_SCENE_UNDO_SECONDS", "60") or "60")),
-            # Cadence of the scene's standing GM guidance (PRD block 3 / A5): it is injected on the
-            # first turn in a scene and every Nth turn after that, as an impulse instead of the
-            # standing order that produced the same clock-checking sentence in eight of ten answers.
-            # 1 = every turn (the old behaviour), 0 = never.
+            # Cadence of the scene's standing GM guidance (ADR 059): it is injected on the first
+            # turn in a scene and every Nth turn after that, as an impulse, not a standing order
+            # the model parrots. 1 = every turn, 0 = never.
             guidance_every=max(0, int(os.environ.get("DM_GUIDANCE_EVERY", "4") or "4")),
             # Player panel (PRD stories 14-17): one self-updating message with place, goal, time,
             # deadline, whose turn it is and what is still open here. ON by default;
@@ -394,8 +390,6 @@ class Config:
             # clocks already saved in a state.json stay there. Deadlines and in-game time (ADR
             # 048) are a separate mechanism and keep running.
             clocks=os.environ.get("DM_CLOCKS", "1").strip().lower() in ("1", "true", "yes", "on"),
-            # Echo every player line the DM hears into the text channel ("🗣 Figur: …"), so the
-            # channel reads as the whole story, not just the DM's half. DM_POST_PLAYER_LINES=0 = off.
             npc_router=os.environ.get("DM_NPC_ROUTER", "1").strip().lower()
             in ("1", "true", "yes", "on"),
             fate_wait_seconds=float(os.environ.get("DM_FATE_WAIT_SECONDS", "20")),
@@ -408,6 +402,8 @@ class Config:
             ready_sound=os.environ.get("DM_READY_SOUND", "1").strip().lower() in ("1", "true", "yes", "on"),
             kick_phrase=os.environ.get("DM_KICK_PHRASE", "1").strip().lower() in ("1", "true", "yes", "on"),
             kick_master=os.environ.get("DM_KICK_MASTER", "").strip(),
+            # Echo every player line the DM hears into the text channel ("🗣 Figur: …"), so the
+            # channel reads as the whole story, not just the DM's half. DM_POST_PLAYER_LINES=0 = off.
             post_player_lines=os.environ.get("DM_POST_PLAYER_LINES", "1").strip().lower()
             in ("1", "true", "yes", "on"),
         )

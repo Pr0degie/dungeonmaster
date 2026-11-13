@@ -1,8 +1,7 @@
-"""Run DMbot (Phase 2).
+"""Run DMbot.
 
-A Discord bot that, on ``!join``, enters the caller's voice channel and logs per-user
-PCM while filtering Bot A's voice (feedback protection layer 1). This is the voice-receive
-scaffold only — VAD/STT/LLM/TTS come in later phases.
+A Discord bot that, on ``!join``, enters the caller's voice channel and receives per-user
+PCM while filtering Bot A's voice (feedback protection layer 1).
 
     uv run python -m dmbot
 
@@ -69,11 +68,11 @@ class DMBot(commands.Bot):
 
     async def setup_hook(self) -> None:
         # Build the shared session state/services once from the config, then register the cogs that
-        # share it (VoiceCog/DiceCog/DMCog + the thin SceneCog/LoreCog split off in ADR 039). The
-        # kwarg avalanche moved into SessionRuntime (ADR 029); cross-cog flow goes through the
-        # runtime's hooks, not bot.get_cog. VoiceCog is added first so its cog_unload (which closes
-        # the shared services) runs first on shutdown. DMCog is added before LoreCog so the
-        # runtime.speak hook LoreCog uses is wired (hooks fire only after !join anyway).
+        # share it (VoiceCog/DiceCog/DMCog + the thin SceneCog/LoreCog split off in ADR 039).
+        # Cross-cog flow goes through the runtime's hooks, not bot.get_cog (ADR 029). VoiceCog is
+        # added first so its cog_unload (which closes the shared services) runs first on shutdown.
+        # DMCog is added before LoreCog so the runtime.speak hook LoreCog uses is wired (hooks fire
+        # only after !join anyway).
         runtime = SessionRuntime(self._config)
         voice = VoiceCog(self, runtime)
         await self.add_cog(voice)
@@ -109,15 +108,14 @@ class DMBot(commands.Bot):
             except discord.HTTPException:
                 log.exception("could not post the usage hint for %r", cmd)
             return
-        # Name the command and keep the traceback: the bare Command repr hid which command and
-        # which line had failed (the over-long recap at the end of !join, 2026-11-12).
+        # Name the command and keep the traceback, so it is clear which command and line failed.
         log.error("command error in !%s: %r", cmd.qualified_name if cmd is not None else "?",
                   error, exc_info=error)
 
     async def close(self) -> None:
         """Step-wise teardown with an `[i/n]` console display (dmbot.shutdown.progress), so the
-        operator sees what is being shut down, how many steps remain, and which one is slow —
-        the bare dots animation hid all of that. Voice disconnects + cog teardown are pulled in
+        operator sees what is being shut down, how many steps remain, and which one is slow
+        (ADR 020). Voice disconnects + cog teardown are pulled in
         front of ``super().close()`` so each gets its own counted step; the cogs report their
         own substeps (``TEARDOWN_STEPS``)."""
         if self.is_closed():

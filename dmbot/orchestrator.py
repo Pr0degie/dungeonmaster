@@ -1,12 +1,11 @@
-"""DMbot orchestrator — the DM brain that turns player input into a DM answer (Phase 5).
+"""DMbot orchestrator — the DM brain that turns player input into a DM answer.
 
 Wires the LLM layer: buffer the players' transcribed lines per channel, and on a trigger build
-the prompt (system persona + running history + the buffered lines), ask Ollama, and return the
+the prompt (system persona + running history + the buffered lines), ask the LLM, and return the
 German DM answer — while keeping a per-channel conversation history.
 
-Later phases extend the prompt (recap → JSON state → RAG) and add the dice-marker flow; for now
-it is persona + history + the latest player turn. Player lines are buffered from the STT worker
-thread and read on the event loop, so the buffer is lock-guarded.
+Player lines are buffered from the STT worker thread and read on the event loop, so the buffer
+is lock-guarded.
 """
 
 from __future__ import annotations
@@ -211,7 +210,7 @@ class _Attempt:
 
 
 class DMBrain:
-    """Per-channel history + a pending-player-lines buffer, driving one Ollama client."""
+    """Per-channel history + a pending-player-lines buffer, driving one LLM client."""
 
     def __init__(
         self,
@@ -488,10 +487,10 @@ class DMBrain:
         Unlike :meth:`_prepare_turn` this consumes no buffered player lines and adds no
         ``Spieler:`` line — the opening is a GM-side *director* instruction, not a player action.
         Crucially it clears the session's ``last_action``/``last_actions`` (an opening mid-session
-        must not inherit the previous player turn's — finding 4), which makes
+        must not inherit the previous player turn's), which makes
         :meth:`_queue_markers` skip queuing any ``<<TEST>>``/``<<ORT>>``
-        marker the model might emit — i.e. **no dice on a briefing** (the task's dice-suppression
-        requirement) falls out of the existing results-only guard for free. Records ``last_turn``
+        marker the model might emit — i.e. **no dice on a briefing** falls out of the existing
+        results-only guard for free. Records ``last_turn``
         so the opening can be ``!redo``-ne like any turn, and reuses the same labels (known table
         speakers + role labels) so the anti-puppeting stop sequences still apply."""
         session = self._session(channel_id)
@@ -713,7 +712,7 @@ class DMBrain:
         If the answer merely parrots a player line or re-narrates the DM's own previous answer,
         retry once with a corrective nudge — always a plain batch call, the corrective rare path.
         If the retry misfires again the turn is suppressed: nothing spoken, nothing stored
-        (degenerate turns in history self-reinforce, seen live 2026-06-12). A streamed attempt is
+        (degenerate turns in history self-reinforce). A streamed attempt is
         only retried while nothing was spoken — an echo/repetition is held back by the assembler's
         last-sentence rule for short answers; a half-spoken or errored turn is never retried.
 
@@ -842,7 +841,7 @@ class DMBrain:
         should_abort: Callable[[], bool] | None = None,
     ) -> str | None:
         """Streaming variant of :meth:`respond` (ADR 017): same buffering / history / pending-test
-        bookkeeping, but drive the LLM with :meth:`OllamaClient.chat_stream` and ``await
+        bookkeeping, but drive the LLM with the client's ``chat_stream`` and ``await
         on_sentence(s)`` for each complete sentence as it's ready, so the cog can synthesise + speak
         it before the rest is done. ``should_abort()`` (e.g. ``lambda: paused``) stops emission
         cleanly. Returns the stored answer, or ``None`` if there's nothing to respond to."""
@@ -936,8 +935,7 @@ class DMBrain:
         """Every speaker's action of the turn just answered, one ``(display-name, text)`` each.
 
         The roll-detection router (ADR 014) walks this instead of :meth:`last_action`, so a turn
-        in which two players each declared something can produce a test for both — before D111
-        only the last speaker of a turn could ever be asked to roll.
+        in which two players each declared something can produce a test for both (D111).
         """
         return list(self._session(channel_id).last_actions)
 
@@ -1171,7 +1169,7 @@ class DMBrain:
 
     def current_recap(self, channel_id: int) -> str:
         """The recap currently injected into this channel's prompt (set via :meth:`set_context`), or
-        "" if none. The auto-compaction (D56) reads it to make the next recap cumulative."""
+        "" if none. The auto-compaction (D57) reads it to make the next recap cumulative."""
         return self._session(channel_id).recap
 
     def history_len(self, channel_id: int) -> int:
@@ -1186,12 +1184,12 @@ class DMBrain:
 
     @property
     def client(self) -> "LLMClient":
-        """The shared Ollama client — injected into side-band callers that own their own prompt
+        """The shared LLM client — injected into side-band callers that own their own prompt
         (the NPC-memory extractor, ADR 044), so they stay testable pure-function modules."""
         return self._client
 
     def clear_history(self, channel_id: int) -> None:
-        """Drop the channel's rolling conversation history *only* (the auto-compaction reset, D56).
+        """Drop the channel's rolling conversation history *only* (the auto-compaction reset, D57).
 
         Unlike :meth:`reset` (a fresh session), this keeps the recap, world-state/adventure blocks,
         pending tests/results and the buffer untouched — only the turn-by-turn history is cleared,
@@ -1201,8 +1199,8 @@ class DMBrain:
 
         Removes exactly the message objects the matching :meth:`summarize` folded into the recap
         (``compact_consumed``): a turn appended, redone or still in flight during the summarize
-        await, or one the history cap shifted, stays — the recap never saw it (Finding #4,
-        review findings 2 and 3). The live list is filtered in place, because a turn still in
+        await, or one the history cap shifted, stays — the recap never saw it (ADR 030 #4).
+        The live list is filtered in place, because a turn still in
         flight holds it and appends its pair there. ``last_turn`` survives exactly when its
         stored pair does: once that pair went into the recap, ``!redo`` has nothing to redo; a
         turn with no stored pair yet (in flight, suppressed) keeps it.

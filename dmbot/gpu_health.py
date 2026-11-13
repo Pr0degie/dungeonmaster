@@ -1,9 +1,8 @@
-"""A process-wide latch for CUDA faults (2026-10-25, fourth Opus run).
+"""A process-wide latch for CUDA faults (D125, lesson one-cuda-context-one-caller).
 
-XTTS and faster-whisper share one CUDA context in this process. A ``device-side assert`` (seen
-live when two XTTS syntheses ran at once) is sticky: every later CUDA call in the process fails
-too, so the bot goes deaf and mute until it is restarted. Before this module the only trace was
-80+ identical tracebacks in the log while the table wondered why nobody was answering.
+XTTS and faster-whisper share one CUDA context in this process. A ``device-side assert`` is
+sticky: every later CUDA call in the process fails too, so the bot goes deaf and mute until it
+is restarted.
 
 The workers (STT thread, TTS threads) hand their exceptions to :meth:`GpuHealth.report`. The first
 CUDA fault trips the latch, logs one critical line and calls the listener exactly once; the cog
@@ -72,7 +71,7 @@ class GpuHealth:
 
     def log_failure(self, logger: logging.Logger, exc: BaseException, source: str, message: str) -> None:
         """Log a worker failure: the full traceback normally and for the first CUDA fault, then
-        one short line per failure — instead of the 80 identical tracebacks of 2026-10-25."""
+        one short line per failure instead of a flood of identical tracebacks."""
         already = self.broken
         if self.report(exc, source) and already:
             logger.error("%s — GPU-Kontext seit dem ersten CUDA-Fehler kaputt, Bot neu starten",

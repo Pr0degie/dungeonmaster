@@ -1,7 +1,7 @@
-"""A soft "pop" on the bot's own machine the moment it is logged in (2026-10-31, Tobi's wish).
+"""A soft "pop" on the bot's own machine the moment it is logged in (D130).
 
-It sounds with the "logged in as DungeonMaster" line — Tobi found waiting for the TTS voice as
-well (~17 s more) far too late. Played once per process, never again on reconnects.
+It sounds with the "logged in as" line, not after the TTS load (~17 s later — too late).
+Played once per process, never again on reconnects.
 The pop is synthesised (a quiet sine sweeping up with a fast decay, like a bubble) — no sound file,
 no new dependency. Windows only (``winsound``); elsewhere, and on any error, it stays silent: the
 "logged in as" log line is the record either way.

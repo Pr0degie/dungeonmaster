@@ -38,3 +38,17 @@ use the right stats on a roll.
 - **Later goal (Part 2):** a wake word ("Magos, …") triggers the DM turn instead of the
   button. The button is the robust path there.
 - **Combat initiative** (rolled order, rounds) is a separate later mode.
+
+## Amendment (recorded 2026-11-13) — prompt speaker identity (D107)
+
+Player lines enter the DM prompt under the speaker's **character** name, not their Discord display
+name. In the 2026-08-22 debug run (findings A4/B4) the prompt read "Sezgin: …", so the DM answered
+"Sezgin, ich kann leider nicht …" and treated the four players as one. Resolution order
+(`SessionRuntime.character_name_for`): (1) the Discord **user id**, mapped from the voice-channel
+members at `!join` — stable across mid-session nickname changes; (2) the display name through the
+same alias map (a player who joined after `!join`); (3) the display name itself — the guest case
+(no sheet), not a fallback bug. Because the STT callback only carries the display name, the
+utterance handler (which still has the user id) memoises the resolution per display name in
+`_speaker_names`. The transcript log line (`📝 …`) deliberately keeps the Discord name as the
+operator's record of who actually spoke. The prompt-side alias hint then drops the display-name
+mapping (ADR 057, amendment 2026-11-13 #3).

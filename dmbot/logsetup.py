@@ -11,8 +11,7 @@ pasted whole when debugging):
   on every start** (it only ever holds the current run; ``debug.log`` stays append).
 - ``logs/debug.log`` — **more** detail for debugging (third-party INFO like the ``httpx`` request
   lines, full tracebacks), but the 2 s ``PCM ⟳`` heartbeat flood is collapsed to ~one-in-N so it
-  stays small. This replaces the old single ``dmbot.log`` (which kept the heartbeat torrent and was
-  unpasteable).
+  stays small.
 
 ANSI colours are enabled on the Windows console via ``colorama.just_fix_windows_console()``
 (turns on virtual-terminal processing for the conhost that ``start_dmbot.bat`` opens).
@@ -201,7 +200,7 @@ class _UnpackErrorThrottle(logging.Filter):
 class _HeartbeatThrottle(logging.Filter):
     """Collapse the 2 s ``PCM ⟳`` per-user heartbeat in the DEBUG file: keep the first, then one in
     every N. "Is audio still flowing?" stays answerable without the heartbeat torrenting hundreds of
-    near-identical lines (the thing that made the old full log unpasteable). The console + the
+    near-identical lines. The console + the
     terminal mirror drop it entirely (``_ConsoleNoiseFilter``); this keeps a thinned trace in debug.log."""
 
     _N = 30  # ~once a minute at the 2 s cadence

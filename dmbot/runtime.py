@@ -1,10 +1,9 @@
 """SessionRuntime — the shared session state + services injected into every DMbot cog.
 
-The voice cog grew to ~2300 lines owning voice wiring, dice, memory, TTS delivery, scenes,
-auto-recap and all Discord UI. This module holds the state that used to live as cog attributes —
-the LLM brain, STT/TTS, the bridge, the rules profile + characters, the RAG retriever, the
-adventure compendium, the per-channel world state, and the push-to-talk/pause/mute flags — built
-once in ``__main__`` from the :class:`~dmbot.config.Config` and passed into each cog
+This module holds the shared state — the LLM brain, STT/TTS, the bridge, the rules profile +
+characters, the RAG retriever, the adventure compendium, the per-channel world state, and the
+push-to-talk/pause/mute flags — built once in ``__main__`` from the
+:class:`~dmbot.config.Config` and passed into each cog
 (``Cog(bot, runtime)``). The cogs (VoiceCog/DiceCog/DMCog) stay thin command/flow layers and reach
 everything shared through this object; **no cog reaches into another cog** (no ``bot.get_cog``).
 Cross-cog calls (a dice roll → DM narration, the delivery → dice/mic buttons) go through the few
@@ -13,15 +12,14 @@ registered hooks below. See ADR 029.
 Since D107 it also owns the **post-turn boundary** (:meth:`SessionRuntime.close_turn`, ADR
 057/058/059): once a turn is narrated the in-game clock ticks, the scene and fact classifiers run
 in one shared latency window, a validated verdict moves the code-owned scene pointer (or writes a
-hard fact), and the player panel is re-anchored. It lives here rather than in a cog because every
-piece of it is shared state — pointer, world state, prompt context, panels — and because all four
-scene movers (classifier, flag gate, ``!ort``, the demoted ``<<ORT>>`` marker) must go through the
-same :meth:`move_scene`, or NPC registration and the panels drift apart again.
+hard fact), and the player panel is re-anchored. It lives on the runtime
+(``dmbot/session/scenes.py``) rather than in a cog because every piece of it is shared state —
+pointer, world state, prompt context, panels — and because all four scene movers (classifier,
+flag gate, ``!ort``, the demoted ``<<ORT>>`` marker) must go through the same
+:meth:`move_scene`, or NPC registration and the panels drift apart again.
 
 Since ADR 065 the method groups live in ``dmbot/session/`` as mixins of this one class (still one
 object, ``self`` is the runtime); this module keeps the constructor and the shared plumbing.
-
-Docs and code are English; game content (what the DM says) stays German (CLAUDE.md).
 """
 
 from __future__ import annotations
@@ -132,18 +130,19 @@ class SessionRuntime(SessionIngestMixin, ClocksMixin, NpcMemoryMixin, PanelsMixi
 
     Holds the LLM brain, STT/TTS, bridge, rules profile + characters, RAG retriever, adventure
     compendium, per-channel world state, and the push-to-talk/pause/mute flags. Exposes the
-    state-mutating helpers (``_persist_and_refresh``, ``_set_scene``, ``_load_*``) and the STT/VAD
-    callbacks (the transcriber is built here with ``_on_transcript``; ``!join`` wires the VadSink to
-    ``_on_utterance``). Cross-cog flow goes through the five registered hooks at the bottom — no cog
-    looks up another cog. Phase 10b (profile bootstrap, ADR 005) will hang off this object too.
+    state-mutating helpers (``_persist_and_refresh``, ``_set_scene`` — from the ``dmbot/session/``
+    mixins — and ``_load_*``) and the STT/VAD callbacks (the transcriber is built here with
+    ``_on_transcript``; ``!join`` wires the VadSink to ``_on_utterance``). Cross-cog flow goes
+    through the six registered hooks at the end of ``__init__`` — no cog looks up another cog.
+    Phase 10b (profile bootstrap, ADR 005) will hang off this object too.
     """
 
     def __init__(self, config: Config) -> None:
         # Preflight the version-sensitive voice stack at boot, so a drift surfaces as a loud
         # warning here instead of as a silent garbage transcript mid-session (ADR 006).
         check_static()
-        # The configured XTTS speaker must exist (B13: the live run spoke in a random voice
-        # because TTS_SPEAKER carried the value meant for TTS_DEVICE). Loud, never fatal — TTS is
+        # The configured XTTS speaker must exist (an unknown one silently falls back to a random
+        # voice). Loud, never fatal — TTS is
         # an optional layer, and this runs before the torch import so the message is early.
         check_tts_speaker(config.tts_speaker, engine=config.tts_engine)
         self._bot_a_user_id = config.bot_a_user_id
@@ -205,12 +204,11 @@ class SessionRuntime(SessionIngestMixin, ClocksMixin, NpcMemoryMixin, PanelsMixi
         # the delivery pipeline record (state_before, scene/flag verdicts, the router verdict);
         # the autosave drains them into the turn record so dm-eval can replay the session.
         self._replay_notes: dict[int, dict] = {}
-        # Rolling auto-recap / context handoff (D56): when a turn's prompt nears the num_ctx cap (the
-        # early signal before Ollama silently truncates the prompt HEAD — the persona + adventure), we
-        # compact the running history into a cumulative recap and clear the in-memory history, so the
-        # persona/adventure are never the truncated head mid-session (the first-session complaint:
-        # "wenn der Kontext eng wird, übergib an eine neue Sitzung"). Runs OFF the hot path. ON by
-        # default; DM_AUTORECAP=0 falls back to the bare context-budget warning.
+        # Rolling auto-recap / context handoff (D57/ADR 027): when a turn's prompt nears the num_ctx
+        # cap (the early signal before Ollama silently truncates the prompt HEAD — the persona +
+        # adventure), we compact the running history into a cumulative recap and clear the in-memory
+        # history, so the persona/adventure are never the truncated head mid-session. Runs OFF the
+        # hot path. ON by default; DM_AUTORECAP=0 falls back to the bare context-budget warning.
         self._autorecap = config.autorecap
         # Per-channel "compaction in progress" guard so two quick turns don't both compact and the
         # next player turn doesn't read half-cleared history. A plain set, mutated only on the event
@@ -255,8 +253,8 @@ class SessionRuntime(SessionIngestMixin, ClocksMixin, NpcMemoryMixin, PanelsMixi
         # --- the post-turn machinery of D107 (ADR 057/058/059). Every block below is switchable
         # on its own, live via !automatik, because the evening must survive a misfiring mechanism.
         # Scene-move classifier (ADR 057 #1) + the model-free flag gate (#2): the two movers that
-        # replace the <<ORT>> marker, which fired zero times in 22 live turns. The marker itself
-        # stays wired in the delivery pipeline as an opportunistic fallback.
+        # replace the unreliable <<ORT>> marker. The marker itself stays wired in the delivery
+        # pipeline as an opportunistic fallback.
         self._scene_router = config.scene_router
         self._scene_flag_gate = config.scene_flag_gate
         # Fact classifier (ADR 058): runs on the SAME turn boundary as the scene one, in one
@@ -273,13 +271,13 @@ class SessionRuntime(SessionIngestMixin, ClocksMixin, NpcMemoryMixin, PanelsMixi
         self._turn_time_advance = config.turn_time_advance
         # How long the ↩ control under an automatic scene change stays live (ADR 057 #4).
         self._scene_undo_seconds = config.scene_undo_seconds
-        # Cadence of the scene's standing guidance (PRD block 3): injected on the first turn in a
-        # scene and every Nth turn after, as an impulse rather than the standing order that made
-        # the seneschal repeat "die Zeit läuft uns davon" in eight of ten answers.
+        # Cadence of the scene's standing guidance (ADR 059): injected on the first turn in a
+        # scene and every Nth turn after, as an impulse rather than a standing order the model
+        # parrots.
         self._guidance_every = config.guidance_every
         self._scene_turns: dict[int, int] = {}  # turns narrated since entering the current scene
         # The open <<ORT>> proposal per channel: (message, proposed scene id). Any real move retires
-        # it, so its "Wechseln" button cannot linger after the classifier already moved (2026-10-25).
+        # it, so its "Wechseln" button cannot linger after the classifier already moved.
         self._scene_proposals: dict[int, tuple] = {}
         self._last_narration: dict[int, str] = {}  # the previous answer, the scene router's context
         # The NPCs the presence classifier filed in the turn that is still open (ADR 062,
@@ -301,8 +299,7 @@ class SessionRuntime(SessionIngestMixin, ClocksMixin, NpcMemoryMixin, PanelsMixi
             log.exception("no usable system profile %r — running without the dice engine", config.system)
         # Default party (D82): which data/sessions/<name>/characters.json a channel WITHOUT its own
         # sheet falls back to. The committed "_default" party makes the real party travel to a
-        # teammate's clone and load in every voice channel — instead of the generic _example one
-        # (the party was previously bound to one channel id, so a new channel got the example party).
+        # teammate's clone and load in every voice channel — instead of the generic _example one.
         self._default_party = config.default_party
         # Characters: start from the default/example party so !test/!roll work out of the box; !join
         # prefers a channel-specific data/sessions/<id>/characters.json if present. Engine rolls here.
@@ -353,7 +350,7 @@ class SessionRuntime(SessionIngestMixin, ClocksMixin, NpcMemoryMixin, PanelsMixi
         self._turn_order: dict[int, list[str]] = {}
         self._turn_index: dict[int, int] = {}
         self._turn_message: discord.Message | None = None
-        # Identity (PRD "Identity", findings A4/B4): Discord user id → character name, captured
+        # Identity (ADR 003 amendment 2026-11-13): Discord user id → character name, captured
         # from the voice-channel members at !join. The id is the stable key — a nickname change
         # mid-session cannot break it, which display-name resolution could. ``_speaker_names``
         # memoises the resolution per display name, because the STT callback only carries the
@@ -364,7 +361,7 @@ class SessionRuntime(SessionIngestMixin, ClocksMixin, NpcMemoryMixin, PanelsMixi
         # ⏸ button (Variante C). Pause freezes everything — mute the VAD/STT pipeline + block DM
         # turns — until resumed. The text channel + panel message let an Esc-pause also show in Discord.
         # The flag + panel handle live here (shared session state); the pause *control* (set_paused,
-        # the animation/Esc tasks) lives in VoiceCog, and DMCog's streaming workers read _paused.
+        # the animation/Esc tasks) lives in VoiceCog, and DMCog's delivery pipeline reads _paused.
         self._paused = False
         self._pause_message: discord.Message | None = None
         # Consequence-clock panel (ADR 047): edit-in-place like the pause panel, no spam.
@@ -439,8 +436,8 @@ class SessionRuntime(SessionIngestMixin, ClocksMixin, NpcMemoryMixin, PanelsMixi
         # Registered by the owning cog in its __init__ (runtime.<hook> = self._<method>). They bind
         # the turn pipeline across cog boundaries without bot.get_cog. All are first called only
         # after !join, so registration order doesn't matter.
-        self.run_and_deliver = None   # ← DMCog._run_and_deliver  (called by DiceCog roll callbacks)
-        self.auto_dm_turn = None      # ← DMCog._auto_dm_turn      (called by VoiceCog mic release)
+        self.run_and_deliver = None   # ← DMCog delivery._run_and_deliver (called by DiceCog roll callbacks)
+        self.auto_dm_turn = None      # ← DMCog delivery._auto_dm_turn    (called by VoiceCog mic release)
         self.speak = None             # ← DMCog delivery._speak    (called by LoreCog !lore tts)
         self.handle_dice = None       # ← DiceCog._handle_dice     (called by DMCog delivery)
         self.reanchor_mic = None      # ← VoiceCog._post_mic_button (called by DMCog delivery end)
@@ -490,10 +487,9 @@ class SessionRuntime(SessionIngestMixin, ClocksMixin, NpcMemoryMixin, PanelsMixi
         # Buffer the line for the next DM turn (triggered by !dm) only when routed. Runs on the STT
         # thread; the brain's buffer is lock-guarded.
         if for_dm and self._active_vc_id is not None:
-            # Under the CHARACTER's name, not the Discord one (PRD "Identity", findings A4/B4):
-            # the prompt used to read "Sezgin: …", so the DM answered "Sezgin, ich kann leider
-            # nicht …" and treated four players as one. The log line above keeps the Discord name
-            # — that is the operator's record of who actually spoke.
+            # Under the CHARACTER's name, not the Discord one (PRD "Identity", ADR 003): the DM
+            # must address characters. The log line above keeps the Discord name — that is the
+            # operator's record of who actually spoke.
             speaker = self.prompt_speaker_name(name)
             self._brain.add_player_line(self._active_vc_id, speaker, text)
             # Remember this utterance's transcribe ms as the turn's stt stage (reuse, don't
@@ -655,8 +651,8 @@ class SessionRuntime(SessionIngestMixin, ClocksMixin, NpcMemoryMixin, PanelsMixi
         """Load the party JSON: a channel-specific sheet if present, else the configured default
         party (D82), else the example party. Returns ``(store, fallback)`` — ``fallback`` is True
         ONLY when the *example* party was loaded (the real misconfig: no channel sheet AND no
-        default party), so ``!join`` warns loudly (D43: a wrong-channel session silently ran the
-        example party, wrong names + sheet values, unnoticed until the DM felt broken). The committed
+        default party), so ``!join`` warns loudly (D43: the example party's wrong names + sheet
+        values otherwise go unnoticed). The committed
         ``_default`` party is the *intended* fallback and loads silently — so a teammate's clone and
         every voice channel get the real party without binding it to one channel id. A missing file
         yields an empty store (the engine then rolls without a target)."""
