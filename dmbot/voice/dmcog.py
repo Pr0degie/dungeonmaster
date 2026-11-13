@@ -141,11 +141,14 @@ class DMCog(commands.Cog):
         ``user_msg`` is the player line the turn's answer carries (``TurnAnswer.user_msg``), never
         the brain's mutable last turn: this runs after playback, and by then a dice click may
         have started the next turn (D43, seen live 2026-06-12 in history.jsonl) or a compaction
-        cleared it. Without it nothing is journaled."""
+        cleared it. Without it nothing is journaled — loudly for an answer with content, since
+        that means a delivery path lost the line."""
         if not self._rt._autosave:
             return
         cid = self._rt._brain_channel(channel)
         if user_msg is None:
+            if answer:
+                log.error("autosave: answer without its player line — not journaled: %r", answer[:80])
             return
         # Replay journal (ADR 046): merge the brain's turn capture (lines/results/raw/markers)
         # and the runtime notes (state_before, scene/flag verdicts, router) into the record.

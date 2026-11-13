@@ -14,7 +14,7 @@ is on-demand._
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
 - **Newest round:** Züge werden über das gespeicherte Objekt erkannt, nicht über Zähler oder Text (13.11., Nachgang zum
   `/code-review` von `e4cb0a2..fdf64c6`, **live-unverifiziert**); davor vier offene `DMBrain`-Befunde behoben (Nr. 1–4
-  und 9 der „Open questions“, **live-unverifiziert**) — Details unter „Last session“. 1392 Tests grün, 7 xfail
+  und 9 der „Open questions“, **live-unverifiziert**) — Details unter „Last session“. 1399 Tests grün, 7 xfail
   (3 NSC-Sichtung, ADR 062; 4 offene `DMBrain`-Befunde), `dm-eval` Exit 0.
   Davor: `DMBrain` entdoppelt (13.11., reiner Umbau von `orchestrator.py`, kein D-Eintrag) — `ChannelSession`
   pro Channel statt 17 Dicts, ein Turn-Kern (`_run_turn`) für Batch und Streaming, `_pending_<kind>`-Aliase weg; Schnittstelle
@@ -58,6 +58,9 @@ hatten. Eine Änderung, eine Idee:
   daraus, `_autosave_turn` liest `last_user_msg()` nicht mehr. Ein Zug, der während des Recaps lief, landet so im Journal.
 - Tests: `tests/test_turn_identity.py` (fünf) und ein Delivery-Test; die bestehenden Kompaktierungs-Tests unverändert grün.
   **Live-unverifiziert.**
+- Härtung: `_autosave_turn` loggt einen Fehler mit dem Anfang der Antwort, wenn eine nicht leere Antwort ohne
+  `user_msg` ankommt, statt still nichts zu schreiben. `tests/test_journal_per_delivery_path.py` treibt die echte
+  Delivery (Batch und Stream × Zug, Redo, Opening) und prüft genau einen Journal-Eintrag. **Live-unverifiziert.**
 
 **Offene `DMBrain`-Befunde behoben (2026-11-13, kein D-Eintrag, alles live-unverifiziert).** Ein Commit pro
 Befund, die xfail-Markierung fiel jeweils mit dem Fix; nach jedem pytest, ruff (F) und `dm-eval` (Exit 0, Goldens unverändert).
