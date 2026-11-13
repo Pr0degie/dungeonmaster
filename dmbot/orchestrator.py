@@ -368,11 +368,16 @@ class DMBrain:
         """
         return await self._respond(channel_id, extra_text, check=check)
 
-    async def redo(self, channel_id: int, *,
-                   check: Callable[[str], list[Violation]] | None = None) -> str | None:
-        """Re-generate the **last** DM turn (same player input, a fresh answer) — for when the DM
-        misunderstood. Drops the previous answer + its user turn from history first, so the new one
-        replaces it rather than stacking. ``None`` if there is no turn to redo yet."""
+    async def _redo(
+        self,
+        channel_id: int,
+        *,
+        sink: _Sink | None = None,
+        check: Callable[[str], list[Violation]] | None = None,
+    ) -> str | None:
+        """The body of :meth:`redo` (``sink=None``) and :meth:`redo_streaming`: take the last
+        turn's input, drop its pair from history and its queued markers, run it again through
+        :meth:`_run_turn`. ``None`` if there is no turn to redo yet."""
         session = self._session(channel_id)
         last = session.last_turn
         if last is None:
@@ -387,12 +392,14 @@ class DMBrain:
             del history[-2:]  # drop the turn we're redoing so it isn't duplicated
         self._drop_pending(channel_id)  # the redo supersedes the old turn's marker requests
         await self._refresh_rag(channel_id, user_msg)
-        answer = await self._generate(channel_id, user_msg, labels, history)
-        if answer is None:
-            return ""  # echo-suppressed (D43): content-less to the cog, the pair stays out of history
-        answer = await self._apply_consistency(session, user_msg, labels, history, answer, check)
-        self._append_turn(history, user_msg, answer)
-        return answer
+        return await self._run_turn(session, user_msg, labels, history, sink=sink, check=check)
+
+    async def redo(self, channel_id: int, *,
+                   check: Callable[[str], list[Violation]] | None = None) -> str | None:
+        """Re-generate the **last** DM turn (same player input, a fresh answer) — for when the DM
+        misunderstood. Drops the previous answer + its user turn from history first, so the new one
+        replaces it rather than stacking. ``None`` if there is no turn to redo yet."""
+        return await self._redo(channel_id, check=check)
 
     async def _apply_consistency(
         self,
@@ -789,23 +796,7 @@ class DMBrain:
     ) -> str | None:
         """Streaming variant of :meth:`redo`: re-stream the last turn's input, replacing (not
         stacking) the previous answer in history."""
-        session = self._session(channel_id)
-        last = session.last_turn
-        if last is None:
-            return None
-        user_msg, labels = last
-        history = session.history
-        if (
-            len(history) >= 2
-            and history[-1]["role"] == "assistant"
-            and history[-2]["role"] == "user"
-        ):
-            del history[-2:]  # drop the turn we're redoing so it isn't duplicated
-        self._drop_pending(channel_id)  # the redo supersedes the old turn's marker requests
-        await self._refresh_rag(channel_id, user_msg)
-        return await self._stream_and_store(
-            channel_id, user_msg, labels, history, on_sentence, should_abort
-        )
+        return await self._redo(channel_id, sink=_Sink(on_sentence, should_abort))
 
     async def _stream_and_store(
         self,
