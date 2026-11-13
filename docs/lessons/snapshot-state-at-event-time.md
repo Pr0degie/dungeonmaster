@@ -24,6 +24,13 @@ on/off state that can nest is a refcount, never a boolean.**
   people of an arrival narration, who belong where the group ends up. And one live case was no
   race inside the `await` at all: the `<<ORT>>` button came 22 s after the function had
   returned, which none of the three reproduction tests covered (ADR 062, amendment 2026-11-13).
+- The pause of the LLM backend (ADR 061, amendment 2026-11-13 fourth) was built with 45 green
+  tests and still had this class three times, found by the review before the commit: a turn
+  put aside *restored* its pre-turn snapshot of `last_turn` over a later turn that was still in
+  flight and then got its answer; "the primary answered" ended a pause it had not started
+  under, and for the other model tier; "turn was kept" was a flag reset at the start of every
+  turn and read by the cog after its awaits. Every one of those tests ran its calls one after
+  the other.
 - Layer-2 mute as a shared boolean unmuted VAD mid-playback on an operator resume →
   `_mute_depth` refcount (ADR 030 #8); the mute is taken once around the whole answer, not
   flapped per sentence (ADR 017).
@@ -39,6 +46,12 @@ A snapshot is not automatically the right value. Ask per result which moment it 
 what a decision was *computed against* is the snapshot; where its result is *filed* can be the
 state after the await, or after an event that arrives once the function is done. And check
 each live case's timestamps against the reproduction tests before calling the fix complete.
+
+Putting a snapshot *back* is a write after the await: do it only while the state is still
+yours (the session's turn is still this turn object), and let a success or failure count only
+for the state it started under (a counter taken at call start). Code that several callers
+drive at once gets a test with two calls in flight and a gate each, run in both finishing
+orders — a sequence of single calls cannot show this class.
 
 ## Why it matters
 

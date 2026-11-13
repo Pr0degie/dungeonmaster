@@ -50,7 +50,8 @@ or an ADR already holds — link there instead.
   places WILL desync; extract one shared pure function when the second path arrives.
 - [snapshot-state-at-event-time](snapshot-state-at-event-time.md) — State read after an
   `await` is the recurring race class; snapshot at event time, refcounts over booleans — but
-  ask per result which moment it belongs to (a snapshot filed NPC sightings in the wrong scene).
+  ask per result which moment it belongs to (a snapshot filed NPC sightings in the wrong scene),
+  restore a snapshot only while the state is still yours, and test with two calls in flight.
 - [byte-exact-moves-stepwise-gates](byte-exact-moves-stepwise-gates.md) — Refactors: slice
   don't retype, zero test edits as the signal, all gates green after every step; review the
   new logic, not the moves.

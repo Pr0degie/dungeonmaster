@@ -63,6 +63,11 @@ es um 02:01 bemängelt. Ein gekappter Zug endet jetzt am letzten ganzen Satz (D1
 Was am Tisch zu beobachten ist (D134, D137, D138, Befunde Nr. 1–4, 9, 12) und die Messung der Aux-Tokens für ADR 066
 stehen im Beipackzettel: [phase-11-abend.md](docs/phase-11-abend.md), Punkte N1–N8 und Messung D.
 
+**Für Durchgang 3 (Pause statt Nemo, D139) vorbereiten:** die drei neuen Schlüssel aus `.env.example` in die
+Live-`.env` übernehmen (`DM_LLM_ON_FAILURE=pause`, `DM_LLM_PAUSE_RETRY_S=30`, `DM_LLM_PAUSE_AUTO_TURN_S=180`;
+`uv run dm-sync` zeigt, ob sie fehlen) und eine PowerShell als Administrator bereithalten — der Ausfall wird mit
+einer Firewall-Regel auf `claude.exe` erzeugt und wieder aufgehoben. Zu notieren: die Zeit vom Zug bis zur ⏸-Zeile.
+
 **Der fünfte Lauf.** Vorher: Bot A starten (am 30./31.10. lief er nicht, der DM erzählte stumm), in `#bot-commands`
 die alten Würfel-GIF-Sätze löschen (gültig sind die 8 Nachrichten von 2026-10-31 01:49), Sandbox leeren. Am Tisch
 prüfen: Würfel — Zielwert-Post, GIF, Ergebnis, auch nach „🙏 Neu würfeln“, und die Logzeile `🎲 throw gif (stored)`;
