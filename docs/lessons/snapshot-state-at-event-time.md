@@ -9,7 +9,7 @@ on/off state that can nest is a refcount, never a boolean.**
 - Routing had to reflect the gate state *while the words were spoken*, not whenever the
   async transcript returned — `for_dm` is tagged when the utterance is cut and carried
   through the STT worker (ADR 011).
-- A dice click during playback overwrote `_last_turn` before the turn's autosave read it →
+- A dice click during playback overwrote the last turn (`ChannelSession.last_turn`) before the turn's autosave read it →
   wrong pairs persisted; fix: autosave snapshots `user_msg` at generation end and passes it
   explicitly (ADR 018).
 - Auto-recap `clear_history` popped everything *after* `summarize` awaited for seconds — a

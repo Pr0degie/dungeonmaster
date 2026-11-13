@@ -4,7 +4,7 @@ Reusable, invocable procedures for this repo (`.claude/skills/<name>/SKILL.md`).
 packages a recurring multi-step workflow so it survives context clears and model switches
 instead of living only as prose in `CLAUDE.md` / `progress.md`.
 
-**How a skill runs** (it is *not* an event trigger like the Stop hook):
+**How a skill runs** (it is *not* an event trigger like a hook):
 - You type the slash command (e.g. `/playtest-triage`), **or**
 - Claude invokes it on its own when your request clearly matches the skill's `description`
   (e.g. you paste a session log → it reaches for `playtest-triage`). That's a judgment call,
@@ -30,10 +30,10 @@ all of them); the full body loads only when the skill is actually used.
 
 ## Related: the test hook (not a skill)
 
-`tools/hooks/test-on-change.sh` is wired as a `Stop` hook in `.claude/settings.json`. It runs the
-test suite **only when `dmbot/`, `tests/`, or `data/systems/` changed**, and stays **silent on
-green** — output appears only when a test fails (terminal-visible, non-blocking). Loads at
-session start.
+`tools/hooks/test-on-change.sh` runs ruff (F) + the test suite **only when `dmbot/`, `tests/`, or
+`data/systems/` changed**, and stays **silent on green**. It is a manual check before a commit —
+no longer a `Stop` hook (dropped 2026-10-31); the blocking gate is the git `tools/hooks/pre-commit`
+(`docs/conventions.md`).
 
 ## Maintenance
 

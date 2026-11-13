@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Stop-hook guard (.claude/settings.json -> hooks.Stop): when bot code, tests, or profiles
-# changed, lint (ruff) + run the test suite, and stay SILENT on success — output is emitted
-# only when a check FAILS, so green turns cost nothing. A failure is shown to you in the
-# terminal (non-blocking, exit 1); it is not pushed into the model context / does not force a
-# retry.
+# Manual pre-commit check (`bash tools/hooks/test-on-change.sh`): when bot code, tests, or
+# profiles changed, lint (ruff) + run the test suite, and stay SILENT on success — output is
+# emitted only when a check FAILS (exit 1). It is no longer wired as a Claude Code Stop hook
+# (dropped 2026-10-31, docs/conventions.md); the blocking git gate is tools/hooks/pre-commit.
 #
 # ruff scope is deliberately `--select F` (pyflakes only: unused imports/names, undefined
 # names, f-string slips) — the high-signal, low-noise set that catches exactly the dead-import

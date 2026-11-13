@@ -194,7 +194,7 @@ at WARNING with `utilization` and `resets_at` — the operator's early signal.
   logged + posted once). `last_stats` and `model` proxy to whichever client answered; the stats
   dict gains `backend: "claude"|"ollama"`.
 - Streaming failover only **before the first delta** (nothing spoken yet). After the first delta
-  the existing mid-stream degradation in `_stream_and_store` applies unchanged — spoken audio
+  the existing mid-stream degradation in the turn core (`_stream_once` → `_guarded_answer`) applies unchanged — spoken audio
   cannot be retracted.
 - The fallback is not optional infrastructure: it announces itself (lesson
   `unwired-knobs-and-silent-fallbacks`) and never swallows the error silently.
@@ -217,7 +217,7 @@ DM_LLM_FAILOVER_COOLDOWN_S=600
 Invalid `DM_LLM_BACKEND` → config error at boot, not a silent default. All new knobs are read
 in `Config.from_env()` and **proven wired** by a test that constructs the client from config.
 
-### Wiring (`dmbot/runtime.py`)
+### Wiring (`dmbot/runtime.py`; the factory landed in `dmbot/llm/__init__.py`)
 
 A small factory `build_llm_client(config) -> LLMClient` in `llm/__init__.py` (or `client.py`):
 `ollama` → `OllamaClient(...)` exactly as today; `claude` → `FailoverClient(ClaudeClient(...),

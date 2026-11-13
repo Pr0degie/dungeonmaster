@@ -47,8 +47,8 @@ in code that already exists.
 ## Guardrails (the whole point)
 
 - **Never edit a test to make it pass.** If a test is wrong, say so explicitly and fix it as a
-  deliberate, separate step — never silently to chase green. The pre-commit gate + Stop hook
-  already run the suite; a test quietly relaxed is the failure mode they can't catch.
+  deliberate, separate step — never silently to chase green. The pre-commit gate
+  already runs the suite; a test quietly relaxed is the failure mode they can't catch.
 - **No green before red** — for the test-first cases. If you can't show the test failing first,
   the test isn't pinning the behaviour — fix the test, not the implementation. For a trivial
   addition this step is skipped by design, see above.
