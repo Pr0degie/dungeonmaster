@@ -10,7 +10,8 @@ decision is ever derived from it and every list mutation happens here, determini
 Pure functions + dataclasses (no Discord, no LLM, no ``SessionRuntime``) — testable like
 ``rules/combat.py``. Persistence is ``data/sessions/<id>/chekhov.json`` beside the other
 session files, written atomically like ``state.json``. The trigger seam (the ``!wrap``
-extraction) and the prompt injection live in :mod:`dmbot.runtime`.
+extraction) and the prompt injection live in :mod:`dmbot.session.npcs` and
+:mod:`dmbot.session.persistence`.
 """
 
 from __future__ import annotations

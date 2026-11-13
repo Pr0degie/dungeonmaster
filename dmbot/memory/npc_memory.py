@@ -8,9 +8,10 @@ everything hard — the attitude proposal is clamped to ±1 step per scene
 (:func:`~dmbot.memory.state.step_attitude`), revealed lies are flipped by code, and gossip is
 deterministic propagation, not another LLM call.
 
-Pure functions + one LLM-call wrapper with an injected OllamaClient (testable like
+Pure functions + one LLM-call wrapper with an injected LLMClient (testable like
 ``rules/combat.py`` — no Discord, no ``SessionRuntime``). The trigger seam (scene change /
-``wrap up``) and persistence live in :mod:`dmbot.runtime`.
+``wrap up``) and persistence live in :mod:`dmbot.session.npcs` and
+:mod:`dmbot.session.persistence`.
 """
 
 from __future__ import annotations
@@ -54,7 +55,7 @@ _ATTITUDE_DE = {
     "loyal": "loyal",
 }
 
-# Ollama structured-output schema (like the roll router, ADR 014): forces valid JSON so the
+# Structured-output schema (like the roll router, ADR 014): forces valid JSON so the
 # tolerant parse below is a belt, not the whole trousers.
 EXTRACT_SCHEMA: dict = {
     "type": "object",

@@ -558,7 +558,7 @@ class WorldState:
     scene_id: str = ""
     # Scene-element flags (ADR 043): scene_id → element ids resolved there (used Gelegenheiten,
     # revealed Geheimnisse). Code-owned like scene_id (golden rule #3) — the LLM only *requests*
-    # a flag via <<ERLEDIGT>>; validation lives in the runtime, this is dumb storage.
+    # a flag via <<ERLEDIGT>>; validation lives in session/scenes.py, this is dumb storage.
     scene_flags: dict[str, list[str]] = field(default_factory=dict)
     # Consequence clocks (ADR 047): code-owned pressure meters. The LLM only *requests* a tick
     # via <<UHR id>>; validation + the per-turn clamp live in the delivery pipeline.
@@ -795,8 +795,7 @@ class WorldState:
 
     def advance_turn(self, *, minutes: int = TURN_ADVANCE_MINUTES) -> list[Deadline]:
         """The clock's heartbeat (ADR 059 #2): one narrated turn costs a small fixed amount of
-        in-game time, whether or not the model emits a ``<<ZEIT>>`` marker — 22 turns of a live
-        run produced none, and the clock stood at 08:00 all evening. Returns the newly expired
+        in-game time, whether or not the model emits a ``<<ZEIT>>`` marker. Returns the newly expired
         deadlines, exactly like :meth:`advance_time`. ``minutes=0`` switches it off."""
         return self.advance_time(minutes)
 
@@ -1153,8 +1152,7 @@ class WorldState:
         by: str = "",
         at_minutes: int | None = None,
     ) -> Fact | None:
-        """Record that ``item`` changed hands — the turn-7 customs warrant that had evaporated
-        by turn 16 (ADR 058). A ``to`` that names a character lands on that character's sheet
+        """Record that ``item`` changed hands (ADR 058). A ``to`` that names a character lands on that character's sheet
         *and* in the facts; anything else (empty, an NPC, a group phrase) is held by the party.
 
         Returns the fact, or ``None`` when the value isn't a label (empty, over-long, multi-line
@@ -1384,12 +1382,9 @@ def world_state_summary_de(
     don't boil it into prose'). Only non-empty sections appear. Empty state → ''.
 
     ``present`` (D107) are the names the current scene card lists as here — everything else
-    registered is rendered under its own "not here" heading instead. Before scene NPCs were
-    registered on entry (PRD block 3) ``state.npcs`` was empty in practice and the single
-    "NSCs in der Szene" line was harmless; with registration on, an unscoped line would tell the
-    model that the seneschal from scene one is standing in scene four — which is exactly the
-    contradiction of 2026-08-22 (the NPC who left in turn 4 led the group through the same room
-    in turn 21). ``None`` keeps the pre-D107 rendering.
+    registered is rendered under its own "not here" heading instead. Scene NPCs are registered on
+    entry, so an unscoped "NSCs in der Szene" line would tell the model that the seneschal from
+    scene one is standing in scene four (ADR 057). ``None`` keeps the unscoped rendering.
 
     ``clocks=False`` (``DM_CLOCKS=0``) leaves the clock line out; the clocks stay in the state."""
     lines: list[str] = []
@@ -1406,8 +1401,7 @@ def world_state_summary_de(
     if state.characters:
         lines.append("Gruppe: " + "; ".join(_combatant_line_de(c) for c in state.characters))
     # The gear each player character carries (sheet inventory + equipment + weapons, then advanced
-    # by code). Missing until 2026-10-25: the DM answered "Was habe ich dabei?" with "das weißt nur
-    # du" and had the Arbites find no seal on a character whose sheet lists one.
+    # by code) — without it the DM cannot answer "Was habe ich dabei?" from the sheet.
     carried = [c for c in state.characters if c.inventory]
     if carried:
         lines.append(

@@ -10,9 +10,8 @@ plus typed journal events (``{"kind": …}``). It is code-owned like ``state.jso
 
 The auto-recap writes a ``{"kind": "compact", "keep": n}`` event when it folds the running
 history into the recap: the restore then loads only the ``n`` turns before it that the recap does
-not cover, and everything after it. Without the event a restart put the compacted turns back on
-top of the recap that already summarised them (live 2026-10-31 and 2026-11-12: the context was at
-its cap on the first turn after every restart).
+not cover, and everything after it. Without the event a restart would put the compacted turns
+back on top of the recap that already summarised them (D136, ADR 061 amendment 2026-11-13).
 
 Pure file helpers (no Discord/asyncio) so they're unit-testable and run off the event loop via
 ``asyncio.to_thread`` in the cog.
@@ -123,8 +122,7 @@ def load_recent(path: Path, max_turns: int) -> list[tuple[str, str]]:
     A ``redo`` record **replaces** the previous turn (so a restored session doesn't resurrect a
     superseded answer — same semantics as :meth:`DMBrain.redo`). A compaction event
     (:func:`append_compaction`) drops the turns before it except its ``keep`` newest: the recap
-    holds the rest. A journal without such an event (every file written before 2026-11-13) loads
-    as before. Corrupt lines are skipped with a warning (an append-only file can have a torn
+    holds the rest. A journal without such an event (an older file) drops nothing. Corrupt lines are skipped with a warning (an append-only file can have a torn
     tail). A missing file → ``[]``."""
     path = Path(path)
     if not path.is_file():

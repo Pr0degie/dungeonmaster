@@ -6,15 +6,14 @@ across restarts without dragging the whole raw history along.
 
 This module is the pure prompt-building half (German system prompt + history → a transcript the
 summariser reads). The LLM call itself lives in :meth:`dmbot.orchestrator.DMBrain.summarize`, which
-owns the Ollama client and the per-channel history.
+owns the LLM client and the per-channel history.
 """
 
 from __future__ import annotations
 
 # The recap's hard length, named in the prompt. It is injected into every later prompt and each
-# auto-recap folds the previous one in, so without a hard number it only grows: on Opus it reached
-# ~2400 characters and was cut at the output cap in six of seven runs, losing its newest events
-# (live 2026-10-31 / 2026-11-12). An uncut recap over 15 turns measured 1275 characters (ADR 061).
+# auto-recap folds the previous one in, so without a hard number it only grows until the output
+# cap cuts its newest events (ADR 061, amendment 2026-11-13).
 RECAP_MAX_CHARS = 1200
 # Output cap of the recap call in the Ollama model's tokens (~3.4 characters each: room for
 # ~1360 characters). The Claude backend gets its own, larger number — see ``dmbot.llm``.
