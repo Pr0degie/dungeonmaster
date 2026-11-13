@@ -357,7 +357,7 @@ after the recap and before the history.
 >   Since ADR 053 the journal also carries `{"kind": "scene"}` events (from the single scene
 >   mutator + every `!join`) and `time_minutes` per turn record — chunk metadata for the
 >   campaign-memory ingest (layer f below): every rotated journal feeds the session RAG on `!leave`.
->   _Known limitation:_ `_last_turn` isn't restored, so `!redo` is unavailable for the restored last turn.
+>   _Known limitation:_ the session's `last_turn` isn't restored, so `!redo` is unavailable for the restored last turn.
 >   **Doubles as the replay journal (ADR 046):** the turn records additionally carry the replay
 >   fields (structured `lines`/`results`/`notes`, the raw pre-sanitize LLM text, queued `markers`,
 >   the router verdict, `state_before` + scene/flag/clock/time verdicts) plus a `{"kind": "session"}` header per
