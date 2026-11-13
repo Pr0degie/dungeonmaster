@@ -221,7 +221,7 @@ class DMBrain:
         # from the STT thread and read on the event loop.
         self._lock = threading.Lock()
         # Token stats (prompt_eval_count / eval_count / num_ctx) from the most recent *narration*
-        # call — set only by _generate (respond/redo), so the router's classify_test and summarize
+        # call — set only by _chat_once / _stream_once, so the router's classify_test and summarize
         # calls don't overwrite it. The cog reads it right after respond()/redo() for the [latency]
         # line. None until the first turn.
         self.last_llm_stats: dict | None = None
@@ -457,7 +457,7 @@ class DMBrain:
         Unlike :meth:`_prepare_turn` this consumes no buffered player lines and adds no
         ``Spieler:`` line — the opening is a GM-side *director* instruction, not a player action.
         Crucially it leaves the session's ``last_action`` untouched (so it stays None), which makes
-        :meth:`_generate` / :meth:`_stream_and_store` skip queuing any ``<<TEST>>``/``<<ORT>>``
+        :meth:`_queue_markers` skip queuing any ``<<TEST>>``/``<<ORT>>``
         marker the model might emit — i.e. **no dice on a briefing** (the task's dice-suppression
         requirement) falls out of the existing results-only guard for free. Records ``last_turn``
         so the opening can be ``!redo``-ne like any turn, and reuses the same labels (known table
@@ -469,12 +469,30 @@ class DMBrain:
         session.replay_turn = {"lines": [], "results": [], "opening": True}
         return director_msg, labels, session.history
 
+    async def _opening(
+        self,
+        channel_id: int,
+        director_msg: str,
+        *,
+        sink: _Sink | None = None,
+        is_weak: Callable[[str], bool] | None = None,
+        num_predict: int | None = None,
+        temperature: float | None = None,
+    ) -> str:
+        """The body of :meth:`respond_opening` (``sink=None``) and
+        :meth:`respond_opening_streaming`: the one-off director turn through :meth:`_run_turn`."""
+        user_msg, labels, history = self._prepare_opening(channel_id, director_msg)
+        return await self._run_turn(
+            self._session(channel_id), user_msg, labels, history,
+            sink=sink, is_weak=is_weak, num_predict=num_predict, temperature=temperature,
+        )
+
     async def respond_opening(self, channel_id: int, director_msg: str, num_predict: int | None = None,
                               temperature: float | None = None,
                               is_weak: Callable[[str], bool] | None = None) -> str | None:
         """Run the opening-briefing turn (``!start`` / ``!intro test``, batch path): generate one GM
         turn from the ``director_msg`` instruction, append it to history, return the answer. Dice are
-        suppressed (see :meth:`_prepare_opening`). ``None`` only on the rare echo-guard suppression.
+        suppressed (see :meth:`_prepare_opening`). ``""`` only on the rare echo-guard suppression.
         ``!intro`` passes a lower ``temperature`` (D83) so the monologue reliably follows the director
         brief instead of wandering into a short generic turn.
 
@@ -483,18 +501,9 @@ class DMBrain:
         failure), regenerate **once** with a firmer nudge before the turn reaches the table. Only the
         kept answer is appended to history. Streaming ``!intro`` can't use this (audio already plays),
         which is why the validated batch path is the one to prefer once synthesis is fast enough."""
-        user_msg, labels, history = self._prepare_opening(channel_id, director_msg)
-        answer = await self._generate(channel_id, user_msg, labels, history, num_predict=num_predict, temperature=temperature)
-        if answer and is_weak is not None and is_weak(answer):
-            log.warning("intro guard: opening came out weak — regenerating once")
-            nudged = f"{user_msg}\n{INTRO_RETRY_NUDGE}"
-            retry = await self._generate(channel_id, nudged, labels, history, num_predict=num_predict, temperature=temperature)
-            if retry:
-                answer = retry  # keep the retry even if still weak — never speak less than we had
-        if answer is None:
-            return ""  # echo-suppressed (parity with respond): content-less to the cog
-        self._append_turn(history, user_msg, answer)
-        return answer
+        return await self._opening(
+            channel_id, director_msg, is_weak=is_weak, num_predict=num_predict, temperature=temperature
+        )
 
     async def respond_opening_streaming(
         self,
@@ -509,9 +518,8 @@ class DMBrain:
         """Streaming variant of :meth:`respond_opening` (the live path, ADR 017): same one-off
         director turn, spoken sentence-by-sentence via ``on_sentence``. Dice stay suppressed.
         ``!intro`` passes a lower ``temperature`` (D83) for steadier instruction-following."""
-        user_msg, labels, history = self._prepare_opening(channel_id, director_msg)
-        return await self._stream_and_store(
-            channel_id, user_msg, labels, history, on_sentence, should_abort,
+        return await self._opening(
+            channel_id, director_msg, sink=_Sink(on_sentence, should_abort),
             num_predict=num_predict, temperature=temperature,
         )
 
@@ -713,17 +721,31 @@ class DMBrain:
         *,
         sink: _Sink | None = None,
         check: Callable[[str], list[Violation]] | None = None,
+        is_weak: Callable[[str], bool] | None = None,
         num_predict: int | None = None,
         temperature: float | None = None,
     ) -> str:
-        """The turn core, shared by the batch and the streaming path: the guarded answer
-        (:meth:`_guarded_answer`), the consistency guard (ADR 045, when a ``check`` is given),
-        the history entry. Returns the answer for the table — ``""`` when the echo guard
-        suppressed the turn (D43): content-less to the cog, the pair stays out of history."""
+        """The turn core, shared by the batch and the streaming path of every turn kind
+        (respond, redo, opening): the guarded answer (:meth:`_guarded_answer`), the two
+        regenerate-once guards a batch turn can carry — the intro guard (``is_weak``, ADR 041
+        follow-up) and the consistency guard (``check``, ADR 045) — and the history entry.
+        Returns the answer for the table — ``""`` when the echo guard suppressed the turn (D43):
+        content-less to the cog, the pair stays out of history.
+
+        ``check`` and ``is_weak`` are for batch turns only: a streamed answer is already spoken
+        when they could judge it, so the streaming entry points never pass them."""
         answer, errored = await self._guarded_answer(
             session, user_msg, labels, history,
             sink=sink, num_predict=num_predict, temperature=temperature,
         )
+        if answer and is_weak is not None and is_weak(answer):
+            log.warning("intro guard: opening came out weak — regenerating once")
+            nudged = f"{user_msg}\n{INTRO_RETRY_NUDGE}"
+            retry, _errored = await self._guarded_answer(
+                session, nudged, labels, history, num_predict=num_predict, temperature=temperature
+            )
+            if retry:
+                answer = retry  # keep the retry even if still weak — never speak less than we had
         if answer is None:
             return ""
         answer = await self._apply_consistency(session, user_msg, labels, history, answer, check)
@@ -731,23 +753,6 @@ class DMBrain:
         if errored and stored:
             stored = f"{stored} … [Antwort unterbrochen]"  # noted in history; never spoken
         self._append_turn(history, user_msg, stored)
-        return answer
-
-    async def _generate(
-        self,
-        channel_id: int,
-        user_msg: str,
-        labels: list[str],
-        history_prefix: list[dict[str, str]],
-        num_predict: int | None = None,
-        temperature: float | None = None,
-    ) -> str | None:
-        """Batch shim over :meth:`_guarded_answer` for the redo and opening paths that have not
-        moved onto :meth:`_run_turn` yet. ``None`` = the echo guard suppressed the turn."""
-        answer, _errored = await self._guarded_answer(
-            self._session(channel_id), user_msg, labels, history_prefix,
-            num_predict=num_predict, temperature=temperature,
-        )
         return answer
 
     def _queue_markers(self, session: ChannelSession, markers: dict[str, list]) -> None:
@@ -797,24 +802,6 @@ class DMBrain:
         """Streaming variant of :meth:`redo`: re-stream the last turn's input, replacing (not
         stacking) the previous answer in history."""
         return await self._redo(channel_id, sink=_Sink(on_sentence, should_abort))
-
-    async def _stream_and_store(
-        self,
-        channel_id: int,
-        user_msg: str,
-        labels: list[str],
-        history: list[dict[str, str]],
-        on_sentence: Callable[[str], Awaitable[None]],
-        should_abort: Callable[[], bool] | None,
-        num_predict: int | None = None,
-        temperature: float | None = None,
-    ) -> str:
-        """Streaming shim over :meth:`_run_turn` for the redo and opening paths that have not
-        moved onto it yet."""
-        return await self._run_turn(
-            self._session(channel_id), user_msg, labels, history,
-            sink=_Sink(on_sentence, should_abort), num_predict=num_predict, temperature=temperature,
-        )
 
     def _append_turn(self, history: list[dict[str, str]], user_msg: str, answer: str) -> None:
         history.append({"role": "user", "content": user_msg})
