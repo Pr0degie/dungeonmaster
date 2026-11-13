@@ -36,8 +36,8 @@ _MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
 
 _CHUNK_GAP_S = 0.15  # a little silence between re-joined chunks so they don't run together
 
-# XTTS sampling overrides, passed straight to ``tts_to_file`` (ADR 016 follow-up, D55). Two levers
-# D53 deferred until a live test proved them needed — it did ("Psychosen bei Satzzeichen"):
+# XTTS sampling overrides against babbling on punctuation, passed straight to ``tts_to_file``
+# (ADR 016 amendment, D55):
 #   * ``split_sentences=False`` — we already split into <240-char, sentence-grouped chunks
 #     (``textsplit``), so XTTS's own pysbd splitter only re-tokenises them, and on the tiny
 #     punctuation fragments it produces the autoregressive GPT loops/babbles at sentence ends.
@@ -91,7 +91,7 @@ class XttsTTS:
         language: str = "de",
     ) -> None:
         self._language = language
-        # One synthesis at a time (2026-10-25): two streamed narrations ran XTTS concurrently on
+        # One synthesis at a time: two streamed narrations ran XTTS concurrently on
         # the same CUDA model and hit a sticky "device-side assert" that took Whisper down with it.
         self._lock = threading.Lock()
         device = _resolve_device(device)
@@ -112,8 +112,8 @@ class XttsTTS:
         # `voice.preflight.check_tts_speaker` runs the same check earlier against the baked list,
         # before torch is even loaded). An unknown name still degrades rather than crashing — TTS
         # is an optional layer, it fails open (docs/lessons/optional-layers-fail-open-core-fails-
-        # loud.md) — but it degrades LOUDLY: B13 (2026-08-22) had TTS_SPEAKER=cuda and one WARNING
-        # line was enough to lose a whole evening to a random voice.
+        # loud.md) — but it degrades LOUDLY: one WARNING line is easy to miss for a whole evening
+        # (debug-run-2026-08-22 findings B13).
         available = list(self._tts.speakers)
         problem = speaker_problem(speaker, available)
         if problem is not None:

@@ -14,9 +14,8 @@ import wave
 def write_silent_wav(path: str, framerate: int, duration_s: float = 0.2) -> None:
     """Write a silent mono 16-bit PCM WAV of ``duration_s`` seconds to ``path``.
 
-    The sample count is ``int(framerate * duration_s)`` zero frames — at the default
-    0.2 s this matches the previous inline writers (Piper 22050 Hz → 4410 frames,
-    XTTS 24000 Hz → 4800 frames) byte-for-byte.
+    The sample count is ``int(framerate * duration_s)`` zero frames (default 0.2 s: Piper
+    22050 Hz → 4410 frames, XTTS 24000 Hz → 4800 frames).
     """
     with wave.open(path, "wb") as w:
         w.setnchannels(1)

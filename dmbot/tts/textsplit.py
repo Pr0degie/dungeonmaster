@@ -23,8 +23,8 @@ TTS_CHAR_LIMIT = 240
 # then whitespace or the end of the text. German „…“ and »…« are included — a line like
 # „Wer schickt dich?“ ends a sentence. Every sentence split uses it: the TTS chunker, the streaming
 # assembler (ADR 017, via :func:`split_completed`), the Discord splitter, and in
-# ``dmbot/llm/sanitize.py`` the sentence filters and the trim of a dangling last fragment. Before
-# 2026-11-13 the sanitizer and this module each had their own rule and disagreed on “ and «.
+# ``dmbot/llm/sanitize.py`` the sentence filters and the trim of a dangling last fragment — one rule,
+# so they cannot disagree on “ and «.
 _TERMINATOR = "[.!?…]"
 _CLOSER = r'["»«“”’)\]]'
 SENTENCE_END = re.compile(rf"{_TERMINATOR}{_CLOSER}*(?=\s|$)")
@@ -63,13 +63,12 @@ def split_completed(text: str) -> tuple[list[str], str]:
     return parts, tail
 
 
-# What the voice may SAY: the prosody-bearing punctuation we keep (intonation + pauses the players
-# want — "durch die Betonung erkennt man es sowieso") plus the word hyphen "-" (Hive-Stadt).
-# Everything else non-alphanumeric is dropped before synthesis — a whitelist, so emojis, arrows,
-# bullets, the middle dot "·", quotes, brackets and any future stray symbol never reach XTTS, which
-# otherwise verbalises them as noise/gibberish (players: "er liest die Interpunktion mit vor … das
-# ist Müll", and lone symbols make XTTS hallucinate). Em/en/figure/minus dashes + the ellipsis are
-# mapped to a spoken pause first so they don't just vanish.
+# What the voice may SAY: the prosody-bearing punctuation we keep (intonation + pauses) plus the
+# word hyphen "-" (Hive-Stadt). Everything else non-alphanumeric is dropped before synthesis — a
+# whitelist (D53), so emojis, arrows, bullets, the middle dot "·", quotes, brackets and any future
+# stray symbol never reach XTTS, which otherwise verbalises them as noise/gibberish (lone symbols
+# make it hallucinate). Em/en/figure/minus dashes + the ellipsis are mapped to a spoken pause first
+# so they don't just vanish.
 _KEEP_PUNCT = frozenset(".,!?;:-")
 _WS_RE = re.compile(r"[\xa0  ​‌‍﻿]")  # NBSP / narrow / zero-width / BOM
 _DASH_RE = re.compile(r"\s*[—–―‒‑−]\s*")  # dash & minus variants → pause; ASCII "-" stays in words
@@ -103,9 +102,8 @@ def strip_speech_punctuation(text: str) -> str:
     `!intro test` only (ADR 031): XTTS sometimes loops/babbles **on** punctuation (D55), so this path
     feeds it punctuation-free sentences and restores the sentence breaks via the short pause between
     separately-spoken sentences. A whitelist (letters/digits/space), so *nothing* — sentence marks,
-    the word hyphen, quotes, dashes, emojis — reaches the synth as a symbol (Tobi: "nimm alle
-    satzzeichen raus"). Whitespace is tidied; may return ``""`` (the caller guards with
-    :func:`has_speakable_content`)."""
+    the word hyphen, quotes, dashes, emojis — reaches the synth as a symbol. Whitespace is tidied;
+    may return ``""`` (the caller guards with :func:`has_speakable_content`)."""
     kept = "".join(ch if (ch.isalnum() or ch.isspace()) else " " for ch in text)
     return re.sub(r"\s{2,}", " ", kept).strip()
 
@@ -114,7 +112,7 @@ def has_speakable_content(text: str) -> bool:
     """True if ``text`` has anything worth synthesising — at least one letter or digit. A turn that
     reduces to only punctuation / quotes / backticks (e.g. a marker-only answer the model wrapped in
     a code fence, after stripping) must NOT be spoken: XTTS would burn ~15 s of synth + playback on a
-    lone quote (seen live 2026-06-10). The dice button still posts; just nothing is read aloud."""
+    lone quote. The dice button still posts; just nothing is read aloud."""
     return any(ch.isalnum() for ch in text)
 
 
