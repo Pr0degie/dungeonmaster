@@ -1,10 +1,8 @@
 """Scene advancement — the pure decision core behind ADR 057.
 
-The 2026-08-22 debug run never moved the scene pointer once in 22 turns, because the only
-mechanism that could move it was an inline marker the model never emitted. ADR 057 replaces
-that with three movers (a post-turn classifier, a model-free flag gate, the demoted marker),
-and this module holds everything about them that can be decided without Discord, without the
-LLM and without touching a file:
+ADR 057 moves the scene pointer with three movers (a post-turn classifier, a model-free flag
+gate, the demoted marker) instead of an inline marker alone; this module holds everything about
+them that can be decided without Discord, without the LLM and without touching a file:
 
 * :func:`resolve_exit` — is this proposed target a legal move? Permitted, or rejected with a
   machine-readable reason (:class:`MoveRejection`) plus the reachable exits, so the wiring can

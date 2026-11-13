@@ -25,7 +25,7 @@ def toughness_bonus(profile, store, character) -> int:
     if not char_key:
         return 0
     # Reuse the store's lookup (case-insensitive + strip, skill→characteristic fallback) so a
-    # whitespace-drifted sheet key (e.g. "Tgh ") still resolves (finding #9).
+    # whitespace-drifted sheet key (e.g. "Tgh ") still resolves.
     value = store.skill_value(character, char_key) if store else None
     if value is None:
         return 0

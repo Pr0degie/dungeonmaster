@@ -46,9 +46,7 @@ def merge_gear(data: dict) -> tuple[str, ...]:
     """Everything a sheet says the character carries: ``inventory``, then ``equipment``, then the
     ``weapons`` names (dicts with a ``name`` or plain strings), deduped, first spelling wins.
 
-    Sheets put gear in all three places (Fridolin's Dietrich-Set and Schattenbrille live only
-    under ``equipment``); the world state used to seed from ``inventory`` alone, so the DM never
-    learned about the rest (2026-10-25 run)."""
+    Sheets put gear in all three places, so seeding from ``inventory`` alone hides the rest (D122)."""
     items: list[str] = []
     seen: set[str] = set()
     weapons = [w.get("name", "") if isinstance(w, dict) else w for w in (data.get("weapons") or [])]
@@ -187,9 +185,9 @@ class CharacterStore:
 
     def sheet_block_de(self) -> str:
         """Each character's skills (with values) and talent names for the prompt, so the DM can
-        answer "was kann ich?" from the sheet (2026-10-25: Sezgin "ich weiß mein Skill-Set nicht",
-        Tobi chose to keep it a question to the DM, not a command). Talent effects stay out — they
-        would bloat the prompt; rolls never read this block, the engine reads the sheet itself."""
+        answer "was kann ich?" from the sheet (a question to the DM by choice, not a command).
+        Talent effects stay out — they would bloat the prompt; rolls never read this block, the
+        engine reads the sheet itself."""
         lines: list[str] = []
         for char in self._by_name.values():
             parts: list[str] = []
@@ -209,18 +207,15 @@ class CharacterStore:
 
     def alias_hint_de(self, *, with_mapping: bool = True) -> str:
         """The 'who plays whom' block appended **last** to the system prompt (open item F). Besides
-        mapping display name → character (so the model stops confusing "SezBoss69" with "Seskin"),
-        it draws the hard boundary that these characters belong to the players. Placed last so it is
-        the *freshest* instruction the model reads — the live fix for nemo puppeting the whole party
-        (it kept speaking and acting for every PC, players: "hat noch nicht gerafft, dass es mehrere
-        Spieler gibt"). Empty if no aliases.
+        mapping display name → character, it draws the hard boundary that these characters belong
+        to the players. Placed last so it is the *freshest* instruction the model reads — against
+        the model puppeting the whole party (ADR 016). Empty if no aliases.
 
         ``with_mapping=False`` drops the display-name → character mapping and keeps only the
-        boundary (D107, PRD "Identity"). Once the runtime resolves a player's Discord user id to
-        the character name *before* the line enters the prompt, the model never sees a display
-        name — and being told about them made it address the table by them ("Sezgin, ich kann
-        leider nicht …", finding A4/B4). The boundary half stays either way: it is the softer
-        backstop to the no-puppeting rule and has nothing to do with the mapping."""
+        boundary (D107, ADR 057 amendment 2026-11-13 #3): once the runtime resolves the user id
+        to the character name before the prompt, naming display names only made the model
+        address the table by them. The boundary half stays
+        either way: it is the softer backstop to the no-puppeting rule."""
         if not self._alias_pairs:
             return ""
         chars = ", ".join(dict.fromkeys(char for _, char in self._alias_pairs))  # dedupe, keep order
@@ -244,7 +239,7 @@ class CharacterStore:
     def intro_roster_de(self) -> str:
         """A compact German party roster for the one-time ``!intro`` opening monologue (ADR 031):
         one bullet per character with the flavour the DM needs to give each figure a personal beat —
-        concept, then (full depth, Tobi's choice) origin, faction, distinguishing marks, goals,
+        concept, then (full depth, by choice) origin, faction, distinguishing marks, goals,
         connections and character arc. Read from each :class:`Character`'s ``raw`` source dict and
         tolerant of missing fields (the lean ``_example`` sheets carry only some), so it degrades
         gracefully; ``""`` when no characters are loaded. Embedded into the ``!intro`` director
@@ -287,8 +282,8 @@ class CharacterStore:
         name plus each player display name. The orchestrator adds these (beside the turn's own
         speakers) as cut-labels + stop sequences, so a puppeted ``Seskin: …`` / ``Pr0degie: …``
         script the model tacks on gets chopped off post-hoc: the deterministic backstop to the
-        persona's "never speak or act for the player characters" rule (nemo ignores the soft rule
-        and scripts the whole party — the live puppeting + runaway-length fix)."""
+        persona's "never speak or act for the player characters" rule, which the model ignores
+        (ADR 016)."""
         names = [c.name for c in self._by_name.values()]
         names += [display for display, _ in self._alias_pairs]
         return list(dict.fromkeys(n for n in names if n))  # dedupe, keep order
