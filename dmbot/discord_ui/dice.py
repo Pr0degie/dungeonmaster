@@ -35,8 +35,8 @@ def result_embed(text: str, image: Path | None, palette: str) -> tuple[discord.E
 
 
 def picture_embed(filename: str) -> discord.Embed:
-    """A box holding only a picture — no text, no coloured side bar (2026-10-31, Tobi: "Kasten nur
-    ums Bild"). The dice-button test keeps its words in the message text, so swapping the picture
+    """A box holding only a picture — no text, no coloured side bar. The dice-button test keeps
+    its words in the message text, so swapping the picture
     changes nothing else. Still an embed, not a plain attachment, because only an embed can point at
     a stored GIF (ADR 064) and spare the upload."""
     embed = discord.Embed()

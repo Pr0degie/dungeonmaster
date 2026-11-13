@@ -1,12 +1,10 @@
 """The player panel — the message the table reads while playing (D107, PRD
 ``docs/plans/coherent-campaign-run.md``, user stories 14-17).
 
-The 2026-08-22 debug run failed Tobi's actual wish ("im Chat steht, was getestet werden soll")
-twice over: the 🧪 overlay is refreshed only on a scene change — and no scene change ever
-happened — so the table saw exactly one message that scrolled away, and what it said was
-operator jargon (gate codes and command lines), not something a player can act on.
+Why: the 🧪 overlay alone refreshes only on a scene change and speaks operator jargon, so the
+table never saw what was being tested (ADR 057 amendment 2026-11-13 #2).
 
-This module is the answer's pure half: **one render function, no Discord, no state, no
+This module is the panel's pure half: **one render function, no Discord, no state, no
 network, no clock of its own.** It takes the world state, the current scene and the current
 scene's gate labels and returns the panel text in players' German. Posting it, editing it in
 place and deciding when to refresh belongs to the runtime (see ``render_player_panel_de``'s
@@ -160,8 +158,8 @@ def render_player_panel_de(
     mission = state.mission()
     lines.append(_mission_line_de(mission) if mission else NO_MISSION_DE)
 
-    # 3. What time it is and how much of the deadline is left (ADR 059): the pressure the run
-    #    of 2026-08-22 only ever heard as an NPC's catchphrase.
+    # 3. What time it is and how much of the deadline is left (ADR 059 #4): visible pressure
+    #    instead of an NPC's catchphrase.
     lines.append(f"🕐 **Wie spät es ist:** {render_time_phase_de(state.time_minutes)}")
     deadlines = sorted(state.deadlines, key=lambda dl: dl.due_minutes)
     if deadlines:

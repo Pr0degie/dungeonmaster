@@ -1,10 +1,9 @@
 """The "Zurücknehmen" control under an automatic scene change (ADR 057 #4).
 
-The 2026-08-22 run proved that a control nobody knows about is the same as no control: the
-`<<ORT>>` marker's confirm button never fired in 22 turns because nothing announced it. So the
-scene now changes *immediately* and this view is the recovery — one click restores the previous
-pointer and scene time — and it expires on its own after about a minute, because an undo that
-still sits there three scenes later is a trap, not a safety net.
+The scene changes *immediately* (a confirm-before control nobody knows about is no control) and
+this view is the recovery — one click restores the previous pointer and scene time — and it
+expires on its own after about a minute, because an undo that still sits there three scenes
+later is a trap, not a safety net.
 
 Same shape as :class:`~dmbot.discord_ui.scene.SceneChangeView`: the View is dumb (ack + lock on
 click), all logic lives in the runtime callback it is handed. Unlike that one it uses a real

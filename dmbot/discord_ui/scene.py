@@ -51,7 +51,7 @@ class SceneChangeView(discord.ui.View):
 
 
 async def retire_scene_proposal(proposals: dict, channel_id: int, moved) -> None:
-    """Close a pending ``<<ORT>>`` proposal once the scene has moved by any path (2026-10-25).
+    """Close a pending ``<<ORT>>`` proposal once the scene has moved by any path (D123).
 
     ``proposals`` maps a channel to ``(message, proposed scene id)``. The proposal is edited to say
     what happened and loses its buttons, so a "Wechseln" never lingers after the classifier already

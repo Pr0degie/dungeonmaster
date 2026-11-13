@@ -7,8 +7,9 @@ advances per click and a fast click-through **skips intermediate audio**: clicks
 block immediately, and once the current block finishes only the *latest* shown block is spoken
 (the loop coalesces). **⏹ Stopp** ends it; **🔊 Nochmal** re-reads the current block when idle.
 
-The View is otherwise dumb like the other views (mic/dice/rules): pages are handed in, the cog's
-`_speak` is injected as ``speak_fn`` — the View never reaches back into the cog.
+The View is otherwise dumb like the other views (mic/dice/rules): pages are handed in, the
+delivery pipeline's `_speak` (the ``runtime.speak`` hook) is injected as ``speak_fn`` — the View
+never reaches back into the cog.
 """
 
 from __future__ import annotations
