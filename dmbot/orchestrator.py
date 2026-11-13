@@ -155,6 +155,29 @@ class ChannelSession:
     replay_gen: dict | None = None
 
 
+@dataclass
+class _Sink:
+    """Where a streamed turn speaks: ``on_sentence`` gets each complete sentence as it is
+    ready, ``should_abort()`` (e.g. ``lambda: paused``) stops emission cleanly. A turn with a
+    sink streams, a turn without one is a batch turn — the only difference between the paths."""
+
+    on_sentence: Callable[[str], Awaitable[None]]
+    should_abort: Callable[[], bool] | None = None
+
+
+@dataclass
+class _Attempt:
+    """One LLM call's outcome, batch or streamed: the sanitised answer and its parsed markers.
+    A streamed attempt also says what it still holds back (``remaining``, not spoken yet),
+    whether it spoke anything and whether the stream broke mid-generation."""
+
+    answer: str
+    markers: dict[str, list]
+    remaining: list[str] = field(default_factory=list)
+    spoke_any: bool = False
+    errored: bool = False
+
+
 class DMBrain:
     """Per-channel history + a pending-player-lines buffer, driving one Ollama client."""
 
@@ -314,6 +337,26 @@ class DMBrain:
             block = ""
         self._session(channel_id).rag_block = block or ""
 
+    async def _respond(
+        self,
+        channel_id: int,
+        extra_text: str | None,
+        *,
+        sink: _Sink | None = None,
+        check: Callable[[str], list[Violation]] | None = None,
+    ) -> str | None:
+        """The body of :meth:`respond` (``sink=None``) and :meth:`respond_streaming`: prepare
+        the turn from the buffer, refresh the rulebook block, run it through :meth:`_run_turn`.
+        ``None`` if there is nothing to respond to."""
+        prep = self._prepare_turn(channel_id, extra_text)
+        if prep is None:
+            return None
+        user_msg, labels, history = prep
+        await self._refresh_rag(channel_id, user_msg)
+        return await self._run_turn(
+            self._session(channel_id), user_msg, labels, history, sink=sink, check=check
+        )
+
     async def respond(
         self, channel_id: int, *, extra_text: str | None = None,
         check: Callable[[str], list[Violation]] | None = None,
@@ -323,17 +366,7 @@ class DMBrain:
         Returns ``None`` if there is nothing to respond to. ``check`` is the consistency guard
         (ADR 045): violations regenerate the answer once before it reaches the table.
         """
-        prep = self._prepare_turn(channel_id, extra_text)
-        if prep is None:
-            return None
-        user_msg, labels, history = prep
-        await self._refresh_rag(channel_id, user_msg)
-        answer = await self._generate(channel_id, user_msg, labels, history)
-        if answer is None:
-            return ""  # echo-suppressed (D43): content-less to the cog, the pair stays out of history
-        answer = await self._apply_consistency(channel_id, user_msg, labels, history, answer, check)
-        self._append_turn(history, user_msg, answer)
-        return answer
+        return await self._respond(channel_id, extra_text, check=check)
 
     async def redo(self, channel_id: int, *,
                    check: Callable[[str], list[Violation]] | None = None) -> str | None:
@@ -357,13 +390,13 @@ class DMBrain:
         answer = await self._generate(channel_id, user_msg, labels, history)
         if answer is None:
             return ""  # echo-suppressed (D43): content-less to the cog, the pair stays out of history
-        answer = await self._apply_consistency(channel_id, user_msg, labels, history, answer, check)
+        answer = await self._apply_consistency(session, user_msg, labels, history, answer, check)
         self._append_turn(history, user_msg, answer)
         return answer
 
     async def _apply_consistency(
         self,
-        channel_id: int,
+        session: ChannelSession,
         user_msg: str,
         labels: list[str],
         history: list[dict[str, str]],
@@ -376,8 +409,8 @@ class DMBrain:
         retry all deliver an answer anyway; the guard never blocks the session. Max one retry.
 
         Marker hygiene: markers the discarded first answer queued must not survive it — snapshot
-        + clear the pending queues before the retry (whose own ``_generate`` re-queues its
-        markers) and restore the snapshot only if the retry is discarded (mirrors ``redo``)."""
+        + clear the pending queues before the retry (whose own :meth:`_guarded_answer` re-queues
+        its markers) and restore the snapshot only if the retry is discarded (mirrors ``redo``)."""
         if check is None or not answer:
             return answer
         try:
@@ -389,10 +422,9 @@ class DMBrain:
             return answer
         found = ",".join(f"{v.kind}:{v.npc}" for v in violations)
         log.warning("[consistency] violated (%s) — regenerating once", found)
-        session = self._session(channel_id)
         snapshot, session.pending = session.pending, empty_markers()
         nudged = f"{user_msg}\n{retry_nudge_de(violations)}"
-        retry = await self._generate(channel_id, nudged, labels, history)
+        retry, _errored = await self._guarded_answer(session, nudged, labels, history)
         if not retry:
             # Kind by kind, and only where the first answer had queued something: a kind it left
             # empty keeps whatever the discarded retry queued (unchanged behaviour).
@@ -478,7 +510,7 @@ class DMBrain:
 
     def _build_request(
         self,
-        channel_id: int,
+        session: ChannelSession,
         user_msg: str,
         labels: list[str],
         history_prefix: list[dict[str, str]],
@@ -486,13 +518,12 @@ class DMBrain:
         temperature: float | None = None,
     ) -> tuple[str, list[dict[str, str]], dict]:
         """Assemble ``(system, messages, options)`` for one DM turn — the shared head both the
-        batch (:meth:`_generate`) and streaming (:meth:`_stream_and_store`) paths use, so they
+        batch (:meth:`_chat_once`) and streaming (:meth:`_stream_once`) calls use, so they
         can't drift. The system-prompt slice order lives in :func:`assemble_system_prompt`; the
         ``.get()`` cache reads stay here so the per-turn vs cached timing is unchanged. Labels
         become Ollama stop sequences (the anti-puppeting guard). ``temperature`` is only set by the
         opening turns (D83), which pin a lower value for steadier instruction-following; a normal
         turn passes ``None`` → the model default (unchanged)."""
-        session = self._session(channel_id)
         system = assemble_system_prompt(
             load_system_prompt(),
             recap=session.recap,
@@ -510,7 +541,7 @@ class DMBrain:
 
     async def _chat_once(
         self,
-        channel_id: int,
+        session: ChannelSession,
         user_msg: str,
         labels: list[str],
         history_prefix: list[dict[str, str]],
@@ -519,9 +550,9 @@ class DMBrain:
     ) -> tuple[str, dict[str, list]]:
         """One non-streaming LLM call for ``user_msg`` on top of ``history_prefix`` → (sanitised
         answer, ``{kind: parsed requests}`` keyed by the marker registry, ADR 051). The raw
-        building block of :meth:`_generate` (which wraps the echo-guard retry around it) and of
-        the streaming path's echo retry."""
-        system, messages, options = self._build_request(channel_id, user_msg, labels, history_prefix, num_predict=num_predict, temperature=temperature)
+        building block of :meth:`_guarded_answer`: a batch turn's first attempt, and the
+        echo-guard retry of every turn, streamed ones included."""
+        system, messages, options = self._build_request(session, user_msg, labels, history_prefix, num_predict=num_predict, temperature=temperature)
         raw = await self._client.chat(system, messages, options=options)
         # narration call's token counts (for [latency]).
         self.last_llm_stats = self._client.last_stats
@@ -531,7 +562,7 @@ class DMBrain:
         log.info("🪵 LLM roh: %s", raw.replace("\n", " ⏎ "))
         # Replay capture (ADR 046): the raw text with markers intact. Each call overwrites, so
         # after an echo-guard/consistency retry the KEPT answer's raw is what the autosave gets.
-        self._session(channel_id).replay_gen = {"raw": raw}
+        session.replay_gen = {"raw": raw}
         return finalize_answer_markers(raw, labels, self._profile)
 
     @staticmethod
@@ -553,6 +584,148 @@ class DMBrain:
             return history_prefix[-1].get("content", "")
         return ""
 
+    async def _stream_once(
+        self,
+        session: ChannelSession,
+        user_msg: str,
+        labels: list[str],
+        history_prefix: list[dict[str, str]],
+        sink: _Sink,
+        num_predict: int | None = None,
+        temperature: float | None = None,
+    ) -> _Attempt:
+        """One streamed LLM call — the streaming counterpart of :meth:`_chat_once`. Drives
+        ``chat_stream`` through a :class:`StreamAssembler` and speaks sentences via the sink as
+        they're ready. Degrades on a mid-stream error — keeps what was spoken, flags the attempt
+        ``errored``, never raises out of a half-spoken turn."""
+        system, messages, options = self._build_request(session, user_msg, labels, history_prefix, num_predict=num_predict, temperature=temperature)
+        assembler = StreamAssembler(labels, self._profile)
+        errored = False
+        spoke_any = False
+        agen = self._client.chat_stream(system, messages, options=options)
+        try:
+            async for delta in agen:
+                for sentence in assembler.feed(delta):
+                    if has_speakable_content(sentence):  # skip a lone "."/quote/backtick (don't synth it)
+                        await sink.on_sentence(sentence)
+                        spoke_any = True
+                if assembler.stopped:
+                    break  # a mid-text speaker label — abort the stream, keep the narration
+                if sink.should_abort is not None and sink.should_abort():
+                    break  # paused (ADR 013): stop emitting; resume won't replay
+        except Exception:
+            log.exception("streaming turn failed mid-generation — keeping the partial answer")
+            errored = True
+        finally:
+            await agen.aclose()  # closes the httpx stream (the client-side stop)
+        self.last_llm_stats = self._client.last_stats
+        log.info("🪵 LLM roh (stream): %s", assembler.raw.replace("\n", " ⏎ "))
+        # Replay capture (ADR 046) — an echo-guard retry overwrites this via _chat_once, so the
+        # kept answer's raw wins (batch-path parity).
+        session.replay_gen = {"raw": assembler.raw}
+        result = assembler.finish()
+        return _Attempt(result.answer, result.markers, list(result.remaining), spoke_any, errored)
+
+    async def _guarded_answer(
+        self,
+        session: ChannelSession,
+        user_msg: str,
+        labels: list[str],
+        history_prefix: list[dict[str, str]],
+        *,
+        sink: _Sink | None = None,
+        num_predict: int | None = None,
+        temperature: float | None = None,
+    ) -> tuple[str | None, bool]:
+        """One DM answer for ``user_msg`` behind the echo guard (D43/ADR 018 + W4) — the single
+        generation path of every turn. ``sink=None`` asks the LLM in one batch call
+        (:meth:`_chat_once`); with a sink the first attempt streams (:meth:`_stream_once`).
+
+        If the answer merely parrots a player line or re-narrates the DM's own previous answer,
+        retry once with a corrective nudge — always a plain batch call, the corrective rare path.
+        If the retry misfires again the turn is suppressed: nothing spoken, nothing stored
+        (degenerate turns in history self-reinforce, seen live 2026-06-12). A streamed attempt is
+        only retried while nothing was spoken — an echo/repetition is held back by the assembler's
+        last-sentence rule for short answers; a half-spoken or errored turn is never retried.
+
+        Speaks what a streamed turn still holds back and queues the kept answer's markers.
+        Returns ``(answer, errored)``: ``answer`` is ``None`` for a suppressed turn, ``errored``
+        says the stream broke mid-generation."""
+        streaming = sink is not None
+        prev = self._prev_answer(history_prefix)
+        if sink is None:
+            attempt = _Attempt(*await self._chat_once(session, user_msg, labels, history_prefix, num_predict=num_predict, temperature=temperature))
+        else:
+            attempt = await self._stream_once(session, user_msg, labels, history_prefix, sink, num_predict=num_predict, temperature=temperature)
+            prev = self._prev_answer(history_prefix)  # the streamed path has always read it after the stream
+        answer, markers, remaining = attempt.answer, attempt.markers, attempt.remaining
+        suppressed = False
+        problem = None if (attempt.errored or attempt.spoke_any) else self._answer_problem(answer, user_msg, prev)
+        if problem is not None:
+            label, nudge = problem
+            log.warning("echo guard%s: answer %s (%r) — retrying once", " (stream)" if streaming else "", label, answer)
+            nudged = f"{user_msg}\n{nudge}"
+            try:
+                answer, markers = await self._chat_once(session, nudged, labels, history_prefix, num_predict=num_predict, temperature=temperature)
+            except Exception:
+                if not streaming:
+                    raise  # a batch turn has always let a failed retry propagate
+                log.exception("echo-guard retry failed — suppressing the turn")
+                answer, markers = "", empty_markers()
+            if self._answer_problem(answer, user_msg, prev) is not None:
+                log.warning("echo guard: the retry misfired again — suppressing the turn")
+                if not streaming:
+                    # Kept deviation: a suppressed batch turn leaves here, before _queue_markers,
+                    # so its replay capture has no "markers" key, while a suppressed streamed
+                    # turn goes on and records empty markers. Why: aligning the two would change
+                    # what the replay journal (ADR 046) records, and this split changes nothing.
+                    return None, False
+                answer, markers = "", empty_markers()
+            suppressed = streaming and not answer
+            remaining = [answer] if answer else []
+        elif attempt.spoke_any and not attempt.errored and is_self_repetition(answer, prev):
+            # A long repetition streams sentence-by-sentence before finish() can judge it — too
+            # late to retract audio. Keep history parity (stored == spoken) but flag it loudly
+            # for the tuning loop (W4 visibility).
+            log.warning("echo guard: streamed answer re-narrated the previous one (already spoken)")
+        if sink is not None:
+            for sentence in remaining:
+                if sink.should_abort is not None and sink.should_abort():
+                    break
+                if has_speakable_content(sentence):
+                    await sink.on_sentence(sentence)
+        self._queue_markers(session, markers)
+        return (None if suppressed else answer), attempt.errored
+
+    async def _run_turn(
+        self,
+        session: ChannelSession,
+        user_msg: str,
+        labels: list[str],
+        history: list[dict[str, str]],
+        *,
+        sink: _Sink | None = None,
+        check: Callable[[str], list[Violation]] | None = None,
+        num_predict: int | None = None,
+        temperature: float | None = None,
+    ) -> str:
+        """The turn core, shared by the batch and the streaming path: the guarded answer
+        (:meth:`_guarded_answer`), the consistency guard (ADR 045, when a ``check`` is given),
+        the history entry. Returns the answer for the table — ``""`` when the echo guard
+        suppressed the turn (D43): content-less to the cog, the pair stays out of history."""
+        answer, errored = await self._guarded_answer(
+            session, user_msg, labels, history,
+            sink=sink, num_predict=num_predict, temperature=temperature,
+        )
+        if answer is None:
+            return ""
+        answer = await self._apply_consistency(session, user_msg, labels, history, answer, check)
+        stored = answer
+        if errored and stored:
+            stored = f"{stored} … [Antwort unterbrochen]"  # noted in history; never spoken
+        self._append_turn(history, user_msg, stored)
+        return answer
+
     async def _generate(
         self,
         channel_id: int,
@@ -562,29 +735,18 @@ class DMBrain:
         num_predict: int | None = None,
         temperature: float | None = None,
     ) -> str | None:
-        """One DM answer for ``user_msg`` with the echo guard (D43/ADR 018 + W4): if the answer
-        merely parrots a player line or re-narrates the DM's own previous answer, retry once with
-        a corrective nudge; if the retry misfires again, return ``None`` so the caller suppresses
-        the turn entirely (nothing spoken, nothing stored — degenerate turns in history
-        self-reinforce, seen live 2026-06-12)."""
-        prev = self._prev_answer(history_prefix)
-        answer, markers = await self._chat_once(channel_id, user_msg, labels, history_prefix, num_predict=num_predict, temperature=temperature)
-        problem = self._answer_problem(answer, user_msg, prev)
-        if problem is not None:
-            label, nudge = problem
-            log.warning("echo guard: answer %s (%r) — retrying once", label, answer)
-            nudged = f"{user_msg}\n{nudge}"
-            answer, markers = await self._chat_once(channel_id, nudged, labels, history_prefix, num_predict=num_predict, temperature=temperature)
-            if self._answer_problem(answer, user_msg, prev) is not None:
-                log.warning("echo guard: the retry misfired again — suppressing the turn")
-                return None
-        self._queue_markers(channel_id, markers)
+        """Batch shim over :meth:`_guarded_answer` for the redo and opening paths that have not
+        moved onto :meth:`_run_turn` yet. ``None`` = the echo guard suppressed the turn."""
+        answer, _errored = await self._guarded_answer(
+            self._session(channel_id), user_msg, labels, history_prefix,
+            num_predict=num_predict, temperature=temperature,
+        )
         return answer
 
-    def _queue_markers(self, channel_id: int, markers: dict[str, list]) -> None:
+    def _queue_markers(self, session: ChannelSession, markers: dict[str, list]) -> None:
         """Queue the turn's parsed marker requests (ADR 051) under the results-only suppression
-        rule and record what was actually queued for the replay journal (ADR 046) — the one seam
-        shared by the batch path (:meth:`_generate`) and the streaming path.
+        rule and record what was actually queued for the replay journal (ADR 046) — called once
+        per kept answer by :meth:`_guarded_answer`, batch or streamed.
 
         Suppression: inline ``<<TEST>>``/``<<MANIFEST>>``/``<<ORT>>``/``<<ERLEDIGT>>`` markers on
         a results-only (post-roll consequence) turn are dropped — a consequence narration must not
@@ -592,7 +754,6 @@ class DMBrain:
         the turn answered a player action. ``<<UHR>>``/``<<ZEIT>>`` are exempt (ADR 047/048): the
         post-roll consequence turn is the canonical tick/advance moment, and neither triggers a
         new roll/turn — no loop to guard."""
-        session = self._session(channel_id)
         queued = session.last_action is not None
         for spec in MARKER_SPECS:
             reqs = markers[spec.kind]
@@ -617,14 +778,7 @@ class DMBrain:
         on_sentence(s)`` for each complete sentence as it's ready, so the cog can synthesise + speak
         it before the rest is done. ``should_abort()`` (e.g. ``lambda: paused``) stops emission
         cleanly. Returns the stored answer, or ``None`` if there's nothing to respond to."""
-        prep = self._prepare_turn(channel_id, extra_text)
-        if prep is None:
-            return None
-        user_msg, labels, history = prep
-        await self._refresh_rag(channel_id, user_msg)
-        return await self._stream_and_store(
-            channel_id, user_msg, labels, history, on_sentence, should_abort
-        )
+        return await self._respond(channel_id, extra_text, sink=_Sink(on_sentence, should_abort))
 
     async def redo_streaming(
         self,
@@ -664,75 +818,12 @@ class DMBrain:
         num_predict: int | None = None,
         temperature: float | None = None,
     ) -> str:
-        """Drive ``chat_stream`` through a :class:`StreamAssembler`, speaking sentences via
-        ``on_sentence`` as they're ready, then finalise: store the canonical answer (parity with
-        the batch path), surface pending tests, set the latency stats. Degrades on a mid-stream
-        error — keeps what was spoken, marks the stored answer, never raises out of a half-spoken
-        turn."""
-        system, messages, options = self._build_request(channel_id, user_msg, labels, history, num_predict=num_predict, temperature=temperature)
-        assembler = StreamAssembler(labels, self._profile)
-        errored = False
-        spoke_any = False
-        agen = self._client.chat_stream(system, messages, options=options)
-        try:
-            async for delta in agen:
-                for sentence in assembler.feed(delta):
-                    if has_speakable_content(sentence):  # skip a lone "."/quote/backtick (don't synth it)
-                        await on_sentence(sentence)
-                        spoke_any = True
-                if assembler.stopped:
-                    break  # a mid-text speaker label — abort the stream, keep the narration
-                if should_abort is not None and should_abort():
-                    break  # paused (ADR 013): stop emitting; resume won't replay
-        except Exception:
-            log.exception("streaming turn failed mid-generation — keeping the partial answer")
-            errored = True
-        finally:
-            await agen.aclose()  # closes the httpx stream (the client-side stop)
-        self.last_llm_stats = self._client.last_stats
-        log.info("🪵 LLM roh (stream): %s", assembler.raw.replace("\n", " ⏎ "))
-        # Replay capture (ADR 046) — an echo-guard retry below overwrites this via _chat_once,
-        # so the kept answer's raw wins (batch-path parity).
-        self._session(channel_id).replay_gen = {"raw": assembler.raw}
-        result = assembler.finish()
-        answer, markers, remaining = result.answer, result.markers, list(result.remaining)
-        suppressed = False
-        # Echo guard (D43/ADR 018 + W4). Only when nothing was spoken yet — an echo/repetition is
-        # held back by the assembler's last-sentence rule for short answers; a half-spoken turn is
-        # never retried. The retry is a plain batch call: corrective rare path.
-        prev = self._prev_answer(history)
-        problem = None if (errored or spoke_any) else self._answer_problem(answer, user_msg, prev)
-        if problem is not None:
-            label, nudge = problem
-            log.warning("echo guard (stream): answer %s (%r) — retrying once", label, answer)
-            nudged = f"{user_msg}\n{nudge}"
-            try:
-                answer, markers = await self._chat_once(channel_id, nudged, labels, history, num_predict=num_predict, temperature=temperature)
-            except Exception:
-                log.exception("echo-guard retry failed — suppressing the turn")
-                answer, markers = "", empty_markers()
-            if self._answer_problem(answer, user_msg, prev) is not None:
-                log.warning("echo guard: the retry misfired again — suppressing the turn")
-                answer, markers = "", empty_markers()
-            suppressed = not answer
-            remaining = [answer] if answer else []
-        elif not errored and spoke_any and is_self_repetition(answer, prev):
-            # A long repetition streams sentence-by-sentence before finish() can judge it — too
-            # late to retract audio. Keep history parity (stored == spoken) but flag it loudly
-            # for the tuning loop (W4 visibility).
-            log.warning("echo guard: streamed answer re-narrated the previous one (already spoken)")
-        for sentence in remaining:
-            if should_abort is not None and should_abort():
-                break
-            if has_speakable_content(sentence):
-                await on_sentence(sentence)
-        self._queue_markers(channel_id, markers)
-        stored = answer
-        if errored and stored:
-            stored = f"{stored} … [Antwort unterbrochen]"  # noted in history; never spoken
-        if not suppressed:
-            self._append_turn(history, user_msg, stored)
-        return answer
+        """Streaming shim over :meth:`_run_turn` for the redo and opening paths that have not
+        moved onto it yet."""
+        return await self._run_turn(
+            self._session(channel_id), user_msg, labels, history,
+            sink=_Sink(on_sentence, should_abort), num_predict=num_predict, temperature=temperature,
+        )
 
     def _append_turn(self, history: list[dict[str, str]], user_msg: str, answer: str) -> None:
         history.append({"role": "user", "content": user_msg})
