@@ -10,7 +10,7 @@ Seen live: review finding 3 (turn 20 of that run, 02:05:49 — the history stood
 cap when the auto-recap began, and the turn that landed during the summary is in neither the
 recap nor the history) and the two live-run findings. The other six review findings were
 derived from the code and have not been seen live. All are listed in ``progress.md`` under
-"Last session".
+"Open questions".
 
 Public API only — the tests drive ``DMBrain`` the way the cogs do. The journal test also calls
 the cog's autosave, the way the delivery pipeline does after playback.

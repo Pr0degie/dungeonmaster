@@ -16,14 +16,14 @@ is on-demand._
   pro Channel statt 17 Dicts, ein Turn-Kern (`_run_turn`) für Batch und Streaming, `_pending_<kind>`-Aliase weg; Schnittstelle
   unverändert. 1381 Tests grün, 12 xfail (3 NSC-Sichtung, ADR 062; 9 offene `DMBrain`-Befunde), `dm-eval` Exit 0. Live gesehen 13.11. (22 Züge bis `!leave`).
   Davor (13.11., D136 / ADR 061 Nachtrag): Auto-Recap markiert sich im Autosave-Journal, Recap unter Claude mit eigener
-  Grenze — beides live gesehen, der Neustart danach noch nicht.
+  Grenze — live gesehen, auch der Neustart danach (13.11. 01:48: 2 statt 20 Züge geladen).
   Davor (12.11., D135 / ADR 065): `runtime.py` in sieben Mixin-Module unter `dmbot/session/` zerlegt (1949 → 844 Zeilen).
   Davor D134 (31.10., Sprachbefehl „sehr böser Junge“, **live-unverifiziert**) und D128–D133 / **ADR 064** (Würfel, live gesehen).
 - **Davor (2026-10-25):** D123–D127 (improvisierte NSCs, XTTS-Sperre, Schicksalspunkte, Würfel-Thumbnails) —
   code-komplett, Details im Archiv/Log.
-- **Next concrete step:** erst ein Neustart als Probe (Restore nach Kompaktierung), dann der fünfte Lauf mit Bot A; vorher in
-  `#bot-commands` die alten GIF-Sätze löschen (nur die von 01:49 zählen). Prüfliste: Abschnitt „Next concrete step“; dort auch die
-  kleine Entscheidung, welcher Sprach-Trigger als nächster kommt.
+- **Next concrete step:** der fünfte Lauf mit Bot A (die Neustart-Probe ist bestanden); vorher entscheiden, welche der elf
+  offenen `DMBrain`-Punkte („Open questions“) behoben werden, und in `#bot-commands` die alten GIF-Sätze löschen (nur die
+  von 01:49 zählen). Prüfliste: Abschnitt „Next concrete step“; dort auch die Entscheidung zum nächsten Sprach-Trigger.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
   geparkt (ADR 061, im [Live-Run-Skript](docs/live-run-script.md) markiert) und werden nach dem
   Abend neu gesichtet; sie zählen nicht gegen die WIP-Grenze.
@@ -50,56 +50,17 @@ Turn-Ablauf arbeitet, liest jetzt einen Pfad statt zwei; am Tisch ändert sich n
 - Die `_pending_<kind>`-Aliase sind weg, die sechs `take_pending_<kind>`-Wrapper bleiben (Cogs, Delivery, `dm-eval`).
 - Beibehalten und an der Stelle kommentiert: ein unterdrückter Echo-Zug schreibt im Batch-Pfad kein `markers` ins
   Replay, im Stream-Pfad ein leeres.
-- `/code-review` auf `ddaae08..9ec06b6`: keine Regression durch den Umbau. **Offen (Tobi), nichts gefixt** — sieben
-  Altbefunde, die der Umbau unverändert übernommen hat, alle aus dem Code hergeleitet, keiner live gesehen. Jeder
-  hat einen `xfail(strict=True)`-Test in `tests/test_orchestrator_open_findings.py`:
-  1. `!redo` nach einem nicht gespeicherten Zug löscht den Zug davor —
-     `test_redo_after_a_suppressed_turn_keeps_the_turn_before_it`.
-  2. `clear_history` tauscht die geleerte Liste aus; ein Zug, der dann noch läuft, geht verloren —
-     `test_a_turn_still_in_flight_survives_the_compaction_wipe`. Der bestehende Test
-     `test_clear_history_preserves_a_turn_appended_during_summarize` deckt nur den Zug ab, der während des
-     Zusammenfassens schon fertig wurde.
-  3. Am History-Limit löscht `clear_history` den Zug, der während des Zusammenfassens dazukam (Kopfzählung) —
-     `test_a_turn_appended_during_summarize_survives_at_the_history_cap`.
-  4. Ein Opening nach einem Spielerzug erbt dessen `last_action` und reiht Würfel-Marker ein —
-     `test_an_opening_after_a_player_turn_requests_no_dice`.
-  5. Ein verworfener Konsistenz-Retry lässt seine Marker stehen —
-     `test_a_discarded_consistency_retry_leaves_no_markers_behind`.
-  6. Der Intro-Retry lässt die Marker der verworfenen Antwort stehen —
-     `test_a_discarded_weak_opening_leaves_no_markers_behind`.
-  7. Ein leerer Echo-Retry wird im Batch-Pfad als leerer Zug gespeichert —
-     `test_an_empty_echo_retry_stores_no_empty_turn`.
+- `/code-review` auf `ddaae08..9ec06b6`: keine Regression durch den Umbau. Es fand sieben Altfehler, die der Umbau
+  unverändert übernommen hat; der Live-Lauf brachte vier weitere Punkte. Alle elf stehen unter „Open questions“,
+  neun mit `xfail(strict=True)`-Test in `tests/test_orchestrator_open_findings.py`. Nichts davon ist behoben.
 - **Live gesehen (2026-11-13, 01:48–02:08, 22 Züge über Claude, alle gestreamt):** normaler Zug, `!redo` (ein Paar im
   Speicher, Journal-Record mit `redo: true`), drei Proben (Router-Wurf, Manifestation, Wurf mit Schicksalspunkt) mit
   `[Würfel]`-Folgezug ohne neue Probe, `[Regie]`-Hinweis genau einmal, Szenenwechsel, Auto-Recap (02:05:47–02:06:01,
   1156 Zeichen, nicht gekappt, `compact`-Ereignis `keep: 0`, Prompt danach 14.792 statt 21.505 Tokens). Keine
   Tracebacks, keine Echo- oder Konsistenz-Meldung, kein Failover, kein 429. `!leave` um 02:16:34: Journal rotiert nach
   `history.20261113-021634.debug.jsonl`, Session-Ingest 02:16:37 mit 22 Chunks (Store gleich den neu gebauten Chunks,
-  Redo-Antwort drin, ersetzte Antwort nicht). `CLAUDE_NUM_CTX` stand auf 24576, nicht 18000.
-- **Im selben Lauf, schon vor dem Umbau so (Tobi, nichts geändert):**
-  - Altbefund 3 ist eingetreten: beim Recap-Start stand die History genau am Limit (40 Nachrichten), Zug 20 („Ich
-    erzähle ihr, wer mich schickt.“, fertig 02:05:49) kam während des Zusammenfassens dazu. Er fehlt im Recap; laut
-    Code hat `clear_history` ihn mitgelöscht (im Log nicht direkt sichtbar). Im Journal steht er hinter dem
-    `compact`-Ereignis, ein Neustart lädt ihn wieder.
-  - Die Replay-Felder im Journal (`lines`/`results`/`raw`/`markers`) gehören bei 13 von 22 Zügen zum Folgezug, weil der
-    schon lief, bevor die Wiedergabe des Zugs endete; 7 weitere Records haben gar keine (31.10.: 6 von 21 falsch).
-    Ein Golden aus so einem Journal wäre falsch. xfail:
-    `test_a_turn_started_during_playback_leaves_the_previous_turns_replay_fields`.
-  - Ein vollständiger Schlusssatz auf `?“`, `.“` oder `!“` fällt weg — nicht gesprochen, nicht gepostet, nicht
-    gespeichert, auch ohne ✂-Schnitt: `_SENTENCE_END` kennt `“` (und `«`) nicht, `_trim_to_last_sentence` hält den
-    Satz für ein Bruchstück. 5 von 22 Antworten im Lauf (Zug 20: „Wessen Namen soll ich neben deinen schreiben?“),
-    15 von 136 davor im Log. Weiter als der offene Punkt im Eintrag darunter, der nur den Schnitt-Fall nennt. xfail:
-    `test_a_final_sentence_ending_on_the_german_closing_quote_is_spoken_and_stored`.
-  - `!redo` eines Zugs mit Regie-Impuls läuft ohne den Impuls: der Redo-Prompt war 133 Tokens kleiner (15.266 statt
-    15.399). Der Impuls der Szene `schrein` hat 257 Zeichen, bei den 1,95 Zeichen je Token des Laufs sind das 132.
-    Nach dem Join steht `_scene_turns` auf 0, der Originalzug trägt den Impuls; `close_turn` zählt hoch und frischt
-    den Kontext auf, bevor das Redo seinen Prompt baut. Das Redo zählt außerdem als eigener Szenenzug. Aus Code und
-    Größe hergeleitet, der Prompt selbst wird nicht geloggt. Kein Test.
-  - Das Journal rotiert nur bei `!leave` (`voicecog.leave`), nicht beim Beenden: von 19 Starts seit dem 30.10.
-    (17 mit Zügen) endete einer so. Die rotierte Datei enthielt 57 Züge aus vier Tagen (30.10.: 10, 31.10.: 21,
-    12.11.: 2, 13.11.: 24); der Session-Ingest hat sie als 22 Chunks unter „Session vom 13.11.“ abgelegt. Bis
-    dahin war nichts davon im Kampagnengedächtnis. Kein Test.
-  - 7 von 22 Antworten bei 220 Tokens gekappt (✂); der Spieler hat es um 02:01 bemängelt.
+  Redo-Antwort drin, ersetzte Antwort nicht). `CLAUDE_NUM_CTX` stand auf 24576, nicht 18000. Befund 3 (Zug fällt am
+  History-Limit aus dem Kontext) ist in diesem Lauf eingetreten.
 
 **Kontext nach Neustart, Recap-Grenze (2026-11-13, D136 / ADR 061 Nachtrag).** Nach einem Neustart ist der Kontext
 nicht mehr sofort voll, und der Recap verliert sein Ende nicht mehr. Befund aus `debug.log`: acht der letzten zehn
@@ -117,8 +78,9 @@ waren am Ende gekappt (gespeichert: 2344 Zeichen, endet mit „Kurz darauf brach
 - 16 neue Tests, 1381 grün, `dm-eval` Exit 0. **Live-unverifiziert.** Das laufende Debug-Journal hat noch kein
   Ereignis: der nächste Start lädt einmal noch 20 Züge, ab dem ersten Auto-Recap danach greift die Markierung.
 - Live gesehen (00:35–00:41): Auto-Recap ohne ✂ (1187 Zeichen, vollständiger Schlusssatz), `compact`-Ereignis im
-  Journal, Prompt danach bei 14.736 statt 23.732 Tokens; Szenenwechsel per Knopf. Der Neustart nach einer
-  Kompaktierung ist noch nicht gesehen. Zwei NSC-Fehler aus dem Zug von 00:40 stehen unter „Open questions“.
+  Journal, Prompt danach bei 14.736 statt 23.732 Tokens; Szenenwechsel per Knopf. Der Neustart danach ist gesehen
+  (13.11. 01:48:22: `restored 2 conversation turns`, die zwei Züge nach dem `compact`-Ereignis von 00:37:01; die
+  vier Starts davor luden 20; erster Zug bei 15.399/24.576 Tokens, kein Auto-Recap). Zwei NSC-Fehler aus dem Zug von 00:40 stehen unter „Open questions“.
 - **Offen (Tobi), nichts geändert:** das Sprechbudget (748 Zeichen) griff am 12.11. bei allen drei Antworten. Das
   abgeschnittene Satzstück wird weder gesprochen noch gepostet. Lücke dabei: ein vollständiger Satz, der auf `.“`
   endet, fällt direkt vor dem Schnitt mit weg (`_SENTENCE_END` kennt das deutsche Schlusszeichen nicht).
@@ -127,15 +89,15 @@ _Ältere `## Last session`-Einträge: siehe [docs/progress-archive.md](docs/prog
 
 ## Next concrete step
 
-**Zuerst, zwei Minuten: Neustart-Probe (D136).** Bot neu starten, `!join` im Debug-Kanal. Erwartet: die Zeile
-`restored N conversation turns` nennt nur die Züge seit dem letzten `compact`-Ereignis (nicht 20), der erste Zug liegt
-bei etwa 15.000 statt 23.000 Tokens und löst keinen Auto-Recap aus. Wenn doch 20: Journal-Ende und `state.debug.json`
-ansehen (das Ereignis entsteht nur, wenn der Recap in `state.json` steht).
-
 **Vor dem Abend entscheiden (Tobi):** (1) Sprechbudget — 748 Zeichen griffen bei vier von fünf Opus-Antworten am
 12./13.11.; dazu die Lücke, dass ein Satz auf `.“` vor dem Schnitt mit wegfällt (ADR 061, Nachtrag 13.11.).
+Am 13.11. (01:48–02:16) waren zusätzlich 7 von 22 Antworten an der Ausgabegrenze von 220 Tokens gekappt (✂); der
+Spieler hat es um 02:01 bemängelt.
 (2) Ob die drei NSC-xfails (ADR 062, „Open questions“) vor dem Abend behoben werden — sie treffen jeden Zug, in dem
 die Gruppe an einem neuen Ort ankommt und dort jemanden sieht.
+(3) Welche der elf offenen `DMBrain`-Punkte („Open questions“) vorher behoben werden. Am Tisch spürbar: Nr. 9
+(Schlusssatz auf `“` fällt weg, 5 von 22 Antworten), Nr. 3 (ein Zug fällt am History-Limit aus dem Kontext, live
+eingetreten), Nr. 1 (`!redo` nach einem nicht gespeicherten Zug), Nr. 4 (Opening mitten in der Sitzung).
 
 **Der fünfte Lauf.** Vorher: Bot A starten (am 30./31.10. lief er nicht, der DM erzählte stumm), in `#bot-commands`
 die alten Würfel-GIF-Sätze löschen (gültig sind die 8 Nachrichten von 2026-10-31 01:49), Sandbox leeren. Am Tisch
@@ -143,6 +105,9 @@ prüfen: Würfel — Zielwert-Post, GIF, Ergebnis, auch nach „🙏 Neu würfel
 das Spieler-Panel bleibt eins und wird nur bearbeitet; `👥 anwesend in …` für improvisierte Gegner, Zielauswahl nur
 Anwesende, kein Psi-Doppelwurf, kein „Wechseln“ nach Auto-Wechsel, „Was kann ich?“ aus dem Bogen, Schicksal-Buttons
 nach Fehlschlägen. Danach `characters.json` zurück (`git checkout`), wenn Timo/Vinnie wieder mitspielen.
+Im Debug-Lauf vom 13.11. (01:48–02:16, mit Bot A) stehen davon schon im Log: `🎲 throw gif (stored)` (01:52:40),
+der Neuwurf mit Schicksalspunkt (01:57:07), kein Psi-Doppelwurf (01:54:47), `👥 anwesend in …` (01:59:57). Der
+Rest der Liste ist am Log nicht ablesbar.
 
 **Klein, Tobi entscheidet:** welcher Sprach-Trigger als nächster gebaut wird (alle nach dem Muster von
 `dmbot/voice/kick_phrase.py` + `_maybe_kick`). Rangfolge: (1) „Baby, welcome to the party!“ trennt BloodyP;
@@ -287,6 +252,49 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 ---
 
 ## Open questions / to clarify
+
+**Offene `DMBrain`-Befunde (2026-11-13) — dokumentiert, nichts behoben (Tobi entscheidet).** Nr. 1–7 stammen aus
+`/code-review` auf `ddaae08..9ec06b6` (aus dem Code hergeleitet; der Umbau hat sie unverändert übernommen), Nr. 8–11
+aus dem Live-Lauf 01:48–02:16; alle gab es schon vor dem Umbau. Die Tests stehen als `xfail(strict=True)` in
+`tests/test_orchestrator_open_findings.py`; der Fix muss die Markierung entfernen.
+1. `!redo` nach einem nicht gespeicherten Zug löscht den Zug davor —
+   `test_redo_after_a_suppressed_turn_keeps_the_turn_before_it`.
+2. `clear_history` tauscht die geleerte Liste aus; ein Zug, der dann noch läuft, geht verloren —
+   `test_a_turn_still_in_flight_survives_the_compaction_wipe`. Der bestehende Test
+   `test_clear_history_preserves_a_turn_appended_during_summarize` deckt nur den Zug ab, der während des
+   Zusammenfassens schon fertig wurde.
+3. Am History-Limit löscht `clear_history` den Zug, der während des Zusammenfassens dazukam (Kopfzählung) —
+   `test_a_turn_appended_during_summarize_survives_at_the_history_cap`.
+   Live eingetreten (2026-11-13): beim Recap-Start stand die History genau am Limit (40 Nachrichten), Zug 20
+   („Ich erzähle ihr, wer mich schickt.“, fertig 02:05:49) kam während des Zusammenfassens dazu. Er fehlt im
+   Recap; laut Code hat `clear_history` ihn mitgelöscht (im Log nicht direkt sichtbar). Im Journal steht er hinter
+   dem `compact`-Ereignis, ein Neustart lädt ihn wieder.
+4. Ein Opening nach einem Spielerzug erbt dessen `last_action` und reiht Würfel-Marker ein —
+   `test_an_opening_after_a_player_turn_requests_no_dice`.
+5. Ein verworfener Konsistenz-Retry lässt seine Marker stehen —
+   `test_a_discarded_consistency_retry_leaves_no_markers_behind`.
+6. Der Intro-Retry lässt die Marker der verworfenen Antwort stehen —
+   `test_a_discarded_weak_opening_leaves_no_markers_behind`.
+7. Ein leerer Echo-Retry wird im Batch-Pfad als leerer Zug gespeichert —
+   `test_an_empty_echo_retry_stores_no_empty_turn`.
+8. Die Replay-Felder im Journal (`lines`/`results`/`raw`/`markers`) gehören bei 13 von 22 Zügen zum Folgezug, weil der
+   schon lief, bevor die Wiedergabe des Zugs endete; 7 weitere Records haben gar keine (31.10.: 6 von 21 falsch).
+   Ein Golden aus so einem Journal wäre falsch. xfail:
+   `test_a_turn_started_during_playback_leaves_the_previous_turns_replay_fields`.
+9. Ein vollständiger Schlusssatz auf `?“`, `.“` oder `!“` fällt weg — nicht gesprochen, nicht gepostet, nicht
+   gespeichert, auch ohne ✂-Schnitt: `_SENTENCE_END` kennt `“` (und `«`) nicht, `_trim_to_last_sentence` hält den
+   Satz für ein Bruchstück. 5 von 22 Antworten im Lauf (Zug 20: „Wessen Namen soll ich neben deinen schreiben?“),
+   15 von 136 davor im Log. Weiter als die Lücke beim Sprechbudget („Next concrete step“), die nur den Schnitt-Fall nennt. xfail:
+   `test_a_final_sentence_ending_on_the_german_closing_quote_is_spoken_and_stored`.
+10. `!redo` eines Zugs mit Regie-Impuls läuft ohne den Impuls: der Redo-Prompt war 133 Tokens kleiner (15.266 statt
+    15.399). Der Impuls der Szene `schrein` hat 257 Zeichen, bei den 1,95 Zeichen je Token des Laufs sind das 132.
+    Nach dem Join steht `_scene_turns` auf 0, der Originalzug trägt den Impuls; `close_turn` zählt hoch und frischt
+    den Kontext auf, bevor das Redo seinen Prompt baut. Das Redo zählt außerdem als eigener Szenenzug. Aus Code und
+    Größe hergeleitet, der Prompt selbst wird nicht geloggt. Kein Test.
+11. Das Journal rotiert nur bei `!leave` (`voicecog.leave`), nicht beim Beenden: von 19 Starts seit dem 30.10.
+    (17 mit Zügen) endete einer so. Die rotierte Datei enthielt 57 Züge aus vier Tagen (30.10.: 10, 31.10.: 21,
+    12.11.: 2, 13.11.: 24); der Session-Ingest hat sie als 22 Chunks unter „Session vom 13.11.“ abgelegt. Bis
+    dahin war nichts davon im Kampagnengedächtnis. Kein Test.
 
 **Aus dem Debug-Lauf (2026-11-13, Zug von 00:40) — dokumentiert und reproduziert, nicht behoben (ADR 062):**
 Belege: [npc-sighting-stale-scene-2026-11-13.md](docs/plans/npc-sighting-stale-scene-2026-11-13.md). Die drei Tests
