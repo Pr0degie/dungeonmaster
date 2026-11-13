@@ -12,15 +12,12 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** D138 / ADR 062 Nachtrag — eine gesichtete Figur landet in der Szene, in der der Zug endet, und
-  folgt einem Wechsel bis zum nächsten Zug; Karten-NSCs werden an Statblock, Name oder Rolle erkannt statt doppelt
-  angelegt; eine Karten-Figur der verlassenen Szene bleibt dort (13.11., **live-unverifiziert**). 1427 Tests grün,
-  4 xfail, `dm-eval` Exit 0. Vier Review-Punkte offen („Open questions“); Kurznamen der Karten-Figuren als `aliases` in beiden Abenteuern.
-  Davor (13.11.): D137 / ADR 061 Nachtrag, Satzschnitt (live-unverifiziert); fünf offene `DMBrain`-Befunde behoben (live-unverifiziert); `DMBrain` entdoppelt (live gesehen);
-  D136 / ADR 061 Nachtrag (live gesehen). D135 / ADR 065 (12.11.), D134 (31.10., live-unverifiziert).
-- **Next concrete step:** der fünfte Lauf mit Bot A (die Neustart-Probe ist bestanden); vorher entscheiden, welche der neun
-  noch offenen `DMBrain`-Punkte („Open questions“) behoben werden, und in `#bot-commands` die alten GIF-Sätze löschen (nur die
-  von 01:49 zählen). Prüfliste: Abschnitt „Next concrete step“; dort auch die Entscheidung zum nächsten Sprach-Trigger.
+- **Newest round:** Kommentare/Docstrings in `dmbot/` entschlackt, keine Codezeile geändert (13.11.).
+  Letzte Verhaltensänderung: D138 / ADR 062 Nachtrag. Details: „Last session“.
+- **Suite:** 1427 Tests grün, 4 xfail; `dm-eval` Exit 0.
+- **Live-unverifiziert:** D138, D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134.
+- **Next concrete step:** der fünfte Lauf mit Bot A; vorher drei Entscheidungen von Tobi und die Vorbereitung —
+  Abschnitt „Next concrete step“.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
   geparkt (ADR 061, im [Live-Run-Skript](docs/live-run-script.md) markiert) und werden nach dem
   Abend neu gesichtet; sie zählen nicht gegen die WIP-Grenze.
@@ -35,6 +32,15 @@ Nicht verifiziert: Opus mit vollem Systemprompt, ein ganzer Zug mit Stimme, alle
 _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Current focus (Verlauf)`._
 
 ## Last session
+
+**Kommentare entschlackt, keine Codezeile geändert (2026-11-13).** Ein Commit pro Paket; vor jedem Commit verglich
+ein Skript den Syntaxbaum ohne Docstrings mit HEAD (identisch), Befehls-Hilfetexte unverändert; pytest (1427 grün,
+4 xfail), ruff (F) sauber. `dmbot/` 22 951 → 22 834 Zeilen — der Großteil der Kommentare ist Wissen, nicht Historie.
+- Herleitungen, die nur in `docs/plans/` standen, sind jetzt Nachträge: ADR 003 (Sprecher-Identität), ADR 041
+  Addendum 3 (Figuren von außen), ADR 057 (Szenenkarte, Spieler-Panel, Anzeigenamen), Lesson
+  `incidents-become-preflights` (B13, `TTS_SPEAKER`).
+- Veraltete Verweise behoben, u. a. Auto-Recap als D56 statt D57, Methoden aus `runtime.py`/`dmcog.py`, die jetzt in
+  `dmbot/session/` bzw. `voice/delivery.py` liegen; `test-on-change.sh` beschreibt keinen Stop-Hook mehr.
 
 **NSC-Sichtungen: richtige Szene, keine Doppelgänger von Karten-NSCs (2026-11-13, D138 / ADR 062 Nachtrag,
 live-unverifiziert).** Am Tisch: Wen die Erzählung bei einer Ankunft zeigt, steht in der neuen Szene und ist dort Ziel
