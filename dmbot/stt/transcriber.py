@@ -104,7 +104,7 @@ _I16_FULL_SCALE = 32768.0
 
 # Callback shape: (speaker_name, transcript_text, clip_seconds, transcribe_ms, for_dm).
 # for_dm carries the push-to-talk routing decision made when the utterance was cut — the whole
-# table is transcribed + logged, but only for_dm lines are buffered for the DM (see commands.py).
+# table is transcribed + logged, but only for_dm lines are buffered for the DM (see runtime.py ``_on_transcript``).
 OnTranscript = Callable[[str, str, float, float, bool], None]
 
 

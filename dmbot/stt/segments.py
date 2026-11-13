@@ -7,17 +7,11 @@ loaded model or a GPU. Two independent layers, because they catch different fail
 when the model thinks the audio is mostly non-speech (high ``no_speech_prob``) or is low-confidence
 (low ``avg_logprob``). Thresholds tuned conservatively so real (even mumbled) speech is kept.
 
-**By content** (D114). The live run of 2026-08-22 showed the hole in that: a *fluently generated*
-outro scores high confidence, so the thresholds never see it. "Das war's für heute. Tschüss!"
-reached the table as a player utterance six times in one evening, twice routed straight at the DM,
-where it became the group's next declared action. Whisper's German training data is full of
-subtitle tracks, and their closing lines are what it falls back on when there is nothing to
-transcribe.
-
-Tobi set the rule at the table: block the *combination*, not the individual phrase. "Tschüss" on
-its own is something a person says at a table; "Das war's für heute, tschüss" is a subtitle track.
-So a lone pleasantry survives, two or more chained together do not, and phrases that are only ever
-outro boilerplate ("Ich hoffe, dass euch das Video gefallen hat") are blocked even alone.
+**By content** (D114, ADR 060). A *fluently generated* subtitle outro ("Das war's für heute.
+Tschüss!") scores high confidence, so the thresholds never see it. Block the *combination*, not
+the individual phrase: a lone pleasantry survives, two or more chained together do not, and
+phrases that are only ever outro boilerplate ("Ich hoffe, dass euch das Video gefallen hat") are
+blocked even alone.
 
 A *segment* is anything with ``.text`` / ``.no_speech_prob`` / ``.avg_logprob`` (the faster-whisper
 ``Segment`` duck-type).
@@ -52,7 +46,7 @@ _HARD_ARTEFACTS = (
 )
 
 # Pleasantries that a player might genuinely say. Blocked only when the utterance is nothing but
-# two or more of them chained together — the shape Tobi named.
+# two or more of them chained together.
 _WEAK_ARTEFACTS = (
     "das wars fur heute",
     "das war es fur heute",
@@ -105,7 +99,7 @@ def is_stock_phrase_only(text: str) -> bool:
     transcripts Whisper produces ("das wars für heute tschüss") are judged the same as the
     punctuated ones.
 
-    Then Tobi's rule: any hard artefact blocks on its own; weak pleasantries block only from the
+    Then the combination rule: any hard artefact blocks on its own; weak pleasantries block only from the
     second one onwards, so a lone "Tschüss" still reaches the table.
     """
     rest = _fold(text)
