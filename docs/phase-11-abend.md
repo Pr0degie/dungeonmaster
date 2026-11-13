@@ -22,6 +22,7 @@ läuft auf Tobis Rechner.
 | Ollama | `ollama list` | `mistral-nemo` und `bge-m3` sind da |
 | Sandbox leer | in `data/sessions/<channel-id>/` alle Dateien mit `.debug` im Namen löschen, dann `uv run python -m dmbot.rag.ingest_session --wipe-debug <channel-id>` | nichts ohne `.debug` wurde angefasst |
 | `.env` | Block aus [§9.2](testabend-ablauf.md) eintragen | `DM_LLM_BACKEND=claude`, `DM_NPC_MEMORY=0`, `DM_CONSISTENCY_GUARD=0`, `DM_DEBUG_OVERLAY=0`, `DM_CLOCKS=0`, `DM_FLAG_CONFIRM=0`, `DM_LOG_FILE=1` |
+| Altes Log weg | Bot aus; in PowerShell im Repo-Ordner: `Rename-Item logs\debug.log "debug-bis-$(Get-Date -Format yyyy-MM-dd).log"` | `logs\debug.log` gibt es nicht mehr; der Bot legt beim Start eine leere an, der Abend beginnt mit einer leeren Datei |
 | Verbrauch | claude.ai → Verbrauchsanzeige | Stand notiert: ______ |
 
 ## Beim Start
@@ -106,7 +107,7 @@ Copy-Item logs\terminal.log logs\terminal-d1.log
 ```
 
 `terminal.log` wird bei jedem Start geleert, `debug.log` läuft weiter und bekommt die Züge von
-Durchgang 2 und 3 dazu. Die Messungen A, C und D laufen deshalb auf `debug-d1.log`.
+Durchgang 2 und 3 dazu. Alle vier Messungen laufen deshalb auf `debug-d1.log`.
 
 ### Durchgang 2 — setzt Opus den Würfel-Marker selbst? (Punkt 7a)
 
@@ -143,8 +144,8 @@ Danach `.env` zurück auf `opus`, Neustart, ein Zug: Opus antwortet wieder.
 
 ## Die vier Messungen (nach dem Abend, in PowerShell im Repo-Ordner)
 
-Nur Züge aus Durchgang 1 werten. Durchgang 3 lief auf Nemo. Die Messungen A, C und D laufen
-auf der Kopie `logs\debug-d1.log` (Schritt zwischen Durchgang 1 und 2), nicht auf dem Gesamt-Log.
+Nur Züge aus Durchgang 1 werten. Durchgang 3 lief auf Nemo. Alle vier Messungen laufen auf
+der Kopie `logs\debug-d1.log` (Schritt zwischen Durchgang 1 und 2), nicht auf dem Gesamt-Log.
 
 **A — Wie schnell ist ein Opus-Zug?**
 
@@ -158,7 +159,7 @@ CLI), `first_audio=` (Auslöser bis erster Ton), `cache=` (Prompt-Tokens aus dem
 **B — Wie lange bis zum Würfelknopf?**
 
 ```
-Select-String -Path logs\debug.log -Pattern '\[classifier\] roll'
+Select-String -Path logs\debug-d1.log -Pattern '\[classifier\] roll'
 ```
 
 Drei Zeilen mit einem Urteil (nicht `no test`) notieren, je die Millisekunden.
@@ -196,11 +197,8 @@ $summe = ($aux | ForEach-Object { [int]$_.Matches[0].Groups[2].Value } | Measure
 Notieren: die Zeile je Call-Art und die Summenzeile. Der Vergleichswert aus ADR 066 ist eine
 Schätzung: Szene, Fakten und NSCs zusammen 3800–4900 Input-Tokens je Zug. Liegt die Messung
 deutlich darüber oder kam am Abend ein Verbrauchslimit, ist das der Anlass, ADR 066 neu zu
-entscheiden. `debug-d1.log` endet vor Durchgang 2, dessen Züge und die von Durchgang 3 zählen
-also nicht mit. Die Kopie enthält aber alles, was vor dem Abend schon in `logs\debug.log` stand
-(die Datei wird nie geleert): ältere Läufe haben keine `[aux]`-Zeilen, aber `[latency]`-Zeilen,
-und die Summe je Zug fiele zu klein aus. Für eine saubere Zahl das alte `logs\debug.log` vor
-dem ersten Start des Abends wegschieben.
+entscheiden. Die Zahl stimmt nur, wenn die Kopie allein Durchgang 1 enthält — dafür sorgt der
+Schritt „Altes Log weg“ unter „Vor dem Start“.
 
 ---
 
