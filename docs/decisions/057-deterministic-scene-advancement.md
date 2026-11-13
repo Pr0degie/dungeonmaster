@@ -134,3 +134,33 @@ unchanged — did the group arrive *in the narrated turn* — and the answer spa
 Live with context: the entry 3/3 "schrein", a conversation at the customs desk 3/3 "nein", the
 approach to the open door 2/3 "schrein" (an arrival at the place; acceptable).
 
+
+## Amendment (2026-11-13, recorded afterwards) — the rest of the D107 round: scene card, player panel, identity
+
+The D107 round decided three things outside the scene flow that were recorded only in the plan
+(`docs/plans/coherent-campaign-run.md`) and the findings of the 2026-08-22 debug run
+(`docs/plans/debug-run-2026-08-22-findings.md`). The code comments cite this amendment.
+
+1. **The scene card is rendered as GM material, not prose** (`dmbot/rag/adventure.py`). Three
+   failures of the 2026-08-22 run the model could not compensate for: (a) the unlabelled
+   `description_de` read as finished prose and was recited word for word into the spoken answer
+   (B5), so it carries a label marking it as reference material, not to be read out or copied;
+   (b) every statblock in `npcs.json` carried `role_de` and `roleplaying_de`, but nothing read
+   them — the model played one NPC (Kaad) in 14 of 16 narrative answers and borrowed its only
+   characterisation input, the scene's guidance (B2), so the card lists each present NPC as
+   `- Name — Rolle. Spielweise: …` under a header asking for distinct voices; (c) the scene's
+   standing guidance sat in every prompt and came back as a catchphrase in eight of ten answers
+   (A5/B6, ADR 059 #4), so it is opt-in per call and labelled as a one-off impulse. The wording of
+   the three labels is the fix itself, hence module constants.
+2. **The player panel replaces the 🧪 overlay for the table** (`dmbot/discord_ui/panel.py`). The
+   overlay (ADR 052) was meant to show the table what is being tested, but it refreshes only on a
+   scene change; on 2026-08-22 none happened, so the table saw one message that scrolled away, in
+   operator jargon (gate codes, command lines) nobody could act on. The panel is one persistent
+   message in players' German, gate labels translated into actionable sentences (unknown labels
+   dropped, never passed through). The overlay stays for the operator.
+3. **Display names leave the prompt** (`alias_hint_de` in `dmbot/rules/characters.py`). Once the
+   runtime resolves a player's Discord user id to the character name before the line enters the
+   prompt, the model never needs a display name — and being told about them made it address the
+   table by them ("Sezgin, ich kann leider nicht …", A4/B4). The hint keeps only the boundary that
+   the player characters belong to the players, the softer backstop to the no-puppeting rule
+   (ADR 016).

@@ -103,14 +103,10 @@ _SOURCES: dict[str, str] = {
     "gm_guide": "## Weltwissen (Inquisition — Ordos, Philosophien & Methoden)",
 }
 
-# --- junk filter (live tuning after ADR 025) ---------------------------------------------------
-# On pure-narration turns the bge-m3 KNN still surfaces a handful of chunks that sit right at the
-# 0.45 ceiling (d≈0.43–0.45) yet carry no rule content: scrambled multi-column OCR, picture-text
-# dumps, and bestiary statblocks. They cost prompt budget and add nothing. The calibration sweep
-# showed a pure threshold drop (→0.42) would also lose a real combat-rule answer (`CRITICAl HIT`
-# @0.439), so instead we drop only chunks whose SHAPE is unambiguous junk — independent of
-# distance. Each rule is verified against tools/rag_golden_set.json to catch zero legitimate
-# rule answers (no golden-positive heading is a dash-run, a statblock tag, or a picture-text body).
+# --- junk filter (ADR 028) -----------------------------------------------------------------------
+# Near-ceiling KNN hits that are layout/OCR noise are dropped by SHAPE, independent of distance —
+# a lower threshold would also cost real rule answers. Each rule is verified against
+# tools/rag_golden_set.json to catch zero legitimate rule answers.
 
 # Heading that is OCR layout noise: a run of dashes used as a fake rule line in the source PDF,
 # e.g. '--------------- PSYCHIC POWERS---------------'.

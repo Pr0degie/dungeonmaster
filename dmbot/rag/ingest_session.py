@@ -45,8 +45,7 @@ log = logging.getLogger(__name__)
 
 # Rotated-journal filename → rotation stamp (memory/history.rotate uses %Y%m%d-%H%M%S). The
 # pattern deliberately does NOT match the live ``history.jsonl``. The optional ``.debug``
-# marker is the debug-run sandbox (ADR 055): debug-campaign runs share the live channel's
-# session directory, so their archives carry the marker and route to a separate source.
+# marker routes an archive to the debug-run sandbox source (ADR 055).
 _STAMP_RE = re.compile(r"^history\.(?P<stamp>\d{8}-\d{6})(?P<debug>\.debug)?\.jsonl$")
 
 

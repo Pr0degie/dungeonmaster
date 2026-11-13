@@ -7,13 +7,11 @@ every prompt: the always-on adventure summary (stage 1) and the *current* scene 
 so "where are we in the plot" is deterministic state, not vector-similarity luck, and part-3
 spoilers can't surface while the party is in part 1. Pure file-reading + formatting; no LLM.
 
-D107 (ADR 057/059) widened both halves. The adventure now also ships its own clock —
-``start_time_de``, ``deadlines``, ``clocks`` — plus ``briefing_de``, the spoken plain-language
-opening; all four are read here and handed to the wiring untouched. And the scene card renders
-what the model was missing on 2026-08-22: exits as ``id — title`` instead of a bare id, the
-present NPCs with their role and manner from ``npcs.json``, the description labelled as
-reference material rather than ready-made prose, and the scene's standing guidance only when
-the caller asks for it.
+D107 (ADR 057/059): the adventure also ships its own clock — ``start_time_de``, ``deadlines``,
+``clocks`` — plus ``briefing_de``, the spoken plain-language opening; all four are read here and
+handed to the wiring untouched. The scene card renders exits as ``id — title``, the present NPCs
+with their role and manner from ``npcs.json``, the description labelled as reference material
+rather than ready-made prose, and the scene's guidance only when the caller asks for it.
 """
 
 from __future__ import annotations
@@ -26,8 +24,9 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-# Scene-card labels. Constants, not inline literals: the wording is the whole point of B5/B2/A5
-# (the card was recited verbatim, the NPCs had no manner, the guidance became a standing order).
+# Scene-card labels. Constants, not inline literals: the wording itself is the fix (D107, ADR 057
+# amendment 2026-11-13 #1 — the card was recited verbatim, the NPCs had no manner, the guidance
+# became a standing order).
 MATERIAL_HINT_DE = (
     "Material zur Szene (Notizen für dich, keine fertige Erzählung — nicht vorlesen und nicht "
     "abschreiben; erzähle mit eigenen Worten, was die Gruppe jetzt wahrnimmt):"
@@ -308,7 +307,7 @@ class Adventure:
     def load(cls, directory: Path) -> "Adventure | None":
         """Load ``adventure.json`` (+ optional ``npcs.json``) from ``directory``. ``None`` (with a
         loud log) when missing/broken — an unloadable adventure must not down the bot; the DM then
-        simply runs without a scene tracker, like before Phase 10a.
+        simply runs without a scene tracker.
 
         Content problems short of "broken" degrade the same way: an opportunity without an id
         warns and falls back to a positional id instead of failing the load (see
@@ -421,9 +420,8 @@ class Adventure:
     # -- prompt block (stages 1+2) ----------------------------------------------------------
 
     def _npc_lines_de(self, scene: Scene, dead: Collection[str]) -> list[str]:
-        """The present NPCs (B2). Each statblock already carries a role and roleplaying notes and
-        nothing in the repo read them — so on 2026-08-22 the model re-invented Kaad every turn and
-        borrowed the only characterisation it had, the scene's guidance. Rendered as
+        """The present NPCs with role and roleplaying notes from their statblocks (D107) — without
+        them the model borrows the scene's guidance as its only characterisation. Rendered as
         ``- Name — Rolle. Spielweise: …``; a name with no statblock keeps its bare line, and a
         scene whose NPCs are *all* unknown stays on the compact one-liner (nothing to add — don't
         grow the prompt)."""
@@ -455,9 +453,8 @@ class Adventure:
         ``(tot)``. Plain collections, not WorldState — keeps ``rag/`` decoupled from ``memory/``.
         Element ids render inline (``- [opp-1] …``) so the model can cite them in ``<<ERLEDIGT>>``.
 
-        ``include_guidance`` is the D107 switch (A5/B6): the scene's standing GM guidance used to
-        sit in *every* turn's prompt, and the starting scene's "keep the deadline in view" came
-        back in eight of ten answers. It is off by default and the caller owns the cadence —
+        ``include_guidance`` (D107, ADR 059 #4): standing guidance in every turn's prompt turns
+        into a repeated catchphrase, so it is off by default and the caller owns the cadence —
         occasionally, or when a scene has stalled. When on, it is labelled as a one-off impulse
         instead of a standing order."""
         lines = [
@@ -477,7 +474,7 @@ class Adventure:
             lines.append("")
             lines.append(f"## Aktuelle Szene: {scene.title_de} (Teil {scene.part})")
             if scene.description_de:
-                # B5: unlabelled, the card read as finished prose and was recited word for word.
+                # Unlabelled, the card reads as finished prose and gets recited word for word.
                 lines.append(MATERIAL_HINT_DE)
                 lines.append(scene.description_de)
             if scene.npcs_here:
