@@ -37,7 +37,7 @@ class DMCog(commands.Cog):
         runtime.auto_dm_turn = self._delivery._auto_dm_turn        # hook: VoiceCog mic release runs a DM turn
         runtime.speak = self._delivery._speak                      # hook: LoreCog !lore tts reads the compendium aloud
         self._backend_watch: asyncio.Task | None = None  # posts the failover's table notices (ADR 061)
-        self._gpu_watch: asyncio.Task | None = None      # posts the one GPU-fault notice (2026-10-25)
+        self._gpu_watch: asyncio.Task | None = None      # posts the one GPU-fault notice (D125)
 
     async def cog_load(self) -> None:
         # Only the failover pair has notices to post; the plain Ollama client has no such event.
@@ -55,8 +55,7 @@ class DMCog(commands.Cog):
 
     def _start_gpu_watch(self) -> None:
         """Hook the process-wide GPU latch to the channel: the first CUDA fault in a worker thread
-        sets an event on this loop, and one notice tells the table to restart (2026-10-25: the
-        bot went deaf and mute with nothing but tracebacks in the log)."""
+        sets an event on this loop, and one notice tells the table to restart (D125)."""
         loop = asyncio.get_running_loop()
         event = asyncio.Event()
         gpu_health.set_listener(lambda _source: loop.call_soon_threadsafe(event.set))
@@ -140,7 +139,7 @@ class DMCog(commands.Cog):
 
         ``user_msg`` is the player line the turn's answer carries (``TurnAnswer.user_msg``), never
         the brain's mutable last turn: this runs after playback, and by then a dice click may
-        have started the next turn (D43, seen live 2026-06-12 in history.jsonl) or a compaction
+        have started the next turn (D43) or a compaction
         cleared it. Without it nothing is journaled — loudly for an answer with content, since
         that means a delivery path lost the line."""
         if not self._rt._autosave:
@@ -175,7 +174,7 @@ class DMCog(commands.Cog):
         the dice/scene tasks have been awaited: autosave the turn, re-anchor the mic button below the
         new messages, and run the off-hot-path rolling auto-recap (D56). Identical for the batch and
         streaming paths — one source of truth. Runs entirely after `/speak` returned, so it never
-        adds turn latency. NOTE: the preceding `timing.end`/`log_line()`/`_await_dice_scene` step is
+        adds turn latency. NOTE: the preceding `timing.end`/`log_line()`/`_await_turn_tasks` step is
         deliberately kept per-path (batch awaits dice/scene in a `finally` so the 🎲 still posts if
         speak raised; streaming runs it after the pipeline cleanup) — that placement must not merge."""
         await self._autosave_turn(channel, answer, user_msg=saved_user_msg, redo=redo)
@@ -424,7 +423,7 @@ class DMCog(commands.Cog):
                 await self._rt.update_debug_overlay()  # 🧪 debug overlay (ADR 052)
                 await self._rt.update_player_panel()   # the table's panel (D107)
         roster = self._rt._characters.intro_roster_de() if self._rt._characters else ""
-        # The adventure's own plain-language opening (D107, findings A1/A9/A11): with it the
+        # The adventure's own plain-language opening (D107): with it the
         # first part of the monologue is the campaign's text instead of the model's invention,
         # so a newcomer is not handed two paragraphs of unexplained Warhammer vocabulary.
         briefing = self._rt._adventure.briefing_de if self._rt._adventure else ""
@@ -537,7 +536,7 @@ class DMCog(commands.Cog):
             await ctx.send("Noch nichts passiert, das sich zusammenfassen ließe.")
             return
         self._persist_recap(ctx.channel, recap)
-        # the shared send util splits past Discord's 2000 characters (a long recap, 2026-11-12)
+        # the shared send util splits past Discord's 2000 characters (a recap can be longer)
         await self._rt._send_with_retry(ctx.channel, f"📜 **Was bisher geschah:**\n{recap}")
 
     def _persist_recap(self, channel, recap: str) -> None:
@@ -605,9 +604,8 @@ class DMCog(commands.Cog):
             # window at 0. Overlap (extracted-but-unconsumed turns) is deduped at apply.
             self._rt._npc_mem_marks.pop(cid, None)
             if journal is not None:
-                # Without this event a restart restored the compacted turns on top of the recap
-                # that holds them — the context was at its cap on the first turn after every
-                # restart (live 2026-10-31, 2026-11-12). A failed write only costs that again.
+                # Without this event a restart restores the compacted turns on top of the recap
+                # that holds them (D136). A failed write only costs that again.
                 try:
                     await asyncio.to_thread(self._journal_compaction, cid, journal, recap, mark)
                 except OSError:

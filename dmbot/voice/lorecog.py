@@ -1,7 +1,6 @@
 """Discord commands for the Weltwissen reader: !lore (rundown / question / tts).
 
-A thin cog split out of DMCog (ADR 039, the deferred ADR-035 follow-up) so an agent editing the
-lore reader loads ~95 lines instead of the whole turn pipeline. Shared state lives on
+A thin cog split out of DMCog for context-leanness (ADR 039). Shared state lives on
 SessionRuntime; the one cross-cog dependency — reading the compendium aloud — goes through the
 ``runtime.speak`` hook (set by DMCog to the delivery pipeline's _speak, ADR 029/035), so no
 delivery/Bot-A logic leaks in here (golden rule #5). `!lore <frage>` is deterministic chunk

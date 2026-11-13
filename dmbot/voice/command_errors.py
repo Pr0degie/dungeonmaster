@@ -1,11 +1,8 @@
 """German reply text for a mistyped command — pure, no discord objects.
 
-Argument errors used to be swallowed: ``on_command_error`` logged them and the table saw
-*nothing at all*. That is the worst possible failure at a live table, because the loudest
-case looks identical to a working command — ``!uhr neu Wachsamkeit des Kettenbunds 6``
-dies converting "des" to the clock size, so no clock is created, no reply is posted, and
-the group plays on believing the clock exists (found while writing
-``docs/testabend-ablauf.md``).
+An argument error must never be only logged: at a live table a silent failure looks
+identical to a working command — ``!uhr neu Wachsamkeit des Kettenbunds 6`` dies converting
+"des" to the clock size, so no clock is created, and the group plays on believing it exists.
 
 Every command in this repo opens its docstring with its own usage line in backticks
 (``!uhr neu "<Name>" <4|6|8>` — create a clock.``), so the help text a player needs is

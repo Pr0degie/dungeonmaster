@@ -19,6 +19,13 @@ just fix the instance.**
   breakage lands next door, not in the changed package (ADR 008).
 - Two-machine drift of `.env`/rag.db/adventures → the `dm-sync` fingerprint diff (D89/D90).
 - A Phase-6 bridge failure was Bot A sitting on the wrong branch.
+- The 2026-08-22 run (finding B13) had `TTS_SPEAKER=cuda` — the device value in the speaker
+  key; XTTS fell back to a random built-in voice behind one WARNING line, for the whole evening
+  → `voice/preflight.check_tts_speaker`: a torch-free boot check against the baked
+  `KNOWN_XTTS_SPEAKERS` (runs while the model loads, logs ERROR, never raises; device-like values
+  get a "your two .env keys are swapped" message). Reporting (`speaker_problem`) and choice
+  (`resolve_speaker`) are separate pure functions so the wrapper cannot report one voice and
+  speak another.
 
 ## The correction
 

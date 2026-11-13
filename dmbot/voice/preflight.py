@@ -19,9 +19,8 @@ checks convert that into a loud, early signal:
   ``dave_session`` handle is reachable on the live voice client.
 - :func:`check_tts_speaker` — run once at startup, *before* XTTS loads. Same posture for the
   other silent-substitution surface on the voice stack: a ``TTS_SPEAKER`` value that is not an
-  XTTS speaker used to degrade to a random voice behind one WARNING line (2026-08-22 run, B13:
-  ``TTS_SPEAKER`` held the *device* value ``cuda``, so the whole evening was spoken by whatever
-  the fallback happened to be). It is torch-free — it checks the configured name against the
+  XTTS speaker otherwise degrades to a random voice behind one WARNING line (lesson
+  ``incidents-become-preflights``). It is torch-free — it checks the configured name against the
   baked :data:`KNOWN_XTTS_SPEAKERS` set, so it runs at boot while the model is still loading.
 
 **Bumping the stack:** change :data:`KNOWN_GOOD` here, re-run the offline smoke test
@@ -38,7 +37,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 log = logging.getLogger(__name__)
 
-# The exact distribution versions this voice code was verified against (live, 2026-06-04).
+# The exact distribution versions this voice code was verified against (live, ADR 006).
 # Keys are PyPI distribution names (as in pyproject.toml / importlib.metadata), not import
 # names. Keep in lockstep with the `==` pins in pyproject.toml and the table in ADR 006.
 KNOWN_GOOD: dict[str, str] = {
@@ -48,7 +47,7 @@ KNOWN_GOOD: dict[str, str] = {
 }
 
 
-# --- XTTS speaker configuration (B13) -------------------------------------------------
+# --- XTTS speaker configuration -------------------------------------------------------
 #
 # The speaker the DM speaks with when TTS_SPEAKER is empty. Single source of truth: the XTTS
 # wrapper imports it from here, so the preflight message and the wrapper's fallback can never
@@ -79,7 +78,7 @@ KNOWN_XTTS_SPEAKERS: tuple[str, ...] = (
     "Zacharie Aimilios", "Zofija Kendrick",
 )
 
-# Values that belong in TTS_DEVICE, not TTS_SPEAKER — the exact B13 mix-up. Naming it in the
+# Values that belong in TTS_DEVICE, not TTS_SPEAKER — the observed mix-up. Naming it in the
 # message turns "unknown speaker" into "your two .env keys are swapped".
 _DEVICE_LIKE = frozenset({"cpu", "cuda", "cuda:0", "cuda:1", "gpu", "mps", "auto", "xpu"})
 

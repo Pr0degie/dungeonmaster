@@ -1,13 +1,10 @@
 """The DM turn delivery pipeline: turn an answer (or a streaming generation) into spoken audio (via
 Bot A's /speak bridge), the posted Discord text, the 🎲 dice button + scene-change proposal, and the
-per-turn ``[latency]`` line. Split out of dmbot/voice/dmcog.py for context-leanness (ADR 035): it is
-the most-edited block (every TTS-tuning fix lands here) yet a cohesive unit, so an agent working on
-delivery loads only this module, not the whole 1100-line cog.
+per-turn ``[latency]`` line. Split out of dmbot/voice/dmcog.py for context-leanness (ADR 035).
 
 Composition, not inheritance: DMCog owns a ``DeliveryPipeline(runtime, post_deliver=...)`` and calls
 into it. The pipeline holds the shared SessionRuntime and reaches everything shared through it (TTS,
-bridge, brain, sink, speech-mode flags) exactly as the cog did — every moved body is byte-identical.
-The one thing it calls back into the cog for is the post-turn tail (autosave history -> re-anchor mic
+bridge, brain, sink, speech-mode flags). The one thing it calls back into the cog for is the post-turn tail (autosave history -> re-anchor mic
 -> rolling auto-recap), injected as ``post_deliver``: that stays a cog/session concern (and keeps the
 auto-recap tests on the cog). Cross-cog flow (dice button, mic re-anchor) still goes through the
 runtime hooks (ADR 029); the two turn-running hooks ``_run_and_deliver`` / ``_auto_dm_turn`` live
@@ -229,10 +226,8 @@ class DeliveryPipeline:
             "mode": self._rt._scene_mode,
         })
         if target is None:  # no-op, unknown id, not a leads_to neighbour, or a locked gate
-            # Loud, not log-only (ADR 057 #5): on 2026-08-22 a refused move produced one log.info
-            # line, so neither the table nor the model ever learned that the world had not
-            # followed the narration. The runtime turns the reason into a [Regie] note for the
-            # next turn plus an operator line.
+            # Loud, not log-only (ADR 057 #5): the runtime turns the reason into a [Regie] note
+            # for the next turn plus an operator line.
             await self._rt.report_rejected_move(channel, resolve_exit(
                 self._rt._adventure.get_scene(state.scene_id), req.scene_id,
                 resolved_ids=state.resolved_ids(state.scene_id),
@@ -252,7 +247,7 @@ class DeliveryPipeline:
         deterministic pointer move ``!ort`` does (``_set_scene`` + persist + prompt refresh) and edit
         the proposal message to reflect it.
 
-        Since D107 the work itself lives in ``SessionRuntime.move_scene`` — one mover for the
+        The work itself lives in ``SessionRuntime.move_scene`` (D107) — one mover for the
         classifier, the flag gate, ``!ort`` and this fallback marker, so NPC registration, the NPC
         memory mining, the travel time, the overlay and the player panel cannot drift apart.
         ``announce=False``: this path already has a message to edit, and the human click IS the
@@ -493,7 +488,7 @@ class DeliveryPipeline:
     async def _deliver_answer(self, channel, guild_id: int | None, answer: str,
                               timing: _TurnTiming) -> None:
         """Batch delivery: log, post (5xx-resilient), then speak and post the dice button
-        **concurrently** so the 🎲 appears while the DM speaks (Task 2 / D40), and re-anchor the
+        **concurrently** so the 🎲 appears while the DM speaks (D40), and re-anchor the
         mic button. Closes out the per-turn ``timing`` (tts/bridge via the speak step) and emits the
         single ``[latency]`` line once ``/speak`` returned. Spoken delivery follows the global
         `!sprechmodus` (ADR 033): the intonation transform comes from ``self._rt.speech_transform()``

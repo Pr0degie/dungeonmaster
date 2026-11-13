@@ -56,7 +56,7 @@ class DiceCog(commands.Cog):
         runtime.handle_dice = self._handle_dice          # hook: DMCog delivery posts the dice button
         runtime.post_turn_order = self._post_turn_order  # hook: VoiceCog !join posts the turn panel
         # (cid, name) pairs already warned about an untracked party psyker — keep it one-time so the
-        # channel isn't spammed every Manifest Test (finding #2).
+        # channel isn't spammed every Manifest Test.
         self._warp_untracked_warned: set[tuple[int, str]] = set()
         # Running throw animations (cosmetic message edits) — referenced so they aren't collected.
         self._presentations: set[asyncio.Task] = set()
@@ -77,13 +77,12 @@ class DiceCog(commands.Cog):
     async def _handle_dice(self, channel) -> None:
         """Post the turn's dice button. The router wins when it's on (D43, flips D40's dedupe):
         the model's inline ``<<TEST>>`` requests are drained and **discarded** — the constrained
-        classifier picks reliable skills, the narration model doesn't (seen live: Heimlichkeit
-        for an attack). Markers post only as the fallback when the router is off. Runs
+        classifier picks reliable skills, the narration model doesn't. Markers post only as the fallback when the router is off. Runs
         concurrently with playback (D40) so the button appears while the DM still speaks."""
         markers = self._rt._brain.take_pending_tests(self._rt._brain_channel(channel))
         # Psychic Manifest requests (ADR 022) are independent of the skill-roll router: each gets
         # a button so the engine rolls the Manifest Test + bookkeeps Warp Charge. Taken first so
-        # the router can drop a bare manifest-skill test for the same psyker (2026-10-25 run).
+        # the router can drop a bare manifest-skill test for the same psyker.
         manifests = self._rt._brain.take_pending_manifests(self._rt._brain_channel(channel))
         manifesting = self._manifesting(manifests)
         source = roll_button_source(self._rt._roll_router, len(markers))
@@ -122,9 +121,7 @@ class DiceCog(commands.Cog):
         when there's no player action this turn (e.g. a post-roll narration) or no matching
         character.
 
-        One action per *speaker* (D111). Until then only the last buffered line was classified, so
-        in a turn where two players each declared something only whoever spoke last could ever be
-        asked to roll — the other declaration vanished without a log line. The character always
+        One action per *speaker* (D111), so no declaration in a multi-speaker turn is lost. The character always
         comes from the speaker of the action, never from who presses the button, so a player may
         press a team-mate's button without stealing their test.
 
@@ -142,7 +139,7 @@ class DiceCog(commands.Cog):
             char = self._rt._characters.get(name)
             if char is None:
                 continue
-            if is_continuation_fragment(text):  # talk, not a declared action (2026-10-25 run)
+            if is_continuation_fragment(text):  # talk, not a declared action
                 log.info("🎲 router: %s — '%s' übersprungen (Satzfragment, keine Handlung)",
                          char.name, text[:50])
                 continue
@@ -294,8 +291,7 @@ class DiceCog(commands.Cog):
                               palette: str, view, prep=None) -> None:
         """Presentation only, two edits of the dice message: the throw GIF in place of the target
         picture (the text stays — only the picture changes), then, once it has played, the static
-        result (+ ``view``). Tobi compared it with posting the throw as a new message and kept
-        this (2026-10-31). No GIF (render failed, value outside 1–100) → straight to the result.
+        result (+ ``view``); edit in place, not a new message (ADR 064 amendment). No GIF (render failed, value outside 1–100) → straight to the result.
         A deleted message ends it quietly, unless a Fate choice still needs a home (it carries
         the narration, so it is posted anew)."""
         started = time.monotonic()
@@ -524,8 +520,8 @@ class DiceCog(commands.Cog):
                     # Known party psyker, but not seeded into this session's WorldState — Warp Charge
                     # would silently never accumulate (current_charge stays 0 each call) and Perils
                     # never fire. There is no safe single-character add on WorldState (seed_from_store
-                    # rebuilds the whole state, add_npc would mistype a PC as an NPC), so warn the GM
-                    # once instead of losing the resource silently (finding #2).
+                    # rebuilds the whole state, add_or_update_npc would mistype a PC as an NPC), so warn the GM
+                    # once instead of losing the resource silently.
                     key = (cid, (who or "").lower())
                     if key not in self._warp_untracked_warned:
                         self._warp_untracked_warned.add(key)
@@ -593,8 +589,7 @@ class DiceCog(commands.Cog):
         if not notation:
             return False  # no weapon damage data → can't auto-roll; narrate the hit plainly
         # Candidates: the living NPCs PRESENT in this scene (ADR 062) first, then other party
-        # members (friendly fire). Never NPCs elsewhere — on 2026-10-25 the picker offered the
-        # seneschal from two scenes away and both hits landed on the quest-giver.
+        # members (friendly fire). Never NPCs elsewhere.
         present = self._rt._scene_npcs(state)
         candidates = [n.name for n in present]
         candidates += [

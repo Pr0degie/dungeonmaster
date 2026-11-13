@@ -256,10 +256,10 @@ class VadSink(PcmLogSink):
         self._resamplers: dict[int, StereoResampler] = {}
         self._segmenters: dict[int, UtteranceSegmenter] = {}
         # Feedback protection layer 2 (ADR 003): muted while Bot A speaks. A DEPTH COUNTER, not a
-        # bool, because two independent owners nest: the DM-speaking paths in dmcog (_speak /
+        # bool, because two independent owners nest: the DM-speaking paths in delivery.py (_speak /
         # _deliver_streaming, balanced mute/unmute around /speak) and the operator pause/resume in
         # voicecog.set_paused. If the operator resumes mid-playback, a plain bool's unconditional
-        # unmute would flip muting off while Bot A is still talking (FINDING #8). Counting keeps it
+        # unmute would flip muting off while Bot A is still talking. Counting keeps it
         # muted until BOTH owners have released. Read effective state via the `_muted` property.
         self._mute_depth = 0
 
@@ -315,7 +315,7 @@ class VadSink(PcmLogSink):
         frame until the matching :meth:`unmute`.
 
         Reentrant via a depth counter: independent owners (DM-speaking vs. operator pause) nest, so
-        an inner unmute can't reopen the VAD while an outer owner is still speaking (FINDING #8).
+        an inner unmute can't reopen the VAD while an outer owner is still speaking.
         The flush only fires on the 0→1 transition; a nested second mute does not re-flush.
         """
         with self._lock:

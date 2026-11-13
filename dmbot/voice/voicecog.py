@@ -237,7 +237,7 @@ class VoiceCog(commands.Cog):
         # gates right away, BEFORE the bottom-pinned panels (turn order / mic) are posted.
         # Dormant without a plan sidecar.
         await self._rt.update_debug_overlay()
-        # The player panel (D107, stories 14-17) goes up right away — place, goal, time, deadline
+        # The player panel (D107) goes up right away — place, goal, time, deadline
         # and what is still open here — and is re-anchored at the bottom after every turn.
         await self._rt.update_player_panel()
         if self._rt._push_to_talk:
@@ -263,9 +263,8 @@ class VoiceCog(commands.Cog):
             await self._rt.post_turn_order(ctx.channel)
             await self._refresh_pause_panel()
 
-        # Name the loaded party — and warn loudly on the example-party fallback (D43): a session
-        # in the wrong channel once silently ran Mortn/Seskin/Vask with wrong sheet values, and it
-        # only surfaced as "the DM feels broken". Better one loud line than a quiet wrong game.
+        # Name the loaded party — and warn loudly on the example-party fallback (D43, ADR 040):
+        # better one loud line than a quiet game on wrong sheet values.
         party = ", ".join(c.name for c in self._rt._characters.characters())
         if char_fallback:
             log.warning("no characters.json for channel %s — example party loaded (%s)",
@@ -297,7 +296,7 @@ class VoiceCog(commands.Cog):
         # If a recap was stored from a previous session, show it so the table picks up the thread.
         state = self._rt._state.get(channel.id)
         # (Through the shared send util: it splits past Discord's 2000 characters — a long recap
-        # ended !join with HTTP 400 on 2026-11-12.)
+        # otherwise fails with HTTP 400.)
         if state is not None and state.recap:
             await self._rt._send_with_retry(ctx.channel, f"📜 **Was bisher geschah:** {state.recap}")
 

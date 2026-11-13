@@ -1,8 +1,7 @@
 """Discord commands for the adventure scene pointer + element flags: !ort/!szenen/!ortmodus,
 !erledigt/!offen (ADR 043), !fakt (ADR 058) and !automatik (the D107 kill switches).
 
-A thin cog split out of DMCog (ADR 039, the deferred ADR-035 follow-up) so an agent editing
-scene-pointer behaviour loads ~70 lines instead of the whole turn pipeline. The commands only
+A thin cog split out of DMCog for context-leanness (ADR 039). The commands only
 touch shared state on SessionRuntime (dmbot/runtime.py); the *automatic* <<ORT>> scene change
 lives in the delivery pipeline (ADR 035). Moving the plot pointer is deterministic by design
 (golden rule #3) — the human at the table does it, never the model. Bot replies are German.
@@ -20,8 +19,8 @@ from ..runtime import SessionRuntime
 log = logging.getLogger(__name__)
 
 # The live kill switches of D107: table-facing name → (runtime attribute, one German line).
-# One command instead of five, because five separate `!…modus` commands nobody remembers is how
-# the confirm button of 2026-08-22 ended up unused.
+# One command instead of five separate `!…modus` commands nobody remembers (an unremembered
+# control goes unused at the table, ADR 057).
 _SWITCHES: dict[str, tuple[str, str]] = {
     "szene": ("_scene_router", "Szenenwechsel: nach jedem Zug wird geprüft, ob ihr wirklich "
                                "woanders angekommen seid (ADR 057)."),
