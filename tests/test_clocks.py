@@ -148,6 +148,6 @@ def test_discard_gm_notes_by_substring() -> None:
 def test_reset_drops_pending_gm_notes_and_uhr_queue() -> None:
     brain = DMBrain(_NoCallClient())
     brain.add_gm_note(1, "Hinweis.")
-    brain._pending_uhr[1] = [object()]
+    brain._session(1).pending["uhr"] = [object()]
     brain.reset(1)
-    assert brain._session(1).gm_notes == [] and brain._pending_uhr == {}
+    assert brain._session(1).gm_notes == [] and brain._session(1).pending["uhr"] == []

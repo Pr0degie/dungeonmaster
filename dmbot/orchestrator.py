@@ -101,6 +101,12 @@ class ChannelSession:
     # only these first N messages so that concurrent turn survives both the recap and the
     # history (Finding #4). Cleared once consumed; None → clear_history does a full wipe.
     compact_consumed: int | None = None
+    # The pending-marker store (ADR 051): the requests parsed from the last DM turn, one list
+    # per registry kind (``tests``, ``manifests``, ``scenes``, ``erledigt``, ``uhr``, ``zeit``).
+    # Drained through :meth:`DMBrain.take_pending` — by dicecog (tests/manifests) and the
+    # delivery pipeline (the rest); what each consumer does is on the ``take_pending_<kind>``
+    # wrappers.
+    pending: dict[str, list] = field(default_factory=empty_markers)
     # One-shot GM directives injected into the NEXT turn's user message as "[Regie] …" lines
     # (ADR 047: "clock X is full — the consequence hits now"). Code-queued only, drained by
     # _prepare_turn like dice results, exempt from the player-line cap.
@@ -188,30 +194,6 @@ class DMBrain:
         self._max_buffer_lines = max_buffer_lines
         # Per-channel state: one :class:`ChannelSession` each, reached through :meth:`_session`.
         self._sessions: dict[int, ChannelSession] = {}
-        # The keyed pending-marker store (ADR 051): one inner {channel: [requests]} dict per
-        # registry kind, drained by dicecog (tests/manifests) and the delivery pipeline (the
-        # rest). The legacy ``_pending_<kind>`` attributes stay as live ALIASES of the inner
-        # dicts — tests poke them directly, and they keep debugger views familiar.
-        self._pending: dict[str, dict[int, list]] = {}
-        # Pending dice tests parsed from the last DM turn (per channel) — the cog drains these and
-        # posts a dice button for each.
-        self._pending["tests"] = self._pending_tests = {}
-        # Pending psychic Manifest requests parsed from the last DM turn (ADR 022) — drained by the
-        # cog exactly like dice tests, each posting a "manifest" button that rolls the Manifest Test.
-        self._pending["manifests"] = self._pending_manifests = {}
-        # Pending scene-transition requests parsed from the last DM turn (ADR 026) — drained by the
-        # cog, which validates the target against the adventure and posts a confirm button.
-        self._pending["scenes"] = self._pending_scenes = {}
-        # Pending scene-element flag requests (ADR 043) — drained by the delivery pipeline, which
-        # validates each id against the current scene card and confirms/auto-applies the flag.
-        self._pending["erledigt"] = self._pending_erledigt = {}
-        # Pending clock-tick requests (ADR 047) — drained by the delivery pipeline, which
-        # validates each id against WorldState.clocks, clamps to +1 per clock per turn and
-        # confirms/auto-applies the tick.
-        self._pending["uhr"] = self._pending_uhr = {}
-        # Pending time-advance requests (ADR 048) — drained by the delivery pipeline, which
-        # honours only the first valid one per turn, clamps to +12h and confirms/auto-applies.
-        self._pending["zeit"] = self._pending_zeit = {}
         # Guards session creation and every ``ChannelSession.buffer`` access: the buffer is written
         # from the STT thread and read on the event loop.
         self._lock = threading.Lock()
@@ -407,13 +389,16 @@ class DMBrain:
             return answer
         found = ",".join(f"{v.kind}:{v.npc}" for v in violations)
         log.warning("[consistency] violated (%s) — regenerating once", found)
-        snapshot = {kind: pending.pop(channel_id, None) for kind, pending in self._pending.items()}
+        session = self._session(channel_id)
+        snapshot, session.pending = session.pending, empty_markers()
         nudged = f"{user_msg}\n{retry_nudge_de(violations)}"
         retry = await self._generate(channel_id, nudged, labels, history)
         if not retry:
-            for kind, pending in self._pending.items():
-                if snapshot[kind] is not None:
-                    pending[channel_id] = snapshot[kind]
+            # Kind by kind, and only where the first answer had queued something: a kind it left
+            # empty keeps whatever the discarded retry queued (unchanged behaviour).
+            for kind, reqs in snapshot.items():
+                if reqs:
+                    session.pending[kind] = reqs
             log.warning("[consistency] retry came back empty — keeping the first answer (fail-open)")
             return answer
         try:
@@ -612,7 +597,7 @@ class DMBrain:
         for spec in MARKER_SPECS:
             reqs = markers[spec.kind]
             if reqs and (queued or not spec.suppressible):
-                self._pending[spec.kind].setdefault(channel_id, []).extend(reqs)
+                session.pending[spec.kind].extend(reqs)
         # Replay capture (ADR 046): what this turn actually queued (empty when suppressed) —
         # the marker Soll dm-eval compares against.
         if session.replay_gen is None:
@@ -759,12 +744,13 @@ class DMBrain:
         """Return and clear the queued requests of one marker-registry kind (ADR 051). The
         named ``take_pending_<kind>`` wrappers below stay the public surface — dicecog, the
         delivery handlers and dm-eval call those."""
-        return self._pending[kind].pop(channel_id, [])
+        pending = self._session(channel_id).pending
+        reqs, pending[kind] = pending[kind], []
+        return reqs
 
     def _drop_pending(self, channel_id: int) -> None:
         """Drop every queued marker request of the channel — a redo/reset supersedes them."""
-        for pending in self._pending.values():
-            pending.pop(channel_id, None)
+        self._session(channel_id).pending = empty_markers()
 
     def take_pending_tests(self, channel_id: int) -> list[TestRequest]:
         """Return and clear the dice tests the last DM turn requested (cog posts the buttons)."""
