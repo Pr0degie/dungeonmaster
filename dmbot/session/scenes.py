@@ -20,6 +20,7 @@ import discord
 from ..discord_ui.scene import retire_scene_proposal
 from ..discord_ui.undo import SceneUndoView
 from ..llm.director_msgs import scene_rejected_note_de
+from ..llm.npc_router import card_person
 from ..llm.scene_router import SceneExit
 from ..memory import history as history_store
 from ..memory.state import WorldState
@@ -52,7 +53,8 @@ class SceneFlowMixin:
         scene = self._adventure.get_scene(scene_id)
         if scene is None:
             return None
-        changed = state.scene_id != scene.id
+        left = state.scene_id
+        changed = left != scene.id
         state.scene_id = scene.id
         if scene.title_de:
             state.set_location(scene.title_de)  # keep the prose state block in sync
@@ -66,7 +68,23 @@ class SceneFlowMixin:
             cid = next((c for c, st in self._state.items() if st is state), None)
             if cid is not None:
                 self._scene_turns[cid] = 0  # the guidance impulse fires again on the first turn here
+                self._carry_turn_sightings(cid, state, left)
         return scene
+
+    def _carry_turn_sightings(self, cid: int, state: WorldState, left: str) -> None:
+        """The NPCs filed in the turn that is still open follow the pointer from ``left`` to
+        where it stands now (ADR 062, amendment 2026-11-13 #6): the classifier's own move, the
+        ``<<ORT>>`` button confirmed after the verdict, ``!ort``, the ↩ undo. Live 2026-11-13 the
+        button came 22 s after the sighting and the woman at the pawn hall's door stayed in the
+        shrine. Whoever has been placed elsewhere since stays there. The caller persists."""
+        moved: list[str] = []
+        for name in self._turn_sightings.get(cid, ()):
+            npc = state.find(name)
+            if left and npc is not None and npc.is_npc and npc.scene == left:
+                npc.scene = state.scene_id
+                moved.append(npc.name)
+        if moved:
+            log.info("👥 mit der Gruppe nach '%s': %s", state.scene_id, ", ".join(moved))
 
     def _register_scene_npcs(self, state: WorldState, scene: Scene | None) -> list[str]:
         """Register the scene card's NPCs in the world state as present, with their statblock
@@ -164,6 +182,7 @@ class SceneFlowMixin:
             return
         try:
             self._scene_turns[cid] = self._scene_turns.get(cid, 0) + 1
+            self._turn_sightings.pop(cid, None)  # the last turn's people stop following the pointer
             await self.advance_turn_time(channel)
             classified_from = state.scene_id     # snapshot: the classifier call takes seconds
             context = self._scene_context(cid, answer)  # snapshot too, before any await
@@ -171,8 +190,10 @@ class SceneFlowMixin:
                 channel, state, answer, context=context
             )
             self._apply_commitment(channel, state, fact_verdict)
-            # Before the scene move: the people were seen in the scene the answer was narrated in.
-            self._apply_npc_sightings(channel, state, npc_verdict, classified_from)
+            # Under the pointer as it stands NOW, not ``classified_from``: an answer that narrates
+            # an arrival shows the people of the new scene. A move still to come in this turn —
+            # the verdict just below, a late button — takes them along (ADR 062, amendment #6).
+            self._apply_npc_sightings(channel, state, npc_verdict, state.scene_id)
             if scene_verdict is not None and state.scene_id != classified_from:
                 # Someone moved the pointer while the classifier was thinking (``!ort``, the
                 # ``<<ORT>>`` button, an undo). The verdict was built against the *old* scene's
@@ -232,6 +253,7 @@ class SceneFlowMixin:
                 party=self._characters.character_names() if self._characters else [],
                 roster=self._adventure.statblock_names() if self._adventure is not None else [],
                 present=[n.name for n in self._scene_npcs(state)],
+                candidates=self._npc_candidates(state, state.scene_id),
             )))
         if not jobs:
             return None, None, None
@@ -251,32 +273,68 @@ class SceneFlowMixin:
                 self.replay_note(channel, key, note)
         return out.get("scene"), out.get("fact"), out.get("npc")
 
+    def _npc_candidates(self, state: WorldState, scene_id: str) -> list[tuple[str, str]]:
+        """The single people a sighting in ``scene_id`` may turn out to be, as ``(name, role)``:
+        the card NPCs of that scene and of every exit reachable from it right now (ADR 062,
+        amendment 2026-11-13 #7/#8). The classifier is offered them with their role, and code
+        merges a sighting only into one of them.
+
+        The data decides who is a person: a figure on a scene card's ``npcs_here`` is one; a
+        statblock on no card is a template for numbers, as is one the adventure flags
+        ``generic`` ("Kettenbund-Schläger" stands on a card and is still a role, not a man)."""
+        scene = self._adventure.get_scene(scene_id) if self._adventure is not None else None
+        if scene is None:
+            return []
+        people: dict[str, tuple[str, str]] = {}
+        for sid in (scene.id, *self._exit_labels(scene, state)):
+            card = self._adventure.get_scene(sid)
+            for raw in (card.npcs_here if card is not None else ()):
+                name = raw.strip()
+                block = self._adventure.npc(name)
+                if name and not (block is not None and block.generic):
+                    people.setdefault(name.casefold(), (name, block.role_de if block else ""))
+        return list(people.values())
+
     def _apply_npc_sightings(self, channel, state: WorldState, verdict, scene_id: str) -> None:
         """Place the people the presence classifier saw into ``scene_id`` (ADR 062 #2): a known
         NPC moves there, a new one is registered with its adventure statblock or the profile's
-        improvised defaults. Code decides the numbers; the verdict only names people."""
+        improvised defaults. A sighting that is one of the scene-card people around
+        (:meth:`_npc_candidates`) is that person under their own name, never a second entry
+        (amendment 2026-11-13 #8). Code decides scene, identity and numbers; the verdict only
+        names people. The names filed are remembered so they can follow a move in this turn."""
         sightings = getattr(verdict, "sightings", None)
         if not sightings or not scene_id:
             return
         defaults = (self._profile.improvised_npc() if self._profile is not None
                     else {"wounds": 10, "toughness_bonus": 0, "armour": 0})
+        candidates = self._npc_candidates(state, scene_id)
         placed: list[str] = []
+        filed: list[str] = []
         for sighting in sightings:
-            if state.find(sighting.label) is not None and not state.find(sighting.label).is_npc:
+            known = state.find(sighting.label)
+            person = "" if known is not None else card_person(sighting, candidates)
+            target = state.find(person) if person else known
+            if target is not None and not target.is_npc:
                 continue  # a player character — the verdict gate should already have dropped it
-            block = (self._adventure.npc(sighting.statblock)
-                     if self._adventure is not None and sighting.statblock else None)
+            statblock = person or sighting.statblock
+            block = (self._adventure.npc(statblock)
+                     if self._adventure is not None and statblock else None)
             npc, new = state.place_npc(
-                sighting.label, scene_id,
+                person or sighting.label, scene_id,
                 wounds=block.wounds if block else defaults["wounds"],
                 toughness_bonus=block.toughness_bonus if block else defaults["toughness_bonus"],
                 armour=block.armour if block else defaults["armour"],
                 faction=block.faction if block else "",
+                goal=block.goal_de if block and person else "",
             )
-            if new:
-                placed.append(f"{npc.name} (neu, {block.name if block else 'Standardwerte'})")
-            else:
-                placed.append(npc.name)
+            filed.append(npc.name)
+            notes = [f"neu, {block.name if block else 'Standardwerte'}"] if new else []
+            if person and person.casefold() != sighting.label.casefold():
+                notes.append(f"gemeldet als „{sighting.label}“")
+            placed.append(f"{npc.name} ({'; '.join(notes)})" if notes else npc.name)
+        if not filed:
+            return
+        self._turn_sightings[self._brain_channel(channel)] = tuple(filed)
         self._persist_and_refresh(channel)
         log.info("👥 anwesend in '%s': %s", scene_id, ", ".join(placed))
 
@@ -457,11 +515,13 @@ class SceneFlowMixin:
             state = self._state.get(cid)
             if state is None:
                 return
+            left = state.scene_id
             if not apply_scene_undo(undo, state):
                 await interaction.edit_original_response(
                     content="Nicht mehr aktuell — die Szene ist inzwischen weitergezogen."
                 )
                 return
+            self._carry_turn_sightings(cid, state, left)  # the group did not go: nor did they
             self._persist_and_refresh(channel)
             self._scene_turns[cid] = 0
             log.info("scene ↩ zurückgenommen → %s (%s)", state.scene_id,

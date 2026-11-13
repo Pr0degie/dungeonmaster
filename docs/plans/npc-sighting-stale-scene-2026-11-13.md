@@ -1,7 +1,9 @@
 # Evidence — a sighted NPC filed under the scene the group had just left (2026-11-13, 00:40)
 
-**Status:** documented and reproduced, **not fixed** (Tobi, 2026-11-13). Three tests in
-`tests/test_turn_boundary.py` show today's behaviour and are marked `xfail(strict=True)`:
+**Status:** **fixed 2026-11-13, live-unverified** — ADR 062, amendment 2026-11-13 (D138). The
+text below is the evidence as recorded before the fix; "today" and the code references mean
+commit `e681702`. Three tests in `tests/test_turn_boundary.py` showed the behaviour and were
+marked `xfail(strict=True)` until the fix removed the markers:
 `test_a_sighting_lands_in_the_scene_the_group_arrived_in_meanwhile`,
 `test_a_sighting_of_a_scene_card_npc_under_another_name_adds_no_second_entry` and, for the
 case under *Related* below,

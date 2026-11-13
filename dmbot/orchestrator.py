@@ -1074,14 +1074,14 @@ class DMBrain:
         return verdict
 
     async def classify_present_npcs(
-        self, *, answer_text: str, party=(), roster=(), present=()
+        self, *, answer_text: str, party=(), roster=(), present=(), candidates=()
     ) -> NpcVerdict:
         """Presence classifier (ADR 062) — the third post-turn call on the same boundary. Reports
         who newly appears in person; registering them is the caller's. Never raises."""
         started = time.monotonic()
         verdict = await classify_present_npcs(
             self._client.chat, answer_text=answer_text, party=party, roster=roster,
-            present=present,
+            present=present, candidates=candidates,
         )
         self._log_classifier(
             "npcs", started,

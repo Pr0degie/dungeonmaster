@@ -35,7 +35,7 @@ from fakes import FakeBrain, make_runtime
 
 # ---- fixtures: a three-scene campaign with a gate ------------------------------------------
 
-def _adventure() -> Adventure:
+def _adventure(*extra_npcs: AdventureNpc) -> Adventure:
     """zollhaus → schrein → pier (the last one gated behind ``brief``), the shape of the debug
     campaign in miniature. Scene ids and gate semantics are what the wiring keys off."""
     return Adventure(
@@ -64,6 +64,7 @@ def _adventure() -> Adventure:
             AdventureNpc(name="Seneschall Kaad", role_de="Zöllner", wounds=9,
                          toughness_bonus=3, armour=1, faction="inquisition", goal_de="Akten"),
             AdventureNpc(name="Schwester Vall", role_de="Schreinschwester"),
+            *extra_npcs,
         ],
         start_time_de="Tag 1, 21:00",
         deadlines=[{"id": "sirene", "label": "Mitternachtssirene", "due_in": "+3h"}],
@@ -1173,9 +1174,11 @@ def _npc_brain(*labels_and_blocks):
     brain = _FakeBrain()
     brain.npc_calls = []
 
-    async def classify_present_npcs(*, answer_text, party=(), roster=(), present=()):
+    async def classify_present_npcs(*, answer_text, party=(), roster=(), present=(),
+                                    candidates=()):
         brain.npc_calls.append({"answer_text": answer_text, "party": list(party),
-                                "roster": list(roster), "present": list(present)})
+                                "roster": list(roster), "present": list(present),
+                                "candidates": list(candidates)})
         brain.last_npcs = {"raw": "{}", "verdict": [], "failure": None}
         return NpcVerdict(sightings=tuple(Sighting(label=l, statblock=b) for l, b in labels_and_blocks))
 
@@ -1197,9 +1200,11 @@ def test_an_improvised_thug_is_registered_in_the_scene_he_was_narrated_in() -> N
     assert call["party"] == ["Fridolin"] and "Seneschall Kaad" in call["roster"]
     thug = state.find("Kettenmann")
     assert thug.is_npc and thug.scene == "schrein" and (thug.wounds, thug.toughness_bonus) == (10, 3)
-    double = state.find("Vall-Double")      # mapped onto a statblock → its numbers (default 10 here)
-    assert double.scene == "schrein"
-    assert [n.name for n in rt._scene_npcs(state)] == ["Kettenmann", "Vall-Double"]
+    # A statblock that stands on a scene card around is that person, not numbers for a second
+    # entry (ADR 062, amendment 2026-11-13 #8) — until then "Vall-Double" became an NPC of its own.
+    assert state.find("Vall-Double") is None
+    assert state.find("Schwester Vall").scene == "schrein"
+    assert [n.name for n in rt._scene_npcs(state)] == ["Kettenmann", "Schwester Vall"]
 
 
 def test_the_presence_classifier_has_its_own_kill_switch() -> None:
@@ -1230,10 +1235,9 @@ def test_an_npc_elsewhere_is_not_present_and_an_improvised_one_is_in_the_prompt(
     assert "Seneschall Kaad" in summary.split("anderswo")[1]
 
 
-# ---- known defects from the table of 2026-11-13: documented, reproduced, not yet fixed --------
-# Evidence: docs/plans/npc-sighting-stale-scene-2026-11-13.md (ADR 062). Both tests assert the
-# behaviour the table needs and fail today; ``strict`` makes the eventual fix show up as an
-# XPASS failure, so the marker has to be removed with it and cannot rot.
+# ---- a sighting follows the turn's scene; card NPCs are recognised (ADR 062, amendment) -------
+# Evidence: docs/plans/npc-sighting-stale-scene-2026-11-13.md and the run of 2026-11-13,
+# 01:59–02:01. The first three tests were the xfail reproductions of the defects.
 
 _IMPROVISED = SimpleNamespace(improvised_npc=lambda: {"wounds": 10, "toughness_bonus": 3, "armour": 0})
 
@@ -1251,10 +1255,6 @@ def _arriving_meanwhile(rt: SessionRuntime, state: WorldState, brain) -> None:
     brain.classify_present_npcs = classify_present_npcs
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "ADR 062: a sighting is filed under the pointer snapshot taken before the classifiers ran, "
-    "even when the pointer moved meanwhile and the answer narrated the arrival — live "
-    "2026-11-13, docs/plans/npc-sighting-stale-scene-2026-11-13.md"))
 def test_a_sighting_lands_in_the_scene_the_group_arrived_in_meanwhile() -> None:
     adv = _adventure()
     state = _state(adv)                                  # the pointer stands on zollhaus
@@ -1268,15 +1268,10 @@ def test_a_sighting_lands_in_the_scene_the_group_arrived_in_meanwhile() -> None:
 
     assert state.scene_id == "schrein"
     thug = state.find("Kettenmann")
-    assert thug is not None and thug.scene == "schrein"  # today: "zollhaus", the scene just left
+    assert thug is not None and thug.scene == "schrein"  # was "zollhaus", the scene just left
     assert "Kettenmann" in [n.name for n in rt._scene_npcs(state)]
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "ADR 062: sightings are applied before the scene verdict and under the scene the turn began "
-    "in, so a turn in which the classifier itself moves the pointer files the people of an "
-    "arrival narration under the scene just left — no race needed; not seen live, derived from "
-    "the code (docs/plans/npc-sighting-stale-scene-2026-11-13.md, 'Related')"))
 def test_a_sighting_lands_in_the_scene_the_classifier_moved_to_in_the_same_turn() -> None:
     adv = _adventure()
     state = _state(adv)                                  # the pointer stands on zollhaus
@@ -1290,15 +1285,10 @@ def test_a_sighting_lands_in_the_scene_the_classifier_moved_to_in_the_same_turn(
 
     assert state.scene_id == "schrein"                   # the classifier's move went through
     thug = state.find("Kettenmann")
-    assert thug is not None and thug.scene == "schrein"  # today: "zollhaus", the scene just left
+    assert thug is not None and thug.scene == "schrein"  # was "zollhaus", the scene just left
     assert "Kettenmann" in [n.name for n in rt._scene_npcs(state)]
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "ADR 062: a sighting that names a scene-card NPC by her role instead of her name becomes a "
-    "second NPC with default values (place_npc matches by exact name) — live 2026-11-13, "
-    "'Schreinschwester' beside 'Schwester Cassia Vall', "
-    "docs/plans/npc-sighting-stale-scene-2026-11-13.md"))
 def test_a_sighting_of_a_scene_card_npc_under_another_name_adds_no_second_entry() -> None:
     adv = _adventure()              # the shrine's card: "Schwester Vall", role "Schreinschwester"
     state = _state(adv)
@@ -1310,4 +1300,72 @@ def test_a_sighting_of_a_scene_card_npc_under_another_name_adds_no_second_entry(
     _run(rt.close_turn(_FakeChannel(), "Im Schrein kniet eine alte Schreinschwester und stemmt "
                                        "mit einer Eisenstange eine Bodenplatte an."))
 
-    assert [n.name for n in state.npcs] == ["Schwester Vall"]  # today: plus "Schreinschwester"
+    assert [n.name for n in state.npcs] == ["Schwester Vall"]  # was: plus "Schreinschwester"
+
+
+def test_a_sighting_follows_a_move_confirmed_after_the_verdict_until_the_next_turn() -> None:
+    """Live 2026-11-13: the woman at the pawn hall's door was filed at 01:59:57, the ``<<ORT>>``
+    button was confirmed at 02:00:19 — after ``close_turn`` had long returned. She stayed in the
+    shrine. The people of the open turn follow the pointer, the ↩ included, and stop following
+    once the next turn boundary begins."""
+    adv = _adventure()
+    state = _state(adv)                                  # the pointer stands on zollhaus
+    state.time_minutes = 1260
+    state.time_ingame = "Tag 1, 21:00"
+    channel = _FakeChannel()
+    rt = _runtime(adv, state, _npc_brain(("Frau hinter der Sichtklappe", "")), channel,
+                  _npc_router=True, _scene_router=False, _profile=_IMPROVISED)
+
+    _run(rt.close_turn(channel, "Eine Sichtklappe schiebt sich auf, ein Frauenauge mustert dich."))
+    woman = state.find("Frau hinter der Sichtklappe")
+    assert woman.scene == "zollhaus"                     # nobody has moved the pointer yet
+
+    undo = capture_scene_undo(state, "schrein", trigger=MoveTrigger.MARKER)
+    _run(rt.move_scene(channel, "schrein", trigger=MoveTrigger.MARKER, announce=False))
+    assert woman.scene == "schrein"                      # the late button takes her along
+    assert "Frau hinter der Sichtklappe" in [n.name for n in rt._scene_npcs(state)]
+
+    _run(rt._make_scene_undo(channel, undo)(_FakeInteraction()))
+    assert (state.scene_id, woman.scene) == ("zollhaus", "zollhaus")   # ↩: nobody went anywhere
+
+    rt._brain = _npc_brain()                             # the next turn sees nobody new
+    _run(rt.close_turn(channel, "Die Klappe schlägt zu."))
+    _run(rt.move_scene(channel, "schrein", trigger=MoveTrigger.COMMAND, announce=False))
+    assert woman.scene == "zollhaus"                     # her turn is over: she stays behind
+
+
+def test_the_presence_classifier_is_offered_the_card_people_here_and_at_the_open_exits() -> None:
+    """The candidates of ADR 062 amendment #7: name and role, for the current scene and for
+    every exit that is reachable right now — a gated exit's people are not on offer."""
+    adv = _adventure(AdventureNpc(name="Arno Kessel", role_de="Dockmeister von Pier Neun"))
+    adv.get_scene("pier").npcs_here.append("Arno Kessel")
+    state = _state(adv)                                  # zollhaus, its open exit is the shrine
+    brain = _npc_brain()
+    rt = _runtime(adv, state, brain, _FakeChannel(), _npc_router=True, _scene_router=False)
+
+    _run(rt.close_turn(_FakeChannel(), "Kaad sieht von seinen Akten auf."))
+    state.scene_id = "schrein"                           # its exit to the pier is still gated
+    _run(rt.close_turn(_FakeChannel(), "Die Schwester fegt Asche."))
+
+    here_and_next, gated = (call["candidates"] for call in brain.npc_calls)
+    assert here_and_next == [("Seneschall Kaad", "Zöllner"), ("Schwester Vall", "Schreinschwester")]
+    assert gated == [("Schwester Vall", "Schreinschwester")]
+
+
+def test_a_statblock_that_is_no_single_person_stays_a_template_for_numbers() -> None:
+    """The data decides who is a person (amendment #8): a figure on a scene card is one. A
+    statblock on no card, and one flagged ``generic`` even on a card, only lends its numbers."""
+    adv = _adventure(AdventureNpc(name="Hafenschläger", wounds=8, toughness_bonus=3),
+                     AdventureNpc(name="Kettenknecht", role_de="Knecht", wounds=6, generic=True))
+    adv.get_scene("schrein").npcs_here.append("Kettenknecht")
+    state = _state(adv, scene_id="schrein")
+    brain = _npc_brain(("Kettenmann", "Hafenschläger"), ("Narbengesicht", "Kettenknecht"),
+                       ("Knecht", ""))
+    rt = _runtime(adv, state, brain, _FakeChannel(), _npc_router=True, _scene_router=False,
+                  _profile=_IMPROVISED)
+
+    _run(rt.close_turn(_FakeChannel(), "Drei Kerle treten aus dem Schatten."))
+
+    assert ("Kettenknecht", "Knecht") not in brain.npc_calls[0]["candidates"]
+    assert {n.name: n.wounds for n in state.npcs} == {"Kettenmann": 8, "Narbengesicht": 6,
+                                                      "Knecht": 10}

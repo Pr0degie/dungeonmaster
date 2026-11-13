@@ -12,10 +12,10 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** D137 / ADR 061 Nachtrag — eine Satzende-Regel für Sanitizer, Stream und TTS; ein gekappter Zug
-  endet am letzten ganzen Satz, die ✂-Zeile nennt die weggefallenen Zeichen (13.11., **live-unverifiziert**).
-  1411 Tests grün, 7 xfail, `dm-eval` Exit 0.
-  Davor (13.11.): fünf offene `DMBrain`-Befunde behoben (live-unverifiziert); `DMBrain` entdoppelt (live gesehen);
+- **Newest round:** D138 / ADR 062 Nachtrag — eine gesichtete Figur landet in der Szene, in der der Zug endet, und
+  folgt einem Wechsel bis zum nächsten Zug; Karten-NSCs werden an Statblock, Name oder Rolle erkannt statt doppelt
+  angelegt (13.11., **live-unverifiziert**). 1419 Tests grün, 4 xfail, `dm-eval` Exit 0.
+  Davor (13.11.): D137 / ADR 061 Nachtrag, Satzschnitt (live-unverifiziert); fünf offene `DMBrain`-Befunde behoben (live-unverifiziert); `DMBrain` entdoppelt (live gesehen);
   D136 / ADR 061 Nachtrag (live gesehen). D135 / ADR 065 (12.11.), D134 (31.10., live-unverifiziert).
 - **Next concrete step:** der fünfte Lauf mit Bot A (die Neustart-Probe ist bestanden); vorher entscheiden, welche der neun
   noch offenen `DMBrain`-Punkte („Open questions“) behoben werden, und in `#bot-commands` die alten GIF-Sätze löschen (nur die
@@ -35,6 +35,22 @@ _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-a
 
 ## Last session
 
+**NSC-Sichtungen: richtige Szene, keine Doppelgänger von Karten-NSCs (2026-11-13, D138 / ADR 062 Nachtrag,
+live-unverifiziert).** Am Tisch: Wen die Erzählung bei einer Ankunft zeigt, steht in der neuen Szene und ist dort Ziel
+und im Prompt; eine Karten-NSC, die unter ihrer Rolle gemeldet wird, bekommt keinen zweiten Eintrag mit Standardwerten.
+Ein Commit, pytest (1419 grün, 4 xfail), ruff (F), `dm-eval` (Exit 0).
+- Befund aus dem Lauf 01:59–02:01: „Türwächter“ und „Frau hinter der Sichtklappe“ waren Bree Marlok, „Blinder Greis“
+  Alter Fenk. Die Frau wurde abgelegt, 22 s bevor der `<<ORT>>`-Knopf kam; die anderen beiden standen als anwesend in
+  der Liste, der Klassifikator sah aber nur Namen, keine Rollen.
+- `close_turn` legt unter dem Zeiger ab, wie er nach dem Urteil steht; die Figuren des offenen Zugs folgen jedem
+  Wechsel bis zur nächsten Zuggrenze (Klassifikator, später Knopf, `!ort`, ↩).
+- Der Klassifikator bekommt die Karten-NSCs der Szene und der erreichbaren Ausgänge als „Name — Rolle“. Code führt
+  eine Sichtung mit einer solchen Person zusammen (Statblock, Name, Rolle). Person ist, wer auf einer Szenenkarte
+  steht und nicht `generic` ist; jeder andere Statblock bleibt Vorlage.
+- Schlechter als vorher: Wer vor dem Aufbruch in der alten Szene gesehen wird, landet in der neuen.
+- Offen: Ob der Prompt wirkt, zeigt erst ein Lauf („Next concrete step“, Punkt 2). Tests: drei xfails grün, fünf neue
+  in `tests/test_turn_boundary.py` und `tests/test_npc_router.py`.
+
 **Satzschnitt: ein gekappter Zug endet am letzten ganzen Satz (2026-11-13, D137 / ADR 061 Nachtrag, live-unverifiziert).**
 Am Tisch: Ein NSC-Satz auf `?“` oder `!“` vor dem Schnitt wird gesprochen und gespeichert; ein angefangener letzter Satz
 fällt in Sprache, History, Journal und Chat gleichermaßen weg. Zwei Commits (`af5056e` und der Folge-Commit), nach jedem
@@ -47,19 +63,6 @@ pytest (1411 grün, 7 xfail), ruff (F), `dm-eval` (Exit 0).
 - Tests: `tests/test_sentence_cut.py` (Stream, Batch, Ein-Satz-Fall, beide Live-Rohtexte), Satzende-Tests in
   `tests/test_tts_chunk.py`, Client-Test in `tests/test_claude_client.py`.
 
-**Fünf offene `DMBrain`-Befunde behoben, Züge über das gespeicherte Objekt erkannt (2026-11-13, kein D-Eintrag,
-alles live-unverifiziert).** Am Tisch: ein Schlusssatz auf `?“` wird wieder gesprochen, ein Zug während des Auto-Recaps
-bleibt im Kontext und im Journal, `!redo` löscht nie mehr den Zug davor, ein Opening mitten in der Sitzung würfelt nicht.
-Sechs Commits (`d87b673` bis `69ab361`), nach jedem pytest, ruff (F), `dm-eval` (Exit 0, Goldens unverändert).
-- Nr. 9: `_SENTENCE_END` in `llm/sanitize.py` kennt `“` und `«`. Nr. 4: `_prepare_opening` setzt `last_action`/`last_actions` zurück.
-- Nr. 1–3, nach `/code-review` von `e4cb0a2..fdf64c6` auf eine Idee umgebaut: `summarize` merkt sich die
-  Nachrichten-Objekte, die es zusammenfasst, `clear_history` löscht genau diese; `last_turn` (`_Turn`) verweist auf sein
-  gespeichertes Paar, `!redo` löscht genau dieses und hat nach einem Recap, der das Paar aufnahm, nichts zu wiederholen.
-- Der Turn-Kern gibt ein `TurnAnswer` (`str` mit `user_msg`) zurück; das Journal wird daraus geschrieben, nicht aus
-  `last_user_msg()`. Fehlt die Zeile bei einer Antwort mit Inhalt, loggt `_autosave_turn` einen Fehler.
-- Tests: fünf xfails grün, `tests/test_turn_identity.py`, `tests/test_journal_per_delivery_path.py` (Batch und Stream ×
-  Zug/Redo/Opening, je genau ein Journal-Eintrag). 1399 grün, 7 xfail. Offen aus dem Review: Nr. 12–14 („Open questions“).
-
 _Ältere `## Last session`-Einträge: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Last session (Verlauf)`._
 
 ## Next concrete step
@@ -68,8 +71,9 @@ _Ältere `## Last session`-Einträge: siehe [docs/progress-archive.md](docs/prog
 Opus-Antworten am 12./13.11. und bei 7 von 22 am 13.11. (01:48–02:16; ✂ „220/220“ = Sprechbudget); der Spieler hat
 es um 02:01 bemängelt. Ein gekappter Zug endet jetzt am letzten ganzen Satz (D137, live-unverifiziert); am Abend auf
 die ✂-Zeile mit „… Zeichen am Ende weggefallen“ achten.
-(2) Ob die drei NSC-xfails (ADR 062, „Open questions“) vor dem Abend behoben werden — sie treffen jeden Zug, in dem
-die Gruppe an einem neuen Ort ankommt und dort jemanden sieht.
+(2) NSC-Sichtungen sind behoben (D138, live-unverifiziert). Prüfszene am Abend: die Pfandhalle — Alter Fenk am Eingang
+und Bree Marlok hinter der Klappe dürfen nicht als neue Einträge zurückkommen. Vorher die vier Alteinträge des Laufs
+aus dem Spielstand nehmen (Schreinschwester, Frau hinter der Sichtklappe, Türwächter, Blinder Greis).
 (3) Welche der noch offenen `DMBrain`-Punkte („Open questions“: Nr. 5–8, 10, 11, 13–15) vorher behoben werden.
 Nr. 1–4 und 9 sind behoben (13.11., live-unverifiziert); am Abend darauf achten: Schlusssatz auf `?“` wird
 gesprochen, ein Zug während des Auto-Recaps bleibt im Kontext, `!redo` nach unterdrücktem Zug, Opening mitten in der Sitzung.
@@ -285,22 +289,6 @@ aus dem Live-Lauf 01:48–02:16; alle gab es schon vor dem Umbau. Die Tests steh
 15. (D137) Unter Ollama schreibt ein gekappter Zug keine ✂-Zeile: `OllamaClient` liest `done_reason` nicht und meldet
     kein `truncated`. Gekürzt wird der Zug trotzdem (der Schnitt am letzten Satz gilt für jede Antwort). Bewusst
     weggelassen (Tobi, 13.11.); Fix wäre `done_reason == "length"` → `truncated` in `client.py`. Kein Test.
-
-**Aus dem Debug-Lauf (2026-11-13, Zug von 00:40) — dokumentiert und reproduziert, nicht behoben (ADR 062):**
-Belege: [npc-sighting-stale-scene-2026-11-13.md](docs/plans/npc-sighting-stale-scene-2026-11-13.md). Die drei Tests
-stehen in `tests/test_turn_boundary.py` als `xfail(strict=True)`; der Fix muss die Markierung entfernen.
-- **Gesichtete Figur landet in der verlassenen Szene.** `close_turn` legt Sichtungen unter dem Szenenzeiger ab,
-  der vor der Klassifikation galt. Wechselt der Zeiger währenddessen (Knopf, `!ort`) und die Antwort erzählt die
-  Ankunft, steht die Figur in der alten Szene und gilt in der neuen nicht als anwesend.
-  Test: `test_a_sighting_lands_in_the_scene_the_group_arrived_in_meanwhile`.
-  Derselbe Ablagefehler ohne Knopfdruck, wenn der Szenen-Klassifikator im selben Zug wechselt (aus dem Code
-  abgeleitet, live nicht gesehen): `test_a_sighting_lands_in_the_scene_the_classifier_moved_to_in_the_same_turn`.
-- **Zweiter Eintrag für eine Karten-NSC unter anderem Namen.** Der Klassifikator meldete „Schreinschwester“ ohne
-  Statblock; `place_npc` vergleicht nur den exakten Namen, also entstand neben „Schwester Cassia Vall“ eine zweite
-  NSC mit Standardwerten. Test: `test_a_sighting_of_a_scene_card_npc_under_another_name_adds_no_second_entry`.
-- _Beobachtung, kein Fehler:_ bei „Ich gehe die Treppen hinunter zum Schrein“ blieb der Szenen-Klassifikator bei
-  „bleiben“, obwohl die Erzählung schon vor dem Portal stand; gewechselt wurde einen Zug später beim Hineingehen.
-
 
 **Aus der Würfel-Animation (2026-10-30/31) — offen:**
 - **Würfel dreht sich nicht:** Tobis Prototyp integriert `angle` nie (`w` wird berechnet, `angle += w*dt`

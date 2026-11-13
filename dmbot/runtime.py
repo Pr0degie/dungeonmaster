@@ -282,6 +282,9 @@ class SessionRuntime(SessionIngestMixin, ClocksMixin, NpcMemoryMixin, PanelsMixi
         # it, so its "Wechseln" button cannot linger after the classifier already moved (2026-10-25).
         self._scene_proposals: dict[int, tuple] = {}
         self._last_narration: dict[int, str] = {}  # the previous answer, the scene router's context
+        # The NPCs the presence classifier filed in the turn that is still open (ADR 062,
+        # amendment 2026-11-13): they follow the pointer until the next turn boundary begins.
+        self._turn_sightings: dict[int, tuple[str, ...]] = {}
         self._npc_mem_marks: dict[int, int] = {}
         self._npc_mem_running: set[int] = set()
         # Chekhov list (ADR 050): per-channel unresolved threads, extracted at wrap-up inside

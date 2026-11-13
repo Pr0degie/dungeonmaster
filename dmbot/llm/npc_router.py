@@ -100,8 +100,23 @@ def npc_schema(roster: Sequence[str] | None) -> dict:
     }
 
 
-def npc_system(*, party: Sequence[str], roster: Sequence[str], present: Sequence[str]) -> str:
-    """The classifier's system prompt — German, stateless, no narration."""
+def npc_system(
+    *, party: Sequence[str], roster: Sequence[str], present: Sequence[str],
+    candidates: Sequence[tuple[str, str]] = (),
+) -> str:
+    """The classifier's system prompt — German, stateless, no narration.
+
+    ``candidates`` are the scene-card NPCs of the current scene and of the exits reachable from
+    it, as ``(name, role)``: a bare name told the model nothing on 2026-11-13, when "Alter Fenk"
+    stood in the list and came back as a new "Blinder Greis"."""
+    people = "".join(f"\n  · {name} — {role}" if role else f"\n  · {name}"
+                     for name, role in candidates)
+    known = (
+        "- Figuren dieses Ortes und der Nachbarorte, mit Rolle:" + people + "\n"
+        "  Passt eine Person der Antwort nach Rolle, Ort oder Beschreibung auf eine dieser "
+        "Figuren, IST sie diese Figur: statblock = deren Name. Steht diese Figur schon unter "
+        "den Anwesenden, ist die Person nicht neu.\n"
+    ) if people else ""
     return (
         "Du liest eine Antwort der Spielleitung eines Rollenspiels und meldest, welche Personen "
         "darin LEIBHAFTIG am Ort der Spielergruppe auftreten und handeln oder sprechen.\n"
@@ -112,6 +127,7 @@ def npc_system(*, party: Sequence[str], roster: Sequence[str], present: Sequence
         "beschrieben wird („der Kerl“, „der Verwundete“, „er“), ist nicht neu.\n"
         "- label: der Name aus der Antwort, sonst eine kurze Bezeichnung im Nominativ Singular "
         "(z. B. „Hakenmann“). Mehrere Gleichartige einzeln, höchstens vier.\n"
+        + known +
         "- statblock: nur wenn die Person eindeutig eine dieser Abenteuerfiguren ist: "
         + (", ".join(roster) or "—") + "; sonst leer.\n"
         "Niemand Neues: npcs = []. Antworte NUR mit JSON."
@@ -174,6 +190,26 @@ def to_npc_verdict(
     return NpcVerdict(sightings=tuple(out), raw=raw)
 
 
+def _words(text: str) -> list[str]:
+    return [w for w in (t.strip(".,;:!?()„“\"'").casefold() for t in text.split()) if w]
+
+
+def card_person(sighting: Sighting, candidates: Sequence[tuple[str, str]]) -> str:
+    """Which scene-card NPC a sighting *is* — her name, or ``""`` for somebody else (ADR 062,
+    amendment 2026-11-13 #8). Code decides identity; the verdict only names people.
+
+    In order: the statblock names a candidate; the label is a candidate's name; the label is a
+    candidate's role or its leading words ("Schreinschwester" for "Schreinschwester der
+    Aschenheiligen"). A label that fits two candidates' roles identifies nobody."""
+    by_name = {_key(name): name for name, _ in candidates if name}
+    for probe in (sighting.statblock, sighting.label):
+        if probe and _key(probe) in by_name:
+            return by_name[_key(probe)]
+    label = _words(sighting.label)
+    hits = {name for name, role in candidates if label and _words(role)[:len(label)] == label}
+    return hits.pop() if len(hits) == 1 else ""
+
+
 async def classify_present_npcs(
     chat: ChatFn,
     *,
@@ -181,13 +217,14 @@ async def classify_present_npcs(
     party: Sequence[str],
     roster: Sequence[str],
     present: Sequence[str],
+    candidates: Sequence[tuple[str, str]] = (),
     timeout: float | None = NPC_ROUTER_TIMEOUT,
 ) -> NpcVerdict:
     """Ask who newly appears in person this turn and return a validated verdict. Never raises."""
     if not answer_text.strip():
         return NpcVerdict(failure=NpcFailure.NO_INPUT)
     coro = chat(
-        npc_system(party=party, roster=roster, present=present),
+        npc_system(party=party, roster=roster, present=present, candidates=candidates),
         [{"role": "user", "content": npc_user_msg(answer_text)}],
         options=dict(NPC_ROUTER_OPTIONS),
         format=npc_schema(roster),
