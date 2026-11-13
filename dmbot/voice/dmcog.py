@@ -14,7 +14,7 @@ from datetime import datetime
 from discord.ext import commands
 
 from ..gpu_health import health as gpu_health
-from ..orchestrator import build_intro_director_msg, build_opening_director_msg
+from ..orchestrator import build_intro_director_msg, build_opening_director_msg, turn_user_msg
 from ..llm.intro_guard import is_weak_intro
 from ..tts.textsplit import has_speakable_content, strip_speech_punctuation
 from ..memory import history as history_store
@@ -138,15 +138,13 @@ class DMCog(commands.Cog):
         event loop, best-effort. World state persists separately (ADR 015); this is the narrative
         thread so a crash doesn't lose the evening's conversation.
 
-        ``user_msg`` must be the value snapshotted at **generation end** (D43): this runs after
-        playback, and a dice click during playback starts the next turn, which overwrites the
-        brain's mutable ``_last_turn`` — reading it here pairs the wrong user_msg with the answer
-        (seen live 2026-06-12 in history.jsonl). The read-now fallback covers legacy callers."""
+        ``user_msg`` is the player line the turn's answer carries (``TurnAnswer.user_msg``), never
+        the brain's mutable last turn: this runs after playback, and by then a dice click may
+        have started the next turn (D43, seen live 2026-06-12 in history.jsonl) or a compaction
+        cleared it. Without it nothing is journaled."""
         if not self._rt._autosave:
             return
         cid = self._rt._brain_channel(channel)
-        if user_msg is None:
-            user_msg = self._rt._brain.last_user_msg(cid)
         if user_msg is None:
             return
         # Replay journal (ADR 046): merge the brain's turn capture (lines/results/raw/markers)
@@ -507,7 +505,7 @@ class DMCog(commands.Cog):
             timing.log_line()
         if self._rt._push_to_talk and self._rt._sink is not None:
             await self._rt.reanchor_mic(ctx.channel)
-        await self._autosave_turn(ctx.channel, answer)
+        await self._autosave_turn(ctx.channel, answer, user_msg=turn_user_msg(answer))
 
     @commands.command(name="wrap", aliases=["wrapup"])
     async def wrap(self, ctx: commands.Context, *, _arg: str = "") -> None:

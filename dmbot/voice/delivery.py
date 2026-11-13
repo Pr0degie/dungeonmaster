@@ -35,6 +35,7 @@ from ..discord_ui.flag import FlagView
 from ..discord_ui.scene import SceneChangeView
 from ..discord_ui.zeit import ZeitView
 from ..memory.gametime import MAX_MARKER_ADVANCE_MINUTES, render_time_phase_de
+from ..orchestrator import turn_user_msg
 from ..rag.adventure import Scene
 from ..rules.scene_flow import MoveTrigger, resolve_exit
 from ..runtime import (
@@ -500,9 +501,9 @@ class DeliveryPipeline:
         answer as ONE continuous track (`_speak_seamless`) while ``stream``/default speaks it as one
         `_speak`. (This batch path runs for `nahtlos` OR when streaming is off.)"""
         timing.answer_chars = len(answer)
-        # Snapshot the turn's user_msg NOW (generation just ended): a dice click during the
-        # playback below starts the next turn and overwrites the brain's _last_turn (D43 race fix).
-        saved_user_msg = self._rt._brain.last_user_msg(self._rt._brain_channel(channel))
+        # The turn's own player line rides on its answer: the brain's last turn can already belong
+        # to the next turn (a dice click during playback, D43) or be gone after a compaction.
+        saved_user_msg = turn_user_msg(answer)
         if answer:
             log.info("🎭 %s", answer)  # rendered prominently in the console
         log.info("⏱ LLM %d ms%s", timing.respond_ms(), " (redo)" if timing.kind == "redo" else "")
@@ -735,10 +736,10 @@ class DeliveryPipeline:
                 await prod  # generation finished (mid-playback) — the full answer is known now
             except Exception:
                 log.exception("streaming producer failed")
-            # Snapshot the turn's user_msg NOW: the dice button below can be clicked while the
-            # tail still plays, and that next turn overwrites _last_turn (D43 race fix).
-            saved_user_msg = self._rt._brain.last_user_msg(channel_id)
+            # The turn's own player line rides on its answer (D43: the dice button below can start
+            # the next turn while the tail still plays; a compaction can clear the last turn).
             answer = holder["answer"]
+            saved_user_msg = turn_user_msg(answer)
             if answer is not None:  # a turn happened ("" = a marker-only/content-less turn)
                 timing.answer_chars = len(answer)
                 if answer:

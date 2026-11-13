@@ -70,6 +70,35 @@ from .llm.stream_assembler import StreamAssembler, finalize_answer, finalize_ans
 log = logging.getLogger(__name__)
 
 
+class TurnAnswer(str):
+    """A DM turn's answer for the table that also carries the player line it answered
+    (``user_msg``). The delivery pipeline journals the pair from this — never from the mutable
+    ``last_turn``, which the next turn or a compaction can change before the autosave runs."""
+
+    user_msg: str
+
+    def __new__(cls, answer: str, user_msg: str) -> "TurnAnswer":
+        obj = super().__new__(cls, answer)
+        obj.user_msg = user_msg
+        return obj
+
+
+def turn_user_msg(answer: object) -> str | None:
+    """The player line a turn's answer carries (:class:`TurnAnswer`), or None."""
+    return getattr(answer, "user_msg", None)
+
+
+@dataclass(eq=False)
+class _Turn:
+    """A turn's input, kept so ``!redo`` can re-generate it, plus the user message it stored in
+    history (``stored``). Identity, not content, says whether that pair is still there: two
+    identical player lines in a row are two different objects."""
+
+    user_msg: str
+    labels: list[str]
+    stored: dict[str, str] | None = None
+
+
 def _markers_dict(markers: dict[str, list], *, queued: bool) -> dict:
     """The turn's parsed marker requests as plain dicts for the replay journal (ADR 046).
     ``queued=False`` (a results-only turn suppressed them) records empty lists for the
@@ -95,12 +124,12 @@ class ChannelSession:
     # Transcribed player lines waiting for the next turn. Written from the STT thread, read on
     # the event loop — touch it only under ``DMBrain._lock``.
     buffer: list[tuple[str, str]] = field(default_factory=list)
-    # How many history messages the last :meth:`DMBrain.summarize` folded into the recap. The
-    # auto-compaction clears history right after the (awaited) summarize, but a dice-button turn
-    # can append to the live list *during* that await — :meth:`DMBrain.clear_history` removes
-    # only these first N messages so that concurrent turn survives both the recap and the
-    # history (Finding #4). Cleared once consumed; None → clear_history does a full wipe.
-    compact_consumed: int | None = None
+    # The very history messages the last finished :meth:`DMBrain.summarize` folded into the
+    # recap. The auto-compaction clears history right after the (awaited) summarize, and a turn,
+    # a redo or a cap trim can change the live list *during* that await —
+    # :meth:`DMBrain.clear_history` removes exactly these objects, so whatever the recap never
+    # saw stays. Cleared once consumed; None → clear_history does a full wipe.
+    compact_consumed: list[dict[str, str]] | None = None
     # The pending-marker store (ADR 051): the requests parsed from the last DM turn, one list
     # per registry kind (``tests``, ``manifests``, ``scenes``, ``erledigt``, ``uhr``, ``zeit``).
     # Drained through :meth:`DMBrain.take_pending` — by dicecog (tests/manifests) and the
@@ -135,9 +164,9 @@ class ChannelSession:
     npc_memory_block: str = ""
     # The turn's ``## Regelwerk`` block (stage 3, ADR 019) — refreshed per turn, mostly empty.
     rag_block: str = ""
-    # The last turn's (user_msg, labels), so !redo can re-generate it when the DM misunderstood —
-    # same input, a fresh answer that replaces the last one in history.
-    last_turn: tuple[str, list[str]] | None = None
+    # The last turn, so !redo can re-generate it when the DM misunderstood — same input, a fresh
+    # answer that replaces the turn's own stored pair (if it has one) in history.
+    last_turn: _Turn | None = None
     # The last player action (name, text) consumed — the roll-detection router (ADR 014)
     # classifies it after the narration turn. None when a turn had no player line (e.g. a
     # test-result feedback turn), so the router skips it.
@@ -322,7 +351,7 @@ class DMBrain:
         # character/player at the table (so an appended "Seskin: …"/"Pr0degie: …" puppet script is
         # cut even when those names didn't speak this turn) + the generic role labels. Deduped.
         labels = list(dict.fromkeys([name for name, _ in lines] + session.known_speakers + _ROLE_LABELS))
-        session.last_turn = (user_msg, labels)
+        session.last_turn = _Turn(user_msg, labels)
         return user_msg, labels, session.history
 
     async def _refresh_rag(self, channel_id: int, user_msg: str) -> None:
@@ -352,10 +381,10 @@ class DMBrain:
         if prep is None:
             return None
         user_msg, labels, history = prep
+        session = self._session(channel_id)
+        turn = session.last_turn  # this turn's record — taken before any await
         await self._refresh_rag(channel_id, user_msg)
-        return await self._run_turn(
-            self._session(channel_id), user_msg, labels, history, sink=sink, check=check
-        )
+        return await self._run_turn(session, turn, history, sink=sink, check=check)
 
     async def respond(
         self, channel_id: int, *, extra_text: str | None = None,
@@ -382,20 +411,16 @@ class DMBrain:
         last = session.last_turn
         if last is None:
             return None
-        user_msg, labels = last
         history = session.history
-        if (
-            len(history) >= 2
-            and history[-1]["role"] == "assistant"
-            and history[-2]["role"] == "user"
-            and history[-2]["content"] == user_msg
-        ):
-            # Drop the turn we're redoing so it isn't duplicated — only if it was stored: after a
-            # suppressed or failed turn the last pair is the turn BEFORE it (finding 1).
-            del history[-2:]
+        # Drop the pair this very turn stored, so the redo isn't duplicated — found by identity:
+        # after a suppressed or failed turn there is none, and the last pair is the turn BEFORE it.
+        idx = next((i for i, m in enumerate(history) if m is last.stored), None)
+        if idx is not None:
+            del history[idx:idx + 2]
+        last.stored = None
         self._drop_pending(channel_id)  # the redo supersedes the old turn's marker requests
-        await self._refresh_rag(channel_id, user_msg)
-        return await self._run_turn(session, user_msg, labels, history, sink=sink, check=check)
+        await self._refresh_rag(channel_id, last.user_msg)
+        return await self._run_turn(session, last, history, sink=sink, check=check)
 
     async def redo(self, channel_id: int, *,
                    check: Callable[[str], list[Violation]] | None = None) -> str | None:
@@ -468,7 +493,7 @@ class DMBrain:
         speakers + role labels) so the anti-puppeting stop sequences still apply."""
         session = self._session(channel_id)
         labels = list(dict.fromkeys(session.known_speakers + _ROLE_LABELS))
-        session.last_turn = (director_msg, labels)
+        session.last_turn = _Turn(director_msg, labels)
         session.last_action = None
         session.last_actions = []
         # Replay capture (ADR 046): an opening turn re-feeds its director_msg, not player lines.
@@ -487,9 +512,10 @@ class DMBrain:
     ) -> str:
         """The body of :meth:`respond_opening` (``sink=None``) and
         :meth:`respond_opening_streaming`: the one-off director turn through :meth:`_run_turn`."""
-        user_msg, labels, history = self._prepare_opening(channel_id, director_msg)
+        _user_msg, _labels, history = self._prepare_opening(channel_id, director_msg)
+        session = self._session(channel_id)
         return await self._run_turn(
-            self._session(channel_id), user_msg, labels, history,
+            session, session.last_turn, history,
             sink=sink, is_weak=is_weak, num_predict=num_predict, temperature=temperature,
         )
 
@@ -721,8 +747,7 @@ class DMBrain:
     async def _run_turn(
         self,
         session: ChannelSession,
-        user_msg: str,
-        labels: list[str],
+        turn: _Turn,
         history: list[dict[str, str]],
         *,
         sink: _Sink | None = None,
@@ -734,12 +759,15 @@ class DMBrain:
         """The turn core, shared by the batch and the streaming path of every turn kind
         (respond, redo, opening): the guarded answer (:meth:`_guarded_answer`), the two
         regenerate-once guards a batch turn can carry — the intro guard (``is_weak``, ADR 041
-        follow-up) and the consistency guard (``check``, ADR 045) — and the history entry.
-        Returns the answer for the table — ``""`` when the echo guard suppressed the turn (D43):
-        content-less to the cog, the pair stays out of history.
+        follow-up) and the consistency guard (``check``, ADR 045) — and the history entry, whose
+        user message ``turn.stored`` then points at (``!redo``).
+        Returns the answer for the table as a :class:`TurnAnswer` carrying ``turn.user_msg`` —
+        ``""`` when the echo guard suppressed the turn (D43): content-less to the cog, the pair
+        stays out of history.
 
         ``check`` and ``is_weak`` are for batch turns only: a streamed answer is already spoken
         when they could judge it, so the streaming entry points never pass them."""
+        user_msg, labels = turn.user_msg, turn.labels
         answer, errored = await self._guarded_answer(
             session, user_msg, labels, history,
             sink=sink, num_predict=num_predict, temperature=temperature,
@@ -753,17 +781,13 @@ class DMBrain:
             if retry:
                 answer = retry  # keep the retry even if still weak — never speak less than we had
         if answer is None:
-            return ""
+            return TurnAnswer("", user_msg)
         answer = await self._apply_consistency(session, user_msg, labels, history, answer, check)
         stored = answer
         if errored and stored:
             stored = f"{stored} … [Antwort unterbrochen]"  # noted in history; never spoken
-        trimmed = self._append_turn(history, user_msg, stored)
-        if trimmed and session.compact_consumed is not None and history is session.history:
-            # A summarize is out and the cap just trimmed messages it counted from the head —
-            # shift its count so clear_history doesn't delete this turn as well (finding 3).
-            session.compact_consumed = max(0, session.compact_consumed - trimmed)
-        return answer
+        turn.stored = self._append_turn(history, user_msg, stored)
+        return TurnAnswer(answer, user_msg)
 
     def _queue_markers(self, session: ChannelSession, markers: dict[str, list]) -> None:
         """Queue the turn's parsed marker requests (ADR 051) under the results-only suppression
@@ -813,14 +837,14 @@ class DMBrain:
         stacking) the previous answer in history."""
         return await self._redo(channel_id, sink=_Sink(on_sentence, should_abort))
 
-    def _append_turn(self, history: list[dict[str, str]], user_msg: str, answer: str) -> int:
-        """Append the pair; return how many messages the history cap trimmed from the head."""
-        history.append({"role": "user", "content": user_msg})
+    def _append_turn(self, history: list[dict[str, str]], user_msg: str, answer: str) -> dict[str, str]:
+        """Append the pair and return its user message — the object ``!redo`` recognises it by."""
+        user = {"role": "user", "content": user_msg}
+        history.append(user)
         history.append({"role": "assistant", "content": answer})
-        trimmed = max(0, len(history) - self._max_messages)
-        if trimmed:  # keep the tail; recaps will cover the rest later
-            del history[:trimmed]
-        return trimmed
+        if len(history) > self._max_messages:  # keep the tail; recaps will cover the rest later
+            del history[: len(history) - self._max_messages]
+        return user
 
     def take_pending(self, kind: str, channel_id: int) -> list:
         """Return and clear the queued requests of one marker-registry kind (ADR 051). The
@@ -910,7 +934,7 @@ class DMBrain:
     def last_user_msg(self, channel_id: int) -> str | None:
         """The user message of the most recent turn (for history autosave, D41), or None."""
         last = self._session(channel_id).last_turn
-        return last[0] if last else None
+        return last.user_msg if last else None
 
     def restore_history(self, channel_id: int, turns: list[tuple[str, str]]) -> int:
         """Restore prior ``(user_msg, answer)`` turns into this channel's history on join — crash
@@ -1099,10 +1123,9 @@ class DMBrain:
         history = session.history
         if not history:
             return None
-        # Record how many messages this recap consumes *before* the await, so a turn appended to the
-        # live list while the LLM runs is preserved by clear_history (Finding #4). build_recap_user
-        # reads the list synchronously here; the await below is where a concurrent append can land.
-        session.compact_consumed = len(history)
+        # The messages this recap folds in, as objects, taken with the transcript *before* the await:
+        # a turn, redo or cap trim during the await changes the live list, not this snapshot.
+        consumed = list(history)
         user = build_recap_user(history, prior_recap)
         cap = self._recap_num_predict() if self._recap_num_predict is not None else None
         raw = await self._client.chat(
@@ -1118,6 +1141,10 @@ class DMBrain:
             # so, because a recap that keeps growing ends at the output cap again.
             log.warning("recap is %d characters, the prompt asks for at most %d — it is kept as it is",
                         len(text), RECAP_MAX_CHARS)
+        # Recorded only now, after the await: the compaction calls clear_history right after this
+        # returns, with no await in between, so a concurrent summarize (``!wrap up``) that finished
+        # earlier can't widen what it deletes. An empty recap records nothing.
+        session.compact_consumed = consumed if text else None
         return text or None
 
     def current_recap(self, channel_id: int) -> str:
@@ -1148,27 +1175,29 @@ class DMBrain:
         pending tests/results and the buffer untouched — only the turn-by-turn history is cleared,
         because the just-generated cumulative recap now carries that thread forward. The next prompt
         is then persona + adventure + (longer) recap + state + empty history, safely under budget, so
-        the persona/adventure are never the truncated head again. ``last_turn`` is also cleared so a
-        stale ``!redo`` can't replay a turn that's no longer in history.
+        the persona/adventure are never the truncated head again.
 
-        Removes only the messages the matching :meth:`summarize` actually folded into the recap
-        (recorded in ``compact_consumed``): a dice-button turn appended to the live list *during*
-        the summarize await would otherwise be lost from both the recap and the history (Finding #4).
-        With no recorded count (a direct call, not via the auto-compaction) it falls back to a full
-        wipe; the count is clamped to the current length in case the list shrank meanwhile.
+        Removes exactly the message objects the matching :meth:`summarize` folded into the recap
+        (``compact_consumed``): a turn appended, redone or still in flight during the summarize
+        await, or one the history cap shifted, stays — the recap never saw it (Finding #4,
+        review findings 2 and 3). The live list is filtered in place, because a turn still in
+        flight holds it and appends its pair there. ``last_turn`` survives exactly when its
+        stored pair does: once that pair went into the recap, ``!redo`` has nothing to redo; a
+        turn with no stored pair yet (in flight, suppressed) keeps it.
 
-        The compaction path empties the live list in place: a turn still in flight holds that list
-        and appends its pair there, and the recap never saw it (finding 2). Only the direct full
-        wipe swaps in a new list."""
+        With no record (a direct call, not via the auto-compaction) it falls back to a full wipe
+        into a new list and clears ``last_turn``."""
         session = self._session(channel_id)
         consumed, session.compact_consumed = session.compact_consumed, None
         if consumed is None:
-            session.history = []  # no recorded count → original full-clear behaviour
-        else:
-            history = session.history
-            n = min(consumed, len(history))
-            del history[:n]  # keep any turn appended after summarize captured its transcript
-        session.last_turn = None
+            session.history = []  # no record → original full-clear behaviour
+            session.last_turn = None
+            return
+        gone = {id(m) for m in consumed}  # ``consumed`` keeps the objects alive, so ids are stable
+        session.history[:] = [m for m in session.history if id(m) not in gone]
+        last = session.last_turn
+        if last is not None and last.stored is not None and id(last.stored) in gone:
+            session.last_turn = None
 
     async def answer_rules(self, question: str, context: str, *, system_name: str) -> str | None:
         """Answer a player's rules question (``!rules <frage>``) in German, grounded ONLY in the

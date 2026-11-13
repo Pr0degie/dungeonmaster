@@ -14,6 +14,11 @@ on/off state that can nest is a refcount, never a boolean.**
   explicitly (ADR 018).
 - Auto-recap `clear_history` popped everything *after* `summarize` awaited for seconds — a
   turn appended during the await vanished from both recap and history (ADR 030 #4).
+- Its fix — a head *count* of the summarized messages — broke again on every other mutation
+  during the await (cap trim, `!redo`, a concurrent `!wrap up`), and `!redo` recognising its pair
+  by *text* hit two identical player lines (review 2026-11-13). Fix: `summarize` keeps the
+  message objects it folded in, `last_turn` a reference to its stored pair, and the turn answer
+  carries its own player line to the autosave.
 - Layer-2 mute as a shared boolean unmuted VAD mid-playback on an operator resume →
   `_mute_depth` refcount (ADR 030 #8); the mute is taken once around the whole answer, not
   flapped per sentence (ADR 017).
@@ -22,7 +27,7 @@ on/off state that can nest is a refcount, never a boolean.**
 
 At every `await` boundary, ask: what does the code re-read afterwards, and can a concurrent
 event (dice click, gate flip, new turn) have changed it meanwhile? Snapshot at the event and
-thread the value as a parameter. Nesting on/off state → depth counter. Sibling tasks sharing
+thread the value as a parameter. An index, count or text match into a list that others mutate is shared state too — mark the element by object identity. Nesting on/off state → depth counter. Sibling tasks sharing
 bounded queues need explicit cancellation in `finally` (ADR 030 #3/#7).
 
 ## Why it matters

@@ -23,6 +23,7 @@ import tempfile
 import time
 from types import SimpleNamespace
 
+from dmbot.orchestrator import TurnAnswer
 from dmbot.runtime import _TurnTiming
 from dmbot.voice.delivery import DeliveryPipeline
 
@@ -57,10 +58,12 @@ class _Recorder:
 class _FakeBrain(FakeBrain):
     """Yields a fixed sentence sequence through on_sentence, then returns the full answer."""
 
-    def __init__(self, sentences: list[str]) -> None:
+    def __init__(self, sentences: list[str], user_msg: str | None = None) -> None:
         super().__init__()
         self.sentences = sentences
         self.answer = " ".join(sentences)
+        if user_msg is not None:
+            self.answer = TurnAnswer(self.answer, user_msg)
 
     async def respond_streaming(self, channel_id, *, extra_text=None, on_sentence=None,
                                 should_abort=None) -> str:
@@ -114,15 +117,15 @@ def _stream_runtime(brain, bridge, *, prebuffer: int, transform):
     )
 
 
-def _run_streaming(*, sentences, prebuffer=1, transform=None, fail_first=False):
+def _run_streaming(*, sentences, prebuffer=1, transform=None, fail_first=False, user_msg=None):
     """Drive one real _deliver_streaming turn and return the recorder + the stored answer."""
     rec = _Recorder()
-    brain = _FakeBrain(sentences)
+    brain = _FakeBrain(sentences, user_msg)
     bridge = _FakeBridge(rec, fail_first=fail_first)
     rt = _stream_runtime(brain, bridge, prebuffer=prebuffer, transform=transform)
 
     async def _post_deliver(channel, answer, timing, *, saved_user_msg=None, redo=False) -> None:
-        pass  # the cog's end-of-turn tail (autosave/recap) is tested on the cog, not here
+        rec.saved_user_msg = saved_user_msg  # the cog's tail itself is tested on the cog, not here
 
     pipe = DeliveryPipeline(rt, post_deliver=_post_deliver)
     pipe._synthesize = rec.synthesize  # bypass real TTS; produce a real temp file per sentence
@@ -170,3 +173,10 @@ def test_aborted_turn_leaves_no_temp_wav_behind():
     assert rec.created, "sanity: synthesis must have happened, else the cleanup check is vacuous"
     leftover = [p for p in rec.created if os.path.exists(p)]
     assert leftover == []
+
+
+def test_streaming_delivery_journals_the_player_line_its_answer_carries():
+    """The autosave gets the player line from the turn's own answer, not from the brain's
+    mutable last turn — that one is None here, as after a compaction (review 2026-11-13)."""
+    rec, _ = _run_streaming(sentences=["Die Tür springt auf."], user_msg="[Würfel] Timo: Erfolg")
+    assert rec.saved_user_msg == "[Würfel] Timo: Erfolg"

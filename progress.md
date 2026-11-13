@@ -12,9 +12,10 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** vier offene `DMBrain`-Befunde behoben (13.11., Nr. 1–4 und 9 der „Open questions“, vier Commits,
-  **live-unverifiziert**) — Details unter „Last session“. 1386 Tests grün, 7 xfail (3 NSC-Sichtung, ADR 062;
-  4 offene `DMBrain`-Befunde), `dm-eval` Exit 0.
+- **Newest round:** Züge werden über das gespeicherte Objekt erkannt, nicht über Zähler oder Text (13.11., Nachgang zum
+  `/code-review` von `e4cb0a2..fdf64c6`, **live-unverifiziert**); davor vier offene `DMBrain`-Befunde behoben (Nr. 1–4
+  und 9 der „Open questions“, **live-unverifiziert**) — Details unter „Last session“. 1392 Tests grün, 7 xfail
+  (3 NSC-Sichtung, ADR 062; 4 offene `DMBrain`-Befunde), `dm-eval` Exit 0.
   Davor: `DMBrain` entdoppelt (13.11., reiner Umbau von `orchestrator.py`, kein D-Eintrag) — `ChannelSession`
   pro Channel statt 17 Dicts, ein Turn-Kern (`_run_turn`) für Batch und Streaming, `_pending_<kind>`-Aliase weg; Schnittstelle
   unverändert. 1381 Tests grün, 12 xfail (3 NSC-Sichtung, ADR 062; 9 offene `DMBrain`-Befunde), `dm-eval` Exit 0. Live gesehen 13.11. (22 Züge bis `!leave`).
@@ -24,7 +25,7 @@ is on-demand._
   Davor D134 (31.10., Sprachbefehl „sehr böser Junge“, **live-unverifiziert**) und D128–D133 / **ADR 064** (Würfel, live gesehen).
 - **Davor (2026-10-25):** D123–D127 (improvisierte NSCs, XTTS-Sperre, Schicksalspunkte, Würfel-Thumbnails) —
   code-komplett, Details im Archiv/Log.
-- **Next concrete step:** der fünfte Lauf mit Bot A (die Neustart-Probe ist bestanden); vorher entscheiden, welche der sechs
+- **Next concrete step:** der fünfte Lauf mit Bot A (die Neustart-Probe ist bestanden); vorher entscheiden, welche der neun
   noch offenen `DMBrain`-Punkte („Open questions“) behoben werden, und in `#bot-commands` die alten GIF-Sätze löschen (nur die
   von 01:49 zählen). Prüfliste: Abschnitt „Next concrete step“; dort auch die Entscheidung zum nächsten Sprach-Trigger.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
@@ -42,10 +43,27 @@ _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-a
 
 ## Last session
 
+**Züge über das gespeicherte Objekt erkennen (2026-11-13, Nachgang zum `/code-review` von `e4cb0a2..fdf64c6`, kein
+D-Eintrag, live-unverifiziert).** Der Review fand, dass Zähler und Textvergleich aus den Fixes unten weiter Löcher
+hatten. Eine Änderung, eine Idee:
+- `summarize` merkt sich die Nachrichten-Objekte, die es zusammenfasst (gesetzt erst nach dem LLM-Aufruf, ein leerer
+  Recap setzt nichts); `clear_history` löscht genau diese, in der laufenden Liste. Zähler und Zähl-Ausgleich aus Fix 3
+  sind weg. Damit überlebt auch ein `!redo` während des Recaps, und ein gleichzeitiges `!wrap up` macht die Löschung
+  nicht breiter.
+- `last_turn` ist ein `_Turn` mit Verweis auf seine gespeicherte Spielerzeile; `!redo` löscht genau dieses Paar
+  (kein Textvergleich mehr — zwei gleiche Spielerzeilen hintereinander sind zwei Objekte).
+- `clear_history` behält `last_turn`, solange dessen Paar nicht im Recap aufgegangen ist; sonst meldet `!redo`, dass
+  es nichts zu wiederholen gibt. Ein Zug ohne gespeichertes Paar (läuft noch, unterdrückt) behält `last_turn`.
+- Der Turn-Kern gibt ein `TurnAnswer` zurück (ein `str` mit `user_msg`); Delivery und `!intro test` schreiben das Journal
+  daraus, `_autosave_turn` liest `last_user_msg()` nicht mehr. Ein Zug, der während des Recaps lief, landet so im Journal.
+- Tests: `tests/test_turn_identity.py` (fünf) und ein Delivery-Test; die bestehenden Kompaktierungs-Tests unverändert grün.
+  **Live-unverifiziert.**
+
 **Offene `DMBrain`-Befunde behoben (2026-11-13, kein D-Eintrag, alles live-unverifiziert).** Ein Commit pro
 Befund, die xfail-Markierung fiel jeweils mit dem Fix; nach jedem pytest, ruff (F) und `dm-eval` (Exit 0, Goldens unverändert).
 - Nr. 2 + 3 (Kompaktierung): `clear_history` leert im Kompaktierungs-Pfad die Liste an Ort und Stelle statt sie
-  auszutauschen, und `_run_turn` verschiebt `compact_consumed` um das, was das History-Limit vorne abschneidet.
+  auszutauschen, und `_run_turn` verschob `compact_consumed` um das, was das History-Limit vorne abschneidet (der
+  Zähler ist durch die Objekt-Erkennung oben abgelöst).
   Ein Zug, der während des Recaps läuft oder am Limit dazukommt, bleibt in der History. **Live-unverifiziert.**
 - Nr. 9 (Schlusssatz auf `?“`): `_SENTENCE_END` in `llm/sanitize.py` kennt jetzt `“` und `«` als schließende
   Anführungszeichen; `_trim_to_last_sentence` schneidet einen solchen Satz nicht mehr ab. **Live-unverifiziert.**
@@ -55,6 +73,8 @@ Befund, die xfail-Markierung fiel jeweils mit dem Fix; nach jedem pytest, ruff (
 - Nr. 4 (Opening mitten in der Sitzung): `_prepare_opening` setzt `last_action`/`last_actions` zurück; das Opening
   reiht keine `<<TEST>>`-Marker ein und gibt dem Würfel-Router keine alte Aktion. **Live-unverifiziert.**
 - 1386 Tests grün, 7 xfail (3 NSC-Sichtung, 4 offene `DMBrain`-Befunde: Nr. 5–8).
+- `/code-review` auf `e4cb0a2..fdf64c6`: acht Befunde; die Kernpunkte sind durch den Block oben behoben, offen sind
+  Nr. 12–14 unter „Open questions“.
 
 **`DMBrain` entdoppelt (2026-11-13, reiner Umbau von `dmbot/orchestrator.py`, kein D-Eintrag).** Wer am
 Turn-Ablauf arbeitet, liest jetzt einen Pfad statt zwei; am Tisch ändert sich nichts. Sechs Commits
@@ -112,7 +132,7 @@ Am 13.11. (01:48–02:16) waren zusätzlich 7 von 22 Antworten an der Ausgabegre
 Spieler hat es um 02:01 bemängelt.
 (2) Ob die drei NSC-xfails (ADR 062, „Open questions“) vor dem Abend behoben werden — sie treffen jeden Zug, in dem
 die Gruppe an einem neuen Ort ankommt und dort jemanden sieht.
-(3) Welche der sechs noch offenen `DMBrain`-Punkte („Open questions“: Nr. 5–8, 10, 11) vorher behoben werden.
+(3) Welche der neun noch offenen `DMBrain`-Punkte („Open questions“: Nr. 5–8, 10–14) vorher behoben werden.
 Nr. 1–4 und 9 sind behoben (13.11., live-unverifiziert); am Abend darauf achten: Schlusssatz auf `?“` wird
 gesprochen, ein Zug während des Auto-Recaps bleibt im Kontext, `!redo` nach unterdrücktem Zug, Opening mitten in der Sitzung.
 
@@ -270,7 +290,7 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 
 ## Open questions / to clarify
 
-**Offene `DMBrain`-Befunde (2026-11-13) — dokumentiert; Nr. 1–4 und 9 behoben (13.11., live-unverifiziert), der Rest offen.** Nr. 1–7 stammen aus
+**Offene `DMBrain`-Befunde (2026-11-13) — dokumentiert; Nr. 1–4 und 9 behoben (13.11., live-unverifiziert), der Rest offen; Nr. 12–14 kamen aus dem `/code-review` der Fixes.** Nr. 1–7 stammen aus
 `/code-review` auf `ddaae08..9ec06b6` (aus dem Code hergeleitet; der Umbau hat sie unverändert übernommen), Nr. 8–11
 aus dem Live-Lauf 01:48–02:16; alle gab es schon vor dem Umbau. Die Tests stehen als `xfail(strict=True)` in
 `tests/test_orchestrator_open_findings.py`; der Fix muss die Markierung entfernen.
@@ -312,6 +332,20 @@ aus dem Live-Lauf 01:48–02:16; alle gab es schon vor dem Umbau. Die Tests steh
     (17 mit Zügen) endete einer so. Die rotierte Datei enthielt 57 Züge aus vier Tagen (30.10.: 10, 31.10.: 21,
     12.11.: 2, 13.11.: 24); der Session-Ingest hat sie als 22 Chunks unter „Session vom 13.11.“ abgelegt. Bis
     dahin war nichts davon im Kampagnengedächtnis. Kein Test.
+12. (Review `e4cb0a2..fdf64c6`) `tts/textsplit.py` kennt `“` und `«` nicht als Satzende (`_SENTENCE_BOUNDARY`,
+    `_ENDS_SENTENCE`, `_SENTENCE_SPLIT`), `llm/sanitize._SENTENCE_END` seit Fix 9 schon — zwei Satzende-Regeln, die sich
+    widersprechen. Folge: Latenz, kein Textverlust (zwei Sätze wie „…?“ Dann …“ gehen als ein Stück an die
+    Sprachausgabe). **Die Satzende-Regel wird in der Satzschnitt-Runde vereinheitlicht.** Kein Test.
+13. (Review `e4cb0a2..fdf64c6`) Ein `!start`/`!intro` mitten in einem laufenden Spielerzug setzt seit Fix 4
+    `last_action` zurück; `_queue_markers` liest den Wert erst beim Einreihen, der Spielerzug verliert seinen
+    `<<TEST>>`. Selten (jemand tippt `!start`, während der DM streamt). Kern: `queued` gehört pro Zug in den
+    Prepare-Schritt. Kein Test.
+14. `respond` bricht mit einer Exception ab (Batch: `_chat_once` wirft; auch eine Exception außerhalb des Stream-Aufrufs),
+    danach `!redo`: der Speicher behält seit Fix 1 den Zug davor, aber die Delivery schreibt den Redo mit `redo: true`
+    ins Journal, und `load_turns` ersetzt damit den letzten Eintrag — den Zug davor. Nach einem Neustart fehlt er.
+    (Ein unterdrückter Zug ist nicht betroffen: er steht mit leerer Antwort im Journal, der Redo ersetzt genau ihn.
+    Ein Stream-Fehler ohne Text speichert ein leeres Paar — Speicher und Journal stimmen, das leere Paar steht aber bis
+    zum Redo in der History.) Aus dem Code hergeleitet. Kein Test.
 
 **Aus dem Debug-Lauf (2026-11-13, Zug von 00:40) — dokumentiert und reproduziert, nicht behoben (ADR 062):**
 Belege: [npc-sighting-stale-scene-2026-11-13.md](docs/plans/npc-sighting-stale-scene-2026-11-13.md). Die drei Tests
