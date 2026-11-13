@@ -1,14 +1,9 @@
 """Per-speaker grouping of a turn's buffered player lines (D111) — pure, no I/O.
 
 The roll-detection router (ADR 014) asks a constrained-JSON classifier whether a player's
-declared action needs a test, and rolls for *that speaker's* character. Until D111 it was handed
-only the last buffered line of the turn, so a turn in which two players declared something could
-only ever produce a test for whoever happened to speak last — the other declaration was dropped
-without a trace.
-
-That mattered less than it looked on 2026-08-22 (the evening's three tests were all Timo's, and
-all three correctly rolled Gellicus Schulz), which is exactly why it is worth fixing now: the
-failure is invisible when one player dominates the turn and silent when they do not.
+declared action needs a test, and rolls for *that speaker's* character. It gets one action per
+speaker (D111): handed only the last buffered line, a turn in which two players declared
+something drops every declaration but the last speaker's, without a trace.
 
 Grouping rules, in one place so the cog stays thin:
 

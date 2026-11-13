@@ -179,14 +179,13 @@ def check(
     The dead check runs regardless. Pure, conservative, never raises on odd inputs.
 
     ``named_only`` scopes the **absent** check to the campaign's *named* NPCs (D107, PRD
-    block 3). Registering a scene's NPCs on entry is what finally gives this guard data — but
-    registration is not the only writer: the NPC-memory extractor registers whatever name it
-    reads out of the transcript (``npc_memory.apply_extraction``), so a nameless extra the DM
-    invented once — Kaad's runner, a passing dock hand — would become a permanent registered
-    NPC and then violate "absent" in every other scene, costing a regeneration each time. With
-    ``named_only`` set (the adventure's own NPC names), an accidental registration can no
-    longer make the DM's incidental figures illegal. ``None`` keeps the pre-D107 behaviour:
-    every registered NPC is presence-checked. The **dead** check is never scoped — code is the
+    block 3). Scene entry is not the only writer of the NPC registry: the NPC-memory extractor
+    registers whatever name it reads out of the transcript (``npc_memory.apply_extraction``), so
+    a nameless extra the DM invented once would become a permanent registered NPC and then
+    violate "absent" in every other scene, costing a regeneration each time. With
+    ``named_only`` set (the adventure's own NPC names), an accidental registration can't make
+    the DM's incidental figures illegal. ``None``: every registered NPC is presence-checked.
+    The **dead** check is never scoped — code is the
     only thing that can kill an NPC, so a dead one speaking is always a contradiction."""
     if not text or world_state is None or not world_state.npcs:
         return []

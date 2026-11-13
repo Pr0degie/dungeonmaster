@@ -5,8 +5,8 @@ per-campaign tone/setting overlay (`prompts/campaign_tone_de.md`). The core is s
 setting-agnostic; swapping campaigns swaps only the overlay (and later the system profile).
 
 Full prompt order (docs/conventions.md) is: GM core → campaign tone → recap → JSON state → RAG hits →
-recent history. Phase 5 wires the first two (the system prompt) and the history; recap/state/
-RAG join in later phases. Game content stays German; this code/docs stay English.
+recent history. This module builds the first two; the full join is ``prompt_assembly``.
+Game content stays German; this code/docs stay English.
 """
 
 from __future__ import annotations

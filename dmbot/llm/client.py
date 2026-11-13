@@ -97,8 +97,7 @@ def _parse_stream_line(line: str) -> tuple[str, dict | None]:
     return delta, None
 
 # A storyteller wants some spark but must stay coherent and in-world. num_ctx lives on the
-# instance now (not here): the bot runs on a 16 GB 4080 where a high context is wanted, so the
-# old 8k cap silently truncated the growing system prompt. It's tunable via OLLAMA_NUM_CTX.
+# instance (OLLAMA_NUM_CTX), not here: too low a cap silently truncates the growing system prompt.
 _DEFAULT_OPTIONS = {"temperature": 0.8, "top_p": 0.9}
 
 
@@ -133,8 +132,7 @@ class OllamaClient:
         # Token accounting from the most recent chat() call (prompt_eval_count / eval_count and the
         # num_ctx in effect). Surfaced for the per-turn [latency] line — answers, for free, whether
         # the growing system prompt is creeping toward the num_ctx cap. None until the first call;
-        # overwritten each call, so read it right after the call you care about. Does NOT change
-        # chat()'s return type (existing callers keep getting the answer string).
+        # overwritten each call, so read it right after the call you care about.
         self.last_stats: dict | None = None
 
     @property
@@ -216,8 +214,8 @@ class OllamaClient:
         }
         num_ctx = payload["options"].get("num_ctx")
         # Generous read timeout for the stream: the first delta can take minutes on a cold start
-        # (model load + prompt eval under GPU contention) — the client default (120 s) killed a
-        # live greeting turn mid-stream (ReadTimeout, 2026-06-12). Between-delta stalls that long
+        # (model load + prompt eval under GPU contention) — the client default (120 s) would kill
+        # the turn mid-stream with a ReadTimeout. Between-delta stalls that long
         # mean Ollama is loading, not hanging; the abort path for a wedged stream is pause/stop.
         stream_timeout = httpx.Timeout(connect=10.0, read=300.0, write=30.0, pool=10.0)
         async with self._client.stream(

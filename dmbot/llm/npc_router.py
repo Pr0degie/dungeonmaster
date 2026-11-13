@@ -1,9 +1,7 @@
 """Presence classifier for improvised NPCs (ADR 062).
 
-On 2026-10-25 Opus invented the opposition on the spot — a "Kettenmann" at the shrine door, a
-"Hakenmann", four chain-gang thugs. None of them became state, so when Fridolin's shot hit, the
-target picker offered the people the state *did* know: Seneschal Kaad, two scenes away. Both hits
-landed on the quest-giver.
+A figure the DM improvises must become state, or the target picker offers only the people the
+state already knows — and a hit lands on an NPC two scenes away.
 
 After each narrated turn one stateless constrained-JSON call lists who appears in person at the
 group's location and is not yet listed as present. Code validates every field and only then
@@ -116,8 +114,8 @@ def npc_system(
     """The classifier's system prompt — German, stateless, no narration.
 
     ``candidates`` are the scene-card NPCs of the current scene and of the exits reachable from
-    it (:class:`Candidate`), shown with role and short names: a bare name told the model nothing
-    on 2026-11-13, when "Alter Fenk" stood in the list and came back as a new "Blinder Greis"."""
+    it (:class:`Candidate`), shown with role and short names: a bare name tells the model too
+    little to recognise a figure described by her looks (ADR 062, amendment 2026-11-13)."""
     people = "".join(
         f"\n  · {c.name}" + (f" — {c.role}" if c.role else "")
         + (f" (auch: {', '.join(c.aliases)})" if c.aliases else "")

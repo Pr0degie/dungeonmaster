@@ -77,28 +77,24 @@ _AUX_SYSTEM_SUFFIX = (
     "\n\nGib deine Antwort ausschließlich über das Werkzeug StructuredOutput ab, ohne Begleittext."
 )
 
-# Opus thinks even with ``thinking={"type": "disabled"}`` (CLI 2.1.310, measured live 2026-10-25),
-# and thinking counts against ``CLAUDE_CODE_MAX_OUTPUT_TOKENS``. Under the full DM prompt the first
-# request spent all 220 tokens on thinking, and every player turn came out empty. Three things
-# follow, for narration only: ``effort="low"`` keeps the thinking short (and the turn fast); the
-# per-request cap gets this headroom on top of ``num_predict``; and the spoken budget is enforced
-# on the text itself by this client (``_CHARS_PER_TOKEN``).
+# Opus thinks even with ``thinking={"type": "disabled"}`` (CLI 2.1.310), and thinking counts
+# against ``CLAUDE_CODE_MAX_OUTPUT_TOKENS`` — it can spend the whole cap before any text. Three
+# things follow, for narration only: ``effort="low"`` keeps the thinking short (and the turn fast);
+# the per-request cap gets this headroom on top of ``num_predict``; and the spoken budget is
+# enforced on the text itself by this client (``_CHARS_PER_TOKEN``). ADR 061, amendment 2026-10-25.
 _NARRATION_EFFORT = "low"
 _THINKING_HEADROOM = 1024
 # The spoken budget of a streamed turn, in characters per ``num_predict`` token — sized so a
-# turn may run as long as it could on Nemo, not as long as the same token count is on Opus.
-# Opus writes German at ~2 chars/token (1192 chars / 592 tokens, 1153 / 586, measured live), Nemo
-# at ~3.4 (220 tokens ≈ the 741-char p90 of its turns on 2026-06-15). At 2.0 the cap cut 16 of 17
-# Opus turns on 2026-10-25 and the last thought of a turn (often the hook) went unspoken; the cap
-# is meant as a brake on monologues that rarely engages. Enforced as characters because the
-# stream carries no per-delta token count.
+# turn may run as long as it could on Nemo (~3.4 chars/token), not as long as the same token
+# count is on Opus (~2); the cap is meant as a brake on monologues that rarely engages (ADR 061,
+# amendment 2026-10-25). Enforced as characters because the stream carries no per-delta token
+# count.
 _CHARS_PER_TOKEN = 3.4
 # The recap's output cap on this backend (wired in by ``dmbot.llm.recap_cap``). The
-# callers' 400 is an Ollama number: with the thinking headroom it left Opus ~1100-1350 text
-# tokens, and six of seven recaps were cut at their end — the newest events (live 2026-10-31 /
-# 2026-11-12). The recap prompt names a hard length of 1200 characters, ~600 Opus tokens; this
-# is room for more than three times that, so the cap is a brake on a runaway answer and never
-# the thing that ends a recap. A cut still raises the ✂ WARNING.
+# callers' 400 is an Ollama number that cut Opus recaps at their end — the newest events. The
+# recap prompt names a hard length of 1200 characters, ~600 Opus tokens; this is room for more
+# than three times that, so the cap is a brake on a runaway answer and never the thing that ends
+# a recap. A cut still raises the ✂ WARNING. ADR 061, amendment 2026-11-13.
 RECAP_OUTPUT_TOKENS = 2000
 
 
@@ -551,9 +547,8 @@ class ClaudeClient:
         call = _Call(model=model, cap=cap, narration=format is None, started=time.monotonic())
         if spoken and cap:
             # Only a streamed turn is spoken as it arrives. Batch prose — the recap above all —
-            # is held only by the per-request cap: a recap cut at the spoken budget lost exactly
-            # its newest events (live 2026-10-25: "Kessel" was named, the recap ended before him,
-            # and the next turn denied he had ever been mentioned).
+            # is held only by the per-request cap: a recap cut at the spoken budget loses exactly
+            # its newest events (ADR 061, amendment 2026-10-25).
             call.text_budget = round(cap * _CHARS_PER_TOKEN)
         return call, sdk_options, system_file
 

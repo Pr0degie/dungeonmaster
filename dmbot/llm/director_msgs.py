@@ -6,14 +6,12 @@ Extracted from ``orchestrator.py`` (ADR 034). :func:`build_opening_director_msg`
 OPEN the session. The cog (``dmcog.py``) imports these; nothing in ``DMBrain`` calls them (it
 receives the resulting ``director_msg`` as a parameter).
 
-D107 (`docs/plans/coherent-campaign-run.md`) reshaped the intro brief. It used to ask for a
-personal *moment* per player character, which is exactly what ``prompts/dm_core_de.md``
-forbids three blocks earlier; live (2026-08-22, findings A3/B5) the DM answered that by giving
-all four figures dialogue and motives nobody had declared. The roster still rides along, but it
-now feeds an *introduction from the outside* — appearance, trade, reputation — and the brief
-spells out that no figure speaks, thinks or acts. The same round split the opening in two:
-plain language first (who/where/what/why-now, no jargon), atmosphere after (findings A1/A9/A11),
-optionally built on an opening text the adventure ships (``briefing_de``).
+D107 (ADR 041 Addendum 3): the roster feeds an *introduction from the
+outside* — appearance, trade, reputation — and the brief spells out that no figure speaks,
+thinks or acts (asking for a personal moment per figure contradicts ``prompts/dm_core_de.md``
+and produces invented player dialogue). The opening comes in two parts: plain language first
+(who/where/what/why-now, no jargon), atmosphere after, optionally built on an opening text the
+adventure ships (``briefing_de``).
 """
 
 from __future__ import annotations
@@ -25,8 +23,7 @@ from collections.abc import Sequence
 
 # The director instruction that drives the !start opening turn. It is a GM-side ("director")
 # message, NOT a player line: it tells the model to OPEN the session out loud so the table knows
-# who they are and what their mission is (the first-session complaint: the bot "hat am Anfang
-# nicht gesagt, was abgeht"). The concrete content — the Halikarn briefing, the three leads — is
+# who they are and what their mission is. The concrete content — the Halikarn briefing, the three leads — is
 # NOT spelled out here: it lives in the start scene's card (## Aktuelle Szene + guidance_de),
 # which the system prompt already carries. So this only has to point the model at that scene and
 # hold it to the persona's voice. Phrased as an instruction to the GM, never read aloud.
@@ -83,8 +80,8 @@ _INTRO_DIRECTOR_BRIEFING = (
     "halte dich inhaltlich genau daran und füg nichts hinzu, was nicht darin steht.\n\n{briefing}"
 )
 # The figures are INTRODUCED, not played (D107). Everything the roster carries is background for
-# describing them from the outside; the prohibition is spelled out here because this is where the
-# 2026-08-22 run broke it.
+# describing them from the outside; the prohibition is spelled out here because a roster without
+# it produces invented player dialogue.
 _INTRO_DIRECTOR_CHARS = (
     "Stelle im ZWEITEN TEIL jede der folgenden Figuren kurz vor — von außen, so wie die Übrigen "
     "am Tisch sie sehen: Erscheinung, Haltung, Ausrüstung, Handwerk, Herkunft, ihr Ruf. Nenne jede "
@@ -112,8 +109,7 @@ def build_intro_director_msg(roster_de: str = "", briefing_de: str = "") -> str:
     Asks for one coherent opening monologue in two parts — plain language for a newcomer first
     (place, group, goal, why it is urgent), atmosphere after — and INTRODUCES each player figure
     from the outside via the embedded ``roster_de`` block (from ``CharacterStore.intro_roster_de``).
-    It never asks the model to speak, think or act for a player figure; that contradiction (and the
-    invented player dialogue it produced live) is what D107 removed.
+    It never asks the model to speak, think or act for a player figure (D107, ADR 041 Addendum 3).
 
     ``briefing_de`` is the adventure's own opening text, if it ships one: passed in, it becomes the
     basis of the plain-language part instead of the model inventing it. Reading the adventure field
@@ -148,11 +144,10 @@ _MOVE_REJECTION_FALLBACK_DE = "dieser Wechsel ist nicht möglich"
 def scene_rejected_note_de(target: str, reason: object, exits: Sequence[str] = ()) -> str:
     """The one-shot ``[Regie]`` note queued for the NEXT turn when a scene change was refused.
 
-    On 2026-08-22 a rejected move produced a single ``log.info`` line: neither the table nor the
-    model ever learned that the world had not followed the narration, so the DM kept describing a
-    harbour while the state sat in the customs sacristy. ADR 057 #5 makes it loud — this is the
-    model-facing half, queued through the same ``add_gm_note`` path a full clock (ADR 047) and an
-    expired deadline (ADR 048) already use.
+    A refused move is loud (ADR 057 #5): unless the model learns the world did not follow the
+    narration, it keeps describing a place the state never reached. This is the model-facing
+    half, queued through the same ``add_gm_note`` path a full clock (ADR 047) and an expired
+    deadline (ADR 048) already use.
 
     ``target`` is the refused destination as it was proposed, ``reason`` a
     :class:`~dmbot.rules.scene_flow.MoveRejection` (or its plain string value), ``exits`` the

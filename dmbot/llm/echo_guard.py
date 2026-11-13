@@ -21,16 +21,16 @@ _ECHO_NUDGE = (
     "und wiederhole nicht die Worte der Spielenden."
 )
 
-# Appended when the model re-narrated its own previous answer (W4: players asked "warum hat er
-# das zweimal gesagt?" — seen live as a near-verbatim scene re-description on a direct question).
+# Appended when the model re-narrated its own previous answer (W4, D45: a near-verbatim scene
+# re-description on a direct question).
 _REPEAT_NUDGE = (
     "Beantworte die konkrete Frage der Spielenden direkt und knapp; "
     "wiederhole nicht deine letzte Beschreibung."
 )
 
 # Explicit directive on a results-only (post-roll) turn — without it the model sees a bare
-# "[Würfel] …" line and tends to predict the *next player line* instead of narrating (seen live
-# 2026-06-12: three identical echo turns poisoned the history).
+# "[Würfel] …" line and tends to predict the *next player line* instead of narrating, and the
+# echo self-reinforces in history (ADR 018).
 _ROLL_DIRECTIVE = (
     "Beschreibe als Spielleitung kurz die Folgen dieses Würfelergebnisses in der Szene."
 )
@@ -68,8 +68,8 @@ def is_echo(answer: str, user_msg: str) -> bool:
 
 def is_self_repetition(answer: str, previous_answer: str) -> bool:
     """True when ``answer`` re-narrates the DM's **own previous answer** nearly verbatim — the W4
-    failure (live 2026-06-12: asked "Warum sind wir hier?", the model re-told the prior scene
-    description with only pronoun swaps). Fuzzy, not substring: pronoun/conjugation edits survive
+    failure (D45: the prior scene description re-told with only pronoun swaps). Fuzzy, not
+    substring: pronoun/conjugation edits survive
     a SequenceMatcher ratio. Short answers are exempt — "Du triffst." may legitimately recur."""
     norm_new = _normalize_echo(answer)
     norm_prev = _normalize_echo(previous_answer)

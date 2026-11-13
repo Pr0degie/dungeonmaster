@@ -1,10 +1,9 @@
 """Scene-move classifier (ADR 057).
 
 The scene pointer decides whether the evening happens: overlay, in-game clock, deadlines, NPC
-agendas, recap, NPC memory and Chekhov threads all hang off a scene change. On 2026-08-22 that
-pointer never moved in 22 turns, because its only real mover was an inline ``<<ORT>>`` marker the
-narration model has to emit at the very end of its answer — exactly where the token ceiling and the
-stop-label cut destroy it.
+agendas, recap, NPC memory and Chekhov threads all hang off a scene change. So it cannot rest on
+an inline ``<<ORT>>`` marker the narration model has to emit at the very end of its answer —
+exactly where the token ceiling and the stop-label cut destroy it.
 
 So movement gets what the roll router got (ADR 014, the one LLM-driven decision with a live track
 record): its own stateless constrained-JSON call, asked one question after each turn — *did the
@@ -72,9 +71,9 @@ class SceneFailure(str, Enum):
 def exit_label(scene_id: str, title: str = "") -> str:
     """Render one offered exit: ``"pier-neun — Pier Neun"``, or the bare id when no title is known.
 
-    The single owner of that string. It had three copies — this module's :class:`SceneExit`, the
-    scene card in :meth:`dmbot.rag.adventure.Adventure.adventure_block_de` and the rejection note
-    in ``SessionRuntime.report_rejected_move`` — and the same value written in three places
+    The single owner of that string, for this module's :class:`SceneExit`, the scene card in
+    :meth:`dmbot.rag.adventure.Adventure.adventure_block_de` and the rejection note in
+    ``dmbot.session.scenes``' ``report_rejected_move`` — the same value written in three places
     desyncs (``docs/lessons/parity-by-construction.md``). Call it from all of them; the signature
     (id first, title second, both plain strings, one line back) stays put."""
     sid = str(scene_id or "").strip()
@@ -180,8 +179,7 @@ def scene_user_msg(turn_text: str, context: str = "") -> str:
     """The single user message: the turn that was just narrated, after the ``context`` (the
     previous narration and this turn's player lines) when there is any. The context names the
     place a turn like "Du drückst die Tür auf." means; whether the group arrives is still judged
-    on the narrated turn alone (live 2026-10-25: without it, an entry that named no place was a
-    "nein" three times out of three)."""
+    on the narrated turn alone (ADR 057, amendment 2026-10-25)."""
     head = (
         "Davor (nur zur Einordnung, welcher Ort gemeint ist — ob die Gruppe ihn betritt, "
         f"entscheidet allein der zuletzt erzählte Zug):\n{context.strip()}\n\n"

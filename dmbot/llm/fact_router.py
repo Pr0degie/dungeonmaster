@@ -1,9 +1,7 @@
 """Commitment classifier (ADR 058).
 
-On 2026-08-22 the group won a social test and the seneschal handed over a customs warrant. Nine
-turns later the same NPC refused to give them one — because the warrant was never a fact, only
-prose in a history that gets truncated and summarised. Nothing in the world state ever recorded
-that an item changed hands, that a quest was accepted, or that a promise was made.
+An item handed over, a quest accepted or a promise made must become a fact: as prose in a
+history that gets truncated and summarised it evaporates, and the NPC later contradicts it.
 
 This is the plot-side of the seam that already works for dice (golden rule #2 extended to #3): the
 model *requests*, code validates and writes. After the turn is narrated, one stateless

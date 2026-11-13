@@ -129,3 +129,23 @@ conclusion as addendum 1: don't rely on the prompt; add a deterministic backstop
 `test_intro.py`: regenerate-once-then-keep-strong, no-retry-when-strong, capped-at-one, no-guard
 legacy). The router-deterministic carve-out of the sibling sampling change rides in **ADR 042**.
 
+
+## Addendum 3 — D107 (recorded 2026-11-13): figures are introduced, not played
+
+The `!intro` director brief used to ask for a personal "moment" per player character ("einen
+eigenen Moment") — exactly what `prompts/dm_core_de.md` forbids three blocks earlier. In the
+2026-08-22 debug run (findings A3/B5) the DM did what the brief asked and gave all four figures
+dialogue and motives nobody had declared. Since D107 the roster feeds an introduction **from the
+outside** (appearance, bearing, gear, trade, origin, reputation); the brief says outright that no
+figure speaks, thinks, feels, acts or decides, with a wrong/right example. The prohibition sits in
+the roster block (`_INTRO_DIRECTOR_CHARS` in `dmbot/llm/director_msgs.py`) because that is where
+the run broke it.
+
+The same round split the opening in two: plain language first — who, where, what, why now, no
+jargon (findings A1/A9/A11) — atmosphere second, optionally built on an opening text the adventure
+ships (`briefing_de`, passed in by the loader).
+
+`INTRO_RETRY_NUDGE` (Addendum 2's one-shot retry, `dmbot/llm/intro_guard.py`) carried the same
+"einen eigenen Moment" phrasing and changed in the same round: left in, every second intro attempt
+would have put the puppeting back by prompt. It now asks for what the brief asks — each figure
+named and introduced from the outside, without words, thoughts or actions.

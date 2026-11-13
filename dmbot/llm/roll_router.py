@@ -85,8 +85,8 @@ def to_test_request(data: object, *, character: str | None) -> TestRequest | Non
 def is_continuation_fragment(action: str) -> bool:
     """Is ``action`` only a reported-speech / reasoning fragment (no test to classify)?
 
-    Live 2026-10-25: Sezgin's whole turn was "dass wir das Osadium suchen." and the classifier
-    read "suchen" as a search — a Wahrnehmung test for a sentence that was talk."""
+    Otherwise "dass wir das Osadium suchen." reads as a search — a Wahrnehmung test for a
+    sentence that was talk (D121)."""
     return bool(_CONTINUATION.match(action or ""))
 
 
@@ -94,8 +94,8 @@ def superseded_by_manifest(character: str | None, *, manifesting: set[str]) -> b
     """Should the router's test for ``character`` be dropped because they manifest this turn?
 
     A power is rolled through its Manifest Test (ADR 022), and that is the character's roll for
-    the action. Live 2026-10-25 a psi action got a second router test twice — first the bare
-    manifest skill, then "Fel" for Dread Presence — and both were rolled and narrated, so any
-    skill counts, not only the manifest skill. ``manifesting`` holds the lower-cased names of the
+    the action. Any skill counts, not only the manifest skill — a second router test on another
+    skill ("Fel" for Dread Presence) is just as much a double roll (D121, D123). ``manifesting``
+    holds the lower-cased names of the
     characters with a Manifest request this turn."""
     return bool(character) and character.strip().lower() in manifesting

@@ -2,8 +2,8 @@
 
 Pure, regex-only (its one project import is the shared sentence-end rule from the equally pure
 ``dmbot.tts.textsplit``) so it stays unit-testable and an agent tuning these German-text
-guards loads ~130 focused lines, not the whole orchestrator. Extracted from ``orchestrator.py``
-(ADR 034); ``finalize_answer`` (still in orchestrator) and the streaming assembler call these.
+guards loads one focused file, not the whole orchestrator. Extracted from ``orchestrator.py``
+(ADR 034); ``finalize_answer`` and the streaming assembler (both ``stream_assembler``) call these.
 Covers a leading role label / markdown / self-correction frame / "Als Spielleitung beschreibe
 ich …" preamble (:func:`_sanitize_leading`), a trailing meta-disclaimer / "Was tut ihr?" closer
 (:func:`_sanitize_trailing`), mid-text speaker-label truncation (:func:`_cut_at_labels`), a leaked
@@ -31,9 +31,8 @@ _ROLE_LABEL = re.compile(
 # narration (the DM never says "ich" of itself — "Als der Inquisitor eintrifft …" doesn't match).
 _META_PREAMBLE = re.compile(
     r"^\s*als\s+(?:die\s+)?(?:spielleit(?:ung|er)|erzähler|gm|dm|game ?master)\s+"
-    # "antworte/reagiere/erwidere ich" joined the list live 2026-08-15: asked in-fiction, nemo
-    # answered "Als Spielleitung antworte ich: …" and stayed in narrator voice instead of playing
-    # the NSC — read aloud verbatim, twice in one session.
+    # "antworte/reagiere/erwidere ich": asked in-fiction, nemo answers "Als Spielleitung antworte
+    # ich: …" and stays in narrator voice instead of playing the NSC.
     r"(?:beschreib\w*|schilder\w*|erzähl\w*|sag\w*|gebe?|beginn\w*|eröffn\w*|er ?öffn\w*|start\w*|leite?"
     r"|antwort\w*|reagier\w*|erwider\w*|entgegn\w*)\s+ich\b"
     r"(?:\s+(?:dir|euch|(?:die|eine|folgende|unsere|heutige)\s+(?:szene|sitzung|runde|spielrunde)))?"
@@ -74,7 +73,7 @@ _ROLE_LABELS = ["Spielleitung", "Spielleiter", "Spieler", "Erzähler", "GM", "DM
 
 
 # The same director frame in the other word order — "In diesem Fall würde ich als Spielleitung
-# antworten: …" (read aloud live on 2026-08-22, turn 4). _META_PREAMBLE anchors on
+# antworten: …" (D112). _META_PREAMBLE anchors on
 # "Als <rolle> <verb> ich" at the start and cannot see this shape.
 _META_WOULD = re.compile(
     r"^[^.!?]{0,60}?\bwürde\s+ich\s+als\s+(?:die\s+)?"
@@ -84,8 +83,7 @@ _META_WOULD = re.compile(
 )
 # --- Meta sentences: assistant register + handover stage directions (D112) ----------------------
 #
-# The 2026-08-22 run read three kinds of non-fiction aloud. The persona forbids all of them and
-# nemo writes them anyway — docs/lessons/deterministic-guards-over-persona-hopes.md: the prompt
+# The persona forbids these kinds of non-fiction and nemo writes them anyway — docs/lessons/deterministic-guards-over-persona-hopes.md: the prompt
 # shapes, code removes. Both filters work per SENTENCE and skip any sentence carrying a quote
 # character: an NSC may apologise, ask formally or say it is waiting, and that is the game, not a
 # chatbot. A sentence without a terminator (one still arriving mid-stream) never matches, so the
@@ -156,9 +154,9 @@ def _drop_meta_sentences(text: str) -> str:
 
 # --- Puppeting: the DM speaks NSCs, never the player characters (D113) --------------------------
 #
-# On 2026-08-22 the DM put words in the players' mouths — "'Ich sehe hier keine illegalen Waffen',
-# sagst du kühl." — and two players called it out at the table. D110 deferred a filter in favour of
-# a prompt fix plus measurement; Tobi overrode that, so the rule is enforced in code.
+# The DM must not put words in the players' mouths ("'Ich sehe hier keine illegalen Waffen',
+# sagst du kühl."); a rule the table cares about cannot rest on the model's compliance, so it is
+# enforced in code (D113, ADR 060).
 #
 # Scope is speech only. A player character *acting* in the narration stays: the line between
 # narrating a consequence and steering someone's character is not sharp enough to cut with a
@@ -193,8 +191,8 @@ def _speaks_as(name: str) -> re.Pattern:
     """Pattern for "<name> … <speech verb>" or "<speech verb> <name>" — an attribution of quoted
     speech to that name, in either German word order.
 
-    The name must be the subject (2026-10-25: "Kaad bemerkt, wohin Fridolin schaut, … und sagt"
-    was read as Fridolin speaking): before the verb it has to open a clause, and the stretch up to
+    The name must be the subject (D123: "Kaad bemerkt, wohin Fridolin schaut, … und sagt" is not
+    Fridolin speaking): before the verb it has to open a clause, and the stretch up to
     the verb may not cross a clause boundary; after the verb only lower-case non-prepositions may
     sit in between. Runs on the narration outside quotes (:func:`_outside_quotes`)."""
     escaped = re.escape(name)
@@ -270,7 +268,7 @@ def _drop_puppet_speech(text: str, labels: list[str], *, allow_empty: bool = Fal
             continue
         quoted = inside or any(ch in stripped for ch in _QUOTE_CHARS)
         # Only the narration around a quote attributes it: an NSC asking „…, sagst du?“ is the
-        # NSC speaking (2026-10-25 run), "„…“, sagst du." is the DM speaking for the player.
+        # NSC speaking (D121), "„…“, sagst du." is the DM speaking for the player.
         narration, inside = _outside_quotes(stripped, inside)
         if quoted and (
             _SECOND_PERSON_SPEECH.search(narration)
