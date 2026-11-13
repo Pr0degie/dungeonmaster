@@ -459,7 +459,8 @@ class DMBrain:
 
         Unlike :meth:`_prepare_turn` this consumes no buffered player lines and adds no
         ``Spieler:`` line — the opening is a GM-side *director* instruction, not a player action.
-        Crucially it leaves the session's ``last_action`` untouched (so it stays None), which makes
+        Crucially it clears the session's ``last_action``/``last_actions`` (an opening mid-session
+        must not inherit the previous player turn's — finding 4), which makes
         :meth:`_queue_markers` skip queuing any ``<<TEST>>``/``<<ORT>>``
         marker the model might emit — i.e. **no dice on a briefing** (the task's dice-suppression
         requirement) falls out of the existing results-only guard for free. Records ``last_turn``
@@ -468,6 +469,8 @@ class DMBrain:
         session = self._session(channel_id)
         labels = list(dict.fromkeys(session.known_speakers + _ROLE_LABELS))
         session.last_turn = (director_msg, labels)
+        session.last_action = None
+        session.last_actions = []
         # Replay capture (ADR 046): an opening turn re-feeds its director_msg, not player lines.
         session.replay_turn = {"lines": [], "results": [], "opening": True}
         return director_msg, labels, session.history

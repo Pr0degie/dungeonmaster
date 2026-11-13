@@ -142,10 +142,6 @@ def test_redo_after_a_suppressed_turn_keeps_the_turn_before_it() -> None:
 
 # ---- opening -------------------------------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason=(
-    "_prepare_opening leaves last_action/last_actions as the previous player turn set them; an "
-    "opening mid-session therefore queues the briefing's <<TEST>> and hands the roll router "
-    "the old action again (code review 2026-11-13, finding 4)"))
 def test_an_opening_after_a_player_turn_requests_no_dice() -> None:
     ch = 1
     brain = DMBrain(

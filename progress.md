@@ -12,8 +12,9 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** offene `DMBrain`-Befunde behoben (13.11., bisher Nr. 2/3, 9 und 1 der „Open questions“,
-  **live-unverifiziert**) — Details unter „Last session“.
+- **Newest round:** vier offene `DMBrain`-Befunde behoben (13.11., Nr. 1–4 und 9 der „Open questions“, vier Commits,
+  **live-unverifiziert**) — Details unter „Last session“. 1386 Tests grün, 7 xfail (3 NSC-Sichtung, ADR 062;
+  4 offene `DMBrain`-Befunde), `dm-eval` Exit 0.
   Davor: `DMBrain` entdoppelt (13.11., reiner Umbau von `orchestrator.py`, kein D-Eintrag) — `ChannelSession`
   pro Channel statt 17 Dicts, ein Turn-Kern (`_run_turn`) für Batch und Streaming, `_pending_<kind>`-Aliase weg; Schnittstelle
   unverändert. 1381 Tests grün, 12 xfail (3 NSC-Sichtung, ADR 062; 9 offene `DMBrain`-Befunde), `dm-eval` Exit 0. Live gesehen 13.11. (22 Züge bis `!leave`).
@@ -23,8 +24,8 @@ is on-demand._
   Davor D134 (31.10., Sprachbefehl „sehr böser Junge“, **live-unverifiziert**) und D128–D133 / **ADR 064** (Würfel, live gesehen).
 - **Davor (2026-10-25):** D123–D127 (improvisierte NSCs, XTTS-Sperre, Schicksalspunkte, Würfel-Thumbnails) —
   code-komplett, Details im Archiv/Log.
-- **Next concrete step:** der fünfte Lauf mit Bot A (die Neustart-Probe ist bestanden); vorher entscheiden, welche der elf
-  offenen `DMBrain`-Punkte („Open questions“) behoben werden, und in `#bot-commands` die alten GIF-Sätze löschen (nur die
+- **Next concrete step:** der fünfte Lauf mit Bot A (die Neustart-Probe ist bestanden); vorher entscheiden, welche der sechs
+  noch offenen `DMBrain`-Punkte („Open questions“) behoben werden, und in `#bot-commands` die alten GIF-Sätze löschen (nur die
   von 01:49 zählen). Prüfliste: Abschnitt „Next concrete step“; dort auch die Entscheidung zum nächsten Sprach-Trigger.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
   geparkt (ADR 061, im [Live-Run-Skript](docs/live-run-script.md) markiert) und werden nach dem
@@ -51,6 +52,9 @@ Befund, die xfail-Markierung fiel jeweils mit dem Fix; nach jedem pytest, ruff (
 - Nr. 1 (`!redo`): `_redo` löscht das letzte History-Paar nur noch, wenn dessen Spielerzeile die des
   wiederholten Zugs ist; nach einem unterdrückten oder fehlgeschlagenen Zug bleibt der Zug davor stehen.
   **Live-unverifiziert.**
+- Nr. 4 (Opening mitten in der Sitzung): `_prepare_opening` setzt `last_action`/`last_actions` zurück; das Opening
+  reiht keine `<<TEST>>`-Marker ein und gibt dem Würfel-Router keine alte Aktion. **Live-unverifiziert.**
+- 1386 Tests grün, 7 xfail (3 NSC-Sichtung, 4 offene `DMBrain`-Befunde: Nr. 5–8).
 
 **`DMBrain` entdoppelt (2026-11-13, reiner Umbau von `dmbot/orchestrator.py`, kein D-Eintrag).** Wer am
 Turn-Ablauf arbeitet, liest jetzt einen Pfad statt zwei; am Tisch ändert sich nichts. Sechs Commits
@@ -108,9 +112,9 @@ Am 13.11. (01:48–02:16) waren zusätzlich 7 von 22 Antworten an der Ausgabegre
 Spieler hat es um 02:01 bemängelt.
 (2) Ob die drei NSC-xfails (ADR 062, „Open questions“) vor dem Abend behoben werden — sie treffen jeden Zug, in dem
 die Gruppe an einem neuen Ort ankommt und dort jemanden sieht.
-(3) Welche der elf offenen `DMBrain`-Punkte („Open questions“) vorher behoben werden. Am Tisch spürbar: Nr. 9
-(Schlusssatz auf `“` fällt weg, 5 von 22 Antworten), Nr. 3 (ein Zug fällt am History-Limit aus dem Kontext, live
-eingetreten), Nr. 1 (`!redo` nach einem nicht gespeicherten Zug), Nr. 4 (Opening mitten in der Sitzung).
+(3) Welche der sechs noch offenen `DMBrain`-Punkte („Open questions“: Nr. 5–8, 10, 11) vorher behoben werden.
+Nr. 1–4 und 9 sind behoben (13.11., live-unverifiziert); am Abend darauf achten: Schlusssatz auf `?“` wird
+gesprochen, ein Zug während des Auto-Recaps bleibt im Kontext, `!redo` nach unterdrücktem Zug, Opening mitten in der Sitzung.
 
 **Der fünfte Lauf.** Vorher: Bot A starten (am 30./31.10. lief er nicht, der DM erzählte stumm), in `#bot-commands`
 die alten Würfel-GIF-Sätze löschen (gültig sind die 8 Nachrichten von 2026-10-31 01:49), Sandbox leeren. Am Tisch
@@ -266,7 +270,7 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 
 ## Open questions / to clarify
 
-**Offene `DMBrain`-Befunde (2026-11-13) — dokumentiert; Nr. 1, 2, 3 und 9 behoben (13.11., live-unverifiziert), der Rest offen.** Nr. 1–7 stammen aus
+**Offene `DMBrain`-Befunde (2026-11-13) — dokumentiert; Nr. 1–4 und 9 behoben (13.11., live-unverifiziert), der Rest offen.** Nr. 1–7 stammen aus
 `/code-review` auf `ddaae08..9ec06b6` (aus dem Code hergeleitet; der Umbau hat sie unverändert übernommen), Nr. 8–11
 aus dem Live-Lauf 01:48–02:16; alle gab es schon vor dem Umbau. Die Tests stehen als `xfail(strict=True)` in
 `tests/test_orchestrator_open_findings.py`; der Fix muss die Markierung entfernen.
@@ -282,7 +286,7 @@ aus dem Live-Lauf 01:48–02:16; alle gab es schon vor dem Umbau. Die Tests steh
    („Ich erzähle ihr, wer mich schickt.“, fertig 02:05:49) kam während des Zusammenfassens dazu. Er fehlt im
    Recap; laut Code hat `clear_history` ihn mitgelöscht (im Log nicht direkt sichtbar). Im Journal steht er hinter
    dem `compact`-Ereignis, ein Neustart lädt ihn wieder.
-4. Ein Opening nach einem Spielerzug erbt dessen `last_action` und reiht Würfel-Marker ein —
+4. **Behoben 13.11., live-unverifiziert.** Ein Opening nach einem Spielerzug erbte dessen `last_action` und reihte Würfel-Marker ein —
    `test_an_opening_after_a_player_turn_requests_no_dice`.
 5. Ein verworfener Konsistenz-Retry lässt seine Marker stehen —
    `test_a_discarded_consistency_retry_leaves_no_markers_behind`.
