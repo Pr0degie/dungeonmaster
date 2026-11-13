@@ -399,3 +399,6 @@ Stop-Abbruch ist im Skript (Akt 1) notiert; Volltext im Archiv.
   then DMbot layer by layer.
 - **Principle:** dice/success = code, narration = LLM. Do not mix.
 - Verify each phase in isolation before the next begins.
+- **Not again:** Die Vereinheitlichung der vier Marker-Handler (`_handle_scene`/`_handle_erledigt`/`_handle_uhr`/
+  `_handle_zeit`) auf einen generischen Handler wurde am 2026-11-13 geprüft und mit Verweis auf ADR 051 §5 verworfen
+  (ORT passt nicht ins Vorschlagen-oder-Anwenden-Muster, die übrigen bräuchten ~8–10 Callbacks pro Marker).
