@@ -14,7 +14,7 @@ is on-demand._
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
 - **Newest round:** `DMBrain` entdoppelt (13.11., reiner Umbau von `orchestrator.py`, kein D-Eintrag) — `ChannelSession`
   pro Channel statt 17 Dicts, ein Turn-Kern (`_run_turn`) für Batch und Streaming, `_pending_<kind>`-Aliase weg; Schnittstelle
-  unverändert. 1381 Tests grün, 3 xfail (NSC-Sichtung, ADR 062 — „Open questions“), `dm-eval` Exit 0. **Live-unverifiziert.**
+  unverändert. 1381 Tests grün, 10 xfail (3 NSC-Sichtung, ADR 062; 7 `DMBrain`-Altbefunde), `dm-eval` Exit 0. **Live-unverifiziert.**
   Davor (13.11., D136 / ADR 061 Nachtrag): Auto-Recap markiert sich im Autosave-Journal, Recap unter Claude mit eigener
   Grenze — beides live gesehen, der Neustart danach noch nicht.
   Davor (12.11., D135 / ADR 065): `runtime.py` in sieben Mixin-Module unter `dmbot/session/` zerlegt (1949 → 844 Zeilen).
@@ -50,14 +50,25 @@ Turn-Ablauf arbeitet, liest jetzt einen Pfad statt zwei; am Tisch ändert sich n
 - Die `_pending_<kind>`-Aliase sind weg, die sechs `take_pending_<kind>`-Wrapper bleiben (Cogs, Delivery, `dm-eval`).
 - Beibehalten und an der Stelle kommentiert: ein unterdrückter Echo-Zug schreibt im Batch-Pfad kein `markers` ins
   Replay, im Stream-Pfad ein leeres.
-- Nicht angefasst (außerhalb des Auftrags): zwei Docstrings in `dmbot/llm/stream_assembler.py` und je ein Kommentar
-  in `tests/test_autorecap.py` und `tests/test_consistency.py` nennen noch `_generate` / `_stream_and_store`,
-  `dmbot/rules/marker.py:310` noch das Suffix `_pending_<kind>`.
-- `/code-review` auf `ddaae08..9ec06b6`: keine Regression durch den Umbau. **Offen (Tobi), nichts geändert** — sieben
-  Altbefunde, die der Umbau unverändert übernommen hat: `!redo` nach einem nicht gespeicherten Zug löscht den Zug davor;
-  `clear_history` verliert einen Zug, der während der Kompaktierung noch läuft (Listentausch, und Kopfzählung am
-  History-Limit); ein Opening mitten in der Sitzung erbt die alte `last_action`; der verworfene Konsistenz-Retry und
-  der Intro-Retry lassen Marker stehen; ein leerer Echo-Retry wird im Batch-Pfad als leerer Zug gespeichert.
+- `/code-review` auf `ddaae08..9ec06b6`: keine Regression durch den Umbau. **Offen (Tobi), nichts gefixt** — sieben
+  Altbefunde, die der Umbau unverändert übernommen hat, alle aus dem Code hergeleitet, keiner live gesehen. Jeder
+  hat einen `xfail(strict=True)`-Test in `tests/test_orchestrator_open_findings.py`:
+  1. `!redo` nach einem nicht gespeicherten Zug löscht den Zug davor —
+     `test_redo_after_a_suppressed_turn_keeps_the_turn_before_it`.
+  2. `clear_history` tauscht die geleerte Liste aus; ein Zug, der dann noch läuft, geht verloren —
+     `test_a_turn_still_in_flight_survives_the_compaction_wipe`. Der bestehende Test
+     `test_clear_history_preserves_a_turn_appended_during_summarize` deckt nur den Zug ab, der während des
+     Zusammenfassens schon fertig wurde.
+  3. Am History-Limit löscht `clear_history` den Zug, der während des Zusammenfassens dazukam (Kopfzählung) —
+     `test_a_turn_appended_during_summarize_survives_at_the_history_cap`.
+  4. Ein Opening nach einem Spielerzug erbt dessen `last_action` und reiht Würfel-Marker ein —
+     `test_an_opening_after_a_player_turn_requests_no_dice`.
+  5. Ein verworfener Konsistenz-Retry lässt seine Marker stehen —
+     `test_a_discarded_consistency_retry_leaves_no_markers_behind`.
+  6. Der Intro-Retry lässt die Marker der verworfenen Antwort stehen —
+     `test_a_discarded_weak_opening_leaves_no_markers_behind`.
+  7. Ein leerer Echo-Retry wird im Batch-Pfad als leerer Zug gespeichert —
+     `test_an_empty_echo_retry_stores_no_empty_turn`.
 - **Live-unverifiziert.**
 
 **Kontext nach Neustart, Recap-Grenze (2026-11-13, D136 / ADR 061 Nachtrag).** Nach einem Neustart ist der Kontext
