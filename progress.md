@@ -12,7 +12,7 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** offene `DMBrain`-Befunde behoben (13.11., bisher Nr. 2/3 der „Open questions“,
+- **Newest round:** offene `DMBrain`-Befunde behoben (13.11., bisher Nr. 2/3 und 9 der „Open questions“,
   **live-unverifiziert**) — Details unter „Last session“.
   Davor: `DMBrain` entdoppelt (13.11., reiner Umbau von `orchestrator.py`, kein D-Eintrag) — `ChannelSession`
   pro Channel statt 17 Dicts, ein Turn-Kern (`_run_turn`) für Batch und Streaming, `_pending_<kind>`-Aliase weg; Schnittstelle
@@ -46,6 +46,8 @@ Befund, die xfail-Markierung fiel jeweils mit dem Fix; nach jedem pytest, ruff (
 - Nr. 2 + 3 (Kompaktierung): `clear_history` leert im Kompaktierungs-Pfad die Liste an Ort und Stelle statt sie
   auszutauschen, und `_run_turn` verschiebt `compact_consumed` um das, was das History-Limit vorne abschneidet.
   Ein Zug, der während des Recaps läuft oder am Limit dazukommt, bleibt in der History. **Live-unverifiziert.**
+- Nr. 9 (Schlusssatz auf `?“`): `_SENTENCE_END` in `llm/sanitize.py` kennt jetzt `“` und `«` als schließende
+  Anführungszeichen; `_trim_to_last_sentence` schneidet einen solchen Satz nicht mehr ab. **Live-unverifiziert.**
 
 **`DMBrain` entdoppelt (2026-11-13, reiner Umbau von `dmbot/orchestrator.py`, kein D-Eintrag).** Wer am
 Turn-Ablauf arbeitet, liest jetzt einen Pfad statt zwei; am Tisch ändert sich nichts. Sechs Commits
@@ -261,7 +263,7 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 
 ## Open questions / to clarify
 
-**Offene `DMBrain`-Befunde (2026-11-13) — dokumentiert; Nr. 2 und 3 behoben (13.11., live-unverifiziert), der Rest offen.** Nr. 1–7 stammen aus
+**Offene `DMBrain`-Befunde (2026-11-13) — dokumentiert; Nr. 2, 3 und 9 behoben (13.11., live-unverifiziert), der Rest offen.** Nr. 1–7 stammen aus
 `/code-review` auf `ddaae08..9ec06b6` (aus dem Code hergeleitet; der Umbau hat sie unverändert übernommen), Nr. 8–11
 aus dem Live-Lauf 01:48–02:16; alle gab es schon vor dem Umbau. Die Tests stehen als `xfail(strict=True)` in
 `tests/test_orchestrator_open_findings.py`; der Fix muss die Markierung entfernen.
@@ -289,7 +291,7 @@ aus dem Live-Lauf 01:48–02:16; alle gab es schon vor dem Umbau. Die Tests steh
    schon lief, bevor die Wiedergabe des Zugs endete; 7 weitere Records haben gar keine (31.10.: 6 von 21 falsch).
    Ein Golden aus so einem Journal wäre falsch. xfail:
    `test_a_turn_started_during_playback_leaves_the_previous_turns_replay_fields`.
-9. Ein vollständiger Schlusssatz auf `?“`, `.“` oder `!“` fällt weg — nicht gesprochen, nicht gepostet, nicht
+9. **Behoben 13.11., live-unverifiziert.** Ein vollständiger Schlusssatz auf `?“`, `.“` oder `!“` fiel weg — nicht gesprochen, nicht gepostet, nicht
    gespeichert, auch ohne ✂-Schnitt: `_SENTENCE_END` kennt `“` (und `«`) nicht, `_trim_to_last_sentence` hält den
    Satz für ein Bruchstück. 5 von 22 Antworten im Lauf (Zug 20: „Wessen Namen soll ich neben deinen schreiben?“),
    15 von 136 davor im Log. Weiter als die Lücke beim Sprechbudget („Next concrete step“), die nur den Schnitt-Fall nennt. xfail:

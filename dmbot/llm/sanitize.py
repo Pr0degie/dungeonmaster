@@ -386,8 +386,9 @@ def _sanitize(text: str) -> str:
     return _sanitize_trailing(_unwrap_enclosing_quotes(_sanitize_leading(text)))
 
 
-# Sentence-ending punctuation, optionally followed by a closing quote/bracket.
-_SENTENCE_END = re.compile(r"[.!?…](?:[\"»”’)\]]+)?(?=\s|$)")
+# Sentence-ending punctuation, optionally followed by a closing quote/bracket — German closing
+# quotes “ and « included, or a final ?“ reads as a dangling fragment and gets trimmed.
+_SENTENCE_END = re.compile(r"[.!?…](?:[\"»«“”’)\]]+)?(?=\s|$)")
 
 
 def _trim_to_last_sentence(text: str) -> str:

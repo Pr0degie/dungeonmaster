@@ -265,11 +265,6 @@ def test_a_turn_started_during_playback_leaves_the_previous_turns_replay_fields(
         [["Timo", "Ich gehe hinein."]], "Dahinter liegt ein dunkler Gang.")
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "_SENTENCE_END accepts ” ’ » after the terminator but not the German closing quote “ (nor «), "
-    "so _trim_to_last_sentence takes a complete final sentence ending on ?“ .“ or !“ for a "
-    "dangling fragment and drops it — not spoken, not posted, not stored, with no output cut "
-    "involved; live 2026-11-13: 5 of 22 answers (turn 20, 02:05:49), 15 of 136 earlier in the log"))
 def test_a_final_sentence_ending_on_the_german_closing_quote_is_spoken_and_stored() -> None:
     ch = 1
     last = "Wessen Namen soll ich neben deinen schreiben?“"
