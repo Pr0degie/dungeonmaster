@@ -306,6 +306,7 @@ ein Ortswechsel mit Ankunft bei jemandem.
 | W3 | Angriff: Zielauswahl | nur Anwesende; kein „Wechseln“ nach einem Auto-Wechsel |
 | W4 | „Was kann ich?“ | Antwort aus dem Bogen |
 | W5 | Schicksal-Buttons | erscheinen nach Fehlschlägen |
+| W6 | **Psionik** (Würfel-GIF, D145) | der 🌀-Knopf zeigt den Wurf wie eine Probe; nach einem Fehlschlag kommen die Schicksal-Buttons, und die Warp-Aufladung im Panel gilt für das Ergebnis, das stehen bleibt (`🙏 … dieses Ergebnis gilt: 🌀 …`) |
 | N3–N8 | die Beobachtungspunkte von oben („Seit dem 12.11. geändert“) | nur wenn die Lage eintritt |
 
 ### Teil B — Pause statt Nemo (D139), nach `!wrap`
