@@ -119,7 +119,7 @@ def sentences(answer: str) -> list[str]:
     return [s for s in _SENTENCE_GAP.split(_MARKER.sub("", answer or "").strip()) if s.strip()]
 
 
-def measure(answers: list[str], cut: int = 0) -> dict:
+def measure(answers: list[str], cut: int | str = 0) -> dict:
     """The numbers of one variant over its answers. Pure."""
     lengths = [len(a) for a in answers]
     per_sentence = [len(s) for a in answers for s in sentences(a)]
@@ -322,7 +322,8 @@ def report(results: dict, turns: list[dict]) -> list[str]:
         return (f"{label:20} {m['answers']:5}  {m['chars_mean']:6} / {m['chars_max']:<15}  {m['over_600']:8}  "
                 f"{m['sentences']:5}  {m['sentence_mean']:6} / {m['sentence_median']:<22}  {m['sentences_200']:6}  {m['cut']}")
 
-    lines.append(row("Original 14.11.", measure([spoken[t] for t in REPLAY if t in spoken])))
+    # The evening's own answers: whether one was cut is in its ✂ log line, not read here.
+    lines.append(row("Original 14.11.", measure([spoken[t] for t in REPLAY if t in spoken], cut="–")))
     for label, by_turn in variants.items():
         answers = [by_turn[t]["answer"] for t in REPLAY if t in by_turn]
         lines.append(row(label, measure(answers, sum(by_turn[t]["truncated"] for t in by_turn))))

@@ -461,3 +461,52 @@ Persona von damals: Marker: `<<TEST Überreden Herausfordernd für Fridolin Feuc
 Persona von heute, Budget 280: Marker: `<<TEST Überreden für Fridolin Feuchtgebietheld>>`
 
 > Bree wiegt die Worte ab, die Feder schwebt reglos über dem Kontorbuch, und ihr Blick wandert von Fridolin zum Inquisitionssiegel auf dem Pergament und wieder zurück. Ob dieses Versprechen von Schutz für eine Hehlerin, die viel zu verlieren hat, schwer genug wiegt, zeigt sich jetzt.
+
+## Nachtrag: zwei Persona-Varianten gemessen (14.11., später am Abend)
+
+Gemessen mit `uv run python -m dmbot.tools.text_replay run A=… B=…` (das Nachlauf-Skript liegt jetzt im Repo),
+dieselben sechs Züge, zwölf Aufrufe, Budget 280, auf dem heutigen Code. Die Persona in `prompts/` ist unverändert;
+beide Varianten waren Dateien außerhalb des Repos.
+
+- **A:** nur der Satzteil „Lange Sätze sind erlaubt“ entfällt, sonst die Persona von heute.
+- **B:** „drei bis fünf Sätze“ statt „zwei bis vier“, dazu „Kein Satz hat mehr als etwa zwanzig Wörter – wird einer
+  länger, mach zwei daraus“; „Lange Sätze sind erlaubt“ entfällt.
+
+| | Zeichen je Zug (Mittel / längster) | Züge über 600 | Sätze | Zeichen je Satz (Mittel / Median) | Sätze ab 200 | abgeschnitten |
+|---|---|---|---|---|---|---|
+| Original vom Abend | 612 / 711 | 4 von 6 | 22 | 166 / 163 | 5 | 1 |
+| Persona von heute (erste Messung, Code des Abends) | 656 / 807 | 5 von 6 | 24 | 163 / 160 | 6 | 0 |
+| **A** | 591 / 775 | 4 von 6 | 23 | 153 / 163 | 6 | 0 |
+| **B** | 639 / 718 | 5 von 6 | 38 | 100 / 102 | 1 | 0 |
+
+**Ziel „unter 130 Zeichen je Satz“:** B erreicht es (100), A nicht (153). **Ziel „kein Zug über 600 Zeichen“:**
+keine der beiden. B schreibt kürzere Sätze, aber mehr davon (5 bis 9 je Zug statt der verlangten drei bis fünf),
+die Züge bleiben so lang wie vorher. Satzlänge und Zuglänge sind zwei Stellschrauben.
+
+Eine Auffälligkeit bei B: Um 19:19:06 beginnt die Antwort mit einem Planungssatz, der vorgelesen worden wäre („Das
+ist ein Überredungsversuch: eine Geschichte, Schutz gegen Information. Den Wurf fordere ich an.“). Ein Fall in
+sechs; bei A kam das nicht vor.
+
+**Zwei Antworten je Variante im Wortlaut**
+
+Probe gelungen (19:10:05), A, 678 Zeichen:
+
+> Die Schwester bricht ein, und die Worte stürzen aus ihr heraus wie Wasser durch eine geborstene Schleuse. „Karren, in der Nacht, schwere Karren, sie rollten den Kanalweg hinunter zur Pfandhalle der Marlok, Imperator vergib mir, ich habe mich hinter dem Weihrauchschrank versteckt und mich nicht getraut, die Arbites zu rufen.“ Schluchzend deutet sie auf den rußigen Aschenschacht hinter dem Altar, eine schmale Öffnung im Mauerwerk, durch die sonst die Asche der Totenfeuer fortgeschafft wird, und flüstert: „Dort hindurch haben sie es geschleppt, und es war so schwer, dass vier Männer keuchten.“ Rektalus, die glattgeschliffene Münze liegt noch immer vor deiner Stiefelspitze.
+
+Probe gelungen (19:10:05), B, 616 Zeichen:
+
+> „Gnade, Herr, ich sage alles“, bricht es aus Schwester Vall heraus, und die Worte überschlagen sich zwischen hastigen Gebetsfetzen. Letzte Nacht, kurz nach der Nachtsirene, habe sie vermummte Männer gehört, die etwas Schweres aus dem Altar stemmten. Sie habe sich hinter dem Weihrauchschrank versteckt, statt zu schreien. Später seien Karren durch die Gasse gerollt, hinunter zur Pfandhalle der Marlok. „Ich habe die Arbites nicht gerufen, Thron vergib mir, ich hatte solche Angst.“ Rektalus, die glattgeschliffene Münze liegt noch immer vor deinem Stiefel, während die Schwester schluchzend auf eure Antwort wartet.
+
+Gespräch mit Bree (19:15:01), A, 528 Zeichen:
+
+> Bree Marlok verzieht keine Miene, faltet das Pergament einmal zusammen und klopft damit gegen das Bronzegitter. „Kooperativ ist ein großes Wort, Jungchen. Ein Siegel öffnet meine Tür, aber nicht meine Bücher.“ Hinter euch bricht das Summen des alten Fenk mitten in der Hymne ab, als lausche er, und Bree beugt sich vor, den Blick erst auf Fridolin, dann lange auf Rektalus. „Also, bevor hier irgendwer irgendwas erfährt: In wessen Auftrag kommt ihr wirklich, und was wollt ihr von einer ehrlichen Pfandleiherin um diese Stunde?“
+
+Gespräch mit Bree (19:15:01), B, 680 Zeichen:
+
+> Bree Marloks Mundwinkel zucken, aber zu einem Lächeln reicht es nicht. Sie faltet das Pergament langsam, Kante auf Kante, und legt es auf ihr Rechnungsbuch, statt es zurückzugeben. „Kooperativ ist ein großes Wort, Jungchen. Ich bin vorsichtig, und wer ein solches Siegel trägt, bleibt besser nicht vor meiner Tür stehen, wo das halbe Hafenviertel zusieht.“ Am Eingang bricht das Summen des alten Fenk mitten in der Strophe ab, und sein milchiger Blick wandert in eure Richtung, als lausche er. Bree beugt sich ans Gitter, die Finger auf dem Pergament. „Also. Das Siegel ist das eine. In wessen Auftrag steht ihr wirklich hier, und was wollt ihr von einer ehrlichen Pfandleiherin?“
+
+**Aus den Vorschlägen umgesetzt (je ein Commit mit Test):** der Text jeder automatischen Zusammenfassung steht im
+Debug-Log; die aufgelöste Modell-Kennung steht in der Bootzeile; der Filter gegen die Schlussfrage streicht nur
+noch den nackten Satz ohne Anrede und Inhalt. **Offen, nach dem nächsten Lauf:** `CLAUDE_NUM_CTX`, die Regiezeile
+für Proben ohne Wurf, die Zusammenfassung mit sechs Zügen im Wortlaut. **Offen, Tobis Entscheidung:** die Persona
+(A, B oder B mit einer festen Obergrenze für die Satzzahl) und dazu passend die Regieanweisung von `!start`.

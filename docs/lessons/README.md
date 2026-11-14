@@ -86,3 +86,5 @@ or an ADR already holds — link there instead.
   session: tune, verify the baseline live, only then A/B.
 - [one-cuda-context-one-caller](one-cuda-context-one-caller.md) — XTTS + Whisper share one CUDA
   context: serialise GPU inference behind a lock; the first CUDA fault is sticky, report it once and restart.
+- [measure-persona-changes-on-replayed-turns](measure-persona-changes-on-replayed-turns.md) — A persona
+  sentence about length does not do what it says: replay recorded turns (`dmbot.tools.text_replay`) before the table hears it.
