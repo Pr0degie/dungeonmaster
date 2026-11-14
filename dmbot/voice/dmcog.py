@@ -684,6 +684,9 @@ class DMCog(commands.Cog):
             if not recap:
                 log.warning("🧵 Auto-Recap: leere Zusammenfassung — history NICHT geleert.")
                 return
+            # The text itself, debug.log only (🪵, like the raw answer): from here on it stands
+            # where the history stood, and a later turn cannot be rebuilt without it.
+            log.info("🪵 Auto-Recap (%d Zeichen): %s", len(recap), recap.replace("\n", " ⏎ "))
             self._persist_recap(channel, recap)
             # Reset the rolling history only now that the recap is safely persisted (clear_history
             # keeps recap/state/buffer — only the turn-by-turn thread goes).

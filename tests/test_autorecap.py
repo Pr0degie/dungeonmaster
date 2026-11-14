@@ -455,3 +455,28 @@ def test_summarize_passes_the_configured_output_cap() -> None:
     cap["value"] = None
     asyncio.run(brain.summarize(5))
     assert seen["options"]["num_predict"] == 400
+
+
+def test_maybe_compact_writes_the_recap_text_to_the_debug_log(tmp_path, caplog) -> None:
+    """A turn after an auto-recap can only be rebuilt with the recap the model was handed
+    (the 2026-11-14 evening could not: its recap was in no log). One 🪵 line — that mark keeps
+    it out of the console and the terminal mirror — with the text on a single line."""
+    import logging
+
+    brain = DMBrain(_CapClient(answer="Bree nannte Vosk den Haken.\nDie Gruppe ging zum Kanalsteg."))
+    cog = _bare_cog(brain)
+    _persist_to(cog, brain, tmp_path)
+
+    class _Chan:
+        id = 81
+
+    cog._rt._state[_Chan.id] = WorldState(session_id="81")
+    brain.add_player_line(_Chan.id, "Timo", "Wir gehen zum Kanalsteg.")
+    asyncio.run(brain.respond(_Chan.id))
+
+    timing = _TurnTiming(turn=1, trigger=0.0, prompt_eval=900, num_ctx=1000)
+    with caplog.at_level(logging.INFO, logger="dmbot.voice.dmcog"):
+        asyncio.run(cog._maybe_compact(_Chan(), timing))
+
+    lines = [r.getMessage() for r in caplog.records if "🪵" in r.getMessage()]
+    assert lines == ["🪵 Auto-Recap (58 Zeichen): Bree nannte Vosk den Haken. ⏎ Die Gruppe ging zum Kanalsteg."]
