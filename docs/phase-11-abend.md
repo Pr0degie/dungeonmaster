@@ -20,7 +20,7 @@ läuft auf Tobis Rechner.
 | Claude-Login | in `cmd`: `claude -p "hi"` | eine kurze Antwort kommt |
 | Kein API-Key | in `cmd`: `echo %ANTHROPIC_API_KEY%` | es steht wörtlich `%ANTHROPIC_API_KEY%` da |
 | Ollama | `ollama list` | `mistral-nemo` und `bge-m3` sind da |
-| Sandbox leer | in `data/sessions/<channel-id>/` alle Dateien mit `.debug` im Namen löschen, dann `uv run python -m dmbot.rag.ingest_session --wipe-debug <channel-id>` | nichts ohne `.debug` wurde angefasst |
+| Sandbox leer | erst `history.debug.jsonl` nach `logs\` kopieren (das Replay-Journal des letzten Laufs, ADR 046/066 brauchen es), dann in `data/sessions/<channel-id>/` alle Dateien mit `.debug` im Namen löschen, dann `uv run python -m dmbot.rag.ingest_session --wipe-debug <channel-id>` | nichts ohne `.debug` wurde angefasst |
 | `.env` | Block aus [§9.2](testabend-ablauf.md) eintragen | `DM_LLM_BACKEND=claude`, `DM_LLM_ON_FAILURE=pause`, `DM_NPC_MEMORY=0`, `DM_CONSISTENCY_GUARD=0`, `DM_DEBUG_OVERLAY=0`, `DM_CLOCKS=0`, `DM_FLAG_CONFIRM=0`, `DM_LOG_FILE=1` |
 | Altes Log weg | Bot aus; in PowerShell im Repo-Ordner: `Rename-Item logs\debug.log "debug-bis-$(Get-Date -Format yyyy-MM-dd).log"` | `logs\debug.log` gibt es nicht mehr; der Bot legt beim Start eine leere an, der Abend beginnt mit einer leeren Datei |
 | Verbrauch | claude.ai → Verbrauchsanzeige | Stand notiert: ______ |
@@ -273,8 +273,16 @@ Komma-Pausen im Code, Budget 280), D142 (Cache), D143 (ADR 066 B, Schalter aus).
 
 ## Nächster Lauf — die Folgerunde vom 14.11. prüfen
 
-Alles darin ist nur durch Tests belegt. Ablauf wie Durchgang 1 (Sandbox leer, altes Log weg, Bot neu). Normal
-spielen, nichts erzwingen außer einer Verhandlung mit Probe.
+Alles darin ist nur durch Tests belegt. **Vorbereitet am 14.11., 20:40:** Sandbox leer, altes Log als
+`logs/debug-2026-11-14-nach-abend.log`, Bot A antwortet, Bot mit allen Preflights grün. Es fehlt nur `!j`.
+
+**Ablauf:** `!j` → die vier Kontrollbefehle aus „Beim Start“ → `!start` → spielen (Teil A) → `!wrap` → Teil B
+(Pause-Probe, zehn Minuten) → Bot stoppen, Logs sichern (wie „Zwischen Durchgang 1 und 2“), mir Bescheid geben.
+
+### Teil A — im Spiel, Prüfpunkte der Folgerunde
+
+Normal spielen; herbeiführen: eine Verhandlung oder Bestechung mit Probe, zwei Spieler handeln im selben Zug,
+ein Ortswechsel mit Ankunft bei jemandem.
 
 | # | Was | Gut, wenn | Beweis im Log |
 |---|---|---|---|
@@ -285,10 +293,35 @@ spielen, nichts erzwingen außer einer Verhandlung mit Probe.
 | F5 | **Prompt-Cache greift** (D142) | erster Ton schneller als 8–13 s | ab dem zweiten Zug `cache=` deutlich über 0 in `[latency]`; nach einem Auto-Recap einmal wieder `cache_w=` hoch |
 | F6 | **Zusatzanfrage der CLI?** (D142, offen) | — | im Verbrauch: kostet jeder Zug eine zweite kleine Opus-Anfrage (Sitzungsname)? Nur wenn auffällig |
 | F7 | **NSCs in der richtigen Szene** (D144) | Eine Karten-Figur der nächsten Szene, gesehen bevor der Zeiger dort ist, bleibt in ihrer Szene | `👥 … (gehört nach '<Szene>', bleibt dort)`; schlecht: eine Karten-Figur `anwesend in '<alte Szene>'` |
+| F8 | **Zwei Spieler, eine Probe von Opus** (D140, Review) | wer keinen Marker bekam, bekommt seinen Knopf vom Router | `🎲 Marker entscheidet: A …` und `🎲 router: B …` im selben Zug |
+| F9 | **Kontext ohne Überschrift** (D142, offen) | Opus verwechselt Regelbuch-/Abenteuertext nicht mit Spielerrede, hält den Zustand (Wunden, Gegenstände) ein | nur Ohr; Verdacht mit Uhrzeit notieren |
+| F10 | **Urteil des Tisches** | jeder sagt drei Sätze: besser als am 14.11.? | wörtlich aufschreiben |
+
+### Teil A — dabei mitprüfen, noch offen aus früheren Runden
+
+| # | Was | Gut, wenn |
+|---|---|---|
+| W1 | Würfel: Zielwert-Post, GIF, Ergebnis, auch nach „🙏 Neu würfeln“ | alles erscheint; Log `🎲 throw gif (stored)` |
+| W2 | Spieler-Panel | bleibt eine Nachricht und wird nur bearbeitet |
+| W3 | Angriff: Zielauswahl | nur Anwesende; kein „Wechseln“ nach einem Auto-Wechsel |
+| W4 | „Was kann ich?“ | Antwort aus dem Bogen |
+| W5 | Schicksal-Buttons | erscheinen nach Fehlschlägen |
+| N3–N8 | die Beobachtungspunkte von oben („Seit dem 12.11. geändert“) | nur wenn die Lage eintritt |
+
+### Teil B — Pause statt Nemo (D139), nach `!wrap`
+
+Genau wie Durchgang 3 oben (PowerShell als Administrator, Firewall-Regel auf `claude.exe`): eine ⏸-Zeile, kein
+Nemo, eine ▶-Zeile, der liegengebliebene Zug wird beantwortet; zum Schluss die Regel wieder weg.
+
+### Danach — wertet Claude aus dem Log aus
+
+Messungen A–D wie oben (A: `cache=` > 0 ab Zug 2 = F5), Anteil `✂`, Zahl der `Marker entscheidet` / `Sicherheitsnetz` /
+`router`, NSC-Zeilen `gehört nach …`, Verbrauch vorher/nachher auf claude.ai.
 
 ADR 066 B (ein Haiku-Call statt drei) ist gebaut, aber `DM_AUX_COMBINED=0`: der Abgleich gegen 35 Züge stimmte in
 95 von 105 Urteilen überein, zwei Calls liefen ins 20-s-Timeout. Vor dem Einschalten: drei Abgleich-Läufe (ADR 066
-Schritt 4), dann ein Lauf mit dem Schalter als einziger Änderung.
+Schritt 4), dann ein Lauf mit dem Schalter als einziger Änderung. Das Journal des 14.11. (`history.debug.jsonl`) ist
+beim Vorbereiten am 14.11., 20:40 gelöscht worden; die Abgleich-Läufe nehmen das Journal dieses Laufs.
 
 ## Protokoll zum Ausfüllen
 
