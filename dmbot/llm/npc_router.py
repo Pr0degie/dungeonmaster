@@ -116,6 +116,17 @@ def npc_system(
     ``candidates`` are the scene-card NPCs of the current scene and of the exits reachable from
     it (:class:`Candidate`), shown with role and short names: a bare name tells the model too
     little to recognise a figure described by her looks (ADR 062, amendment 2026-11-13)."""
+    return npc_question(party=party, roster=roster, present=present,
+                        candidates=candidates) + " Antworte NUR mit JSON."
+
+
+def npc_question(
+    *, party: Sequence[str], roster: Sequence[str], present: Sequence[str],
+    candidates: Sequence[tuple] = (),
+) -> str:
+    """The question and its bar without the JSON instruction — shared by the separate call
+    (:func:`npc_system`) and the combined post-turn call on Claude (``dmbot.llm.post_turn``,
+    ADR 066 B), so the two paths cannot drift."""
     people = "".join(
         f"\n  · {c.name}" + (f" — {c.role}" if c.role else "")
         + (f" (auch: {', '.join(c.aliases)})" if c.aliases else "")
@@ -140,7 +151,7 @@ def npc_system(
         + known +
         "- statblock: nur wenn die Person eindeutig eine dieser Abenteuerfiguren ist: "
         + (", ".join(roster) or "—") + "; sonst leer.\n"
-        "Niemand Neues: npcs = []. Antworte NUR mit JSON."
+        "Niemand Neues: npcs = []."
     )
 
 

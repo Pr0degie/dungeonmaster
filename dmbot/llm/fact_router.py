@@ -165,10 +165,20 @@ def fact_schema(recipients: Sequence[str] | None, givers: Sequence[str] | None) 
 def fact_system(recipients: Sequence[str] | None, givers: Sequence[str] | None) -> str:
     """The classifier's tiny, stateless German system prompt — one question about the turn that
     was just narrated, with the bar set at "actually happened", not "was offered"."""
+    return (
+        "Du bist der Protokollant der Spielleitung eines Rollenspiels.\n"
+        + fact_question(recipients, givers)
+        + " Antworte NUR mit JSON."
+    )
+
+
+def fact_question(recipients: Sequence[str] | None, givers: Sequence[str] | None) -> str:
+    """The question and its bar, without the role line and the JSON instruction — shared by the
+    separate call (:func:`fact_system`) and the combined post-turn call on Claude
+    (``dmbot.llm.post_turn``, ADR 066 B), so the two paths cannot drift."""
     who = ", ".join(recipient_choices(recipients))
     npcs = ", ".join(source_choices(givers)) or "— (dann 'von' leer lassen)"
     return (
-        "Du bist der Protokollant der Spielleitung eines Rollenspiels.\n"
         "Lies die eben erzählte Antwort der Spielleitung und melde NUR, was darin wirklich "
         "geschehen ist — nicht, was jemand vorhat, anbietet oder andeutet.\n"
         f"- '{COMMITMENT_KINDS[0]}': ein Gegenstand hat den Besitzer gewechselt; die Gruppe hat "
@@ -181,7 +191,7 @@ def fact_system(recipients: Sequence[str] | None, givers: Sequence[str] | None) 
         "Erzählung: 'Zollvollmacht', nicht 'Kaad schiebt ihm die Vollmacht über den Tisch'.\n"
         f"'an' nur aus dieser Liste: {who}.\n"
         f"'von' nur aus dieser Liste: {npcs}. Unklar: leer lassen.\n"
-        f"Im Zweifel '{NO_COMMITMENT}'. Antworte NUR mit JSON."
+        f"Im Zweifel '{NO_COMMITMENT}'."
     )
 
 

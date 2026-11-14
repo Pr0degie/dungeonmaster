@@ -89,6 +89,8 @@ class Config:
     llm_on_failure: str = "pause"
     llm_pause_retry_s: int = 30
     llm_pause_auto_turn_s: int = 180
+    # One combined post-turn classifier call on Claude (ADR 066 B). Off = three calls.
+    aux_combined: bool = False
     # Consequence clocks (ADR 047/059). Default on.
     clocks: bool = True
     # Post each DM-routed player line to the text channel (story readable in Discord).
@@ -417,6 +419,11 @@ class Config:
             # longest pause after which the bot still answers the waiting turn on its own.
             llm_pause_retry_s=llm_pause_retry_s,
             llm_pause_auto_turn_s=llm_pause_auto_turn_s,
+            # ADR 066 B: on Claude, ask the scene, fact and presence classifiers in ONE schema
+            # call instead of three (Ollama always keeps the three). A failed or malformed combined
+            # answer falls back to the separate calls for that turn. DM_AUX_COMBINED=0 = three calls.
+            aux_combined=os.environ.get("DM_AUX_COMBINED", "0").strip().lower()
+            in ("1", "true", "yes", "on"),
             # Consequence clocks (ADR 047/059). ON by default; DM_CLOCKS=0 hides the subsystem:
             # no seeding from the adventure, no clock line in the prompt or the pressure panel,
             # <<UHR>> is still stripped but ignored, !uhr answers with a hint. Non-destructive —
