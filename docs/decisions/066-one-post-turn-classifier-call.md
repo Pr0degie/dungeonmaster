@@ -1,12 +1,13 @@
 # ADR 066 — Should the scene, fact and presence classifiers share one schema call?
 
-- **Status:** Draft — nothing decided, nothing built. Tobi decides; the recommendation is below.
-- **Date:** 2026-11-13
+- **Status:** Accepted 2026-11-14 — option **B**, built behind `DM_AUX_COMBINED` (default `0`
+  until the parity holds); see "Decision". Live-unverified.
+- **Date:** 2026-11-13 (draft), 2026-11-14 (decision)
 - **Refs:** ADR 057 (scene classifier), ADR 058 (fact classifier), ADR 062 with its 2026-11-13
   amendment (presence classifier, D138), ADR 061 with all amendments (Claude backend, tier rule),
   ADR 046 (replay journal, `dm-eval`), ADR 014 (roll router — stays separate either way); lessons
   `mandatory-decisions-need-a-separate-classifier`, `one-variable-per-live-run`,
-  `parity-by-construction`. No decision row yet.
+  `parity-by-construction`. Decision row **D143**.
 
 ## Context
 
@@ -98,8 +99,73 @@ there is prompt-evaluation time, unmeasured.
 
 ## Decision
 
-Not taken. **Recommendation: option C now, option B as the prepared next step, option A not
-without replay evidence.** Reasons under "Recommendation" below.
+**Option B, 2026-11-14 (D143).** The draft's trigger for B was "measured aux tokens that are a
+larger share of the turn than estimated here". The Phase-11 evening of 2026-11-14 measured them
+(33 turns, `[aux]` lines in `logs/debug-d1.log`):
+
+| call (`fields=`) | calls | input tokens per call | of it cache | spawn |
+|---|---|---|---|---|
+| scene `ziel` | 33 | 2189 | 740 | 719 ms |
+| fact `art,sache,an,von` | 33 | 2079 | 985 | 720 ms |
+| presence `npcs` | 33 | 2451 | 1317 | 718 ms |
+| roll router `needs_test,skill,difficulty` | 29 | 2020 | 1197 | 680 ms |
+
+All 128 aux calls: about 8500 input tokens per turn; scene + fact + presence about 6700 per
+turn — well above the 3800–4900 estimated above. No usage limit was reached that evening.
+
+What was built (as option B describes; the roll router stays its own call):
+
+- **`dmbot/llm/post_turn.py`** — one prompt with the three questions under their own headings,
+  built from the separate classifiers' own question builders (`scene_question`,
+  `fact_question`, `npc_question`, split out of the existing system prompts, which stay
+  byte-identical); one schema with the three schemas side by side, so the `[aux]` line reads
+  `fields=ziel,art,sache,an,von,npcs` (fewer when a layer sits out); each part through its own
+  validator. The context (previous narration, player lines) rides only when the scene is asked
+  and is marked as Frage 1's alone. Sampling pinned, output cap = the three caps added up,
+  one 20 s timeout. A combined call needs at least two questions.
+- **The hook `dmbot.llm.post_turn_combined`** (the `recap_cap` pattern), asked by the brain per
+  turn: `True` only on `DM_LLM_BACKEND=claude` with `DM_AUX_COMBINED=1` while the failover pair
+  would try Claude. Ollama, a pause and `!backend ollama` keep the three separate calls,
+  unchanged. Known gap, as with the recap cap: the one call during which Claude fails reaches
+  the fallback as issued (combined).
+- **Fallback in the same turn, logged:** a failed, timed-out, empty or unparseable combined
+  answer asks every question separately; a missing or wrong-shaped part asks that part. A
+  validator's own discard (an exit not offered, prose instead of a label) is a verdict, not a
+  malformed part.
+- **Journal shape as above:** the three notes keep their shape, their `raw` is each question's
+  own part; one `post_turn` note holds the whole answer, the questions it carried, its failure
+  and the questions asked separately after it. Notes are now copied only for the layers asked
+  that turn.
+- **Replay parity tool** (step 4): `python -m dmbot.tools.aux_parity --journal … --cases
+  tests/aux_parity/log_positives.jsonl [--live]`. Questions come from the runtime's own
+  builder; verdicts are compared as scene target, commitment kind and the people named (as the
+  card person code identifies them, else `*`).
+
+**Parity pass, 2026-11-14 — one pass on Haiku, not the three of step 4.** 35 turns (26 journal
+turns of 2026-11-14 with post-turn notes + 9 log positives: 3 moves, 2 commitments, 5 turns
+with sightings incl. the D138 people, and the 2026-11-14 sighting whose note was overwritten),
+140 calls, concurrency 3. Result: **95 of 105 verdicts agree, no new positive on an empty turn,
+but the parity does not hold:**
+
+- 2 combined calls hit the 20 s timeout (`log-0155`, `history.debug#22`) — both turns with
+  sightings; the separate calls of the same turns answered. In the bot the fallback would have
+  asked separately, 20 s late.
+- 5 positives decided differently: `log-2056` scene — combined `schrein` (= the recorded move),
+  separate `nein`; `log-0159` presence — combined names the newcomer as Bree Marlok (what D138
+  wants), separate an unidentified person; `d1-1921` presence — combined "nobody new" for a
+  man already registered the turn before, separate an unidentified newcomer; `history.debug#4`
+  fact — separate `quest` (a file to look into), combined and the recording `nichts`.
+- Combined answers left `sache` empty on `nichts` (the shorter output the draft named as a
+  lever).
+
+Several differences go the combined call's way, but Haiku's verdicts vary between runs and one
+pass cannot separate that from the merge. **So `DM_AUX_COMBINED` defaults to `0`:** the code is
+in, Ollama and the default Claude evening are unchanged. Before the flag goes to `1`: the timeout
+(a larger budget for the combined call, or a look at why those two took longer than 20 s),
+then the three-run replay of step 4, then the live run of step 5.
+
+*Superseded:* the draft's recommendation ("C now, B when a run shows the cost") — the run showed
+the cost. The original text stays below.
 
 ## Alternatives
 
@@ -200,8 +266,15 @@ remain open, each a small decision of its own:
 - Seen while reading the journal: 4 of the 25 turn records of 2026-11-13 carry none of the three
   notes, though the log shows three verdicts for every boundary. Cause not examined here. A
   replay category built on these notes inherits that gap.
+- *Cause seen 2026-11-14 while building the parity tool (not fixed):* replay notes are kept per
+  channel until the turn's autosave drains them. When the next turn starts before that (a roll
+  turn right behind a narrated one), its notes — `state_before` and the post-turn verdicts —
+  overwrite the first turn's, and the record after gets none. Journal record 24 of 2026-11-14
+  carries the next turn's `state_before` and an empty presence note, while the log shows
+  `npcs → Kettenmann` for it. The parity tool therefore treats the recorded column as
+  information only; that case is written into the case file from the log.
 
-## Recommendation
+## Recommendation (draft of 2026-11-13 — superseded by the Decision above)
 
 **C now.** The saving is real but small where it counts: 1400–1600 Haiku input tokens per turn
 (6–7 % of the turn), two of five spawns, no time. Nothing in the logs shows the cost it would

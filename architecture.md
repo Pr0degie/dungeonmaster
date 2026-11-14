@@ -407,7 +407,9 @@ importance −1, no re-gossip). While an NPC is in the current scene, its top-K 
 
 > **Who is here (ADR 062).** An NPC counts as present in a scene when it is alive and either on
 > the scene card's `npcs_here` or was last seen there (`Combatant.scene`). A post-turn presence
-> classifier (aux tier, same `gather` as the scene and fact classifiers, `DM_NPC_ROUTER=1`,
+> classifier (aux tier, on the same turn boundary as the scene and fact classifiers — one
+> `gather` of three calls, or one combined call on Claude with `DM_AUX_COMBINED=1` (ADR 066 B,
+> see §10) — `DM_NPC_ROUTER=1`,
 > `!automatik nscs`) lists who newly appears in person — including people the DM improvised — and
 > code places them: a known NPC moves, a new one is registered with its adventure statblock or the
 > profile's `combat.improvised_npc` numbers. The prompt's "NSCs in der Szene" line, the NPC-memory
@@ -667,6 +669,18 @@ the replay harness do not know which one answers.
 - **Structured output is a tool call**, not a constrained decode: schema calls get three turns
   and a floor of 1024 output tokens, and a verdict that does not arrive is a lost verdict
   (callers fail open), not a backend failure.
+- **The post-turn classifiers can share one call (ADR 066 B).** After a turn the scene, fact
+  and presence questions are three schema calls — three CLI starts, the answer sent three times
+  (about 6,700 Haiku input tokens per turn, measured 2026-11-14). With `DM_AUX_COMBINED=1` they
+  go out as **one** call while Claude would answer (`dmbot.llm.post_turn_combined`, the
+  `recap_cap` pattern — no call site names a backend): one prompt built from the three separate
+  question builders, one schema with the three schemas side by side (`[aux] fields=ziel,art,
+  sache,an,von,npcs`), each part checked by its own validator and journalled in its own note
+  (plus one `post_turn` note with the whole answer). A failed, empty or unparseable combined
+  answer asks every question separately in the same turn; a missing part asks that part. Ollama,
+  a pause and `!backend ollama` keep the three separate calls. Parity is checked offline with
+  `python -m dmbot.tools.aux_parity` (recorded turns, both ways); the flag defaults to `0`
+  until that parity holds (first pass 2026-11-14: two combined timeouts, ADR 066).
 - **Isolation.** Empty working directory, no settings, skills, plugins, MCP servers or session
   file — otherwise the CLI would load this repo's `CLAUDE.md` into the DM's context.
 - **Stats.** Narration and schema calls report into separate slots (`last_stats` /
