@@ -87,11 +87,12 @@ def _find_claude_cli(cli_path: str) -> str | None:
     return shutil.which("claude")
 
 
-async def _claude_ping(config, model: str, timeout: float) -> None:
+async def _claude_ping(config, model: str, timeout: float) -> str:
     """One minimal call on ``model``, through the real client — so the ping exercises the same
     options (isolation, system-prompt file) every DM turn will use. Sent as a prose call on a
     client whose narration model is ``model``: a schema call would cost the aux tier a tool
-    round trip just to say OK."""
+    round trip just to say OK. Returns the model id the answer came from ("" if the CLI did
+    not name one): ``model`` is usually an alias, and what it points at changes over time."""
     from .claude_client import ClaudeClient
     from .failover import PING_MESSAGES, PING_OPTIONS, PING_SYSTEM  # the pause probe is this ping
 
@@ -107,12 +108,13 @@ async def _claude_ping(config, model: str, timeout: float) -> None:
     )
     try:
         await client.chat(PING_SYSTEM, list(PING_MESSAGES), options=dict(PING_OPTIONS))
+        return (client.last_stats or {}).get("resolved_model") or ""
     finally:
         await client.aclose()
 
 
-async def _claude_pings(config, timeout: float) -> list[tuple[str, str, BaseException | None]]:
-    """Ping both tiers side by side → ``[(tier, model, failure or None), …]``. Both, because a
+async def _claude_pings(config, timeout: float) -> list[tuple[str, str, BaseException | None, str]]:
+    """Ping both tiers side by side → ``[(tier, model, failure or None, resolved id), …]``. Both, because a
     mistyped ``CLAUDE_MODEL_NARRATION`` passes an aux-only ping and then fails the first turn of
     the evening. One ping when both tiers name the same model."""
     tiers = [("narration", config.claude_model_narration), ("aux", config.claude_model_aux)]
@@ -120,8 +122,12 @@ async def _claude_pings(config, timeout: float) -> list[tuple[str, str, BaseExce
     outcomes = await asyncio.gather(
         *(_claude_ping(config, model, timeout) for model in models), return_exceptions=True
     )
-    failure = dict(zip(models, outcomes))
-    return [(tier, model, failure[model]) for tier, model in tiers]
+    outcome = dict(zip(models, outcomes))
+    return [
+        (tier, model, None, outcome[model]) if isinstance(outcome[model], str)
+        else (tier, model, outcome[model], "")
+        for tier, model in tiers
+    ]
 
 
 def check_claude(config, *, timeout: float = 60.0) -> bool:
@@ -131,7 +137,8 @@ def check_claude(config, *, timeout: float = 60.0) -> bool:
     unless ``CLAUDE_ALLOW_API_KEY=1`` (the CLI ranks the key above the subscription login and would
     bill the API silently); (2) the CLI is found and runs; (3) a minimal call completes on the
     narration model and on the aux model, i.e. the login works and both names are valid. The
-    boot line names both outcomes. On False the bot still starts — the first DM turn then pauses the
+    boot line names both outcomes and, where the CLI reports it, the model id each alias
+    resolved to (``opus`` moves; two runs weeks apart are only comparable with the id). On False the bot still starts — the first DM turn then pauses the
     game or is answered from Ollama (``DM_LLM_ON_FAILURE``), and this message is why; each message
     says which. Call it before the bot's event loop starts (it runs its own for the ping).
     """
@@ -178,11 +185,14 @@ def check_claude(config, *, timeout: float = 60.0) -> bool:
     try:
         pings = asyncio.run(_claude_pings(config, timeout))
     except Exception as exc:  # noqa: BLE001 — a preflight must not break boot
-        pings = [("narration", config.claude_model_narration, exc), ("aux", config.claude_model_aux, exc)]
+        pings = [("narration", config.claude_model_narration, exc, ""),
+                 ("aux", config.claude_model_aux, exc, "")]
     outcome = " · ".join(
-        f"{tier} {model}: {'OK' if failure is None else 'FAILED'}" for tier, model, failure in pings
+        f"{tier} {model}{f' ({resolved})' if resolved and resolved != model else ''}: "
+        f"{'OK' if failure is None else 'FAILED'}"
+        for tier, model, failure, resolved in pings
     )
-    failures = [(tier, model, failure) for tier, model, failure in pings if failure is not None]
+    failures = [(tier, model, failure) for tier, model, failure, _ in pings if failure is not None]
     if failures:
         causes = "; ".join(dict.fromkeys(f"{model}: {failure}" for _, model, failure in failures))
         if len(failures) == len(pings):

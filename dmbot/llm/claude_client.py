@@ -184,6 +184,7 @@ class _Call:
     cap: int | None
     narration: bool
     started: float
+    resolved_model: str = ""  # the id the answer came from — ``model`` may be an alias ("opus")
     spawn_ms: int | None = None
     texts: list[str] = field(default_factory=list)
     deltas: list[str] = field(default_factory=list)  # the same text, as it streamed in
@@ -389,6 +390,8 @@ class ClaudeClient:
                         # The text of such a message is the CLI's "API Error: …" prose — it must
                         # never reach the table as narration.
                         raise LLMBackendError(f"Claude answered with an error ({message.error})")
+                    if message.model:
+                        call.resolved_model = message.model
                     call.texts.extend(
                         block.text for block in message.content if isinstance(block, sdk.TextBlock)
                     )
@@ -503,6 +506,7 @@ class ClaudeClient:
             "spawn_ms": call.spawn_ms,
             "api_ms": result.duration_api_ms if result is not None else None,
             "model": call.model,
+            "resolved_model": call.resolved_model,
             "truncated": truncated,
         }
 

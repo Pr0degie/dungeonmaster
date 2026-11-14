@@ -64,6 +64,9 @@ embeddings and as the fallback.
   the turn's ✂ line names how many characters fell away.
 - Stats: separate slots for prose and schema calls; the boot ping checks both models. Since
   2026-11-13 (third amendment) every schema call also logs one `[aux]` line with its own tokens.
+  Since 2026-11-14 the boot line names the model id each alias resolved to
+  (`narration opus (claude-opus-5-5): OK`), read from the ping's answer; `last_stats` carries it
+  as `resolved_model`.
 - Since 2026-11-14 (fifth amendment): a DM turn sends only persona + recap as the system prompt;
   scene card, state, NPC memory, RAG and alias hint open the user prompt, same text and order —
   the prompt cache now hits on that head. `[latency]` carries `cache_w=` (tokens written).

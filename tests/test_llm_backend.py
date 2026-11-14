@@ -124,9 +124,11 @@ class _Ping:
     """Fake ``claude_agent_sdk.query`` for the preflight pings. ``failure`` is raised for every
     model, or only for the ones in ``failing``."""
 
-    def __init__(self, failure: BaseException | None = None, failing: tuple[str, ...] = ()) -> None:
+    def __init__(self, failure: BaseException | None = None, failing: tuple[str, ...] = (),
+                 resolved: dict[str, str] | None = None) -> None:
         self.failure = failure
         self.failing = failing
+        self.resolved = resolved or {}  # alias → the model id the CLI answers under
         self.options: list = []
 
     def __call__(self, *, prompt, options=None, transport=None):
@@ -136,6 +138,8 @@ class _Ping:
     async def _messages(self, model):
         if self.failure is not None and (not self.failing or model in self.failing):
             raise self.failure
+        if model in self.resolved:
+            yield sdk.AssistantMessage(content=[sdk.TextBlock(text="OK")], model=self.resolved[model])
         yield sdk.ResultMessage(subtype="success", duration_ms=1, duration_api_ms=1, is_error=False,
                                 num_turns=1, session_id="s", result="OK", stop_reason="end_turn",
                                 usage={"input_tokens": 5, "output_tokens": 1})
@@ -164,6 +168,16 @@ def test_preflight_ok_pings_both_tiers_and_names_both_results(cli, caplog):
         assert options.env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == str(8 + _THINKING_HEADROOM)
         assert options.tools == [] and options.setting_sources == []
         assert options.output_format is None  # a prose ping, no tool round trip
+
+
+def test_preflight_names_the_model_each_alias_resolved_to(cli, monkeypatch, caplog):
+    """``opus`` is an alias that moves. Two runs weeks apart can only be compared if the boot
+    line says which model answered (docs/plans/textvergleich-2026-11-14.md)."""
+    monkeypatch.setattr(sdk, "query", _Ping(resolved={"opus": "claude-opus-5-5", "haiku": "claude-haiku-5-5"}))
+    with caplog.at_level(logging.INFO, logger="dmbot.llm.preflight"):
+        assert preflight.check_claude(_preflight_config()) is True
+    assert ("Claude preflight OK — narration opus (claude-opus-5-5): OK · "
+            "aux haiku (claude-haiku-5-5): OK") in caplog.text
 
 
 def test_preflight_catches_a_wrong_narration_model_at_boot(cli, monkeypatch, caplog):
