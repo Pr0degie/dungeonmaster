@@ -17,6 +17,7 @@ from dmbot.orchestrator import (
     _sanitize,
     _strip_leading_label,
     finalize_answer,
+    finalize_answer_markers,
 )
 from dmbot.rules import profile as profile_mod
 
@@ -191,6 +192,38 @@ def test_sanitize_strips_trailing_action_prompt() -> None:
     # a real mid-scene question and an NPC's question survive — only the generic closer goes
     assert _sanitize("Ihr hört einen Schrei. Was war das? Was tut ihr?") == "Ihr hört einen Schrei. Was war das?"
     assert _sanitize('Der Wächter fragt: "Wer seid ihr?"') == 'Der Wächter fragt: "Wer seid ihr?"'
+
+
+# The answer of 2026-11-14, 19:29:29 (logs/debug-d1.log), lead shortened. The closer filter cut
+# ", was tust du?" off its last sentence and the sentence trim then dropped the whole sentence:
+# the narrator's hand-over to the second player never reached the table.
+_HANDOVER = (
+    "Vosk kaut auf der Unterlippe, und der Haken in seiner Hand zittert kaum merklich. "
+    "<<TEST Überreden Schwierig für Fridolin>>\n\n"
+    "Und du, Rektalus, der Schläger am Ufer lässt dich keinen Herzschlag lang aus den Augen und "
+    "lockert schon die Kette an seinem Gürtel, was tust du?"
+)
+
+
+def test_a_question_that_addresses_a_player_inside_a_sentence_is_not_the_closer() -> None:
+    assert _sanitize(_HANDOVER) == _HANDOVER
+    answer, _markers = finalize_answer_markers(_HANDOVER, [], None)
+    assert answer.endswith("lockert schon die Kette an seinem Gürtel, was tust du?")
+
+
+def test_the_closer_is_only_the_bare_sentence_without_address_or_content() -> None:
+    # its own sentence, but it names someone or says what the question is about — that is narration
+    assert _sanitize("Die Tür fällt zu. Was tust du, Rektalus?") == "Die Tür fällt zu. Was tust du, Rektalus?"
+    with_content = "Kaad wartet. Was tust du, während Fridolin die Tür erreicht?"
+    assert _sanitize(with_content) == with_content
+    assert _sanitize("Der Haken hebt sich. Was tut ihr gegen den Servitor?") == (
+        "Der Haken hebt sich. Was tut ihr gegen den Servitor?"
+    )
+    # the bare closer still goes, also behind a marker and with a filler word
+    assert _sanitize("Bree wartet. <<TEST Überreden für Fridolin>>\n\nWas tut ihr?") == (
+        "Bree wartet. <<TEST Überreden für Fridolin>>"
+    )
+    assert _sanitize("Die Tür fällt zu. Was tut ihr nun?") == "Die Tür fällt zu."
 
 
 def test_redo_reruns_last_turn_without_stacking_history() -> None:

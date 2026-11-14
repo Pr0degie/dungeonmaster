@@ -51,11 +51,16 @@ _META_PAREN = re.compile(
     re.IGNORECASE,
 )
 # nemo ends almost every turn with a generic "Was tut ihr?" / "Was tust du?" prompt despite the
-# persona asking it not to. Strip a *trailing* generic action-prompt question (a real mid-scene
-# question or an NPC's question doesn't match these verbs and survives).
+# persona asking it not to. Strip that *trailing* closer — and only the bare one: a sentence of
+# its own (it follows a sentence end, a marker or a line break, never a comma), made of the
+# question and at most a filler word. A question that names someone or says what it is about
+# ("… lockert schon die Kette an seinem Gürtel, was tust du?", "Was tust du, Rektalus?") is the
+# narrator handing the scene to a player, and stays. The rule reads the text, not the backend.
 _TRAILING_PROMPT = re.compile(
-    r"\s*Was\s+(?:tust\s+du|tut\s+ihr|macht\s+ihr|unternehmt\s+ihr|"
-    r"(?:möchtet|wollt|werdet)\s+ihr(?:\s+tun)?)\b[^?]*\?\s*$",
+    r"(?:(?<=[.!?…“”\"»)\]>])\s+|(?<=\n)\s*|^\s*)"
+    r"Was\s+(?:tust\s+du|tut\s+ihr|macht\s+ihr|unternehmt\s+ihr|"
+    r"(?:möchtet|wollt|werdet)\s+ihr)"
+    r"(?:\s+(?:jetzt|nun|als\s+nächstes|daraufhin|tun))*\s*\?\s*$",
     re.IGNORECASE,
 )
 # Small models sometimes break the fiction to "correct themselves" out loud — they narrate, then
@@ -339,8 +344,9 @@ def _unwrap_enclosing_quotes(text: str) -> str:
 
 def _strip_trailing_prompt(text: str) -> str:
     """Drop a trailing generic "Was tut ihr?"/"Was tust du?" closing question — nemo tacks one on
-    almost every turn despite the persona. Only the *trailing* generic form goes (a real mid-scene
-    or NPC question survives), and never strips the answer down to nothing."""
+    almost every turn despite the persona. Only the *trailing*, bare form goes (a mid-scene or NPC
+    question survives, and so does one that addresses a player or carries content), and never
+    strips the answer down to nothing."""
     stripped = _TRAILING_PROMPT.sub("", text).strip()
     return stripped or text
 
