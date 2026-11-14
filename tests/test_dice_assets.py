@@ -18,6 +18,7 @@ from PIL import Image, ImageSequence
 from dmbot import dice_assets, dice_images
 from dmbot.dice_assets import DiceAssetStore, asset_name
 from dmbot.discord_ui.dice import DICE_FILENAME
+from dmbot.llm.roll_router import MarkerRepeats
 from dmbot.rules.profile import load
 from dmbot.voice import dicecog
 from dmbot.voice.dicecog import DiceCog
@@ -206,6 +207,7 @@ def _cog(monkeypatch, tmp_path, *, link: str | None):
     cog._rt = rt
     cog._presentations = set()
     cog._upload_lead_s = 1.0
+    cog._repeats = MarkerRepeats()
     cog._assets = SimpleNamespace(url=lambda guild, seed, palette: link)
     return cog, slept
 
