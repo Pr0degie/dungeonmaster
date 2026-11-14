@@ -447,7 +447,14 @@ _Aus `progress.md` rotiert (2026-07-11, Roadmap-Tabellen/Skill-Sweep-Runde):_
 
 **Doc-Diet-Runde: State header + progress.md-Diät (2026-07-11, Workflow-Migration Runde 2/5). Doc-only, Suite 689 grün als Tripwire, KEIN neues Live-Gate.**
 Für den Spieltisch ändert sich nichts — die Runde macht den Session-Start billiger: `progress.md` trägt jetzt einen **`## State header`** (≤ 25 Zeilen, die einzige Pflicht-Lektüre aus dieser Datei laut CLAUDE.md-Ritual).
-- **Rotation:** `## Current focus` auf die 2 neuesten Blöcke (D98/D97) gekürzt; die Blöcke D82–D96 und D74-und-älter (bis Phase 9) verbatim per Slice-Skript ins Archiv (`## Current focus (Verlauf)`, chronologisch einsortiert).
+- **Rotation:** `## Current focus` auf die 2 neuesten Blöcke (D98/D97) gekürzt; die Blöcke D82–D96 und D74-und-älter (bis Phase 9) verbatim per Slice-Skript ins Archiv (`## Current focus (Verlauf)
+
+_Aus `progress.md` rotiert (2026-11-14):_
+
+**Phase 11 — ein zweites LLM-Backend hinter einer Naht (D116/D117, ADR 061), code-komplett.** Der DM kann statt Mistral Nemo Claude sprechen lassen (Opus erzählt, Haiku übernimmt die Klassifikatoren), über Tobis eigenes Abo und ohne API-Key; fällt Claude aus, antwortet Nemo weiter und im Chat steht genau eine ⚠-Zeile. Mit `DM_LLM_BACKEND=ollama` (Default) ist es der Bot von vorher.
+Belegt: 1192 Tests grün (1090 alte unverändert, 102 neue), `dm-eval` Exit 0, Lint sauber. Live auf dieser Maschine: der Boot-Preflight meldet Opus und Haiku in 2,9 s als erreichbar und einen falschen Modellnamen mit Knopfnamen; ein Haiku-Smoke lieferte Text, Schema-Antwort, Stream mit Verlauf und einen sauberen Schnitt an der Ausgabegrenze.
+Ein unabhängiger Verifier hat den ganzen Diff gegen ADR 061 und die Golden Rules gelesen. Sieben Funde sind behoben, acht bewusst zurückgestellt; beides steht im ADR, letzter Nachtrag.
+Nicht verifiziert: Opus mit vollem Systemprompt, ein ganzer Zug mit Stimme, alles am Tisch. Das ist der Abend.`, chronologisch einsortiert).
 - **Decision-Log-Diät:** alle 55 langen Zeilen mit `→ ADR`-Link auf „was + Ein-Satz-Warum + → ADR NNN" gekürzt; Zeilen-Detail, das der ADR nicht schon hielt, vorher als append-only **„Addendum — detail preserved from decision log D#"**-Sektionen in 27 ADRs gerettet (~30 Addenda). Zeilen ohne ADR-Link (26 Stück) bewusst unangetastet (exempt — ihre Rationale hat kein anderes Zuhause).
 - **Verifiziert (moved ≠ deleted):** 3 read-only-Audit-Pässe — Rotation byte-identisch (Archiv nur Einfügungen), Detail-Erhalt aller 55 Zeilen (ein Fund: `skill_value`-Mechanik von D61 #9 → in ADR 030 nachgetragen), Struktur-Sweep (ADR-Diffs append-only, exempt-Zeilen byte-identisch, D-Nummern-Menge unverändert). Suite 689 grün.
 - **Stand:** progress.md 854 → 579 Zeilen (~52k → ~30k Tokens); über dem 400-Zeilen-Ziel bleiben das lebende Live-Run-Drehbuch in `## Next concrete step` + die exempt No-ADR-Zeilen (laut Regel akzeptiert — Token-Bulk war der Hebel). Alte Open Question „Aufräum-Pass progress.md" (D82–84) damit ✅ (Volltext im Archiv).

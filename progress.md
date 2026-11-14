@@ -27,10 +27,9 @@ is on-demand._
 
 ## Current focus
 
-**Phase 11 — ein zweites LLM-Backend hinter einer Naht (D116/D117, ADR 061), code-komplett.** Der DM kann statt Mistral Nemo Claude sprechen lassen (Opus erzählt, Haiku übernimmt die Klassifikatoren), über Tobis eigenes Abo und ohne API-Key; fällt Claude aus, antwortet Nemo weiter und im Chat steht genau eine ⚠-Zeile. Mit `DM_LLM_BACKEND=ollama` (Default) ist es der Bot von vorher.
-Belegt: 1192 Tests grün (1090 alte unverändert, 102 neue), `dm-eval` Exit 0, Lint sauber. Live auf dieser Maschine: der Boot-Preflight meldet Opus und Haiku in 2,9 s als erreichbar und einen falschen Modellnamen mit Knopfnamen; ein Haiku-Smoke lieferte Text, Schema-Antwort, Stream mit Verlauf und einen sauberen Schnitt an der Ausgabegrenze.
-Ein unabhängiger Verifier hat den ganzen Diff gegen ADR 061 und die Golden Rules gelesen. Sieben Funde sind behoben, acht bewusst zurückgestellt; beides steht im ADR, letzter Nachtrag.
-Nicht verifiziert: Opus mit vollem Systemprompt, ein ganzer Zug mit Stimme, alles am Tisch. Das ist der Abend.
+**Phase 11 — Claude als Erzähler (ADR 061), code-komplett; Live-Gate offen.** Opus erzählt, Haiku klassifiziert,
+über Tobis Abo; fällt Claude aus, pausiert das Spiel (D139). Erster Abend am 14.11. gespielt, die Folgerunde
+D140–D144 wartet auf ihren Lauf (Prüfliste F1–F10 im Beipackzettel).
 
 _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Current focus (Verlauf)`._
 
