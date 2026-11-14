@@ -176,8 +176,10 @@ Ollama ──► answer text, STREAMED as deltas (narration only; a roll is dete
    │            │
    │            └─► roll-detection router (default): a constrained-JSON call fired at
    │                generation-end, CONCURRENT with playback, classifies the action → dice
-   │                button (appears while the DM still speaks). Router wins the dedupe;
-   │                inline <<TEST>> marker = fallback only when the router is off (D43).
+   │                button (appears while the DM still speaks). On Ollama the router wins
+   │                the dedupe (D43); on a Claude-narrated turn a valid inline <<TEST>>
+   │                marker wins and the router is the fallback (D140); a repeated marker
+   │                is honoured on both. Router off: the marker alone.
    │                rules/ rolls per the profile + SL ──► result feeds back into the next
    │                prompt, with an explicit narrate-the-consequence directive + echo guard
    │                (ADR 014, timing D40, dedupe/echo ADR 018)
@@ -596,6 +598,16 @@ the narration context.
 > the model's inline `<<TEST>>` requests are stripped from the text and *discarded*
 > (`roll_button_source`): the constrained classifier picks reliable skills, the narration model
 > doesn't (seen live: `<<TEST Heimlichkeit>>` for an attack). Exactly one button per action.
+> **On Claude the marker decides (D140/ADR 018 amendment 2026-11-14):** when Claude narrated the
+> turn (`marker_decides` reads the failover's stats, so a Nemo fallback turn keeps D43), a valid
+> marker — character on the sheet, skill on that sheet, difficulty on the profile ladder or an
+> alias — is what gets rolled; the router classifies only when there is no marker, or the
+> speakers whose marker was invalid. **Safety net, both backends:** a marker repeated for the same
+> character + skill in consecutive turns with no roll in between is honoured where the router
+> posted nothing for that character (`MarkerRepeats`) — the narration model is otherwise stuck
+> re-narrating a moment that waits for a roll. A Manifest request covers the psyker's action on
+> every path. The router picks the difficulty from the situation (the middle only when nothing
+> points easier or harder).
 
 **Fallback (inline marker, only when the router is off):** with `DM_ROLL_ROUTER=0` an emitted
 marker, e.g. `<<TEST Wahrnehmung Schwer für Tobi>>`, posts the button. The orchestrator

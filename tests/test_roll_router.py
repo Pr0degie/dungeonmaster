@@ -94,9 +94,12 @@ def test_other_characters_are_not_superseded():
     assert not superseded_by_manifest(None, manifesting={"fridolin feuchtgebietheld"})
 
 
-def test_the_classifier_defaults_to_the_middle_difficulty():
+def test_the_classifier_picks_the_difficulty_from_the_situation():
     """Live 2026-10-25: "Ich schieße ihm ins Gesicht" (gun already at his head) came back
-    Fernkampf *Schwierig* with no reason in the action — the prompt now pins the default."""
+    Fernkampf *Schwierig* with no reason in the action — harder still needs a named disadvantage.
+    Live 2026-11-14 (D140): a pinned "Standard ist die mittlere" made every verdict of the evening
+    Herausfordernd — the middle now only when nothing in the action points easier or harder."""
     sys = classifier_system(["Fernkampf"], ["Leicht", "Herausfordernd", "Schwierig"], "IM")
-    assert "Standard ist die mittlere" in sys and "Im Zweifel die mittlere" in sys
-    assert "nächster Nähe" in sys
+    assert "Standard ist die mittlere" not in sys
+    assert "nach der Lage" in sys and "Die mittlere nur, wenn nichts" in sys
+    assert "schwerer nur bei einem klaren Nachteil" in sys and "nächster Nähe" in sys

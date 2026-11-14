@@ -94,3 +94,47 @@ regardless of turn length. The praised sessions ran at 220. ADR 016's *determini
   combat-skill button (not Heimlichkeit); `history.jsonl` pairs line up after dice clicks during
   playback; `!join` names the party and warns on the example fallback; a cold-start greeting
   survives past 120 s.
+
+## Amendment (2026-11-14) — on Claude the narration marker decides, the router is the fallback (D140)
+
+Router-wins was decided for a 12B narrator that picked `<<TEST Heimlichkeit>>` for an attack.
+The Claude evening of 2026-11-14 showed the other side: Opus wrote
+`<<TEST Überreden Schwierig für Fridolin>>` nine turns running (19:25–19:31), each one was
+discarded, the router said "no test" (once Nahkampf for a bribe), and Opus re-narrated the
+undecided moment waiting for a roll that never came — the table said the story did not move.
+At 19:08 Opus asked Überreden *Leicht* (target 82), the router rolled *Herausfordernd* (42),
+72 failed. Every router verdict that evening was Herausfordernd: its prompt pinned "Standard
+ist die mittlere/herausfordernde" (added after a Schwierig without reason on 2026-10-25).
+
+Decided:
+
+- **On a Claude-narrated turn a valid marker decides.** Its skill, difficulty (or `±N`) and
+  character are what the engine rolls; the router is not asked. "Claude-narrated" is read from
+  the turn's stats (`marker_decides(brain.last_llm_stats)`: the failover names the side that
+  answered the prose call), not from `DM_LLM_BACKEND` — a Nemo turn under `fallback` or
+  `!backend ollama` keeps router-wins. No call site names a model.
+- **Valid** = the marker parsed, names a character on the party sheet, the skill (or a
+  same-named characteristic) is on that sheet, and the difficulty resolves through the profile's
+  `difficulty_ladder` / `difficulty_aliases`. An unknown difficulty word stays glued to the
+  skill in the marker grammar, so it fails as "skill not on the sheet". An **invalid** marker is
+  logged and the router classifies that turn's speakers whom no valid marker covers. No marker
+  at all: the router decides, as before.
+- **On Ollama the router wins as before** — with one safety net on both backends: when the
+  narration model repeats a marker for the same character + skill in consecutive turns with no
+  roll in between (`MarkerRepeats`, per channel; any dice or Manifest button press resets it),
+  the second one is honoured where the router posted no button for that character. One button
+  per action stays: a router test for that character beats the repeated marker.
+- **A Manifest still covers the psyker's action** on every path (marker, router, safety net):
+  no second test for a character with a Manifest request this turn.
+- **The router chooses the difficulty from the situation:** easier on an advantage, harder only
+  on a disadvantage the action names, the middle only when nothing points either way.
+- **Logging:** one 🎲 line per decision names its source — `🎲 Marker entscheidet: …`,
+  `🎲 Marker ungültig (…) — der Router entscheidet …`, `🎲 Sicherheitsnetz: …`, and the
+  router's existing lines (D43's "Inline-Marker verworfen" now only on the router path).
+
+Rejected: marker wins on Ollama too — Nemo's skill choices are what D43 was about. Trusting the
+config instead of the stats — a fallback turn would let Nemo's markers win. Running the router
+in parallel and posting both — two buttons for one action.
+
+Live-unverified: whether Opus's markers land on the right skills often enough, and whether the
+classifier's difficulty spreads beyond Herausfordernd with the new prompt.

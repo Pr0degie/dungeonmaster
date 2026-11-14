@@ -22,7 +22,10 @@ from ..dice_images import (
     prepare_throw_async,
     roll_image_value,
 )
-from ..llm.roll_router import is_continuation_fragment, roll_button_source, superseded_by_manifest
+from ..llm.roll_router import (
+    MarkerRepeats, is_continuation_fragment, marker_decides, marker_key, roll_button_source,
+    superseded_by_manifest,
+)
 from ..discord_ui.dice import (
     DiceTestView, result_embed, result_picture, target_embed, target_text, throw_embed, throw_link_embed,
 )
@@ -58,6 +61,8 @@ class DiceCog(commands.Cog):
         # (cid, name) pairs already warned about an untracked party psyker — keep it one-time so the
         # channel isn't spammed every Manifest Test.
         self._warp_untracked_warned: set[tuple[int, str]] = set()
+        # The repeat safety net (D140): marker requests the previous turn left unrolled, per channel.
+        self._repeats = MarkerRepeats()
         # Running throw animations (cosmetic message edits) — referenced so they aren't collected.
         self._presentations: set[asyncio.Task] = set()
         # Throw GIFs stored once in Discord (ADR 064); None = upload per roll.
@@ -75,26 +80,110 @@ class DiceCog(commands.Cog):
             self._spawn_presentation(self._assets.ensure(guild))
 
     async def _handle_dice(self, channel) -> None:
-        """Post the turn's dice button. The router wins when it's on (D43, flips D40's dedupe):
-        the model's inline ``<<TEST>>`` requests are drained and **discarded** — the constrained
-        classifier picks reliable skills, the narration model doesn't. Markers post only as the fallback when the router is off. Runs
-        concurrently with playback (D40) so the button appears while the DM still speaks."""
-        markers = self._rt._brain.take_pending_tests(self._rt._brain_channel(channel))
+        """Post the turn's dice button. With the router on, who decides depends on who narrated
+        (D140): on a Claude turn a valid inline ``<<TEST>>`` marker is rolled as written and the
+        router only classifies when there is no (valid) marker; on an Ollama turn the router wins
+        (D43) and the markers are discarded — except a marker repeated from the previous turn
+        with no roll in between, which the safety net honours. Markers post alone when the router
+        is off. Runs concurrently with playback (D40) so the button appears while the DM still speaks."""
+        cid = self._rt._brain_channel(channel)
+        markers = self._rt._brain.take_pending_tests(cid)
         # Psychic Manifest requests (ADR 022) are independent of the skill-roll router: each gets
         # a button so the engine rolls the Manifest Test + bookkeeps Warp Charge. Taken first so
-        # the router can drop a bare manifest-skill test for the same psyker.
-        manifests = self._rt._brain.take_pending_manifests(self._rt._brain_channel(channel))
+        # a test for the same psyker (router or marker) can be dropped — no double roll.
+        manifests = self._rt._brain.take_pending_manifests(cid)
         manifesting = self._manifesting(manifests)
         source = roll_button_source(self._rt._roll_router, len(markers))
         if source == "router":
-            if markers:
-                log.info("🎲 %d Inline-Marker verworfen — der Router entscheidet (D43)", len(markers))
-            await self._post_router_dice(channel, manifesting=manifesting)
+            if markers and marker_decides(self._rt._brain.last_llm_stats):
+                await self._markers_decide(channel, cid, markers, manifesting=manifesting)
+            else:
+                await self._router_decides(channel, cid, markers, manifesting=manifesting)
         elif source == "marker":
             for req in markers:
                 await self._post_dice_button(channel, req)
         for m in manifests:
             await self._post_manifest_button(channel, m)
+
+    def _check_marker(self, req: TestRequest) -> tuple[str | None, str | None]:
+        """``(character name, None)`` for a marker the engine can roll as written, else
+        ``(None, reason)``. Valid: parsed, a party character, the skill (or a same-named
+        characteristic) on that sheet, a difficulty the profile's ladder/aliases know. An unknown
+        difficulty word stays glued to the skill in the marker grammar, so it fails on the sheet."""
+        profile, store = self._rt._profile, self._rt._characters
+        if profile is None or store is None:
+            return None, "keine Party geladen"
+        if not req.parsed or not req.skill:
+            return None, "unlesbar"
+        if req.modifier is None and req.difficulty is not None \
+                and profile.difficulty_modifier(req.difficulty) is None:
+            return None, f"Schwierigkeit '{req.difficulty}' unbekannt"
+        char = store.get(req.target_name)
+        if char is None:
+            return None, f"Figur '{req.target_name or '—'}' unbekannt"
+        if store.skill_value(char, req.skill) is None:
+            return None, f"'{req.skill}' steht nicht auf dem Bogen von {char.name}"
+        return char.name, None
+
+    @staticmethod
+    def _difficulty_label(req: TestRequest) -> str:
+        if req.modifier is not None:
+            return f"{req.modifier:+d}"
+        return req.difficulty or "Standard"
+
+    async def _markers_decide(self, channel, cid: int, markers: list[TestRequest], *,
+                              manifesting: set[str]) -> None:
+        """Claude narrated (D140): each valid marker posts its own button. The router classifies
+        only the speakers whose marker was invalid — the speakers a valid marker covers, and
+        those the narrator asked nothing for, are left as the narrator decided."""
+        covered: set[str] = set()
+        posted: set[tuple[str, str]] = set()
+        invalid = False
+        for req in markers:
+            name, problem = self._check_marker(req)
+            if name is None:
+                log.info("🎲 Marker %s ungültig (%s) — der Router entscheidet diese Runde",
+                         req.raw, problem)
+                invalid = True
+                continue
+            covered.add(name.lower())
+            key = marker_key(name, req.skill)
+            if key in posted:
+                continue  # the same request twice in one turn: one button
+            if superseded_by_manifest(name, manifesting=manifesting):
+                log.info("🎲 Marker: %s — %s verworfen, die Manifestation deckt die Handlung ab",
+                         name, req.skill)
+                continue
+            posted.add(key)
+            log.info("🎲 Marker entscheidet: %s — %s (%s)", name, req.skill, self._difficulty_label(req))
+            await self._post_dice_button(channel, req)
+        if invalid:
+            await self._post_router_dice(channel, manifesting=manifesting, skip=covered)
+        self._repeats.turn(cid, set())  # the narrator's requests were honoured: nothing hangs
+
+    async def _router_decides(self, channel, cid: int, markers: list[TestRequest], *,
+                              manifesting: set[str]) -> None:
+        """Ollama narrated, or Claude asked nothing (D43): the router decides. The repeat safety
+        net (D140) then honours a valid marker the previous turn already asked for (same
+        character + skill, no roll in between) where the router posted nothing for that
+        character — the narrator is otherwise stuck re-narrating a moment that waits for a roll."""
+        decided = await self._post_router_dice(channel, manifesting=manifesting)
+        valid = [(req, name) for req in markers if (name := self._check_marker(req)[0]) is not None]
+        repeated = self._repeats.turn(cid, {marker_key(name, req.skill) for req, name in valid})
+        rescued = 0
+        for req, name in valid:
+            key = marker_key(name, req.skill)
+            if key not in repeated or name.lower() in decided \
+                    or superseded_by_manifest(name, manifesting=manifesting):
+                continue
+            repeated.discard(key)  # one button per request
+            rescued += 1
+            log.info("🎲 Sicherheitsnetz: %s — %s (%s) zum zweiten Mal angefordert, kein Wurf "
+                     "dazwischen → der Marker gilt", name, req.skill, self._difficulty_label(req))
+            await self._post_dice_button(channel, req)
+        if len(markers) > rescued:
+            log.info("🎲 %d Inline-Marker verworfen — der Router entscheidet (D43)",
+                     len(markers) - rescued)
 
     def _manifesting(self, manifests: list[ManifestRequest]) -> set[str]:
         """Lower-cased names of the characters a Manifest request this turn resolves to."""
@@ -115,11 +204,13 @@ class DiceCog(commands.Cog):
         rendered per soak mode (IM: tens digit). 0 if no profile/character/characteristic."""
         return combat.toughness_bonus(self._rt._profile, self._rt._characters, target)
 
-    async def _post_router_dice(self, channel, *, manifesting: set[str] | None = None) -> None:
+    async def _post_router_dice(self, channel, *, manifesting: set[str] | None = None,
+                                skip: set[str] | None = None) -> set[str]:
         """Roll-detection router (ADR 014): classify each player action of the turn in a separate
         constrained-JSON call and post a dice button per action that needs a test. Skips silently
         when there's no player action this turn (e.g. a post-roll narration) or no matching
-        character.
+        character, and the characters in ``skip`` (lower-cased; a valid marker decided theirs,
+        D140). Returns the lower-cased names the router posted a button for.
 
         One action per *speaker* (D111), so no declaration in a multi-speaker turn is lost. The character always
         comes from the speaker of the action, never from who presses the button, so a player may
@@ -130,14 +221,13 @@ class DiceCog(commands.Cog):
         cross-attribute the replay journal (ADR 046). This runs off the hot path while the DM is
         speaking, and multi-speaker turns are the minority.
         """
+        decided: set[str] = set()
         if self._rt._profile is None or self._rt._characters is None:
-            return
+            return decided
         actions = self._rt._brain.last_actions(self._rt._brain_channel(channel))
-        if not actions:
-            return
         for name, text in actions:
             char = self._rt._characters.get(name)
-            if char is None:
+            if char is None or (skip and char.name.lower() in skip):
                 continue
             if is_continuation_fragment(text):  # talk, not a declared action
                 log.info("🎲 router: %s — '%s' übersprungen (Satzfragment, keine Handlung)",
@@ -161,7 +251,9 @@ class DiceCog(commands.Cog):
             if req is not None:
                 log.info("🎲 router: %s — '%s' → %s (%s)",
                          char.name, text[:50], req.skill, req.difficulty or "Standard")
+                decided.add(char.name.lower())
                 await self._post_dice_button(channel, req)
+        return decided
 
     async def _post_dice_button(self, channel, req: TestRequest) -> None:
         """Resolve a test request (skill value + difficulty → target, all in code) and post its button."""
@@ -207,6 +299,7 @@ class DiceCog(commands.Cog):
 
         async def _roll(interaction: discord.Interaction) -> None:
             guild_id = channel.guild.id if channel.guild else None
+            self._repeats.rolled(self._rt._brain_channel(channel))  # a roll decides the moment (D140)
             result, line, face = self._roll_test_face(resolved, skill, who)
             log.info("%s", line)  # `line` already starts with 🎲 (describe_result_de)
             # The dice message can be replaced by the throw (a new message below it), so the
@@ -492,6 +585,7 @@ class DiceCog(commands.Cog):
         async def _roll(interaction: discord.Interaction) -> None:
             guild_id = channel.guild.id if channel.guild else None
             cid = self._rt._brain_channel(channel)
+            self._repeats.rolled(cid)  # a roll decides the moment (D140)
             state = self._rt._state.get(cid)
             combatant = state.find(who) if (state and who) else None
             test_result = None

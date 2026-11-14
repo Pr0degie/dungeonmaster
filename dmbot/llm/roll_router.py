@@ -50,10 +50,11 @@ def classifier_system(skills: list[str], difficulties: list[str], system_display
         "- KEINE Probe bei trivialen/sicheren Handlungen (gehen, eine offene Tür öffnen, normal reden) "
         "oder bei reinem Tischgespräch.\n"
         f"Fertigkeit nur aus dieser Liste: {skill_list}.\n"
-        f"Schwierigkeit nur aus: {diff_list}. Standard ist die mittlere/herausfordernde. "
-        "Schwerer nur bei einem klaren Nachteil, den die Handlung nennt (Dunkelheit, Deckung, große "
-        "Entfernung, Fesseln, Hast); leichter bei einem klaren Vorteil (aus nächster Nähe, wehrloses "
-        "oder überraschtes Ziel, gute Vorbereitung). Im Zweifel die mittlere.\n"
+        f"Schwierigkeit nur aus: {diff_list}. Wähle sie nach der Lage, die die Handlung nennt: "
+        "leichter bei einem Vorteil (aus nächster Nähe, wehrloses oder überraschtes Ziel, gute "
+        "Vorbereitung, ein williges Gegenüber); schwerer nur bei einem klaren Nachteil (Dunkelheit, "
+        "Deckung, große Entfernung, Fesseln, Hast). Die mittlere nur, wenn nichts leichter oder "
+        "schwerer macht.\n"
         "Wenn keine Probe nötig: needs_test=false, skill und difficulty leer. Antworte NUR mit JSON."
     )
 
@@ -63,10 +64,47 @@ def roll_button_source(router_on: bool, marker_count: int) -> str:
     Flips D40's dedupe (D43/ADR 018): when the router is on, the **router wins** and the model's
     inline ``<<TEST>>`` requests are discarded — the constrained classifier picks reliable skills
     (ADR 014: 8/8), the narration model doesn't (seen live: ``<<TEST Heimlichkeit>>`` for an
-    attack). Markers are the fallback only when the router is off. At most one button per action."""
+    attack). Markers are the fallback only when the router is off. At most one button per action.
+    On a Claude-narrated turn :func:`marker_decides` comes first (D140): a valid marker wins."""
     if router_on:
         return "router"
     return "marker" if marker_count else "none"
+
+
+def marker_decides(narration_stats: dict | None) -> bool:
+    """Does the narration model's inline ``<<TEST>>`` decide this turn's test (D140)?
+
+    Yes when Claude narrated the turn: Opus judges the moment, the stateless classifier sees one
+    player line (live 2026-11-14: one marker nine turns running, the router said "no test"
+    every time). The narrator comes from the turn's stats — the failover names the side that
+    answered the prose call — so a Nemo turn (``fallback``, ``!backend ollama``) and the
+    Ollama-only bot (no ``backend`` key) keep D43: the router wins."""
+    return (narration_stats or {}).get("backend") == "claude"
+
+
+def marker_key(character: str | None, skill: str | None) -> tuple[str, str]:
+    """``(character, skill)`` lower-cased — what makes two turns' markers "the same request"."""
+    return ((character or "").strip().lower(), (skill or "").strip().lower())
+
+
+class MarkerRepeats:
+    """The repeat safety net (D140), per channel: the marker requests the previous turn left
+    unrolled. A narration model that asks for the same character + skill turn after turn waits
+    for a roll that never comes and re-narrates the undecided moment; the second time the
+    marker is honoured even where the router said "no test". Any roll resets the channel."""
+
+    def __init__(self) -> None:
+        self._last: dict[int, set[tuple[str, str]]] = {}
+
+    def turn(self, channel_id: int, keys: set[tuple[str, str]]) -> set[tuple[str, str]]:
+        """Record this turn's unrolled marker ``keys``; return the ones the previous turn had too."""
+        repeated = keys & self._last.get(channel_id, set())
+        self._last[channel_id] = set(keys)
+        return repeated
+
+    def rolled(self, channel_id: int) -> None:
+        """A die was rolled in the channel: the moment is decided, the chain starts over."""
+        self._last.pop(channel_id, None)
 
 
 def to_test_request(data: object, *, character: str | None) -> TestRequest | None:
