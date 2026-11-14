@@ -82,3 +82,20 @@ def recap_cap(config, client):
     from .claude_client import RECAP_OUTPUT_TOKENS
 
     return lambda: RECAP_OUTPUT_TOKENS if client.on_primary else None
+
+
+def post_turn_combined(config, client):
+    """The combined post-turn classifier hook (ADR 066, option B) — what
+    ``DMBrain(combine_post_turn=…)`` takes.
+
+    ``None`` on ``ollama`` and while ``DM_AUX_COMBINED`` is off: the scene, fact and presence
+    classifiers stay three separate calls, as they always were. On ``claude`` with the flag on, a
+    function asked before each turn's classification: ``True`` while the failover pair would try
+    Claude, so Haiku gets one call instead of three; ``False`` while the pair is degraded, paused
+    or pinned to Ollama, so Nemo keeps the separate calls it has been answering. Same pattern and
+    same known gap as :func:`recap_cap`: the one call during which Claude fails reaches the
+    fallback as it was issued — combined — and a malformed answer from there falls back to the
+    separate calls. ``client`` is what :func:`build_llm_client` returned."""
+    if config.llm_backend != "claude" or not getattr(config, "aux_combined", False):
+        return None
+    return lambda: bool(client.on_primary)

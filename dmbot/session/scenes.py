@@ -243,48 +243,72 @@ class SceneFlowMixin:
         turn boundary.
 
         All are optional layers and fail open: a switched-off block or a degenerate verdict
-        yields ``None`` and changes nothing. Returns
+        yields ``None`` and changes nothing. With two or more layers asking and the brain's hook
+        saying so (Claude answering, ``DM_AUX_COMBINED=1``), the questions go out as ONE schema
+        call (ADR 066 B); otherwise each is its own call, as on Ollama. Both paths get the same
+        question sets. Returns
         ``(scene_verdict | None, fact_verdict | None, npc_verdict | None)``."""
+        questions = self._post_turn_questions(state, answer, context=context)
+        if not questions:
+            return None, None, None
+        out: dict[str, object] = {}
+        combined = len(questions) >= 2 and self._brain.combines_post_turn()
+        if combined:
+            try:
+                out = await self._brain.classify_post_turn(**questions)
+            except Exception:
+                log.exception("combined post-turn classifier raised — ignored (fail-open)")
+        else:
+            methods = {"scene": self._brain.classify_scene_move,
+                       "fact": self._brain.classify_commitment,
+                       "npc": self._brain.classify_present_npcs}
+            jobs = [(kind, methods[kind](**question)) for kind, question in questions.items()]
+            results = await asyncio.gather(*(coro for _, coro in jobs), return_exceptions=True)
+            for (kind, _), result in zip(jobs, results):
+                if isinstance(result, BaseException):
+                    log.exception("%s classifier raised — ignored (fail-open)", kind,
+                                  exc_info=result)
+                    continue
+                out[kind] = result
+        # Replay journal (ADR 046): the raw verdicts, exactly like the roll router's — for the
+        # layers asked this turn, so a layer that sat out does not repeat an older turn's note.
+        for kind, key, attr in (("scene", "scene_router", "last_scene_router"),
+                                ("fact", "facts", "last_facts"), ("npc", "npcs", "last_npcs")):
+            note = getattr(self._brain, attr)
+            if kind in questions and isinstance(note, dict):
+                self.replay_note(channel, key, note)
+        if combined and isinstance(self._brain.last_post_turn, dict):
+            self.replay_note(channel, "post_turn", self._brain.last_post_turn)
+        return out.get("scene"), out.get("fact"), out.get("npc")
+
+    def _post_turn_questions(self, state: WorldState, answer: str, *,
+                             context: str = "") -> dict[str, dict]:
+        """This turn's post-turn questions, ``{kind: keyword set}`` for the layers that ask —
+        each set exactly what the matching separate classifier takes, so the separate calls and
+        the combined one (ADR 066 B) are asked the same thing."""
         scene = self._adventure.get_scene(state.scene_id) if self._adventure is not None else None
-        jobs: list[tuple[str, object]] = []
+        party = self._characters.character_names() if self._characters else []
+        questions: dict[str, dict] = {}
         if self._scene_router and scene is not None:
             exits = self._exit_labels(scene, state)
             if exits:
-                jobs.append(("scene", self._brain.classify_scene_move(
-                    turn_text=answer, exits=exits, current_title=scene.title_de, context=context,
-                )))
+                questions["scene"] = {"turn_text": answer, "exits": exits,
+                                      "current_title": scene.title_de, "context": context}
         if self._fact_router:
-            givers = list(scene.npcs_here) if scene is not None else []
-            jobs.append(("fact", self._brain.classify_commitment(
-                answer_text=answer,
-                recipients=self._characters.character_names() if self._characters else [],
-                givers=givers,
-            )))
+            questions["fact"] = {
+                "answer_text": answer,
+                "recipients": list(party),
+                "givers": list(scene.npcs_here) if scene is not None else [],
+            }
         if self._npc_router:
-            jobs.append(("npc", self._brain.classify_present_npcs(
-                answer_text=answer,
-                party=self._characters.character_names() if self._characters else [],
-                roster=self._adventure.statblock_names() if self._adventure is not None else [],
-                present=[n.name for n in self._scene_npcs(state)],
-                candidates=self._npc_candidates(state, state.scene_id),
-            )))
-        if not jobs:
-            return None, None, None
-        results = await asyncio.gather(*(coro for _, coro in jobs), return_exceptions=True)
-        out: dict[str, object] = {}
-        for (kind, _), result in zip(jobs, results):
-            if isinstance(result, BaseException):
-                log.exception("%s classifier raised — ignored (fail-open)", kind,
-                              exc_info=result)
-                continue
-            out[kind] = result
-        # Replay journal (ADR 046): the raw verdicts, exactly like the roll router's.
-        for key, attr in (("scene_router", "last_scene_router"), ("facts", "last_facts"),
-                          ("npcs", "last_npcs")):
-            note = getattr(self._brain, attr)
-            if isinstance(note, dict):
-                self.replay_note(channel, key, note)
-        return out.get("scene"), out.get("fact"), out.get("npc")
+            questions["npc"] = {
+                "answer_text": answer,
+                "party": list(party),
+                "roster": self._adventure.statblock_names() if self._adventure is not None else [],
+                "present": [n.name for n in self._scene_npcs(state)],
+                "candidates": self._npc_candidates(state, state.scene_id),
+            }
+        return questions
 
     def _npc_candidates(self, state: WorldState, scene_id: str) -> list[Candidate]:
         """The single people a sighting in ``scene_id`` may turn out to be, with role and

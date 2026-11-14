@@ -10,6 +10,7 @@ is lock-guarded.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import threading
@@ -61,6 +62,8 @@ from .llm.director_msgs import (  # noqa: F401
 )
 from .llm.fact_router import FactVerdict, classify_commitment
 from .llm.npc_router import NpcVerdict, classify_present_npcs
+from .llm.post_turn import CombinedFailure
+from .llm.post_turn import classify_post_turn as classify_post_turn_combined
 from .llm.scene_router import SceneVerdict, classify_scene_move
 from .llm.consistency import Violation, retry_nudge_de
 from .llm.intro_guard import INTRO_RETRY_NUDGE
@@ -243,8 +246,14 @@ class DMBrain:
         max_buffer_lines: int = 8,
         retriever=None,
         recap_num_predict: Callable[[], int | None] | None = None,
+        combine_post_turn: Callable[[], bool] | None = None,
     ) -> None:
         self._client = client
+        # Whether this turn's scene, fact and presence classifiers go out as ONE schema call
+        # (ADR 066 B), asked per turn: only while Claude would answer, never on Ollama. ``None``
+        # — no hook — means three separate calls, as always. The wiring supplies the hook
+        # (dmbot.llm.post_turn_combined).
+        self._combine_post_turn = combine_post_turn
         # Output cap of the recap call (:meth:`summarize`), asked per call: the room a recap needs
         # depends on the tokens of the backend that answers, and that can change mid-session (a
         # failover). ``None`` — no hook, or the hook's answer — means ``RECAP_NUM_PREDICT``. The
@@ -289,6 +298,10 @@ class DMBrain:
         self.last_scene_router: dict | None = None
         self.last_facts: dict | None = None
         self.last_npcs: dict | None = None  # the presence classifier's (ADR 062), same shape
+        # The combined post-turn call's own note (ADR 066 B): the whole answer once, which
+        # questions it carried, its failure and the questions asked separately after it. The
+        # three notes above keep their shape; their ``raw`` is then each question's own part.
+        self.last_post_turn: dict | None = None
 
     @property
     def max_history_turns(self) -> int:
@@ -1160,16 +1173,104 @@ class DMBrain:
             self._client.chat, turn_text=turn_text, exits=exits, current_title=current_title,
             context=context,
         )
-        self._log_classifier(
-            "scene", started,
-            verdict.failure.value if verdict.failure else (verdict.target_id or "stay"),
-        )
+        self._log_classifier("scene", started, self._scene_outcome(verdict))
+        self._note_scene(verdict)
+        return verdict
+
+    @staticmethod
+    def _scene_outcome(verdict: SceneVerdict) -> str:
+        return verdict.failure.value if verdict.failure else (verdict.target_id or "stay")
+
+    @staticmethod
+    def _fact_outcome(verdict: FactVerdict) -> str:
+        return (verdict.failure.value if verdict.failure
+                else (verdict.commitment.kind if verdict.commitment is not None else "none"))
+
+    @staticmethod
+    def _npc_outcome(verdict: NpcVerdict) -> str:
+        return (verdict.failure.value if verdict.failure
+                else (", ".join(s.label for s in verdict.sightings) or "none"))
+
+    def _note_scene(self, verdict: SceneVerdict) -> None:
         self.last_scene_router = {
             "raw": verdict.raw,
             "verdict": verdict.target_id,
             "failure": verdict.failure.value if verdict.failure else None,
         }
-        return verdict
+
+    def _note_fact(self, verdict: FactVerdict) -> None:
+        self.last_facts = {
+            "raw": verdict.raw,
+            "verdict": asdict(verdict.commitment) if verdict.commitment is not None else None,
+            "failure": verdict.failure.value if verdict.failure else None,
+        }
+
+    def _note_npc(self, verdict: NpcVerdict) -> None:
+        self.last_npcs = {
+            "raw": verdict.raw,
+            "verdict": [asdict(s) for s in verdict.sightings],
+            "failure": verdict.failure.value if verdict.failure else None,
+        }
+
+    def combines_post_turn(self) -> bool:
+        """Whether this turn's post-turn classifiers go out as one call (ADR 066 B) — the hook's
+        answer for the backend that would answer now; ``False`` without a hook."""
+        if self._combine_post_turn is None:
+            return False
+        try:
+            return bool(self._combine_post_turn())
+        except Exception:  # noqa: BLE001 — a broken hook must not cost the turn its classifiers
+            log.exception("post-turn hook raised — three separate calls this turn")
+            return False
+
+    async def classify_post_turn(self, *, scene: dict | None = None, fact: dict | None = None,
+                                 npc: dict | None = None) -> dict[str, object]:
+        """The scene, fact and presence questions of one turn boundary in ONE schema call
+        (ADR 066 B). Each argument is the keyword set of the matching separate method
+        (:meth:`classify_scene_move`, :meth:`classify_commitment`,
+        :meth:`classify_present_npcs`) or ``None`` when that layer is off.
+
+        Returns ``{kind: verdict}`` for ``"scene"``, ``"fact"``, ``"npc"`` — the same verdicts the
+        separate methods return, recorded into the same three notes, plus
+        :attr:`last_post_turn`. A question the combined answer did not answer usably (the call
+        failed, timed out, came back empty or unparseable, or its part is missing) is asked
+        through its separate method in the same turn, logged. Never raises."""
+        started = time.monotonic()
+        result = await classify_post_turn_combined(
+            self._client.chat, scene=scene, fact=fact, npc=npc,
+        )
+        outcomes = {"scene": self._scene_outcome, "fact": self._fact_outcome,
+                    "npc": self._npc_outcome}
+        notes = {"scene": self._note_scene, "fact": self._note_fact, "npc": self._note_npc}
+        if result.asked:
+            shown = " ".join(
+                f"{kind}={outcomes[kind](result.verdicts[kind])}"
+                if kind in result.verdicts else f"{kind}=separate"
+                for kind in result.asked
+            )
+            if result.failure is not None:
+                shown = f"{result.failure.value} ({shown})"
+            self._log_classifier("post-turn", started, shown)
+        for kind, verdict in result.verdicts.items():
+            notes[kind](verdict)
+        self.last_post_turn = result.note()
+        out: dict[str, object] = dict(result.verdicts)
+        if result.retry:
+            if result.failure is not CombinedFailure.NOT_COMBINABLE:
+                log.warning("post-turn: combined call unusable for %s — separate calls this turn",
+                            ", ".join(result.retry))
+            separate = {"scene": (self.classify_scene_move, scene),
+                        "fact": (self.classify_commitment, fact),
+                        "npc": (self.classify_present_npcs, npc)}
+            jobs = [(kind, separate[kind][0](**separate[kind][1])) for kind in result.retry]
+            answers = await asyncio.gather(*(coro for _, coro in jobs), return_exceptions=True)
+            for (kind, _), answer in zip(jobs, answers):
+                if isinstance(answer, BaseException):
+                    log.error("%s classifier raised — ignored (fail-open)", kind,
+                              exc_info=answer)
+                    continue
+                out[kind] = answer
+        return out
 
     async def classify_commitment(
         self, *, answer_text: str, recipients=(), givers=()
@@ -1182,16 +1283,8 @@ class DMBrain:
         verdict = await classify_commitment(
             self._client.chat, answer_text=answer_text, recipients=recipients, givers=givers
         )
-        self._log_classifier(
-            "fact", started,
-            verdict.failure.value if verdict.failure
-            else (verdict.commitment.kind if verdict.commitment is not None else "none"),
-        )
-        self.last_facts = {
-            "raw": verdict.raw,
-            "verdict": asdict(verdict.commitment) if verdict.commitment is not None else None,
-            "failure": verdict.failure.value if verdict.failure else None,
-        }
+        self._log_classifier("fact", started, self._fact_outcome(verdict))
+        self._note_fact(verdict)
         return verdict
 
     async def classify_present_npcs(
@@ -1204,16 +1297,8 @@ class DMBrain:
             self._client.chat, answer_text=answer_text, party=party, roster=roster,
             present=present, candidates=candidates,
         )
-        self._log_classifier(
-            "npcs", started,
-            verdict.failure.value if verdict.failure
-            else (", ".join(s.label for s in verdict.sightings) or "none"),
-        )
-        self.last_npcs = {
-            "raw": verdict.raw,
-            "verdict": [asdict(s) for s in verdict.sightings],
-            "failure": verdict.failure.value if verdict.failure else None,
-        }
+        self._log_classifier("npcs", started, self._npc_outcome(verdict))
+        self._note_npc(verdict)
         return verdict
 
     def add_test_result(self, channel_id: int, line: str) -> None:

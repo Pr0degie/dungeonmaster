@@ -1533,3 +1533,52 @@ def test_a_label_that_is_an_authored_alias_is_that_card_figure() -> None:
         party=["Fridolin"], roster=[], present=[], candidates=candidates)
     assert [(n.name, n.wounds) for n in state.npcs] == [
         ("Schwester Vall", 10), ("Alter Fenk", 5), ("Alter", 10)]   # no second Fenk
+
+
+# ---- one combined post-turn call on Claude (ADR 066 B) ---------------------------------------
+
+def test_with_the_hook_on_the_three_questions_go_out_as_one_call_and_journal_as_before(
+        tmp_path) -> None:
+    import json
+
+    from fakes import FakeLLMClient
+
+    adv = _adventure()
+    state = _state(adv)
+    channel = _FakeChannel()
+    combined = {"ziel": "schrein", "art": "nichts", "sache": "", "an": "", "von": "", "npcs": []}
+    client = FakeLLMClient([json.dumps(combined)])
+    brain = FakeBrain(client=client, combine_post_turn=lambda: True)
+    rt = _runtime(adv, state, brain, channel, sessions_dir=tmp_path, _autosave=True,
+                  _npc_router=True)
+
+    scene, fact, npc = _run(rt._classify_turn(channel, state, "Ihr tretet in den Schrein."))
+
+    assert len(client.calls) == 1
+    assert list(client.calls[0]["format"]["properties"]) == ["ziel", "art", "sache", "an", "von",
+                                                             "npcs"]
+    assert scene.target_id == "schrein" and fact.commitment is None and npc.sightings == ()
+    notes = rt.take_replay_notes(channel)
+    assert notes["scene_router"] == {"raw": '{"ziel": "schrein"}', "verdict": "schrein",
+                                     "failure": None}
+    assert notes["post_turn"]["asked"] == ["scene", "fact", "npc"]
+    assert notes["post_turn"]["separate"] == []
+
+
+def test_without_the_hook_the_three_questions_stay_three_calls(tmp_path) -> None:
+    from fakes import FakeLLMClient
+
+    adv = _adventure()
+    state = _state(adv)
+    channel = _FakeChannel()
+    client = FakeLLMClient(['{"ziel": "nein"}',
+                            '{"art": "nichts", "sache": "", "an": "", "von": ""}',
+                            '{"npcs": []}'])
+    rt = _runtime(adv, state, FakeBrain(client=client), channel, sessions_dir=tmp_path,
+                  _autosave=True, _npc_router=True)
+
+    _run(rt._classify_turn(channel, state, "Ihr bleibt stehen."))
+
+    assert [list(c["format"]["properties"]) for c in client.calls] == [
+        ["ziel"], ["art", "sache", "an", "von"], ["npcs"]]
+    assert "post_turn" not in rt.take_replay_notes(channel)

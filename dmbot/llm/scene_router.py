@@ -154,14 +154,14 @@ def scene_schema(exits: ExitsArg) -> dict:
     }
 
 
-def scene_system(exits: ExitsArg, *, current_title: str = "") -> str:
-    """The classifier's tiny, stateless German system prompt — no narration, no history, one
-    question. The bar is deliberately high: only an *arrival* counts, because a false move tears
-    the table out of a conversation while a missed one is caught by the flag gate next turn."""
+def scene_question(exits: ExitsArg, *, current_title: str = "") -> str:
+    """The question and its bar, without the role line and the JSON instruction — the one text
+    both the separate call (:func:`scene_system`) and the combined post-turn call on Claude
+    (``dmbot.llm.post_turn``, ADR 066 B) ask, so the two paths cannot drift
+    (``docs/lessons/parity-by-construction.md``)."""
     lines = [f"- {e.label()}" for e in normalize_exits(exits)]
     here = f"Die Gruppe war zuletzt hier: {current_title}.\n" if current_title.strip() else ""
     return (
-        "Du bist der Regel-Assistent der Spielleitung eines Rollenspiels.\n"
         f"{here}"
         "Frage: Hat die Gruppe im zuletzt erzählten Zug tatsächlich einen dieser Orte BETRETEN?\n"
         + "\n".join(lines)
@@ -171,7 +171,17 @@ def scene_system(exits: ExitsArg, *, current_title: str = "") -> str:
         f"Ortes ist KEIN Betreten: dann '{NO_MOVE}'.\n"
         f"- Bleibt die Gruppe, wo sie ist, oder passt nichts davon: '{NO_MOVE}'.\n"
         f"- Im Zweifel '{NO_MOVE}'.\n"
-        'Antworte NUR mit JSON: {"ziel": "<id>"} oder {"ziel": "' + NO_MOVE + '"}.'
+    )
+
+
+def scene_system(exits: ExitsArg, *, current_title: str = "") -> str:
+    """The classifier's tiny, stateless German system prompt — no narration, no history, one
+    question. The bar is deliberately high: only an *arrival* counts, because a false move tears
+    the table out of a conversation while a missed one is caught by the flag gate next turn."""
+    return (
+        "Du bist der Regel-Assistent der Spielleitung eines Rollenspiels.\n"
+        + scene_question(exits, current_title=current_title)
+        + 'Antworte NUR mit JSON: {"ziel": "<id>"} oder {"ziel": "' + NO_MOVE + '"}.'
     )
 
 

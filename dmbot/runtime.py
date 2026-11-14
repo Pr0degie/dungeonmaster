@@ -42,7 +42,7 @@ from .voice.preflight import check_static, check_tts_speaker
 from .voice.kick_phrase import find_culprit, is_kick_master, parse_kick_phrase
 from .stt import Transcriber
 from .llm import consistency as consistency_mod
-from .llm import build_llm_client, recap_cap
+from .llm import build_llm_client, post_turn_combined, recap_cap
 from .orchestrator import DMBrain
 from .tts.piper import PiperTTS
 from .tts.textsplit import split_for_discord, strip_speech_punctuation
@@ -391,6 +391,8 @@ class SessionRuntime(SessionIngestMixin, ClocksMixin, NpcMemoryMixin, PanelsMixi
             max_buffer_lines=config.dm_max_lines,
             retriever=self._retriever if self._retriever.available() else None,
             recap_num_predict=recap_cap(config, llm_client),  # per answering backend (ADR 061)
+            # One post-turn classifier call instead of three, on Claude only (ADR 066 B).
+            combine_post_turn=post_turn_combined(config, llm_client),
         )
         self._bridge = BridgeClient(config.bridge_host, config.bridge_port, secret=config.bridge_secret)
         # Load the TTS backend OFF the boot path so the bot is ready fast (ADR 020 made shutdown
