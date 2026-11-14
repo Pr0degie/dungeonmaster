@@ -294,7 +294,7 @@ dmbot/          the DM bot
   memory/       JSON state + recaps + gametime.py (pure in-game-time helpers, ADR 048) + chekhov.py (loose-thread list, ADR 050)
   rules/        engine.py (generic) + combat.py (attack/Warp resolution, ADR 037) + scene_flow.py (exit resolution, flag gate, scene undo — ADR 057) + profile loader (+ tests)  ← deterministic core
   discord_ui/   buttons, turn-order view + panel.py (the player panel: scene, mission, time, what is still open) + undo.py (take back an automatic scene change, ADR 057)
-  tools/        dev CLIs via [project.scripts]: sync_check (`uv run dm-sync`, D89/D90) + eval_replay (`uv run dm-eval`, golden-transcript regression replay, ADR 046 — goldens in tests/golden/); aux_parity (`python -m dmbot.tools.aux_parity`, separate vs combined post-turn classifiers on recorded turns, ADR 066 — log positives in tests/aux_parity/)
+  tools/        dev CLIs via [project.scripts]: sync_check (`uv run dm-sync`, D89/D90) + eval_replay (`uv run dm-eval`, golden-transcript regression replay, ADR 046 — goldens in tests/golden/); aux_parity (`python -m dmbot.tools.aux_parity`, separate vs combined post-turn classifiers on recorded turns, ADR 066 — log positives in tests/aux_parity/); text_replay (`python -m dmbot.tools.text_replay dry|run|show`, six turns of the 2026-11-14 evening through the narration model with a persona variant — measures turn and sentence length before a persona change goes live; needs `logs/debug-d1.log`)
   orchestrator.py   the DM brain (history + buffer → LLM)
   bridge.py     HTTP client to Bot A's /speak
   logsetup.py   console (green chat) + file logging
