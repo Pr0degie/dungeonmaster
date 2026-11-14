@@ -175,3 +175,44 @@ def test_sanitizer_uses_the_same_rule() -> None:
 
     assert sanitize._SENTENCE_END is textsplit.SENTENCE_END
     assert sanitize._sentences is textsplit.split_sentences
+
+
+# --- comma breaths (D141): a long sentence is split at commas so the voice pauses there ---
+
+_LONG = ("Vosk kneift die Augen zusammen, und der Haken hebt sich wieder ein Stück, "
+         "als hätte er gerade etwas gerochen, das nicht passt.")
+
+
+def test_comma_split_off_by_default() -> None:
+    assert chunk_text(_LONG) == [_LONG]
+
+
+def test_long_sentence_splits_at_commas() -> None:
+    chunks = chunk_text(_LONG, comma_split=80)
+    assert len(chunks) >= 2
+    assert all(c.endswith((",", ".")) for c in chunks)
+    assert " ".join(chunks) == _LONG  # nothing lost, order kept
+
+
+def test_short_sentence_is_not_comma_split() -> None:
+    text = "Sie nickt, dreht sich um, geht."
+    assert chunk_text(text, comma_split=80) == [text]
+
+
+def test_comma_pieces_never_tiny() -> None:
+    # "Ja," / "Nun," would be a fragment XTTS babbles on (D55) — merged into the next piece
+    text = ("Ja, nun, gut, der Vorarbeiter starrt lange auf die grüne Zahlenreihe im Lampenlicht, "
+            "dann sinkt der Haken langsam und er schnauzt über die Schulter nach dem Servitor.")
+    chunks = chunk_text(text, comma_split=80)
+    assert len(chunks) >= 2
+    assert all(len(c) >= 40 for c in chunks)
+    assert " ".join(chunks) == text
+
+
+def test_comma_split_keeps_neighbours_grouped() -> None:
+    text = f"Es regnet. {_LONG} Was tut ihr?"
+    chunks = chunk_text(text, comma_split=80)
+    assert chunks[0] == "Es regnet."
+    assert chunks[-1].endswith("Was tut ihr?")
+    assert " ".join(chunks) == text
+    assert all(len(c) <= TTS_CHAR_LIMIT for c in chunks)

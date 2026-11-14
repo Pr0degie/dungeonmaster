@@ -49,6 +49,14 @@ except ValueError:
     _REPETITION_PENALTY = 10.0
 _SYNTH_KWARGS = {"split_sentences": False, "repetition_penalty": _REPETITION_PENALTY}
 
+# Comma breaths (D141): a sentence longer than this many characters is synthesised in pieces cut
+# after its commas, so the joined WAV pauses there instead of reading the sentence in one breath.
+# 0 = off (``DM_TTS_COMMA_SPLIT``).
+try:
+    _COMMA_SPLIT = max(0, int(os.environ.get("DM_TTS_COMMA_SPLIT", "120")))
+except ValueError:
+    _COMMA_SPLIT = 120
+
 
 def _concat_wavs(parts: list[str], out_path: str, gap_s: float = _CHUNK_GAP_S) -> None:
     """Concatenate same-format WAV files into ``out_path`` with a short silence between each.
@@ -161,7 +169,8 @@ class XttsTTS:
         instead of re-tokenising them into punctuation fragments it then babbles on."""
         fd, path = tempfile.mkstemp(prefix="dm_tts_", suffix=".wav")
         os.close(fd)
-        chunks = chunk_text(normalize_for_tts(text))  # speech-only cleanup, then split for XTTS's char limit
+        # speech-only cleanup, then split for XTTS's char limit (and at commas of long sentences)
+        chunks = chunk_text(normalize_for_tts(text), comma_split=_COMMA_SPLIT)
         if not chunks:  # nothing speakable (emoji-/punctuation-only) → silence, never feed XTTS junk
             write_silent_wav(path, 24000)  # XTTS's 24 kHz mono output format
             return path

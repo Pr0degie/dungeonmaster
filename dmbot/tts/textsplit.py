@@ -116,14 +116,56 @@ def has_speakable_content(text: str) -> bool:
     return any(ch.isalnum() for ch in text)
 
 
-def chunk_text(text: str, limit: int = TTS_CHAR_LIMIT) -> list[str]:
+# A comma piece shorter than this is merged into the next one: a lone "Ja," or "Nun," synthesised on
+# its own is the kind of tiny fragment XTTS babbles on (D55).
+_COMMA_MIN_PIECE = 40
+_AFTER_COMMA = re.compile(r"(?<=,)\s+")
+
+
+def _comma_pieces(sentence: str, min_len: int = _COMMA_MIN_PIECE) -> list[str]:
+    """Cut ``sentence`` after its commas into pieces of at least ``min_len`` chars (short runs are
+    merged forward, a short tail joins the piece before it). Joined with single spaces, the pieces
+    give the sentence back."""
+    pieces: list[str] = []
+    buf = ""
+    for part in _AFTER_COMMA.split(sentence):
+        buf = f"{buf} {part}" if buf else part
+        if len(buf) >= min_len:
+            pieces.append(buf)
+            buf = ""
+    if buf:
+        if pieces:
+            pieces[-1] = f"{pieces[-1]} {buf}"
+        else:
+            pieces.append(buf)
+    return pieces
+
+
+def chunk_text(text: str, limit: int = TTS_CHAR_LIMIT, comma_split: int = 0) -> list[str]:
     """Split ``text`` into chunks no longer than ``limit`` chars, breaking at sentence ends first,
     then at commas/spaces for any single sentence that is itself too long. Whole sentences are kept
-    together where they fit, so prosody stays natural."""
-    chunks: list[str] = []
-    current = ""
+    together where they fit, so prosody stays natural.
+
+    ``comma_split`` > 0 (D141): a sentence longer than that many chars is also cut after its commas
+    (pieces of at least :data:`_COMMA_MIN_PIECE` chars), each piece its own chunk — the joined WAV
+    then carries a short silence at those commas, so a long sentence is not read in one breath. The
+    last piece may still group with the sentences after it. 0 = off."""
+    sentences: list[tuple[str, bool]] = []  # (text, starts a new chunk)
     for sentence in split_sentences(text.strip()):
         sentence = sentence.strip()
+        if comma_split > 0 and len(sentence) > comma_split:
+            pieces = _comma_pieces(sentence)
+            if len(pieces) > 1:
+                sentences.extend((piece, True) for piece in pieces)
+                continue
+        sentences.append((sentence, False))
+
+    chunks: list[str] = []
+    current = ""
+    for sentence, standalone in sentences:
+        if standalone and current:
+            chunks.append(current)
+            current = ""
         while len(sentence) > limit:
             cut = sentence.rfind(", ", 0, limit)
             if cut == -1:
