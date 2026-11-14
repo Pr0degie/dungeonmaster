@@ -224,6 +224,52 @@ Schritt „Altes Log weg“ unter „Vor dem Start“.
 
 ---
 
+## Ergebnis vom 14.11.2026 (Durchgang 1, 19:04–19:33, Tobi + Sezgin, mit Bot A)
+
+Durchgang 2 und 3 nicht gespielt; D139 (Pause statt Nemo) bleibt live-unverifiziert. Logs: `logs/debug-d1.log`,
+`terminal-d1.log`, `transcript-d1.log`.
+
+| Punkt | Ergebnis |
+|---|---|
+| 1 GPU / kein Nemo | `ollama ps` ohne `mistral-nemo` ✅; XTTS-Gerät nicht geprüft |
+| 2 Züge mit Stimme | ✅ 33 |
+| 3a Würfelknopf | ✅ (8 Router-Urteile, 7 Würfel-GIFs, zweimal Schicksalspunkt-Neuwurf) |
+| 3b Szenenwechsel | ✅ dreimal, alle über Opus' `<<ORT>>`-Marker (schrein, pfandhalle, lagerhaus) |
+| 3c harter Fakt | ✅ Auftragspergament mit Inquisitionssiegel (19:04:36) |
+| 4 Recap | ☐ kein `!wrap`; Auto-Recap 19:20:32–19:20:40 lief |
+| 6 Verbrauch | ca. 7 % des Session-Kontingents, parallel lief eine Claude-Code-Sitzung |
+| 6b Verbrauchslimit | nein |
+| 7a `<<TEST>>` ohne Router | nicht geprüft (Router an) — aber Opus setzte von sich aus 15 Marker in 33 Zügen |
+| 7b `<<ERLEDIGT>>` | ✅ `vall-gestaendnis` (19:11:40) |
+| 8 / C abgeschnitten | **8 von 33** |
+| A kalt / warm | `spawn` 563 ms, `first_audio` 13,3 s / ~580 ms, 8–11 s — **`cache=0` in jedem Zug** |
+| B Würfelknopf | 3313 · 4391 · 3687 ms (Ausreißer 6062) |
+| D Szene `ziel` | 2189 / 740 / 719 ms (33 Calls) |
+| D Fakten | 2079 / 985 / 720 ms (33) |
+| D NSCs | 2451 / 1317 / 718 ms (33) |
+| D Würfel-Router | 2020 / 1197 / 680 ms (29) |
+| D alle Aux-Calls | ~8500 Input-Tokens je Zug (128 Calls); Szene+Fakten+NSCs ≈ 6700 — über der Schätzung 3800–4900 aus ADR 066 |
+| N1 / N2 | ⚠️ Bree Marlok um 19:11:48 in der Szene **schrein** registriert, eine Minute bevor der Zeiger auf pfandhalle ging; Vosk und „Kettenmann“ in pfandhalle statt lagerhaus, „Kettenmann“ neben „Kettenbund-Schläger“ wohl doppelt |
+| N4 | nicht eingetreten (kein Zug während des Auto-Recaps) |
+| N5 | 8 Schnitte, s. Punkt 8 |
+
+**9 — Urteil des Tisches:** Tobi: Die Texte waren früher besser; man muss hundertmal sagen, was passiert, bevor sich
+etwas tut, oft dasselbe; die Proben sind immer zu schwer. Sezgin (19:29, als es hing): „Dann würde ich sagen, in
+Fable reingeben.“ Tobi (19:29:50): „Das bewegt sich einfach nicht weiter.“
+
+**Befunde aus dem Log:**
+
+- **Hängeschleife durch verworfene Marker (Hauptbefund):** 19:25–19:31 schrieb Opus neunmal
+  `<<TEST Überreden Schwierig für Fridolin>>`; jedes Mal `Inline-Marker verworfen — der Router entscheidet (D43)`, der
+  Router sagte `no test` (einmal `Nahkampf` für eine Bestechung). Opus erzählte den offenen Moment immer neu.
+- **Immer „Herausfordernd“:** jedes Router-Urteil des Abends; Opus' Schwierigkeit fiel mit dem Marker weg
+  (19:08:47 wollte Opus *Leicht* = Ziel 82, gewürfelt wurde auf 42, die 72 wurde ein Fehlschlag).
+- **Lange Züge:** bis 742 Zeichen = 48 s Audio; viel Atmosphäre, wenig Fortschritt pro Zug.
+- **Kein Prompt-Cache bei der Erzählung** (`cache=0`), die Haiku-Calls treffen ihn.
+- **NSCs in der Szene, die die Gruppe gerade verlässt** (N1/N2 oben).
+
+Folgerunde: D140 (Opus-Marker zählt auf Claude), D141 (kürzere Züge, Budget 280), D142 (Cache), D143 (ADR 066 B).
+
 ## Protokoll zum Ausfüllen
 
 | Punkt | Ergebnis |
