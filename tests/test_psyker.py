@@ -342,3 +342,39 @@ def test_manifest_warning_is_one_time_per_psyker() -> None:
     second = _FakeInteraction()
     asyncio.run(roll(second))
     assert "Warp-Aufladung wird nicht verfolgt" not in second.message.content
+
+
+def test_a_manifest_roll_plays_the_throw_gif_when_the_animation_is_on() -> None:
+    # Live 2026-11-14 (19:32:09): a Manifest showed only the result, no throw. With the animation
+    # on, the manifest button runs the same throw presentation as a skill test.
+    store = CharacterStore([
+        Character.from_dict({
+            "name": "Mortn",
+            "characteristics": {"Wil": 48},
+            "skills": {"Psi-Meisterschaft": 45, "Disziplin (Psi)": 30},
+            "psyker": True,
+            "known_powers": ["Smite"],
+        })
+    ])
+    rt = _fake_runtime(store=store, state=WorldState(characters=[]))
+    rt._dice_images = True
+    rt._dice_animation = True
+    cog = DiceCog(None, rt)
+    thrown: list[dict] = []
+
+    async def _animate(channel, dice_msg, *, target, line, face, palette, view, prep=None):
+        thrown.append({"target": target, "face": face, "line": line, "view": view})
+
+    cog._animate_result = _animate
+    resolved = resolve_manifest_request(_IM, store, power="Smite", target_name="Mortn")
+    roll = cog._make_manifest_roll(types.SimpleNamespace(guild=None),
+                                   ManifestRequest(power="Smite", target_name="Mortn"), resolved)
+
+    async def _click() -> None:
+        await roll(_FakeInteraction())
+        await asyncio.gather(*cog._presentations)
+
+    asyncio.run(_click())
+    assert len(thrown) == 1
+    assert thrown[0]["target"] == resolved.target and thrown[0]["line"].startswith("🌀")
+    assert thrown[0]["view"] is None

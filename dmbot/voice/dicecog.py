@@ -570,12 +570,15 @@ class DiceCog(commands.Cog):
         diff = f" ({resolved.difficulty})" if resolved.difficulty else ""
         push = " · Push" if req.pushed else ""
         label = f"{who} manifestiert: {resolved.power}{diff}{push}"
+        # The throw is prepared at post time, as for a skill test (ADR 064): the click only lands it.
+        prep = (self._spawn_presentation(prepare_throw_async())
+                if self._dice_animation_on() and resolved.target is not None else None)
         await self._rt._send_with_retry(
             channel, "🌀 Manifestation angefordert:",
-            view=DiceTestView(label, self._make_manifest_roll(channel, req, resolved)),
+            view=DiceTestView(label, self._make_manifest_roll(channel, req, resolved, prep=prep)),
         )
 
-    def _make_manifest_roll(self, channel, req: ManifestRequest, resolved):
+    def _make_manifest_roll(self, channel, req: ManifestRequest, resolved, *, prep=None):
         """Build the roll callback for a Manifest button: the engine rolls the Psychic Mastery Test,
         bookkeeps Warp Charge against the Threshold, resolves Perils when triggered, persists the
         psyker's Warp Charge, and feeds every line back so the DM narrates the consequence."""
@@ -626,11 +629,19 @@ class DiceCog(commands.Cog):
                         )
             line = "\n".join(lines)
             log.info("%s", lines[0])
-            shown = await self._result_edit(line, face, palette_for(test_result))
-            try:
-                await interaction.message.edit(**shown, view=None)
-            except discord.HTTPException:
-                await self._rt._send_with_retry(channel, line)
+            if self._dice_animation_on() and resolved.target is not None:
+                # The same throw as a skill test (live 2026-11-14: a Manifest showed only the
+                # result). Cosmetic, in its own task; the DM is fed below without waiting for it.
+                self._spawn_presentation(self._animate_result(
+                    channel, {"message": interaction.message}, target=resolved.target, line=line,
+                    face=face, palette=palette_for(test_result), view=None, prep=prep,
+                ))
+            else:
+                shown = await self._result_edit(line, face, palette_for(test_result))
+                try:
+                    await interaction.message.edit(**shown, view=None)
+                except discord.HTTPException:
+                    await self._rt._send_with_retry(channel, line)
             for ln in lines:
                 self._rt._brain.add_test_result(cid, ln)
             await self._rt.run_and_deliver(channel, guild_id)

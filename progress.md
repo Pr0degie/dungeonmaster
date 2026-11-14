@@ -16,7 +16,7 @@ is on-demand._
   Opus' Würfelmarker (D140), Fortschritt statt Atmosphäre + Kommas fürs Vorlesen + Komma-Pausen in der Stimme +
   Budget 280 (D141), Prompt-Cache der Erzählung repariert (D142), ADR 066 B gebaut, Schalter aus (D143),
   Karten-Figuren der Nachbarszene bleiben zu Hause (D144). Details: „Last session“.
-- **Suite:** 1551 Tests grün, 4 xfail; `dm-eval` Exit 0.
+- **Suite:** 1552 Tests grün, 4 xfail; `dm-eval` Exit 0.
 - **Live-unverifiziert:** D140–D144 (Prüfpunkte F1–F7 in [phase-11-abend.md](docs/phase-11-abend.md), „Nächster
   Lauf“), D139 (Pause statt Nemo — Durchgang 3 nicht gespielt), D138 (am 14.11. teils widerlegt: NSCs landen in der
   verlassenen Szene), D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134.
@@ -57,6 +57,8 @@ man muss hundertmal sagen, was passiert, die Proben sind zu schwer. pytest 1550 
   bekommen auf Claude den Router; der Schalter liest den Erzähler der Marker-Runde, nicht `last_llm_stats`; ein
   Timeout/Fehler des kombinierten Calls wird nicht mehr getrennt wiederholt (sonst ~40 s). Rest unter „Open questions“.
 - **D144 / ADR 062 Nachtrag #11:** Bree Marlok (19:11:48) und Vosk (19:20:54) standen als Karten-Figuren der nächsten Szene einen Zug lang in der verlassenen, weil die Erzählung die Gruppe vor die Tür brachte, bevor der Zeiger zog. Jetzt bleibt so eine Figur beim ersten Sehen in ihrer Szene; zwei Züge in Folge in derselben Szene gesehen, ist sie wirklich da.
+- **Manifestation mit Würfel-GIF:** der 🌀-Knopf spielte nur das Ergebnis aus (Tobi, Lauf 14.11., 19:32:09); jetzt
+  dieselbe Wurf-Animation wie bei einer Probe (ADR 064), Regelauswertung unverändert. Live-unverifiziert.
 
 ## Next concrete step
 
@@ -238,6 +240,11 @@ ADR 066 ist entschieden (B, Schalter aus); die alte offene Frage dazu ist erledi
   Sitzungsnamen — Letzteres nur bei absichtlich scheiternder Anfrage gesehen; ob es im echten Lauf Kontingent kostet, ist offen.
 - **Charakterbögen in den gecachten Kopf?** Sie stehen im Zustandsblock und gehen jeden Zug frisch raus; in den Kopf
   verschoben würden einige tausend Tokens mehr gecacht — ändert die Reihenfolge in `docs/conventions.md`, eigene Entscheidung.
+- **Schicksal auf Manifestationsproben? (Tobi entscheidet)** Regelwerk (Core, „Spending Fate“, S. 220): Fate
+  „Reroll a failed Test“, ohne Ausnahme für die Psychic Mastery Test (die Manifest Test ist eine Probe); die einzige
+  benannte Ausnahme ist der Emperor's Tarot. Der Bot bietet bei 🌀 keinen Neuwurf an. Bauen hieße: Warp-Aufladung
+  und Gefahren erst nach der Schicksals-Entscheidung anwenden, weil Schritt 3 („Gain Warp Charge“) vom endgültigen
+  Ergebnis abhängt.
 
 **Offene `DMBrain`-Befunde (2026-11-13) — dokumentiert; Nr. 1–4, 9 und 12 behoben (13.11., live-unverifiziert), der Rest offen; Nr. 12–14 kamen aus dem `/code-review` der Fixes.** Nr. 1–7 stammen aus
 `/code-review` auf `ddaae08..9ec06b6` (aus dem Code hergeleitet; der Umbau hat sie unverändert übernommen), Nr. 8–11
