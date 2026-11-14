@@ -16,7 +16,7 @@ is on-demand._
   Opus' Würfelmarker (D140), Fortschritt statt Atmosphäre + Kommas fürs Vorlesen + Komma-Pausen in der Stimme +
   Budget 280 (D141), Prompt-Cache der Erzählung repariert (D142), ADR 066 B gebaut, Schalter aus (D143),
   Karten-Figuren der Nachbarszene bleiben zu Hause (D144), Psionik mit Würfel-GIF und Schicksal (D145), Textvergleich mit dem 25.10. samt Folgen (D146), Persona ohne „Lange Sätze sind erlaubt“ (D147). Details: „Last session“.
-- **Suite:** 1564 Tests grün, 4 xfail; `dm-eval` Exit 0.
+- **Suite:** 1565 Tests grün, 4 xfail; `dm-eval` Exit 0. Neu: ERROR-Log bei Erzähl-Call ohne Cache-Kopf (D142-Wache).
 - **Live-unverifiziert:** D146, D147, D140–D145 (Prüfpunkte F1–F10, W1–W6 in [phase-11-abend.md](docs/phase-11-abend.md), „Nächster
   Lauf“), D139 (Pause statt Nemo — Durchgang 3 nicht gespielt), D138 (am 14.11. teils widerlegt: NSCs landen in der
   verlassenen Szene), D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134.
@@ -35,6 +35,11 @@ D140–D144 wartet auf ihren Lauf (Prüfliste F1–F10 im Beipackzettel).
 _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Current focus (Verlauf)`._
 
 ## Last session
+
+**Verlorener Cache-Kopf wird laut (2026-11-15).** `ClaudeClient._begin` loggt einen ERROR, wenn ein gesprochener
+Erzähl-Call (`chat_stream`) ohne `stable`-Kopf ankommt: eine String-Operation unterwegs hat dann den `SystemPrompt`
+zum nackten `str` gemacht, und der Erzähl-Cache bliebe still auf null (D142). Sonst kein Verhaltenswechsel; Test
+`test_a_spoken_turn_that_lost_its_stable_head_logs_an_error`. pytest 1565 grün, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
 
 **Textvergleich mit dem 25.10., vier Folgen daraus und die Persona-Entscheidung (2026-11-14, D146/D147).**
 Der Tisch fand die Texte früher besser. Der Vergleich mit dem Zweier-Lauf vom 25.10. zeigt: Persona und Budget

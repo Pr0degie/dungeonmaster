@@ -583,6 +583,15 @@ class ClaudeClient:
         """Prepare one call: ``(call, sdk options, system file, prompt)``."""
         self._refuse_api_key()
         system_file = self._prompts / f"system-{uuid.uuid4().hex}.md"
+        if spoken and format is None and not getattr(system, "stable", ""):
+            # A str operation on the way (concatenation, strip, f-string) turns the SystemPrompt
+            # into a plain str and drops its head: the whole prompt goes out as the system block
+            # and the narration cache silently stays at zero (D142). Say so instead.
+            log.error(
+                "spoken narration call without a stable system-prompt head (%s) — the whole "
+                "system prompt is sent and the prompt cache cannot hit (D142)",
+                type(system).__name__,
+            )
         system, prompt = split_system(system, _prompt(messages))
         if isinstance(format, dict):
             system += _AUX_SYSTEM_SUFFIX

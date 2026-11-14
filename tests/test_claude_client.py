@@ -29,6 +29,8 @@ from dmbot.llm.prompt_assembly import SystemPrompt, assemble_system_prompt
 
 _USER = [{"role": "user", "content": "Timo: Ich öffne die Tür."}]
 _SCHEMA = {"type": "object", "properties": {"probe": {"type": "string"}}, "required": ["probe"]}
+# A spoken turn's system prompt as the orchestrator hands it over: with its stable head (D142).
+_SPOKEN = SystemPrompt("s", stable="s")
 
 
 # ---- fake SDK ---------------------------------------------------------------------------------
@@ -218,6 +220,21 @@ def test_concatenation_drops_the_head_so_a_suffixed_prompt_is_sent_whole():
     assert split_system(suffixed, "x") == (suffixed, "x")
 
 
+def test_a_spoken_turn_that_lost_its_stable_head_logs_an_error(fake, client, caplog):
+    """A str operation on the way turns the SystemPrompt into a plain str: the cache then silently
+    stays at zero (D142). The spoken narration call says so; the call itself still goes out."""
+    query = fake(_INIT, _result(result="Die Tür knarrt."))
+    with caplog.at_level(logging.ERROR, logger="dmbot.llm.claude_client"):
+        asyncio.run(_drain(client.chat_stream(_turn_prompt(1) + "\nANHANG", _USER)))
+        assert query.prompts  # the call itself still went out
+        assert caplog.records and caplog.records[0].levelno == logging.ERROR
+        assert "stable" in caplog.records[0].getMessage()
+        caplog.clear()
+        asyncio.run(_drain(client.chat_stream(_turn_prompt(1), _USER)))  # head intact: silent
+        asyncio.run(client.chat("Du klassifizierst.", _USER, format=_SCHEMA))  # aux: not narration
+    assert caplog.records == []
+
+
 def test_a_dm_turn_writes_only_the_stable_head_into_the_system_file(fake, client):
     query = fake(_INIT, _result(result="Die Tür knarrt."))
     history = [{"role": "user", "content": "Tobi: Hallo."},
@@ -372,7 +389,7 @@ def test_stream_yields_only_text_deltas_and_sets_stats_from_the_result(fake, cli
         _result(result="Die Tür knarrt.", usage={"input_tokens": 90, "cache_read_input_tokens": 10,
                                                  "output_tokens": 12}),
     )
-    deltas = asyncio.run(_drain(client.chat_stream("s", _USER, options={"num_predict": 220})))
+    deltas = asyncio.run(_drain(client.chat_stream(_SPOKEN,_USER, options={"num_predict": 220})))
     assert deltas == ["Die Tür ", "knarrt."]
     assert client.last_stats["prompt_eval_count"] == 100
     assert client.last_stats["eval_count"] == 12
@@ -385,7 +402,7 @@ def test_stream_ignores_frames_of_a_subagent(fake, client):
     nested = sdk.StreamEvent(uuid="u", session_id="s", parent_tool_use_id="t1", event={
         "type": "content_block_delta", "delta": {"type": "text_delta", "text": "intern"}})
     fake(_INIT, nested, _delta("laut"), _result())
-    assert asyncio.run(_drain(client.chat_stream("s", _USER))) == ["laut"]
+    assert asyncio.run(_drain(client.chat_stream(_SPOKEN,_USER))) == ["laut"]
 
 
 def test_early_close_closes_the_sdk_stream_and_leaves_fresh_stats(fake, client):
@@ -399,7 +416,7 @@ def test_early_close_closes_the_sdk_stream_and_leaves_fresh_stats(fake, client):
                  _delta("Drei."), _result())
 
     async def go():
-        agen = client.chat_stream("s", _USER)
+        agen = client.chat_stream(_SPOKEN,_USER)
         got = []
         async for delta in agen:
             got.append(delta)
@@ -425,7 +442,7 @@ def test_a_schema_call_never_writes_the_narration_slot(fake, client):
     fake(_INIT, _start(input_tokens=500), _delta("Eins. "), _delta("Zwei."), _result())
 
     async def go():
-        agen = client.chat_stream("s", _USER)
+        agen = client.chat_stream(_SPOKEN,_USER)
         async for _ in agen:
             break
         # The narration stream is open; a router verdict comes and goes meanwhile.
@@ -476,7 +493,7 @@ def test_narration_is_cut_at_the_first_max_tokens_stop(fake, client, caplog):
         _delta(" und geht weiter"), _result(result="nie erreicht"),
     )
     with caplog.at_level(logging.WARNING, logger="dmbot.llm.claude_client"):
-        deltas = asyncio.run(_drain(client.chat_stream("s", _USER, options={"num_predict": 220})))
+        deltas = asyncio.run(_drain(client.chat_stream(_SPOKEN,_USER, options={"num_predict": 220})))
     assert deltas == ["Der Gang ", "ist lang"]
     assert client.last_stats["truncated"] is True
     assert client.last_stats["eval_count"] == 220 and client.last_stats["prompt_eval_count"] == 600
@@ -496,7 +513,7 @@ def test_a_dm_turn_leaves_the_cut_line_to_the_turn_core(fake, client, caplog):
 
     async def turn():
         with caller_reports_cut():
-            return await _drain(client.chat_stream("s", _USER, options={"num_predict": 220}))
+            return await _drain(client.chat_stream(_SPOKEN, _USER, options={"num_predict": 220}))
 
     with caplog.at_level(logging.WARNING, logger="dmbot.llm.claude_client"):
         asyncio.run(turn())
@@ -519,7 +536,7 @@ def test_an_answer_below_the_cap_is_not_truncated_and_logs_nothing(fake, client,
     fake(_INIT, _start(input_tokens=600), _delta("Kurz."), _stop("end_turn", 12),
          _result(result="Kurz.", usage={"input_tokens": 600, "output_tokens": 12}))
     with caplog.at_level(logging.WARNING, logger="dmbot.llm.claude_client"):
-        asyncio.run(_drain(client.chat_stream("s", _USER, options={"num_predict": 220})))
+        asyncio.run(_drain(client.chat_stream(_SPOKEN, _USER, options={"num_predict": 220})))
     assert client.last_stats["truncated"] is False
     assert caplog.records == []
 
@@ -568,7 +585,7 @@ def test_a_cut_batch_answer_does_not_depend_on_the_assistant_message_coming_firs
 def test_a_stream_yields_the_delta_that_arrives_with_the_cut(fake, client):
     fake(_INIT, _start(input_tokens=50), _delta("Eins. "), _delta("Zwei."), _stop("max_tokens", 220),
          _delta("Drei."), _result())
-    assert asyncio.run(_drain(client.chat_stream("s", _USER, options={"num_predict": 220}))) == [
+    assert asyncio.run(_drain(client.chat_stream(_SPOKEN,_USER, options={"num_predict": 220}))) == [
         "Eins. ", "Zwei."]
 
 
@@ -584,7 +601,7 @@ def test_a_request_that_spent_its_cap_on_thinking_is_not_cut(fake, client, caplo
         _result(result="Die Tür knarrt.", usage={"input_tokens": 17300, "output_tokens": 274}),
     )
     with caplog.at_level(logging.WARNING, logger="dmbot.llm.claude_client"):
-        deltas = asyncio.run(_drain(client.chat_stream("s", _USER, options={"num_predict": 220})))
+        deltas = asyncio.run(_drain(client.chat_stream(_SPOKEN,_USER, options={"num_predict": 220})))
     assert deltas == ["Die Tür ", "knarrt."]
     assert client.last_stats["truncated"] is False
     assert query.closed == 1
@@ -596,7 +613,7 @@ def test_a_max_tokens_stop_of_an_earlier_request_does_not_cut_the_next_ones_text
     mistaken for text that arrived at the cut."""
     fake(_INIT, _start(input_tokens=50), _thinking(), _stop("max_tokens", 244),
          _start(input_tokens=60), _delta("Eins. "), _delta("Zwei."), _stop("end_turn", 20), _result())
-    assert asyncio.run(_drain(client.chat_stream("s", _USER, options={"num_predict": 220}))) == [
+    assert asyncio.run(_drain(client.chat_stream(_SPOKEN,_USER, options={"num_predict": 220}))) == [
         "Eins. ", "Zwei."]
     assert client.last_stats["truncated"] is False
 
@@ -610,7 +627,7 @@ def test_the_spoken_budget_is_cut_on_the_text_itself(fake, client, caplog):
     query = fake(_INIT, _start(input_tokens=50), _delta(first), _delta("abcdefgh"),
                  _delta("nie gelesen"), _stop("end_turn", 30), _result(result="nie erreicht"))
     with caplog.at_level(logging.WARNING, logger="dmbot.llm.claude_client"):
-        deltas = asyncio.run(_drain(client.chat_stream("s", _USER, options={"num_predict": 10})))
+        deltas = asyncio.run(_drain(client.chat_stream(_SPOKEN,_USER, options={"num_predict": 10})))
     assert deltas == [first, "abcd"]
     assert len("".join(deltas)) == budget
     assert client.last_stats["truncated"] is True
@@ -647,7 +664,7 @@ def test_thinking_tokens_reach_the_stats(fake, client):
     fake(_INIT, _start(input_tokens=50), _thinking(), _delta("Kurz."), _stop("end_turn", 40, thinking=31),
          _result(result="Kurz.", usage={"input_tokens": 50, "output_tokens": 40,
                                         "output_tokens_details": {"thinking_tokens": 31}}))
-    asyncio.run(_drain(client.chat_stream("s", _USER, options={"num_predict": 220})))
+    asyncio.run(_drain(client.chat_stream(_SPOKEN,_USER, options={"num_predict": 220})))
     assert client.last_stats["thinking"] == 31
     assert client.last_stats["eval_count"] == 40
 
@@ -671,7 +688,7 @@ def test_a_call_that_cannot_be_prepared_is_a_backend_error_and_the_workdir_heals
         with pytest.raises(LLMBackendError, match="could not be prepared"):
             asyncio.run(made.chat("s", _USER))
         with pytest.raises(LLMBackendError, match="could not be prepared"):
-            asyncio.run(_drain(made.chat_stream("s", _USER)))
+            asyncio.run(_drain(made.chat_stream(_SPOKEN,_USER)))
     finally:
         made._workdir.unlink()
 
@@ -689,7 +706,7 @@ def test_sdk_failures_become_the_one_backend_error(fake, client, failure):
         asyncio.run(client.chat("s", _USER))
     assert caught.value.__cause__ is failure
     with pytest.raises(LLMBackendError):
-        asyncio.run(_drain(client.chat_stream("s", _USER)))
+        asyncio.run(_drain(client.chat_stream(_SPOKEN,_USER)))
 
 
 def test_the_sdks_bare_exceptions_are_backend_errors_too(fake, client):
@@ -701,7 +718,7 @@ def test_the_sdks_bare_exceptions_are_backend_errors_too(fake, client):
         asyncio.run(client.chat("s", _USER))
     assert caught.value.__cause__ is failure
     with pytest.raises(LLMBackendError):
-        asyncio.run(_drain(client.chat_stream("s", _USER)))
+        asyncio.run(_drain(client.chat_stream(_SPOKEN,_USER)))
 
 
 def test_a_cancelled_call_stays_cancelled(fake, client):
@@ -778,7 +795,7 @@ def test_stream_error_before_the_first_delta_raises_with_nothing_yielded(fake, c
     async def go():
         got = []
         with pytest.raises(LLMBackendError):
-            async for delta in client.chat_stream("s", _USER):
+            async for delta in client.chat_stream(_SPOKEN,_USER):
                 got.append(delta)
         return got
 
@@ -803,7 +820,7 @@ def test_the_stream_timeout_ends_with_the_first_delta(fake):
 
     fake(_INIT, _delta("Erster Satz. "), pause, _delta("Zweiter."), _result())
     made = ClaudeClient(timeout=0.05)
-    assert asyncio.run(_drain(made.chat_stream("s", _USER))) == ["Erster Satz. ", "Zweiter."]
+    assert asyncio.run(_drain(made.chat_stream(_SPOKEN,_USER))) == ["Erster Satz. ", "Zweiter."]
     asyncio.run(made.aclose())
 
 
@@ -814,7 +831,7 @@ def test_a_set_api_key_is_refused_unless_allowed(fake, monkeypatch):
     with pytest.raises(LLMBackendError, match="ANTHROPIC_API_KEY"):
         asyncio.run(made.chat("s", _USER))
     with pytest.raises(LLMBackendError, match="ANTHROPIC_API_KEY"):
-        asyncio.run(_drain(made.chat_stream("s", _USER)))
+        asyncio.run(_drain(made.chat_stream(_SPOKEN,_USER)))
     assert query.options == []  # refused before anything is spawned
     asyncio.run(made.aclose())
     allowed = ClaudeClient(allow_api_key=True)
@@ -889,7 +906,7 @@ def test_early_close_reaches_the_transport_of_the_real_sdk(monkeypatch):
     made = ClaudeClient()
 
     async def go():
-        agen = made.chat_stream("s", _USER)
+        agen = made.chat_stream(_SPOKEN,_USER)
         first = await agen.__anext__()
         await agen.aclose()
         await asyncio.wait_for(transport.closed.wait(), timeout=5)
