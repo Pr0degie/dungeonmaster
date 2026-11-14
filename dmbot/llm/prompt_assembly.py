@@ -12,6 +12,25 @@ by the caller, not by this function.)
 from __future__ import annotations
 
 
+class SystemPrompt(str):
+    """The assembled system prompt, a plain ``str`` everywhere, that also knows its stable head.
+
+    ``stable`` is the leading part that stays byte-identical from turn to turn (persona, and the
+    recap until the next auto-recap). Ollama and every other reader see the whole string, unchanged.
+    The Claude client sends only ``stable`` as the system prompt and moves the rest, same text and
+    same order, to the front of the user prompt: the CLI caches the system prompt as one block, so
+    one changed state line used to make every turn a cache miss (D142, ADR 061 amendment
+    2026-11-14). Any str operation (``+``, slicing) returns a plain ``str`` without the head.
+    """
+
+    stable: str
+
+    def __new__(cls, text: str, stable: str = "") -> SystemPrompt:
+        obj = super().__new__(cls, text)
+        obj.stable = stable if text.startswith(stable) else ""
+        return obj
+
+
 def assemble_system_prompt(
     persona: str,
     *,
@@ -21,7 +40,7 @@ def assemble_system_prompt(
     npc_memory: str | None = None,
     rag: str | None = None,
     alias_hint: str | None = None,
-) -> str:
+) -> SystemPrompt:
     """Join the present prompt slices into one system prompt, in the fixed memory order
     ``persona → recap (wrapped) → adventure → state_summary → npc_memory → rag → alias_hint``.
 
@@ -30,6 +49,9 @@ def assemble_system_prompt(
     one blank line (``"\\n\\n"``). ``recap`` is wrapped in the German "Was bisher geschah" header;
     every other slice is appended verbatim. ``npc_memory`` (ADR 044) sits right after the hard
     state it colours, before the retrieved rulebook text.
+
+    The result is a :class:`SystemPrompt` whose ``stable`` head is ``persona`` + recap: everything
+    after it changes from turn to turn (the scene card with its guidance cadence, state, RAG).
     """
     parts = [persona]
     if recap:
@@ -38,6 +60,7 @@ def assemble_system_prompt(
             "(den Spielenden bereits bekannt — nicht erneut ausführlich erzählen)\n"
             f"{recap}"
         )
+    stable = "\n\n".join(parts)
     if adventure:
         parts.append(adventure)
     if state_summary:
@@ -48,4 +71,4 @@ def assemble_system_prompt(
         parts.append(rag)
     if alias_hint:
         parts.append(alias_hint)
-    return "\n\n".join(parts)
+    return SystemPrompt("\n\n".join(parts), stable=stable)

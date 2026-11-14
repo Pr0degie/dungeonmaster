@@ -64,6 +64,9 @@ embeddings and as the fallback.
   the turn's ✂ line names how many characters fell away.
 - Stats: separate slots for prose and schema calls; the boot ping checks both models. Since
   2026-11-13 (third amendment) every schema call also logs one `[aux]` line with its own tokens.
+- Since 2026-11-14 (fifth amendment): a DM turn sends only persona + recap as the system prompt;
+  scene card, state, NPC memory, RAG and alias hint open the user prompt, same text and order —
+  the prompt cache now hits on that head. `[latency]` carries `cache_w=` (tokens written).
 - The live evening is isolated (17 old gates parked, optional layers off — one variable). Known
   gaps and the deliberately deferred review findings: the "review of the whole round" amendment.
 
@@ -584,3 +587,51 @@ Open points, left as they are:
   `ON_FAILURE` exists in `config.py` and in `failover.py` (a test holds them equal).
 
 Live-unverified.
+
+## Amendment (2026-11-14, fifth) — the narration prompt reaches the prompt cache
+
+The live run of 2026-11-14 logged `cache=0` on all 33 narration turns (prompt 14–21k tokens,
+`first_audio` 8–13 s) while the Haiku calls of the same turns showed cache reads (D142).
+
+**Diagnosis.** The stat was right; the cache was really missed. Two pieces of evidence:
+
+- *The request the CLI builds* (CLI 2.1.325, captured by pointing `ANTHROPIC_BASE_URL` at a
+  local endpoint that records the body and answers 400, so no model call was made): `system` is
+  three blocks — a billing header, the SDK identity line, and **our whole system prompt as one
+  block** — and the CLI puts a 1-hour cache breakpoint on the identity line, on our block and on
+  a closing environment message after the user prompt. A cache entry therefore exists only for
+  "everything up to the end of our system prompt"; one changed byte in it is a miss. A DM turn's
+  system prompt changes every turn after persona and recap (the scene card with its guidance
+  cadence, state, NPC memory, RAG). The Haiku hits were inside one call: a schema call takes two
+  requests (prose, then the tool call), and the second reads what the first wrote.
+- *Four short Opus calls through this client* (two consecutive turns per layout, 60-token cap):
+  old layout `cache_read=0 cache_write=12941` on both turns — the whole prompt was written to the
+  cache every turn and never read; new layout, second turn `cache_read=10877 cache_write=2063`.
+
+**Decided.**
+
+- `assemble_system_prompt` returns a `SystemPrompt` — a `str` subclass that also carries its
+  `stable` head (persona + recap). Every reader, Ollama included, sees the same string as before.
+- `ClaudeClient` (`split_system`) writes only that head into the system-prompt file and puts the
+  rest, verbatim and in the same order, in front of the prompt (before the transcript header).
+  The model reads the same text in the same sequence; what moved is the boundary between the
+  system block and the user message. Any other string — classifiers, recap, `!rules` — goes
+  through unchanged, and str operations drop the head, so a suffixed prompt is sent whole.
+- Order-sensitive wording checked: the persona refers only to the campaign overlay "unten",
+  which stays in the system part. Nothing refers to the state or RAG as "im Systemprompt".
+- The system-prompt file is written with LF line endings; text mode on Windows had written CRLF
+  into what the model reads, while the prompt over stdin was plain LF.
+- The stats carry `cache_write` and the `[latency]` line shows `cache_w=` after `cache=`: a
+  `cache=0` alone could not tell "nothing cached" from "written every turn, never read". The
+  `[aux]` line is unchanged (the evening's measurement reads its format).
+
+**Not changed, noted.** The recap invalidates the head once per auto-recap (one full write).
+The static character sheets ride inside the state block, so they are re-sent fresh every turn;
+moving them into the head would cache another few thousand tokens but changes the slice order
+of `docs/conventions.md` — a separate decision. The capture also showed what the CLI adds on its
+own: a `<system-reminder>` with the account's e-mail address in front of the prompt, the
+environment message (temp working dir, date), and a separate small session-naming request on
+the narration model before the turn's request. None of them breaks the cache of our head.
+
+Live-unverified: the latency effect (`first_audio`) is not measured yet; the expectation is the
+head's ~10k tokens read from the cache instead of processed, from the second turn on.

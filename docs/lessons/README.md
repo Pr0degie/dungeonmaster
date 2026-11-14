@@ -24,6 +24,9 @@ or an ADR already holds — link there instead.
 - [sampling-defaults-leak-into-aux-calls](sampling-defaults-leak-into-aux-calls.md) —
   Client-wide temperature/penalty defaults sabotage specific call types; every call type
   pins its own sampling.
+- [cli-caches-the-system-prompt-as-one-block](cli-caches-the-system-prompt-as-one-block.md) —
+  The Claude CLI caches our whole system prompt as one block; per-turn context in it means a
+  miss every turn. Check `cache_w=`, and capture the request body before guessing.
 
 ### Pipeline & delivery
 - [spoken-audio-cannot-be-retracted](spoken-audio-cannot-be-retracted.md) — Quality guards
