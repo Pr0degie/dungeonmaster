@@ -95,7 +95,9 @@ class DiceCog(commands.Cog):
         manifesting = self._manifesting(manifests)
         source = roll_button_source(self._rt._roll_router, len(markers))
         if source == "router":
-            if markers and marker_decides(self._rt._brain.last_llm_stats):
+            # The narrator of the markers' own turn, recorded when they were queued — not
+            # last_llm_stats, which the next prose call may already have overwritten.
+            if markers and marker_decides({"backend": self._rt._brain.tests_narrator(cid)}):
                 await self._markers_decide(channel, cid, markers, manifesting=manifesting)
             else:
                 await self._router_decides(channel, cid, markers, manifesting=manifesting)
@@ -133,18 +135,17 @@ class DiceCog(commands.Cog):
 
     async def _markers_decide(self, channel, cid: int, markers: list[TestRequest], *,
                               manifesting: set[str]) -> None:
-        """Claude narrated (D140): each valid marker posts its own button. The router classifies
-        only the speakers whose marker was invalid — the speakers a valid marker covers, and
-        those the narrator asked nothing for, are left as the narrator decided."""
+        """Claude narrated (D140): each valid marker posts its own button. The router still
+        classifies every speaker no valid marker covers — one whose marker was invalid, and one
+        the narrator asked nothing for (the persona allows one test per reply, so with two players
+        acting the second action would otherwise get no button; D111: one router pass per speaker)."""
         covered: set[str] = set()
         posted: set[tuple[str, str]] = set()
-        invalid = False
         for req in markers:
             name, problem = self._check_marker(req)
             if name is None:
                 log.info("🎲 Marker %s ungültig (%s) — der Router entscheidet diese Runde",
                          req.raw, problem)
-                invalid = True
                 continue
             covered.add(name.lower())
             key = marker_key(name, req.skill)
@@ -157,8 +158,7 @@ class DiceCog(commands.Cog):
             posted.add(key)
             log.info("🎲 Marker entscheidet: %s — %s (%s)", name, req.skill, self._difficulty_label(req))
             await self._post_dice_button(channel, req)
-        if invalid:
-            await self._post_router_dice(channel, manifesting=manifesting, skip=covered)
+        await self._post_router_dice(channel, manifesting=manifesting, skip=covered)
         self._repeats.turn(cid, set())  # the narrator's requests were honoured: nothing hangs
 
     async def _router_decides(self, channel, cid: int, markers: list[TestRequest], *,

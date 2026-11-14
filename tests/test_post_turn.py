@@ -144,7 +144,6 @@ def test_an_off_list_exit_is_a_verdict_not_a_malformed_part() -> None:
     ("", CombinedFailure.EMPTY),
     ("{nicht json", CombinedFailure.BAD_JSON),
     ("[1, 2]", CombinedFailure.BAD_JSON),
-    (RuntimeError("cli died"), CombinedFailure.CALL_FAILED),
 ])
 def test_an_unusable_answer_hands_every_question_back(answer, failure) -> None:
     result = _run(classify_post_turn(_Chat(answer), scene=SCENE, fact=FACT, npc=NPC))
@@ -152,13 +151,25 @@ def test_an_unusable_answer_hands_every_question_back(answer, failure) -> None:
     assert result.verdicts == {}
 
 
-def test_a_timeout_hands_every_question_back() -> None:
+def test_a_failed_call_is_not_retried_separately() -> None:
+    # Review 2026-11-14: the separate calls would go to the same backend that just failed (a paused
+    # client, or a cold Nemo under fallback) — the turn's verdicts are lost, as a failed separate
+    # call loses its own.
+    result = _run(classify_post_turn(_Chat(RuntimeError("cli died")), scene=SCENE, fact=FACT, npc=NPC))
+    assert result.failure is CombinedFailure.CALL_FAILED and result.retry == ()
+    assert result.verdicts == {} and result.asked == ("scene", "fact", "npc")
+
+
+def test_a_timeout_is_not_retried_separately() -> None:
+    # Review 2026-11-14: retrying after the combined timeout put the verdicts ~40 s behind the
+    # narration (20 s + 20 s); a separate call that times out loses its verdict too.
     async def slow(*args, **kwargs):
         await asyncio.sleep(1)
         return "{}"
 
     result = _run(classify_post_turn(slow, fact=FACT, npc=NPC, timeout=0.01))
-    assert result.failure is CombinedFailure.TIMEOUT and result.retry == ("fact", "npc")
+    assert result.failure is CombinedFailure.TIMEOUT and result.retry == ()
+    assert result.verdicts == {}
 
 
 def test_a_single_question_or_a_blank_answer_is_not_combined() -> None:

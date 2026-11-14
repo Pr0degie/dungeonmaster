@@ -12,14 +12,14 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** Fällt Claude aus, pausiert der Bot, statt mit Nemo weiterzuerzählen (D139 / ADR 061 vierter
-  Nachtrag, 13.11.) — Schalter `DM_LLM_ON_FAILURE`, Standard `pause`. Davor am selben Tag: Kommentare in `dmbot/`
-  entschlackt, ADR 066 als Entwurf (offene Entscheidung), `[aux]`-Logzeile je Schema-Call. Details: „Last session“.
-- **Suite:** 1491 Tests grün, 4 xfail; `dm-eval` Exit 0.
-- **Live-unverifiziert:** D139 (Pause statt Nemo — Durchgang 3), D138, D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134,
-  die `[aux]`-Zeile — Prüfpunkte N1–N8 und Messung D in [phase-11-abend.md](docs/phase-11-abend.md).
-- **Next concrete step:** der fünfte Lauf mit Bot A; vorher drei Entscheidungen von Tobi und die Vorbereitung —
-  Abschnitt „Next concrete step“.
+- **Newest round:** Der Claude-Abend vom 14.11. (Durchgang 1, 33 Züge) und die Folgerunde darauf: auf Claude zählt
+  Opus' Würfelmarker (D140), Fortschritt statt Atmosphäre + Kommas fürs Vorlesen + Komma-Pausen in der Stimme +
+  Budget 280 (D141), Prompt-Cache der Erzählung repariert (D142), ADR 066 B gebaut, Schalter aus (D143). Details: „Last session“.
+- **Suite:** 1550 Tests grün, 4 xfail; `dm-eval` Exit 0.
+- **Live-unverifiziert:** D140–D143 (Prüfpunkte F1–F7 in [phase-11-abend.md](docs/phase-11-abend.md), „Nächster
+  Lauf“), D139 (Pause statt Nemo — Durchgang 3 nicht gespielt), D138 (am 14.11. teils widerlegt: NSCs landen in der
+  verlassenen Szene), D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134.
+- **Next concrete step:** ein Lauf, der die Folgerunde prüft (F1–F7) — Abschnitt „Next concrete step“.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
   geparkt (ADR 061, im [Live-Run-Skript](docs/live-run-script.md) markiert) und werden nach dem
   Abend neu gesichtet; sie zählen nicht gegen die WIP-Grenze.
@@ -34,6 +34,27 @@ Nicht verifiziert: Opus mit vollem Systemprompt, ein ganzer Zug mit Stimme, alle
 _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Current focus (Verlauf)`._
 
 ## Last session
+
+**Der Claude-Abend vom 14.11. und die Folgerunde (D140–D143, live-unverifiziert).** Durchgang 1 mit Tobi + Sezgin
+und Bot A, 19:04–19:33, 33 Züge; Durchgang 2/3 nicht gespielt. Ergebnis und Messungen A–D im Beipackzettel
+[phase-11-abend.md](docs/phase-11-abend.md), „Ergebnis vom 14.11.“. Urteil des Tisches: Die Texte waren früher besser,
+man muss hundertmal sagen, was passiert, die Proben sind zu schwer. pytest 1550 grün, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
+- **Ursache der Hängeschleife:** Opus schrieb neunmal `<<TEST Überreden Schwierig …>>`, der Router (D43) verwarf den
+  Marker und sagte „no test“; jedes Router-Urteil war Herausfordernd. **D140:** auf Claude rollt der gültige Marker
+  wie geschrieben, der Router klassifiziert jeden Sprecher ohne gültigen Marker; Sicherheitsnetz auf beiden Backends
+  für einen wiederholten Marker ohne Wurf; der Erzähler wird mit den Markern gespeichert (`tests_narrator`).
+- **D141:** Persona — jeder Zug bringt die Handlung voran (gern mehreres), lange Sätze erlaubt, aber großzügig Kommas;
+  Schwierigkeit aus der Lage; derselbe offene Moment nie zweimal. Code: `DM_TTS_COMMA_SPLIT=120` spricht lange Sätze
+  in Stücken ab Komma (≥ 40 Zeichen, gegen D55). Live-`.env` `DM_NUM_PREDICT` 220 → 280.
+- **D142:** `cache=0` war echt — die CLI cacht den Systemprompt als einen Block, unserer änderte sich jeden Zug. Jetzt
+  gehen nur Persona + Recap als Systemprompt, Szene/Zustand/RAG vor den Prompt; gemessen 10877 Cache-Tokens im
+  zweiten Zug statt 0. Neues Feld `cache_w=` in `[latency]`. Lesson `cli-caches-the-system-prompt-as-one-block`.
+- **D143 / ADR 066 B:** ein Haiku-Call für Szene, Fakten und NSCs auf Claude, hinter `DM_AUX_COMBINED=0` — Messung D
+  zeigte ~6700 statt 3800–4900 Tokens je Zug; der Abgleich (`dmbot.tools.aux_parity`, 35 Züge) stimmte 95/105,
+  zwei Timeouts, darum aus.
+- `/code-review abd1b49..HEAD`: zehn Befunde, alle aus dieser Runde. Drei mit Test behoben — Sprecher ohne Marker
+  bekommen auf Claude den Router; der Schalter liest den Erzähler der Marker-Runde, nicht `last_llm_stats`; ein
+  Timeout/Fehler des kombinierten Calls wird nicht mehr getrennt wiederholt (sonst ~40 s). Rest unter „Open questions“.
 
 **Fällt Claude aus, pausiert der Bot, statt mit Nemo weiterzuerzählen (2026-11-13, D139 / ADR 061 vierter Nachtrag,
 live-unverifiziert).** Am Tisch: beim Ausfall eine ⏸-Zeile und ein gesprochener Satz, keine Nemo-Antwort, die Zeilen des
@@ -56,27 +77,21 @@ der DM den Zug von selbst. pytest 1491 grün (63 neu in `tests/test_llm_pause.py
 
 ## Next concrete step
 
-**Vor dem Abend entscheiden (Tobi):** (1) Sprechbudget (`DM_NUM_PREDICT`) — 748 Zeichen griffen bei vier von fünf
-Opus-Antworten am 12./13.11. und bei 7 von 22 am 13.11. (01:48–02:16; ✂ „220/220“ = Sprechbudget); der Spieler hat
-es um 02:01 bemängelt. Ein gekappter Zug endet jetzt am letzten ganzen Satz (D137, live-unverifiziert).
-(2) Welche der noch offenen `DMBrain`-Punkte („Open questions“: Nr. 5–8, 10, 11, 13–15) vorher behoben werden.
-Was am Tisch zu beobachten ist (D134, D137, D138, Befunde Nr. 1–4, 9, 12) und die Messung der Aux-Tokens für ADR 066
-stehen im Beipackzettel: [phase-11-abend.md](docs/phase-11-abend.md), Punkte N1–N8 und Messung D.
+**Ein Lauf, der die Folgerunde prüft.** Ablauf wie Durchgang 1 am 14.11. (Sandbox leer, altes Log weg, Bot A an,
+Bot neu). Prüfpunkte F1–F7 im Beipackzettel [phase-11-abend.md](docs/phase-11-abend.md), „Nächster Lauf“: Opus' Probe
+zählt (`🎲 Marker entscheidet:`), keine Hängeschleife, Fortschritt pro Zug und weniger `✂`, die Stimme atmet an
+Kommas (Vergleich `DM_TTS_COMMA_SPLIT=0`), `cache=` > 0 ab dem zweiten Zug, NSCs in der richtigen Szene.
+Aus der alten Liste noch offen: Durchgang 3 (Pause statt Nemo, D139, PowerShell als Administrator) und die
+Würfel-/Panel-Punkte des fünften Laufs (Spieler-Panel bleibt eins, Zielauswahl nur Anwesende, kein „Wechseln“ nach
+Auto-Wechsel, „Was kann ich?“ aus dem Bogen). Danach `characters.json` zurück (`git checkout`), wenn Timo/Vinnie
+wieder mitspielen.
 
-**Für Durchgang 3 (Pause statt Nemo, D139) vorbereiten:** die drei neuen Schlüssel aus `.env.example` in die
-Live-`.env` übernehmen (`DM_LLM_ON_FAILURE=pause`, `DM_LLM_PAUSE_RETRY_S=30`, `DM_LLM_PAUSE_AUTO_TURN_S=180`;
-`uv run dm-sync` zeigt, ob sie fehlen) und eine PowerShell als Administrator bereithalten — der Ausfall wird mit
-einer Firewall-Regel auf `claude.exe` erzeugt und wieder aufgehoben. Zu notieren: die Zeit vom Zug bis zur ⏸-Zeile.
+**ADR 066 B einschalten?** Erst drei Abgleich-Läufe (`uv run python -m dmbot.tools.aux_parity … --live`, ADR 066
+Schritt 4) und die zwei Timeouts klären, dann ein Lauf mit `DM_AUX_COMBINED=1` als einziger Änderung.
 
-**Der fünfte Lauf.** Vorher: Bot A starten (am 30./31.10. lief er nicht, der DM erzählte stumm), in `#bot-commands`
-die alten Würfel-GIF-Sätze löschen (gültig sind die 8 Nachrichten von 2026-10-31 01:49), Sandbox leeren. Am Tisch
-prüfen: Würfel — Zielwert-Post, GIF, Ergebnis, auch nach „🙏 Neu würfeln“, und die Logzeile `🎲 throw gif (stored)`;
-das Spieler-Panel bleibt eins und wird nur bearbeitet; `👥 anwesend in …` für improvisierte Gegner, Zielauswahl nur
-Anwesende, kein Psi-Doppelwurf, kein „Wechseln“ nach Auto-Wechsel, „Was kann ich?“ aus dem Bogen, Schicksal-Buttons
-nach Fehlschlägen. Danach `characters.json` zurück (`git checkout`), wenn Timo/Vinnie wieder mitspielen.
-Im Debug-Lauf vom 13.11. (01:48–02:16, mit Bot A) stehen davon schon im Log: `🎲 throw gif (stored)` (01:52:40),
-der Neuwurf mit Schicksalspunkt (01:57:07), kein Psi-Doppelwurf (01:54:47), `👥 anwesend in …` (01:59:57). Der
-Rest der Liste ist am Log nicht ablesbar.
+**Bekannt, nicht behoben:** improvisierte NSCs landen in der Szene, die die Gruppe gerade verlässt (14.11.: Bree
+Marlok im Schrein, Vosk/„Kettenmann“ in der Pfandhalle) — die Präsenz wird gegen den alten Szenenzeiger
+klassifiziert, wenn im selben Zug ein `<<ORT>>` den Zeiger bewegt. Nächster Kandidat für eine Runde.
 
 **Klein, Tobi entscheidet:** welcher Sprach-Trigger als nächster gebaut wird (alle nach dem Muster von
 `dmbot/voice/kick_phrase.py` + `_maybe_kick`). Rangfolge: (1) „Baby, welcome to the party!“ trennt BloodyP;
@@ -222,20 +237,28 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 
 ## Open questions / to clarify
 
-**Offene Entscheidung (Tobi): ein Schema-Call für Szenen-, Fakten- und NSC-Klassifikator? —
-[ADR 066](docs/decisions/066-one-post-turn-classifier-call.md), Draft vom 2026-11-13, nichts gebaut.**
-Optionen: A zusammenlegen auf beiden Backends, B nur auf Claude, C lassen. Empfehlung: **C jetzt**, B als nächster
-Schritt, wenn ein Lauf die Kosten zeigt, A nur mit Replay-Beleg für Nemo.
-- Gemessen am 13.11. (25 Zuggrenzen, Haiku): 3 Aux-Calls pro Zuggrenze, 4,88 CLI-Starts pro Zug, letztes Verdikt nach
-  4,75 s (Median), kein Fehlschlag. Geschätzt, weil das Log keine Aux-Tokens führt: 3800–4900 Input-Tokens pro
-  Zuggrenze heute, ein Call spart 1400–1600 davon (6–7 % des Zugs, Haiku-Stufe) und 2 von 5 Starts, keine Zeit.
-- Dagegen: drei Pflicht-Entscheidungen fallen gemeinsam aus, der Szenen-Kontext (vorige Erzählung) erreicht Fakten-
-  und NSC-Frage, D138 und der Claude-Abend sind noch unverifiziert, `dm-eval` sieht die drei Klassifikatoren nicht.
-- Die Aux-Tokens sind ab dem nächsten Lauf messbar (`[aux]`-Zeile, 13.11.; Messung D im Beipackzettel).
-  Unabhängig davon, je eine kleine Entscheidung: `CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK` messen;
-  Fakten-Klassifikator bei „nichts“ ohne `sache`-Satz.
-- Nebenbefund, Ursache ungeprüft: 4 der 25 Journal-Records vom 13.11. tragen keine `scene_router`/`facts`/`npcs`-Notizen,
-  obwohl das Log für jede Zuggrenze drei Verdikte zeigt.
+**Offene Punkte der Folgerunde vom 14.11. (D140–D143) — aus `/code-review abd1b49..HEAD` und den Agenten-Berichten.**
+ADR 066 ist entschieden (B, Schalter aus); die alte offene Frage dazu ist erledigt.
+- **Kontext ohne Überschrift im Prompt (D142):** Szenenkarte, Zustand, NSC-Gedächtnis und RAG stehen jetzt ohne
+  Kennzeichnung vor dem Spieler-Transkript bzw. der Regie-Zeile. Risiko: Opus liest RAG-Text als Spielerrede oder gewichtet
+  harten Zustand schwächer (Golden Rules #3/#7). Am Tisch beobachten; Abhilfe wäre eine klare Kopfzeile vor dem Block
+  (ändert den Prompt, braucht `dm-eval` + Lauf).
+- **`SystemPrompt` ist ein `str`-Subtyp (D142):** jede String-Operation (`system + …`, f-String) verliert den stabilen
+  Kopf, und der Cache fällt still wieder aus. Robuster: den Kopf explizit durch die `LLMClient`-Naht reichen.
+- **`marker_decides` nennt `"claude"` an einer Würfel-Stelle (D140):** besser ein Hook in `dmbot/llm/__init__.py` neben
+  `post_turn_combined` / `recap_cap`, damit keine Aufrufstelle ein Backend nennt.
+- **Doppelter Code (D143):** der „getrennt fragen“-Pfad steht in `session/scenes.py` und `orchestrator.classify_post_turn`;
+  das chat → wait_for → JSON-Muster jetzt viermal (drei Router + `post_turn`). Ein gemeinsamer Helfer in `dmbot/llm`.
+- **ADR 066 vor `DM_AUX_COMBINED=1`:** zwei Timeouts im Abgleich klären; drei Abgleich-Läufe; Klassifikator-Kategorie
+  in `dm-eval` fehlt; Nachträge in Lesson `mandatory-decisions-need-a-separate-classifier` und ADR 057/058/062 fehlen.
+- **Replay-Notizen überschrieben (gefunden bei D143):** Notizen werden je Kanal beim Autosave geleert; startet der
+  nächste Zug vorher (Würfel-Zug direkt hinter einem erzählten), überschreibt er die Notizen samt `state_before`
+  (Journal-Eintrag 24 vom 14.11.). In ADR 066 beschrieben, nicht behoben.
+- **Was die CLI selbst mitschickt (D142, ADR 061):** einen Systemhinweis mit der Account-E-Mail vor unserem Prompt,
+  eine Umgebungsnachricht mit Temp-Ordner und Datum, und vermutlich vor jedem Zug eine kleine Opus-Anfrage für den
+  Sitzungsnamen — Letzteres nur bei absichtlich scheiternder Anfrage gesehen; ob es im echten Lauf Kontingent kostet, ist offen.
+- **Charakterbögen in den gecachten Kopf?** Sie stehen im Zustandsblock und gehen jeden Zug frisch raus; in den Kopf
+  verschoben würden einige tausend Tokens mehr gecacht — ändert die Reihenfolge in `docs/conventions.md`, eigene Entscheidung.
 
 **Offene `DMBrain`-Befunde (2026-11-13) — dokumentiert; Nr. 1–4, 9 und 12 behoben (13.11., live-unverifiziert), der Rest offen; Nr. 12–14 kamen aus dem `/code-review` der Fixes.** Nr. 1–7 stammen aus
 `/code-review` auf `ddaae08..9ec06b6` (aus dem Code hergeleitet; der Umbau hat sie unverändert übernommen), Nr. 8–11

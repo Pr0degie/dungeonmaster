@@ -153,6 +153,11 @@ class ChannelSession:
     # delivery pipeline (the rest); what each consumer does is on the ``take_pending_<kind>``
     # wrappers.
     pending: dict[str, list] = field(default_factory=empty_markers)
+    # Who narrated the turn that queued the pending ``<<TEST>>`` markers (the failover's
+    # ``backend`` stat, None on the Ollama-only bot) — recorded when they are queued, so the
+    # marker-vs-router switch (D140) judges them by their own turn and not by whatever prose call
+    # finished last (a dice-result turn, another channel, an echo-guard retry).
+    tests_narrator: str | None = None
     # One-shot GM directives injected into the NEXT turn's user message as "[Regie] …" lines
     # (ADR 047: "clock X is full — the consequence hits now"). Code-queued only, drained by
     # _prepare_turn like dice results, exempt from the player-line cap.
@@ -962,6 +967,8 @@ class DMBrain:
             reqs = markers[spec.kind]
             if reqs and (queued or not spec.suppressible):
                 session.pending[spec.kind].extend(reqs)
+                if spec.kind == "tests":
+                    session.tests_narrator = (self.last_llm_stats or {}).get("backend")
         # Replay capture (ADR 046): what this turn actually queued (empty when suppressed) —
         # the marker Soll dm-eval compares against.
         if session.replay_gen is None:
@@ -1018,6 +1025,11 @@ class DMBrain:
     def take_pending_tests(self, channel_id: int) -> list[TestRequest]:
         """Return and clear the dice tests the last DM turn requested (cog posts the buttons)."""
         return self.take_pending("tests", channel_id)
+
+    def tests_narrator(self, channel_id: int) -> str | None:
+        """The backend that narrated the turn whose ``<<TEST>>`` markers are pending (D140) —
+        ``"claude"``, ``"ollama"`` or None (Ollama-only bot, no failover)."""
+        return self._session(channel_id).tests_narrator
 
     def take_pending_manifests(self, channel_id: int) -> list[ManifestRequest]:
         """Return and clear the psychic Manifest requests the last DM turn made (ADR 022) — the
@@ -1232,9 +1244,10 @@ class DMBrain:
 
         Returns ``{kind: verdict}`` for ``"scene"``, ``"fact"``, ``"npc"`` — the same verdicts the
         separate methods return, recorded into the same three notes, plus
-        :attr:`last_post_turn`. A question the combined answer did not answer usably (the call
-        failed, timed out, came back empty or unparseable, or its part is missing) is asked
-        through its separate method in the same turn, logged. Never raises."""
+        :attr:`last_post_turn`. A question the combined answer did not answer usably (empty or
+        unparseable answer, or its part is missing) is asked through its separate method in the
+        same turn, logged. A call that failed or timed out is not retried: its verdicts are lost
+        for the turn, as a failed separate call loses its own (review 2026-11-14). Never raises."""
         started = time.monotonic()
         result = await classify_post_turn_combined(
             self._client.chat, scene=scene, fact=fact, npc=npc,

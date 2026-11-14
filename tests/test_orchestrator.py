@@ -89,6 +89,26 @@ def test_player_action_turn_keeps_inline_marker() -> None:
     assert len(tests) == 1 and tests[0].skill == "Heimlichkeit"  # real player action → marker honoured
 
 
+def test_queued_markers_remember_their_narrator() -> None:
+    # D140 + review 2026-11-14: the narrator is recorded when the markers are queued, so a later
+    # prose call overwriting last_llm_stats does not change who decides the test.
+    class _C:
+        last_stats = {"backend": "claude"}
+        async def chat(self, system, messages, options=None):
+            return "Du schleichst zur Tür. <<TEST Heimlichkeit für Timo>>"
+
+        async def aclose(self) -> None:
+            pass
+
+    brain = DMBrain(_C(), profile=_IM)
+    ch = 1
+    brain.add_player_line(ch, "Timo", "Ich schleiche zur Tür.")
+    asyncio.run(brain.respond(ch))
+    brain.last_llm_stats = {"backend": "ollama"}  # a later call answered on the other side
+    assert brain.tests_narrator(ch) == "claude"
+    assert brain.tests_narrator(2) is None  # a channel that queued nothing
+
+
 def test_sanitize_keeps_real_narration() -> None:
     # "Als der Inquisitor …" is narration, not a role-preamble — must survive untouched.
     text = "Als der Inquisitor eintrifft, wird es still."

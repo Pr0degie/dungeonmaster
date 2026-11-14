@@ -320,3 +320,7 @@ To adopt A, additionally:
 6. **The same replay on Nemo, separate calls first** — the baseline that is missing — then
    combined. Same requirements as step 4, plus no answer cut at `num_predict`.
 7. A live turn sequence on `DM_LLM_BACKEND=ollama` with the three scripted cases of step 5.
+
+## Amendment 2026-11-14 (code review of the round)
+
+A combined call that **times out or fails** is no longer retried through the separate calls. The retry put the verdicts about 40 s behind the narration (20 s + 20 s), or sent three more calls to the backend that had just failed (a paused client, or a cold Nemo under `fallback`). The turn loses those verdicts, as a separate call that times out loses its own. Only a usable call with an unusable answer (empty, unparseable, a part missing) is still asked again separately.

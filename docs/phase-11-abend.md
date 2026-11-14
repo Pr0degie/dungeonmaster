@@ -268,7 +268,27 @@ Fable reingeben.“ Tobi (19:29:50): „Das bewegt sich einfach nicht weiter.“
 - **Kein Prompt-Cache bei der Erzählung** (`cache=0`), die Haiku-Calls treffen ihn.
 - **NSCs in der Szene, die die Gruppe gerade verlässt** (N1/N2 oben).
 
-Folgerunde: D140 (Opus-Marker zählt auf Claude), D141 (kürzere Züge, Budget 280), D142 (Cache), D143 (ADR 066 B).
+Folgerunde: D140 (Opus-Marker zählt auf Claude), D141 (Fortschritt statt Atmosphäre, Kommas fürs Vorlesen,
+Komma-Pausen im Code, Budget 280), D142 (Cache), D143 (ADR 066 B, Schalter aus).
+
+## Nächster Lauf — die Folgerunde vom 14.11. prüfen
+
+Alles darin ist nur durch Tests belegt. Ablauf wie Durchgang 1 (Sandbox leer, altes Log weg, Bot neu). Normal
+spielen, nichts erzwingen außer einer Verhandlung mit Probe.
+
+| # | Was | Gut, wenn | Beweis im Log |
+|---|---|---|---|
+| F1 | **Opus' Probe zählt** (D140) | Würfelknopf mit Opus' Fertigkeit und Schwierigkeit; eine eingeschüchterte oder bestochene Figur wird *Leicht* oder *Routine* | `🎲 Marker entscheidet: <Name> — <Fertigkeit> (<Schwierigkeit>)`; kein `Inline-Marker verworfen` mehr auf Claude |
+| F2 | **Keine Hängeschleife** (D140, D141) | kein zweiter Zug, der denselben offenen Moment neu beschreibt; bleibt ein Wurf liegen, kommt der Knopf wieder oder die Welt handelt | höchstens einmal `🎲 Sicherheitsnetz: …` |
+| F3 | **Fortschritt pro Zug** (D141) | jeder Zug bringt etwas Neues; Sätze dürfen lang sein, aber mit Kommas | 8 von 33 gekappt am 14.11. → jetzt deutlich weniger `✂` |
+| F4 | **Die Stimme atmet an Kommas** (D141, `DM_TTS_COMMA_SPLIT=120`) | lange Sätze mit kurzen Pausen, keine abgehackten Mini-Stücke, kein Gebrabbel am Stückende | nur Ohr; zum Vergleich `DM_TTS_COMMA_SPLIT=0` |
+| F5 | **Prompt-Cache greift** (D142) | erster Ton schneller als 8–13 s | ab dem zweiten Zug `cache=` deutlich über 0 in `[latency]`; nach einem Auto-Recap einmal wieder `cache_w=` hoch |
+| F6 | **Zusatzanfrage der CLI?** (D142, offen) | — | im Verbrauch: kostet jeder Zug eine zweite kleine Opus-Anfrage (Sitzungsname)? Nur wenn auffällig |
+| F7 | **NSCs in der richtigen Szene** (offen, nicht behoben) | Ankommende Figur steht in der neuen Szene | Schlecht: `👥 anwesend in '<alte Szene>': …` kurz vor `scene → <neue Szene>` |
+
+ADR 066 B (ein Haiku-Call statt drei) ist gebaut, aber `DM_AUX_COMBINED=0`: der Abgleich gegen 35 Züge stimmte in
+95 von 105 Urteilen überein, zwei Calls liefen ins 20-s-Timeout. Vor dem Einschalten: drei Abgleich-Läufe (ADR 066
+Schritt 4), dann ein Lauf mit dem Schalter als einziger Änderung.
 
 ## Protokoll zum Ausfüllen
 

@@ -77,7 +77,7 @@ _HEADINGS = {
 }
 
 #: One deadline for the one call, as each separate call has (ADR 066 A/B). It runs behind the DM's
-#: voice like the three did; on a timeout the separate calls follow in the same turn.
+#: voice like the three did; a timeout loses the turn's verdicts (no separate retry, review 2026-11-14).
 COMBINED_TIMEOUT = 20.0
 
 #: A validator failure that means "this part of the answer is not there or has the wrong shape" —
@@ -280,16 +280,20 @@ async def classify_post_turn(
         options=combined_options(kinds),
         format=combined_schema(**given),
     )
+    # A timeout or a failed call is not retried separately (review 2026-11-14): the retry would
+    # land ~20 s later still, or go to the backend that just failed (paused, or a cold Nemo under
+    # fallback). The turn loses these verdicts, as a separate call that times out or fails loses
+    # its own. Only a usable call with an unusable answer is asked again separately.
     try:
         raw = await (asyncio.wait_for(coro, timeout) if timeout else coro)
     except TimeoutError:  # a real cancel stays uncaught
-        log.warning("post-turn: no combined verdict within %ss — asking %s separately",
+        log.warning("post-turn: no combined verdict within %ss — %s lost this turn",
                     timeout, ", ".join(kinds))
-        return CombinedResult(verdicts=decided, retry=kinds, asked=kinds,
+        return CombinedResult(verdicts=decided, retry=(), asked=kinds,
                               failure=CombinedFailure.TIMEOUT)
     except Exception:
-        log.exception("post-turn: combined call failed — asking %s separately", ", ".join(kinds))
-        return CombinedResult(verdicts=decided, retry=kinds, asked=kinds,
+        log.exception("post-turn: combined call failed — %s lost this turn", ", ".join(kinds))
+        return CombinedResult(verdicts=decided, retry=(), asked=kinds,
                               failure=CombinedFailure.CALL_FAILED)
     raw = raw or ""
     if not raw.strip():

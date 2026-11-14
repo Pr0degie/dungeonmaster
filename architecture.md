@@ -601,10 +601,10 @@ the narration context.
 > (`roll_button_source`): the constrained classifier picks reliable skills, the narration model
 > doesn't (seen live: `<<TEST Heimlichkeit>>` for an attack). Exactly one button per action.
 > **On Claude the marker decides (D140/ADR 018 amendment 2026-11-14):** when Claude narrated the
-> turn (`marker_decides` reads the failover's stats, so a Nemo fallback turn keeps D43), a valid
+> turn (`marker_decides` reads the narrator recorded with the queued markers, so a Nemo fallback turn keeps D43), a valid
 > marker — character on the sheet, skill on that sheet, difficulty on the profile ladder or an
-> alias — is what gets rolled; the router classifies only when there is no marker, or the
-> speakers whose marker was invalid. **Safety net, both backends:** a marker repeated for the same
+> alias — is what gets rolled; the router classifies every speaker no valid marker covers (no
+> marker, or an invalid one). **Safety net, both backends:** a marker repeated for the same
 > character + skill in consecutive turns with no roll in between is honoured where the router
 > posted nothing for that character (`MarkerRepeats`) — the narration model is otherwise stuck
 > re-narrating a moment that waits for a roll. A Manifest request covers the psyker's action on

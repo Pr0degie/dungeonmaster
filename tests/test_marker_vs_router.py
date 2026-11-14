@@ -73,6 +73,7 @@ class _Table:
             last_actions=lambda cid: list(self.actions),
             classify_test=classify_test,
             last_llm_stats=stats,
+            tests_narrator=lambda cid: backend,
             last_router=None,
         )
         rt = make_runtime(brain=brain, profile=_IM)
@@ -178,6 +179,35 @@ def test_on_claude_an_invalid_marker_does_not_override_a_valid_one() -> None:
     assert t.classified == ["Rektalus"]
     assert sorted((r.target_name, r.skill) for r in posted) == [
         ("Fridolin", "Überreden"), ("Rektalus", "Wahrnehmung")]
+
+
+def test_on_claude_a_speaker_without_a_marker_still_gets_the_router() -> None:
+    # Review 2026-11-14: the persona allows one test per reply, so with two players acting Opus
+    # marks only one — the other action must still be classified (D111), not silently dropped.
+    t = _Table(backend="claude")
+    posted = t.turn(
+        markers=["<<TEST Heimlichkeit für Rektalus>>"],
+        actions=[("Rektalus", "Ich schleiche mich an."), ("Fridolin", "Ich schieße auf ihn.")],
+        verdicts={"Fridolin": _Req(skill="Überreden", target_name="Fridolin"),
+                  "Rektalus": _Req(skill="Wahrnehmung", target_name="Rektalus")},
+    )
+    assert t.classified == ["Fridolin"]  # Rektalus is the marker's
+    assert sorted((r.target_name, r.skill) for r in posted) == [
+        ("Fridolin", "Überreden"), ("Rektalus", "Heimlichkeit")]
+
+
+def test_the_switch_reads_the_narrator_of_the_markers_turn_not_the_latest_call() -> None:
+    # Review 2026-11-14: a later prose call (dice result, another channel) overwrites
+    # last_llm_stats; the switch must use the narrator recorded with the markers.
+    t = _Table(backend="claude")
+    t.rt._brain.last_llm_stats = {"backend": "ollama"}  # some later call answered on Nemo
+    posted = t.turn(
+        markers=["<<TEST Überreden Leicht für Fridolin>>"],
+        actions=[("Fridolin", "Ich rede ihm gut zu.")],
+        verdicts={"Fridolin": _Req(skill="Nahkampf", target_name="Fridolin")},
+    )
+    assert t.classified == []
+    assert [(r.skill, r.difficulty) for r in posted] == [("Überreden", "Leicht")]
 
 
 def test_on_claude_a_manifest_covers_the_psykers_marker() -> None:
