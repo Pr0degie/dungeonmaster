@@ -56,25 +56,6 @@ man muss hundertmal sagen, was passiert, die Proben sind zu schwer. pytest 1550 
   bekommen auf Claude den Router; der Schalter liest den Erzähler der Marker-Runde, nicht `last_llm_stats`; ein
   Timeout/Fehler des kombinierten Calls wird nicht mehr getrennt wiederholt (sonst ~40 s). Rest unter „Open questions“.
 
-**Fällt Claude aus, pausiert der Bot, statt mit Nemo weiterzuerzählen (2026-11-13, D139 / ADR 061 vierter Nachtrag,
-live-unverifiziert).** Am Tisch: beim Ausfall eine ⏸-Zeile und ein gesprochener Satz, keine Nemo-Antwort, die Zeilen des
-unbeantworteten Zugs bleiben vorgemerkt; bei der Rückkehr eine ▶-Zeile, und nach einer Pause unter 180 s beantwortet
-der DM den Zug von selbst. pytest 1491 grün (63 neu in `tests/test_llm_pause.py`), 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
-- Schalter `DM_LLM_ON_FAILURE=pause|fallback`, Standard `pause`; `fallback` ist der bisherige Weg, unverändert.
-  `!backend ollama` bleibt der Notgriff und schaltet die Sitzung bewusst auf Nemo.
-- Die Entscheidung liegt in `llm/failover.py` (`LLMPausedError`, `retry_in()`, `probe()`); keine Aufrufstelle nennt
-  ein Backend. Der Zugkern stellt Zeilen, Würfelergebnisse und Regie-Notizen zurück (`DMBrain._hold_turn`), der
-  Watcher im `DMCog` pingt (30 s, Verdopplung bis 300 s), sagt an und startet den Zug.
-- Am Abend: Durchgang 3 im Beipackzettel erzeugt den Ausfall jetzt mit einer Firewall-Regel (PowerShell als
-  Administrator) statt mit einem falschen Modellnamen, weil nur so eine Rückkehr ohne Neustart möglich ist.
-- Offen (im Nachtrag): Zeit bis zur ⏸-Zeile bei einem Netzausfall ist ungemessen; vorgemerkte Zeilen überleben
-  keinen Neustart; die Live-`.env` kennt die drei neuen Schlüssel noch nicht (Defaults greifen, `dm-sync` meldet sie).
-- `/code-review` vor dem Commit (14.11.): zehn Befunde, alle aus dieser Runde. Sechs mit Test behoben — nur die
-  Stufe, die ausfiel, beendet die Pause (kein ▶/⏸-Wechsel je Zug bei einem Haiku-Ausfall); ein verspätet
-  scheiternder Ping löst keine zweite Ansage aus; zwei Züge in der Luft behalten Reihenfolge und Zug-Zeiger;
-  ein Nebencall (`!rules`, Recap), der die Pause beendet, lässt den vorgemerkten Zug nicht liegen; der eigene Zug
-  läuft als eigene Task; `DM_LLM_PAUSE_RETRY_S` unter 1 ist ein Startfehler. Der Rest steht unter „Open questions“.
-
 ## Next concrete step
 
 **Ein Lauf, der die Folgerunde prüft.** Ablauf wie Durchgang 1 am 14.11. (Sandbox leer, altes Log weg, Bot A an,
