@@ -31,6 +31,12 @@ def test_a_claude_turn_shows_spawn_and_cache_after_gen(caplog):
     assert "cut" not in line
 
 
+def test_a_claude_turn_shows_its_cache_writes_after_the_reads(caplog):
+    """cache=0 alone can't tell "nothing cached" from "written every turn, never read" (D142)."""
+    line = _line({**_OLLAMA, "spawn_ms": 700, "cache_read": 0, "cache_write": 12941}, caplog)
+    assert "spawn=700ms cache=0 cache_w=12941 chars=400" in line
+
+
 def test_a_claude_turn_shows_its_thinking_tokens_after_gen(caplog):
     line = _line({**_OLLAMA, "thinking": 31, "spawn_ms": 700, "cache_read": 0}, caplog)
     assert "gen=180 think=31 spawn=700ms" in line

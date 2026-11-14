@@ -122,6 +122,26 @@ def _prompt(messages: list[dict[str, str]]) -> str:
     return render_transcript(messages)
 
 
+def split_system(system: str, prompt: str) -> tuple[str, str]:
+    """``(system file text, prompt)`` for one call — where the prompt cache can reach.
+
+    The CLI sends our system prompt as ONE block with a cache breakpoint on it (captured request,
+    CLI 2.1.325), so the cache only hits when the whole block is byte-identical to an earlier
+    call's. A DM turn's system prompt changes every turn after its persona/recap head (scene card,
+    state, RAG), which made every narration call a miss (D142). A
+    :class:`~dmbot.llm.prompt_assembly.SystemPrompt` therefore sends only its ``stable`` head as
+    the system prompt; the changing rest goes, verbatim and in the same order, in front of the
+    prompt. Any other string goes through unchanged. Pure.
+    """
+    stable = getattr(system, "stable", "")
+    if not stable or not system.startswith(stable):
+        return str(system), prompt
+    rest = system[len(stable):].lstrip("\n")
+    if not rest:
+        return stable, prompt
+    return stable, f"{rest}\n\n{prompt}" if prompt else rest
+
+
 def _sdk():
     """The lazily imported SDK module (kept out of the Ollama path, like ``xtts``)."""
     try:
@@ -142,16 +162,18 @@ def _text_delta(event: dict[str, Any]) -> str:
     return delta.get("text") or ""
 
 
-def _prompt_tokens(usage: dict[str, Any]) -> tuple[int, int]:
-    """``(prompt tokens, cache-read tokens)`` from a usage dict. The prompt is what the model
-    read: fresh input + cache reads + cache writes (the three are disjoint)."""
+def _prompt_tokens(usage: dict[str, Any]) -> tuple[int, int, int]:
+    """``(prompt tokens, cache-read tokens, cache-write tokens)`` from a usage dict. The prompt
+    is what the model read: fresh input + cache reads + cache writes (the three are disjoint).
+    The write count tells "nothing is cached" from "cached every turn, never read" (D142)."""
     cache_read = int(usage.get("cache_read_input_tokens") or 0)
+    cache_write = int(usage.get("cache_creation_input_tokens") or 0)
     total = (
         int(usage.get("input_tokens") or 0)
         + cache_read
-        + int(usage.get("cache_creation_input_tokens") or 0)
+        + cache_write
     )
-    return total, cache_read
+    return total, cache_read, cache_write
 
 
 @dataclass
@@ -169,6 +191,7 @@ class _Call:
     # From the raw stream frames — the only source when the call ends before its result.
     prompt_tokens: int | None = None
     cache_read: int = 0
+    cache_write: int = 0
     output_tokens: int | None = None
     thinking_tokens: int | None = None
     stop_reason: str | None = None  # of the current API request (reset at each message_start)
@@ -417,7 +440,7 @@ class ClaudeClient:
             call.stop_reason = None  # a new API request (the CLI's resume after a cap)
             if call.prompt_tokens is None:
                 usage = (event.get("message") or {}).get("usage") or {}
-                call.prompt_tokens, call.cache_read = _prompt_tokens(usage)
+                call.prompt_tokens, call.cache_read, call.cache_write = _prompt_tokens(usage)
                 self._store_stats(call, truncated=False)
         elif kind == "message_delta":
             call.stop_reason = (event.get("delta") or {}).get("stop_reason")
@@ -463,11 +486,11 @@ class ClaudeClient:
         """The ``last_stats`` dict: Ollama's three keys plus the Claude extras."""
         result = call.result
         if result is not None and result.usage:
-            prompt_tokens, cache_read = _prompt_tokens(result.usage)
+            prompt_tokens, cache_read, cache_write = _prompt_tokens(result.usage)
             output_tokens = result.usage.get("output_tokens")
             thinking = (result.usage.get("output_tokens_details") or {}).get("thinking_tokens")
         else:
-            prompt_tokens, cache_read = call.prompt_tokens, call.cache_read
+            prompt_tokens, cache_read, cache_write = call.prompt_tokens, call.cache_read, call.cache_write
             output_tokens = call.output_tokens
             thinking = call.thinking_tokens
         return {
@@ -476,6 +499,7 @@ class ClaudeClient:
             "thinking": thinking,
             "num_ctx": self._num_ctx,
             "cache_read": cache_read,
+            "cache_write": cache_write,
             "spawn_ms": call.spawn_ms,
             "api_ms": result.duration_api_ms if result is not None else None,
             "model": call.model,
@@ -550,10 +574,12 @@ class ClaudeClient:
                 "API instead of the subscription (unset it, or CLAUDE_ALLOW_API_KEY=1)."
             )
 
-    def _begin(self, system: str, options: dict | None, format: dict | str | None, *,
-               spoken: bool = False):
+    def _begin(self, system: str, messages: list[dict[str, str]], options: dict | None,
+               format: dict | str | None, *, spoken: bool = False):
+        """Prepare one call: ``(call, sdk options, system file, prompt)``."""
         self._refuse_api_key()
         system_file = self._prompts / f"system-{uuid.uuid4().hex}.md"
+        system, prompt = split_system(system, _prompt(messages))
         if isinstance(format, dict):
             system += _AUX_SYSTEM_SUFFIX
         try:
@@ -562,7 +588,9 @@ class ClaudeClient:
             # rather than fail every call until the next restart.
             self._cwd.mkdir(parents=True, exist_ok=True)
             self._prompts.mkdir(parents=True, exist_ok=True)
-            system_file.write_text(system, encoding="utf-8")
+            # newline="\n": text mode on Windows wrote every line ending as CRLF into what the
+            # model reads (seen in the captured request); the prompt over stdin has plain LF.
+            system_file.write_text(system, encoding="utf-8", newline="\n")
         except LLMBackendError:
             raise
         except Exception as exc:  # noqa: BLE001 — same reason as in _run: nothing may bypass the failover
@@ -577,7 +605,7 @@ class ClaudeClient:
             # is held only by the per-request cap: a recap cut at the spoken budget loses exactly
             # its newest events (ADR 061, amendment 2026-10-25).
             call.text_budget = round(cap * _CHARS_PER_TOKEN)
-        return call, sdk_options, system_file
+        return call, sdk_options, system_file, prompt
 
     # ---- the seam ----------------------------------------------------------------------
 
@@ -592,9 +620,9 @@ class ClaudeClient:
         """One finished answer. With a JSON-schema ``format`` the validated object comes back as
         a JSON string, so the callers' ``json.loads`` + validators run unchanged. Raises
         :class:`LLMBackendError` on any failure."""
-        call, sdk_options, system_file = self._begin(system, options, format)
+        call, sdk_options, system_file, prompt = self._begin(system, messages, options, format)
         try:
-            async for _ in self._run(call, sdk_options, _prompt(messages), partial=False):
+            async for _ in self._run(call, sdk_options, prompt, partial=False):
                 pass
         finally:
             system_file.unlink(missing_ok=True)
@@ -622,8 +650,8 @@ class ClaudeClient:
         iteration / ``aclose()`` ends the generation (the client-side stop-label abort). An error
         before the first delta raises :class:`LLMBackendError` with nothing yielded, which is
         what lets the failover re-issue the turn; ``last_stats`` is final once the stream ends."""
-        call, sdk_options, system_file = self._begin(system, options, None, spoken=True)
-        run = self._run(call, sdk_options, _prompt(messages), partial=True)
+        call, sdk_options, system_file, prompt = self._begin(system, messages, options, None, spoken=True)
+        run = self._run(call, sdk_options, prompt, partial=True)
         try:
             async for delta in run:
                 yield delta

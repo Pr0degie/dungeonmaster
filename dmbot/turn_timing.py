@@ -47,6 +47,7 @@ class _TurnTiming:
     spawn_ms: int | None = None  # Claude: query() call → first SDK message (subprocess spawn)
     backend: str | None = None  # who narrated, as the failover pair reports it (None: plain Ollama)
     cache_read: int | None = None  # Claude: prompt tokens served from the prompt cache
+    cache_write: int | None = None  # Claude: prompt tokens written to the prompt cache
     truncated: bool = False  # Claude: the answer was cut at the output cap (the ✂ WARNING)
     answer_chars: int = 0
     tts_ms: int | None = None  # synth call → WAV ready (streaming: summed over sentences)
@@ -64,6 +65,7 @@ class _TurnTiming:
         self.spawn_ms = stats.get("spawn_ms")
         self.backend = stats.get("backend")
         self.cache_read = stats.get("cache_read")
+        self.cache_write = stats.get("cache_write")
         self.truncated = bool(stats.get("truncated"))
 
     def respond_ms(self) -> int:
@@ -108,6 +110,8 @@ class _TurnTiming:
             parts.append(f"spawn={self.spawn_ms}ms")
         if self.cache_read is not None:
             parts.append(f"cache={self.cache_read}")
+        if self.cache_write is not None:
+            parts.append(f"cache_w={self.cache_write}")
         if self.truncated:
             parts.append("cut")
         parts.append(f"chars={self.answer_chars}")

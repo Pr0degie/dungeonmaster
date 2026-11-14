@@ -21,9 +21,11 @@ from dmbot.llm.claude_client import (
     ClaudeClient,
     _prompt,
     render_transcript,
+    split_system,
 )
 from dmbot.llm.client import LLMBackendError
 from dmbot.llm.cut_report import caller_reports_cut
+from dmbot.llm.prompt_assembly import SystemPrompt, assemble_system_prompt
 
 _USER = [{"role": "user", "content": "Timo: Ich öffne die Tür."}]
 _SCHEMA = {"type": "object", "properties": {"probe": {"type": "string"}}, "required": ["probe"]}
@@ -40,6 +42,7 @@ class _FakeQuery:
         self.options: list[sdk.ClaudeAgentOptions] = []
         self.prompts: list[str] = []
         self.systems: list[str] = []
+        self.system_bytes: list[bytes] = []
         self.system_paths: list[Path] = []
         self.cwd_listing: list[list[str]] = []
         self.yielded = 0
@@ -51,6 +54,7 @@ class _FakeQuery:
         path = Path(options.system_prompt["path"])
         self.system_paths.append(path)
         self.systems.append(path.read_text(encoding="utf-8"))
+        self.system_bytes.append(path.read_bytes())
         self.cwd_listing.append([p.name for p in Path(options.cwd).iterdir()])
         return self._messages()
 
@@ -174,6 +178,61 @@ def test_a_single_instruction_goes_through_verbatim_history_becomes_a_transcript
 # ---- option mapping ---------------------------------------------------------------------------
 
 
+# ---- the cacheable system prompt (D142) ---------------------------------------------------------
+
+
+def _turn_prompt(turn: int) -> SystemPrompt:
+    """One DM turn's assembled prompt: same persona and recap, everything after them per turn."""
+    return assemble_system_prompt(
+        "PERSONA", recap="RECAP", adventure=f"SZENE {turn}", state_summary=f"ZUSTAND {turn}",
+        npc_memory=f"NSC {turn}", rag=f"REGELN {turn}", alias_hint="Tobi spielt Vex.",
+    )
+
+
+def test_the_system_text_stays_identical_across_turns_with_different_state():
+    """The CLI caches our system prompt as one block: it may only hold what doesn't change."""
+    system_1, prompt_1 = split_system(_turn_prompt(1), "Spieler: eins")
+    system_2, prompt_2 = split_system(_turn_prompt(2), "Spieler: zwei")
+    assert system_1 == system_2 == "PERSONA\n\n## Was bisher geschah " \
+        "(den Spielenden bereits bekannt — nicht erneut ausführlich erzählen)\nRECAP"
+    assert prompt_1 != prompt_2
+
+
+def test_the_moved_blocks_keep_their_text_and_order_ahead_of_the_transcript():
+    whole = _turn_prompt(1)
+    system, prompt = split_system(whole, "Spieler: eins")
+    assert prompt == "SZENE 1\n\nZUSTAND 1\n\nNSC 1\n\nREGELN 1\n\nTobi spielt Vex.\n\nSpieler: eins"
+    # Nothing lost, nothing added: system + moved blocks is the assembled prompt, same order.
+    assert f"{system}\n\n{prompt.removesuffix(chr(10) * 2 + 'Spieler: eins')}" == whole
+
+
+def test_a_plain_string_or_a_prompt_with_nothing_volatile_goes_through_unchanged():
+    assert split_system("Du klassifizierst.", "Text") == ("Du klassifizierst.", "Text")
+    assert split_system(assemble_system_prompt("PERSONA"), "Text") == ("PERSONA", "Text")
+    # A head that is not the start of the text is ignored rather than trusted.
+    assert split_system(SystemPrompt("ANDERS", stable="PERSONA"), "Text") == ("ANDERS", "Text")
+
+
+def test_concatenation_drops_the_head_so_a_suffixed_prompt_is_sent_whole():
+    suffixed = _turn_prompt(1) + "\nANHANG"
+    assert split_system(suffixed, "x") == (suffixed, "x")
+
+
+def test_a_dm_turn_writes_only_the_stable_head_into_the_system_file(fake, client):
+    query = fake(_INIT, _result(result="Die Tür knarrt."))
+    history = [{"role": "user", "content": "Tobi: Hallo."},
+               {"role": "assistant", "content": "Willkommen."},
+               {"role": "user", "content": "Tobi: Ich öffne die Tür."}]
+    asyncio.run(client.chat(_turn_prompt(1), history))
+    assert query.systems[0].startswith("PERSONA") and query.systems[0].endswith("RECAP")
+    assert "ZUSTAND 1" not in query.systems[0]
+    assert query.prompts[0] == (
+        "SZENE 1\n\nZUSTAND 1\n\nNSC 1\n\nREGELN 1\n\nTobi spielt Vex.\n\n" + render_transcript(history)
+    )
+    # LF only: text mode on Windows used to write CRLF into what the model reads.
+    assert b"\r" not in query.system_bytes[0]
+
+
 def test_narration_call_maps_onto_the_sdk_options(fake, client):
     query = fake(_INIT, _result(result="Die Tür knarrt."))
     asyncio.run(client.chat("PERSONA äöü", _USER, options={"num_predict": 220}))
@@ -289,6 +348,7 @@ def test_last_stats_arithmetic(fake, client):
     assert stats["eval_count"] == 55
     assert stats["num_ctx"] == 24576  # the nominal budget, equal to Ollama's
     assert stats["cache_read"] == 4000
+    assert stats["cache_write"] == 300
     assert stats["api_ms"] == 700
     assert stats["model"] == "opus"
     assert stats["truncated"] is False
@@ -333,7 +393,9 @@ def test_early_close_closes_the_sdk_stream_and_leaves_fresh_stats(fake, client):
     read, and the stats are this call's (not the previous call's)."""
     fake(_INIT, _result(result="alt", usage={"input_tokens": 7, "output_tokens": 7}))
     asyncio.run(client.chat("s", _USER))
-    query = fake(_INIT, _start(input_tokens=500), _delta("Eins. "), _delta("Zwei. "),
+    query = fake(_INIT, _start(input_tokens=500, cache_read_input_tokens=9000,
+                               cache_creation_input_tokens=1200),
+                 _delta("Eins. "), _delta("Zwei. "),
                  _delta("Drei."), _result())
 
     async def go():
@@ -349,7 +411,10 @@ def test_early_close_closes_the_sdk_stream_and_leaves_fresh_stats(fake, client):
     assert query.closed == 1
     assert query.yielded == 3  # init, message_start, first delta — nothing after the close
     assert not query.system_paths[0].exists()
-    assert client.last_stats["prompt_eval_count"] == 500
+    assert client.last_stats["prompt_eval_count"] == 10700
+    # The early-cut path reads the cache split from the first frame (D142).
+    assert client.last_stats["cache_read"] == 9000
+    assert client.last_stats["cache_write"] == 1200
     assert client.last_stats["eval_count"] is None
 
 
