@@ -21,7 +21,8 @@ is on-demand._
   Lauf“), D139 (Pause statt Nemo — Durchgang 3 nicht gespielt), D138 (am 14.11. teils widerlegt: NSCs landen in der
   verlassenen Szene), D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134.
 - **Next concrete step:** ein Lauf, der die Folgerunde prüft (F1–F10, W1–W6, Pause-Probe) — vorbereitet am 14.11.,
-  20:55 (Sandbox leer, Bot läuft); Abschnitt „Next concrete step“.
+  20:55 (Sandbox leer, Bot läuft); Abschnitt „Next concrete step“. Davor eine Entscheidung zur Satzlänge
+  ([textvergleich-2026-11-14.md](docs/plans/textvergleich-2026-11-14.md), „Vorschläge“).
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
   geparkt (ADR 061, im [Live-Run-Skript](docs/live-run-script.md) markiert) und werden nach dem
   Abend neu gesichtet; sie zählen nicht gegen die WIP-Grenze.
@@ -62,6 +63,12 @@ man muss hundertmal sagen, was passiert, die Proben sind zu schwer. pytest 1550 
 - **D145 / ADR 063 Nachtrag:** Schicksal auch auf fehlgeschlagene Manifestationen (Regelwerk S. 220: „Reroll a
   failed Test“, keine Ausnahme). Warp-Aufladung und Gefahren erst nach der Entscheidung, aus dem Ergebnis,
   das gilt.
+- **Textvergleich 25.10. gegen 14.11. (nur Untersuchung, nichts geändert):**
+  [textvergleich-2026-11-14.md](docs/plans/textvergleich-2026-11-14.md). Persona und Budget sind nicht die Ursache
+  (sechs Züge mit der Persona von `e3c7a79` neu durch Opus: gleiche Länge, gleiche Satzlänge). Geschadet haben
+  Proben ohne Wurf (4 von 15 mit Wurf, am 25.10. 12 von 13), weniger und längere Sätze (176 statt 123 Zeichen je
+  Satz) und die Auto-Zusammenfassung schon nach Zug 18. Die Persona von heute macht die Züge länger (656 statt
+  565 Zeichen im Nachlauf). Offen, Tobi entscheidet vor dem nächsten Lauf: Satzlänge statt Satzzahl in der Persona.
 
 ## Next concrete step
 
