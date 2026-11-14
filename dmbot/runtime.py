@@ -283,6 +283,10 @@ class SessionRuntime(SessionIngestMixin, ClocksMixin, NpcMemoryMixin, PanelsMixi
         # The NPCs the presence classifier filed in the turn that is still open (ADR 062,
         # amendment 2026-11-13): they follow the pointer until the next turn boundary begins.
         self._turn_sightings: dict[int, tuple[str, ...]] = {}
+        # Card figures of a neighbouring scene seen in the last turn, ``{(name, scene seen in)}``
+        # per channel (ADR 062, amendment 2026-11-14 #11): seen once she stays at home, seen
+        # again the next turn in the same scene she is really there.
+        self._neighbour_seen: dict[int, set[tuple[str, str]]] = {}
         self._npc_mem_marks: dict[int, int] = {}
         self._npc_mem_running: set[int] = set()
         # Chekhov list (ADR 050): per-channel unresolved threads, extracted at wrap-up inside

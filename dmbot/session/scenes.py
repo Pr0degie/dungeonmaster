@@ -328,6 +328,22 @@ class SceneFlowMixin:
                 people.setdefault(key, person)
         return list(people.values())
 
+    def _neighbour_homes(self, state: WorldState, scene_id: str, *,
+                         skip: tuple[str, ...] = ()) -> dict[str, str]:
+        """``{casefolded name: home scene}`` for the card people of the exits reachable from
+        ``scene_id`` right now — minus anyone on the card of a scene in ``skip`` (the scene
+        itself, the one the turn began in). The first exit listing a person wins."""
+        scene = self._adventure.get_scene(scene_id) if self._adventure is not None else None
+        if scene is None:
+            return {}
+        excluded = {key for sid in skip if sid for key in self._card_people(sid)}
+        homes: dict[str, str] = {}
+        for sid in self._exit_labels(scene, state):
+            for key in self._card_people(sid, living_in=state):
+                if key not in excluded:
+                    homes.setdefault(key, sid)
+        return homes
+
     def _card_people(self, scene_id: str, *,
                      living_in: WorldState | None = None) -> dict[str, Candidate]:
         """The single people on one scene's card, ``{casefolded name: Candidate}`` — its
@@ -360,7 +376,14 @@ class SceneFlowMixin:
 
         ``began_in`` is the scene the turn started in. When the pointer has left it meanwhile,
         its card people are candidates too, and a sighting that is one of them stays there: the
-        fence who sees the group off does not turn up in the warehouse (amendment #9)."""
+        fence who sees the group off does not turn up in the warehouse (amendment #9).
+
+        A card figure of a neighbouring scene (an open exit, not ``scene_id`` or ``began_in``)
+        seen once stays in her own scene: the narration usually walked the group to her door a
+        turn before the pointer moved (live 2026-11-14, Bree Marlok filed in the shrine). Seen
+        again the next turn in the same scene, she is really there (amendment 2026-11-14 #11)."""
+        cid = self._brain_channel(channel)
+        seen_before = self._neighbour_seen.pop(cid, set())
         sightings = getattr(verdict, "sightings", None)
         if not sightings or not scene_id:
             return
@@ -369,6 +392,8 @@ class SceneFlowMixin:
         home = (self._card_people(began_in, living_in=state)
                 if began_in and began_in != scene_id else {})
         candidates = [*self._npc_candidates(state, scene_id), *home.values()]
+        neighbour = self._neighbour_homes(state, scene_id, skip=(scene_id, began_in))
+        seen_now: set[tuple[str, str]] = set()
         placed: list[str] = []
         filed: list[str] = []
         for sighting in sightings:
@@ -382,24 +407,37 @@ class SceneFlowMixin:
                      if self._adventure is not None and statblock else None)
             name = person or sighting.label
             stays = name.casefold() in home
+            elsewhere = "" if stays else neighbour.get(name.casefold(), "")
+            if elsewhere:
+                key = (name.casefold(), scene_id)
+                if key in seen_before:
+                    elsewhere = ""  # seen here two turns running: she really came over
+                else:
+                    seen_now.add(key)
             npc, new = state.place_npc(
-                name, began_in if stays else scene_id,
+                name, began_in if stays else (elsewhere or scene_id),
                 wounds=block.wounds if block else defaults["wounds"],
                 toughness_bonus=block.toughness_bonus if block else defaults["toughness_bonus"],
                 armour=block.armour if block else defaults["armour"],
                 faction=block.faction if block else "",
                 goal=block.goal_de if block and person else "",
             )
-            filed.append(npc.name)
-            notes = [f"neu, {block.name if block else 'Standardwerte'}"] if new else []
+            notes =[f"neu, {block.name if block else 'Standardwerte'}"] if new else []
             if person and person.casefold() != sighting.label.casefold():
                 notes.append(f"gemeldet als „{sighting.label}“")
             if stays:
                 notes.append(f"bleibt in '{began_in}'")
+            if elsewhere:
+                notes.append(f"gehört nach '{elsewhere}', bleibt dort")
             placed.append(f"{npc.name} ({'; '.join(notes)})" if notes else npc.name)
-        if not filed:
+            if not elsewhere:
+                filed.append(npc.name)
+        if seen_now:
+            self._neighbour_seen[cid] = seen_now
+        if not placed:
             return
-        self._turn_sightings[self._brain_channel(channel)] = tuple(filed)
+        # A neighbour's card figure kept at home is not filed: she does not follow a move.
+        self._turn_sightings[cid] = tuple(filed)
         self._persist_and_refresh(channel)
         log.info("👥 anwesend in '%s': %s", scene_id, ", ".join(placed))
 

@@ -14,9 +14,10 @@ is on-demand._
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
 - **Newest round:** Der Claude-Abend vom 14.11. (Durchgang 1, 33 Züge) und die Folgerunde darauf: auf Claude zählt
   Opus' Würfelmarker (D140), Fortschritt statt Atmosphäre + Kommas fürs Vorlesen + Komma-Pausen in der Stimme +
-  Budget 280 (D141), Prompt-Cache der Erzählung repariert (D142), ADR 066 B gebaut, Schalter aus (D143). Details: „Last session“.
-- **Suite:** 1550 Tests grün, 4 xfail; `dm-eval` Exit 0.
-- **Live-unverifiziert:** D140–D143 (Prüfpunkte F1–F7 in [phase-11-abend.md](docs/phase-11-abend.md), „Nächster
+  Budget 280 (D141), Prompt-Cache der Erzählung repariert (D142), ADR 066 B gebaut, Schalter aus (D143),
+  Karten-Figuren der Nachbarszene bleiben zu Hause (D144). Details: „Last session“.
+- **Suite:** 1551 Tests grün, 4 xfail; `dm-eval` Exit 0.
+- **Live-unverifiziert:** D140–D144 (Prüfpunkte F1–F7 in [phase-11-abend.md](docs/phase-11-abend.md), „Nächster
   Lauf“), D139 (Pause statt Nemo — Durchgang 3 nicht gespielt), D138 (am 14.11. teils widerlegt: NSCs landen in der
   verlassenen Szene), D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134.
 - **Next concrete step:** ein Lauf, der die Folgerunde prüft (F1–F7) — Abschnitt „Next concrete step“.
@@ -55,6 +56,7 @@ man muss hundertmal sagen, was passiert, die Proben sind zu schwer. pytest 1550 
 - `/code-review abd1b49..HEAD`: zehn Befunde, alle aus dieser Runde. Drei mit Test behoben — Sprecher ohne Marker
   bekommen auf Claude den Router; der Schalter liest den Erzähler der Marker-Runde, nicht `last_llm_stats`; ein
   Timeout/Fehler des kombinierten Calls wird nicht mehr getrennt wiederholt (sonst ~40 s). Rest unter „Open questions“.
+- **D144 / ADR 062 Nachtrag #11:** Bree Marlok (19:11:48) und Vosk (19:20:54) standen als Karten-Figuren der nächsten Szene einen Zug lang in der verlassenen, weil die Erzählung die Gruppe vor die Tür brachte, bevor der Zeiger zog. Jetzt bleibt so eine Figur beim ersten Sehen in ihrer Szene; zwei Züge in Folge in derselben Szene gesehen, ist sie wirklich da.
 
 ## Next concrete step
 
@@ -69,10 +71,6 @@ wieder mitspielen.
 
 **ADR 066 B einschalten?** Erst drei Abgleich-Läufe (`uv run python -m dmbot.tools.aux_parity … --live`, ADR 066
 Schritt 4) und die zwei Timeouts klären, dann ein Lauf mit `DM_AUX_COMBINED=1` als einziger Änderung.
-
-**Bekannt, nicht behoben:** improvisierte NSCs landen in der Szene, die die Gruppe gerade verlässt (14.11.: Bree
-Marlok im Schrein, Vosk/„Kettenmann“ in der Pfandhalle) — die Präsenz wird gegen den alten Szenenzeiger
-klassifiziert, wenn im selben Zug ein `<<ORT>>` den Zeiger bewegt. Nächster Kandidat für eine Runde.
 
 **Klein, Tobi entscheidet:** welcher Sprach-Trigger als nächster gebaut wird (alle nach dem Muster von
 `dmbot/voice/kick_phrase.py` + `_maybe_kick`). Rangfolge: (1) „Baby, welcome to the party!“ trennt BloodyP;

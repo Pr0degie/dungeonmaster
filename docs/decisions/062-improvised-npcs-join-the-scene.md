@@ -157,3 +157,21 @@ group that never goes there keeps her.
   new entry and `state.json` holds one Bree Marlok and one Alter Fenk.
 - The entries the run left behind ("Schreinschwester", "Frau hinter der Sichtklappe",
   "Türwächter", "Blinder Greis" in `state.debug.json`) are not cleaned up by this change.
+
+## Amendment (2026-11-14) — a neighbouring scene's card figure seen once stays at home
+
+- **Status:** built 2026-11-14, **live-unverified** — suite and `dm-eval` only. Decision row **D144**.
+- **Evidence:** the run of 2026-11-14 (`logs/debug-d1.log`). 19:11:48: the narration walked the
+  group to the pawn hall's door, the pointer still stood on `schrein` (the scene classifier said
+  "stay", Opus set `<<ORT>>` a turn later), and Bree Marlok — a card figure of `pfandhalle` — was
+  filed as present in the shrine. 19:20:54: the same with Vosk der Haken (card of `lagerhaus`)
+  filed in `pfandhalle`. #10 brought both home on the next move, but for a turn they stood in the
+  wrong room: in its prompt line and its target picker.
+
+11. **A card figure of a neighbouring scene seen once stays in her own scene.** A sighting that
+    #8 identifies as a card person of an exit reachable right now — not of the scene the pointer
+    stands on, not of the one the turn began in — is that person, with one entry, placed in her
+    own card scene. She is not filed for #6, so she follows no move. **Seen again the next turn
+    in the same scene, she is really there** and #2 places her where the group is. Price, as in
+    #9: a card figure who truly walks over is absent from that room's prompt line and target
+    picker for one turn.

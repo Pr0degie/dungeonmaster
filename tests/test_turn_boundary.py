@@ -1469,7 +1469,7 @@ def test_the_flag_gate_takes_nobody_along() -> None:
 
 
 def test_entering_a_scene_brings_its_card_figures_home() -> None:
-    """A sighting that fits a neighbouring scene's card figure files her where the group is.
+    """A neighbouring scene's card figure seen two turns running is where the group is (#11).
     Without a move she stays there — until the group enters her own scene."""
     adv = _adventure()
     state = _state(adv)                                  # zollhaus; the shrine is its exit
@@ -1478,6 +1478,7 @@ def test_entering_a_scene_brings_its_card_figures_home() -> None:
                   _scene_router=False, _profile=_IMPROVISED)
 
     _run(rt.close_turn(channel, "Eine Schreinschwester huscht am Fenster der Sakristei vorbei."))
+    _run(rt.close_turn(channel, "Die Schreinschwester bleibt an der Tür der Sakristei stehen."))
     vall = state.find("Schwester Vall")
     assert vall.scene == "zollhaus" and vall in rt._scene_npcs(state)
 
@@ -1488,6 +1489,30 @@ def test_entering_a_scene_brings_its_card_figures_home() -> None:
 
     assert not vall.scene
     assert [n.name for n in rt._scene_npcs(state)] == ["Seneschall Kaad"]   # Vall is in her shrine
+
+
+def test_a_neighbouring_card_figure_seen_once_stays_in_her_own_scene() -> None:
+    """Live 2026-11-14, 19:11:48: the narration walked the group to the pawn hall's door, the
+    pointer still stood on the shrine (the <<ORT>> came a turn later), and Bree Marlok — a card
+    figure of the next scene — was filed as present in the shrine. One sighting of a
+    neighbouring scene's card figure is that person, but she stays at home (#11)."""
+    adv = _adventure()
+    state = _state(adv)                                  # zollhaus; the shrine is its exit
+    channel = _FakeChannel()
+    rt = _runtime(adv, state, _npc_brain(("Schreinschwester", "")), channel, _npc_router=True,
+                  _scene_router=False, _profile=_IMPROVISED)
+
+    _run(rt.close_turn(channel, "Unten am Weg zum Schrein fegt eine Schreinschwester die Stufen."))
+
+    vall = state.find("Schwester Vall")
+    assert vall is not None and vall.scene == "schrein"            # her own scene, one entry
+    assert [n.name for n in state.npcs].count("Schwester Vall") == 1
+    assert vall not in rt._scene_npcs(state)                       # not present in the Zollhaus
+    rt._brain = _npc_brain()                                       # a turn without her
+    _run(rt.close_turn(channel, "Stille."))
+    rt._brain = _npc_brain(("Schreinschwester", ""))
+    _run(rt.close_turn(channel, "Wieder huscht die Schreinschwester vorbei."))
+    assert vall.scene == "schrein"                                 # not two turns running: home
 
 
 def test_a_dead_card_figure_is_nobody_a_newcomer_can_be() -> None:

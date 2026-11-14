@@ -284,7 +284,7 @@ spielen, nichts erzwingen außer einer Verhandlung mit Probe.
 | F4 | **Die Stimme atmet an Kommas** (D141, `DM_TTS_COMMA_SPLIT=120`) | lange Sätze mit kurzen Pausen, keine abgehackten Mini-Stücke, kein Gebrabbel am Stückende | nur Ohr; zum Vergleich `DM_TTS_COMMA_SPLIT=0` |
 | F5 | **Prompt-Cache greift** (D142) | erster Ton schneller als 8–13 s | ab dem zweiten Zug `cache=` deutlich über 0 in `[latency]`; nach einem Auto-Recap einmal wieder `cache_w=` hoch |
 | F6 | **Zusatzanfrage der CLI?** (D142, offen) | — | im Verbrauch: kostet jeder Zug eine zweite kleine Opus-Anfrage (Sitzungsname)? Nur wenn auffällig |
-| F7 | **NSCs in der richtigen Szene** (offen, nicht behoben) | Ankommende Figur steht in der neuen Szene | Schlecht: `👥 anwesend in '<alte Szene>': …` kurz vor `scene → <neue Szene>` |
+| F7 | **NSCs in der richtigen Szene** (D144) | Eine Karten-Figur der nächsten Szene, gesehen bevor der Zeiger dort ist, bleibt in ihrer Szene | `👥 … (gehört nach '<Szene>', bleibt dort)`; schlecht: eine Karten-Figur `anwesend in '<alte Szene>'` |
 
 ADR 066 B (ein Haiku-Call statt drei) ist gebaut, aber `DM_AUX_COMBINED=0`: der Abgleich gegen 35 Züge stimmte in
 95 von 105 Urteilen überein, zwei Calls liefen ins 20-s-Timeout. Vor dem Einschalten: drei Abgleich-Läufe (ADR 066
