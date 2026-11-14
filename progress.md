@@ -15,12 +15,13 @@ is on-demand._
 - **Newest round:** Der Claude-Abend vom 14.11. (Durchgang 1, 33 Züge) und die Folgerunde darauf: auf Claude zählt
   Opus' Würfelmarker (D140), Fortschritt statt Atmosphäre + Kommas fürs Vorlesen + Komma-Pausen in der Stimme +
   Budget 280 (D141), Prompt-Cache der Erzählung repariert (D142), ADR 066 B gebaut, Schalter aus (D143),
-  Karten-Figuren der Nachbarszene bleiben zu Hause (D144). Details: „Last session“.
+  Karten-Figuren der Nachbarszene bleiben zu Hause (D144), Psionik mit Würfel-GIF und Schicksal (D145). Details: „Last session“.
 - **Suite:** 1556 Tests grün, 4 xfail; `dm-eval` Exit 0.
-- **Live-unverifiziert:** D140–D145 (Prüfpunkte F1–F7 in [phase-11-abend.md](docs/phase-11-abend.md), „Nächster
+- **Live-unverifiziert:** D140–D145 (Prüfpunkte F1–F10, W1–W6 in [phase-11-abend.md](docs/phase-11-abend.md), „Nächster
   Lauf“), D139 (Pause statt Nemo — Durchgang 3 nicht gespielt), D138 (am 14.11. teils widerlegt: NSCs landen in der
   verlassenen Szene), D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134.
-- **Next concrete step:** ein Lauf, der die Folgerunde prüft (F1–F7) — Abschnitt „Next concrete step“.
+- **Next concrete step:** ein Lauf, der die Folgerunde prüft (F1–F10, W1–W6, Pause-Probe) — vorbereitet am 14.11.,
+  20:55 (Sandbox leer, Bot läuft); Abschnitt „Next concrete step“.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
   geparkt (ADR 061, im [Live-Run-Skript](docs/live-run-script.md) markiert) und werden nach dem
   Abend neu gesichtet; sie zählen nicht gegen die WIP-Grenze.
