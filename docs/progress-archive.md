@@ -12,6 +12,35 @@ offene Fragen) steht in [`../progress.md`](../progress.md), das Decision-Log in
 
 _Index, aus `progress.md` verschoben (2026-10-25):_ Ältere `## Last session`-Einträge (`DM_CLOCKS`-Schalter D118 2026-10-06, Charakter-Akten `docs/characters.html` + Umbenennung Rene Redo 2026-08-22, Vierter Charakter Vinzentius Kabelbrand D105 2026-08-22 [90-Punkte-Bogen gegen das Profil gerechnet, Deployment in beide `characters.json`, Augmetik-Check reaktiviert], Playtest-Triage nach dem ersten Debug-Abend 2026-08-15 [Fehlstart in der Live-Kampagne, `session_file()`-Naht, Sanitize, Testabend-Doku, Kommando-Fehlermeldung → ADR 056], Doku-Drift-Sweep 2026-07-18 [5 Drift-Funde, alle gefixt; ADR-Renumber 019/020], Debug-Sandbox + Gate G10 2026-07-17 [`.debug`-Archive → `session_debug`-Source, `--wipe-debug` → ADR 055], Session-RAG-Runde D101 2026-07-17 [Ingest + Hybrid-Retrieval + Kalibrierung, Verifier-Fund `session_chunks_vec` → ADR 054], Journal-Runde D100 2026-07-17 [Scene-Events + `time_minutes` im Journal → ADR 053], Content-Runde Debug-Kampagne „Die Mitternachtsfracht“ 2026-07-11 [adventure/npcs/testplan lokal, `validate.py` RESULT: OK, Gate-Abdeckung G1–G9 → Runbook], D99 🧪-Debug-Overlay-Runde 2026-07-11 [Sidecar-Loader `testplan.py`, edit-in-place-Panel, Invisibility-Pin → ADR 052], Live-Gate-Triage 2026-07-11 [alle 8 Gates + Tuning-Checks in EIN Abend-Drehbuch gemerged, `docs/live-run-script.md`; Checklisten-Korrekturen per Code-Sweep], Workflow-Migration Runde 4/5 2026-07-11 [roadmap-Modell-Tabelle → Effort-first-Block + konservativer Skill-Sweep], Doc-Diet-Runde 2026-07-11 [State header + Rotation + Decision-Log-Diät], D98 Marker-Registry-Konsolidierung [`MarkerSpec`-Tabelle + eine generische Naht, marker-weise migriert → ADR 051], D97 Chekhov-Liste [Fäden-Schema + Wrap-up-Extraktion + Top-3-Injektion + ChekhovCog → ADR 050], D96 NPC-Agenden [`goal` + `agenda_log` + Extraktor-Erweiterung → ADR 049], D95 Ingame-Zeit [Minuten-Zähler + `<<ZEIT>>`-Marker + Fristen + Druck-Panel → ADR 048], D94 Consequence Clocks [`<<UHR id>>`-Marker + ClockCog + Druck-Panel + Voll-Uhr-`[Regie]`-Note → ADR 047], D93 Replay-Eval-Harness [Replay-Journal + `uv run dm-eval`, 6 Diff-Kategorien, synthetische Goldens → ADR 046], D92 Konsistenz-Wächter [deterministischer Pre-Delivery-Check, Regenerate-once, fail-open → ADR 045], D91 NPC-Gedächtnis [NpcMemory-Schema + Extraktor + Lügen-Flip/Gossip + Prompt-Block → ADR 044], D90 `dm-sync`-Entry-Point [Package-Move + hatchling, byte-identischer `[sync]`-Block], D89 Sync-Check-Fingerprint-Tool [`[sync]`-Block, Ingest-Stempel, SETUP.md-Sync-Sektion], D88 `/author-adventure`-Authoring-Skill [5-Pass-Workflow + `validate.py`, Dry-Run-Abnahme gegen Chemical Burn], D87 Stateful Scene Cards [`<<ERLEDIGT>>`-Flags, tote NSCs, gated Exits → ADR 043], D85+D86 Spielbarkeits-Tuning [repeat_penalty + Roll-Router-Carve-out, `intro_guard`-Retry], D84 `!intro`-Meta-Auftakt-Strip + Temp 0.7, D83 `!intro`-Temperatur + Direktive, D82 Default-Party-Fix, D81 Scene-/Lore-Sub-Cogs, D80 Deepening #4–#6 [prompt_assembly/seed_session/clear_panel], D79 Deepening #1+#2 [`combat.py`-Auslagerung + `segments.py`-Verdrahtung], D78 Skill-Tooling-Runde [4 Claude-Code-Skills: /tdd, /grill-me, /improve-architecture, /to-prd], D77 Dev-Gates [Lint-Stop-Hook + blockierender git-pre-commit + Review/Simplify-Checkliste], D76 `disconnect_voice`-Kontrakt + neuer Delivery-Test, D75 One-Shot-Setup, D74
 
+_Aus `progress.md` rotiert (2026-11-14, Textvergleich D146/D147):_
+
+**Der Claude-Abend vom 14.11. und die Folgerunde (D140–D143, live-unverifiziert).** Durchgang 1 mit Tobi + Sezgin
+und Bot A, 19:04–19:33, 33 Züge; Durchgang 2/3 nicht gespielt. Ergebnis und Messungen A–D im Beipackzettel
+[phase-11-abend.md](docs/phase-11-abend.md), „Ergebnis vom 14.11.“. Urteil des Tisches: Die Texte waren früher besser,
+man muss hundertmal sagen, was passiert, die Proben sind zu schwer. pytest 1550 grün, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
+- **Ursache der Hängeschleife:** Opus schrieb neunmal `<<TEST Überreden Schwierig …>>`, der Router (D43) verwarf den
+  Marker und sagte „no test“; jedes Router-Urteil war Herausfordernd. **D140:** auf Claude rollt der gültige Marker
+  wie geschrieben, der Router klassifiziert jeden Sprecher ohne gültigen Marker; Sicherheitsnetz auf beiden Backends
+  für einen wiederholten Marker ohne Wurf; der Erzähler wird mit den Markern gespeichert (`tests_narrator`).
+- **D141:** Persona — jeder Zug bringt die Handlung voran (gern mehreres), lange Sätze erlaubt, aber großzügig Kommas;
+  Schwierigkeit aus der Lage; derselbe offene Moment nie zweimal. Code: `DM_TTS_COMMA_SPLIT=120` spricht lange Sätze
+  in Stücken ab Komma (≥ 40 Zeichen, gegen D55). Live-`.env` `DM_NUM_PREDICT` 220 → 280.
+- **D142:** `cache=0` war echt — die CLI cacht den Systemprompt als einen Block, unserer änderte sich jeden Zug. Jetzt
+  gehen nur Persona + Recap als Systemprompt, Szene/Zustand/RAG vor den Prompt; gemessen 10877 Cache-Tokens im
+  zweiten Zug statt 0. Neues Feld `cache_w=` in `[latency]`. Lesson `cli-caches-the-system-prompt-as-one-block`.
+- **D143 / ADR 066 B:** ein Haiku-Call für Szene, Fakten und NSCs auf Claude, hinter `DM_AUX_COMBINED=0` — Messung D
+  zeigte ~6700 statt 3800–4900 Tokens je Zug; der Abgleich (`dmbot.tools.aux_parity`, 35 Züge) stimmte 95/105,
+  zwei Timeouts, darum aus.
+- `/code-review abd1b49..HEAD`: zehn Befunde, alle aus dieser Runde. Drei mit Test behoben — Sprecher ohne Marker
+  bekommen auf Claude den Router; der Schalter liest den Erzähler der Marker-Runde, nicht `last_llm_stats`; ein
+  Timeout/Fehler des kombinierten Calls wird nicht mehr getrennt wiederholt (sonst ~40 s). Rest unter „Open questions“.
+- **D144 / ADR 062 Nachtrag #11:** Bree Marlok (19:11:48) und Vosk (19:20:54) standen als Karten-Figuren der nächsten Szene einen Zug lang in der verlassenen, weil die Erzählung die Gruppe vor die Tür brachte, bevor der Zeiger zog. Jetzt bleibt so eine Figur beim ersten Sehen in ihrer Szene; zwei Züge in Folge in derselben Szene gesehen, ist sie wirklich da.
+- **Manifestation mit Würfel-GIF:** der 🌀-Knopf spielte nur das Ergebnis aus (Tobi, Lauf 14.11., 19:32:09); jetzt
+  dieselbe Wurf-Animation wie bei einer Probe (ADR 064), Regelauswertung unverändert. Live-unverifiziert.
+- **D145 / ADR 063 Nachtrag:** Schicksal auch auf fehlgeschlagene Manifestationen (Regelwerk S. 220: „Reroll a
+  failed Test“, keine Ausnahme). Warp-Aufladung und Gefahren erst nach der Entscheidung, aus dem Ergebnis,
+  das gilt.
+
 _Aus `progress.md` rotiert (2026-11-14, Claude-Abend und Folgerunde D140–D143):_
 
 **Fällt Claude aus, pausiert der Bot, statt mit Nemo weiterzuerzählen (2026-11-13, D139 / ADR 061 vierter Nachtrag,

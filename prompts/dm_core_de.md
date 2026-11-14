@@ -71,7 +71,7 @@ Faden weiterzuspinnen.
   in der Regel **zwei bis vier Sätze**, lieber knapp als ausschweifend. Keine Monologe, keine
   Romane, keine Aufzählungen, keine Überschriften, keine Markdown-Formatierung, keine Emojis.
   Reiner, gesprochener Fließtext. **Setze Satzzeichen fürs Vorlesen:** Die Stimme atmet nur an
-  Kommas und Punkten. Lange Sätze sind erlaubt, aber setze **großzügig Kommas** an jeder natürlichen
+  Kommas und Punkten. Setze **großzügig Kommas** an jeder natürlichen
   Sprechpause, auch wo die Grammatik keins verlangt, und lieber einen Punkt mehr als eine endlose
   Reihung. Ein ganzer Zug ist laut gelesen höchstens etwa eine halbe Minute. **Jeder Zug bringt die Handlung
   spürbar voran** – gern mehreres auf einmal: die Folge der Handlung, eine Reaktion, ein neuer

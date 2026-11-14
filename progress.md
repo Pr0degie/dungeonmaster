@@ -15,14 +15,13 @@ is on-demand._
 - **Newest round:** Der Claude-Abend vom 14.11. (Durchgang 1, 33 Züge) und die Folgerunde darauf: auf Claude zählt
   Opus' Würfelmarker (D140), Fortschritt statt Atmosphäre + Kommas fürs Vorlesen + Komma-Pausen in der Stimme +
   Budget 280 (D141), Prompt-Cache der Erzählung repariert (D142), ADR 066 B gebaut, Schalter aus (D143),
-  Karten-Figuren der Nachbarszene bleiben zu Hause (D144), Psionik mit Würfel-GIF und Schicksal (D145), Textvergleich mit dem 25.10. samt Folgen (D146). Details: „Last session“.
+  Karten-Figuren der Nachbarszene bleiben zu Hause (D144), Psionik mit Würfel-GIF und Schicksal (D145), Textvergleich mit dem 25.10. samt Folgen (D146), Persona ohne „Lange Sätze sind erlaubt“ (D147). Details: „Last session“.
 - **Suite:** 1564 Tests grün, 4 xfail; `dm-eval` Exit 0.
-- **Live-unverifiziert:** D146, D140–D145 (Prüfpunkte F1–F10, W1–W6 in [phase-11-abend.md](docs/phase-11-abend.md), „Nächster
+- **Live-unverifiziert:** D146, D147, D140–D145 (Prüfpunkte F1–F10, W1–W6 in [phase-11-abend.md](docs/phase-11-abend.md), „Nächster
   Lauf“), D139 (Pause statt Nemo — Durchgang 3 nicht gespielt), D138 (am 14.11. teils widerlegt: NSCs landen in der
   verlassenen Szene), D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134.
 - **Next concrete step:** ein Lauf, der die Folgerunde prüft (F1–F10, W1–W6, Pause-Probe) — vorbereitet am 14.11.,
-  20:55 (Sandbox leer; Bot vorher neu starten, er kennt D146 nicht); Abschnitt „Next concrete step“. Davor Tobis
-  Persona-Entscheidung ([textvergleich-2026-11-14.md](docs/plans/textvergleich-2026-11-14.md), Nachtrag).
+  20:55 (Sandbox leer; Bot vorher neu starten, er kennt D146 nicht); Abschnitt „Next concrete step“.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
   geparkt (ADR 061, im [Live-Run-Skript](docs/live-run-script.md) markiert) und werden nach dem
   Abend neu gesichtet; sie zählen nicht gegen die WIP-Grenze.
@@ -37,37 +36,23 @@ _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-a
 
 ## Last session
 
-**Der Claude-Abend vom 14.11. und die Folgerunde (D140–D143, live-unverifiziert).** Durchgang 1 mit Tobi + Sezgin
-und Bot A, 19:04–19:33, 33 Züge; Durchgang 2/3 nicht gespielt. Ergebnis und Messungen A–D im Beipackzettel
-[phase-11-abend.md](docs/phase-11-abend.md), „Ergebnis vom 14.11.“. Urteil des Tisches: Die Texte waren früher besser,
-man muss hundertmal sagen, was passiert, die Proben sind zu schwer. pytest 1550 grün, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
-- **Ursache der Hängeschleife:** Opus schrieb neunmal `<<TEST Überreden Schwierig …>>`, der Router (D43) verwarf den
-  Marker und sagte „no test“; jedes Router-Urteil war Herausfordernd. **D140:** auf Claude rollt der gültige Marker
-  wie geschrieben, der Router klassifiziert jeden Sprecher ohne gültigen Marker; Sicherheitsnetz auf beiden Backends
-  für einen wiederholten Marker ohne Wurf; der Erzähler wird mit den Markern gespeichert (`tests_narrator`).
-- **D141:** Persona — jeder Zug bringt die Handlung voran (gern mehreres), lange Sätze erlaubt, aber großzügig Kommas;
-  Schwierigkeit aus der Lage; derselbe offene Moment nie zweimal. Code: `DM_TTS_COMMA_SPLIT=120` spricht lange Sätze
-  in Stücken ab Komma (≥ 40 Zeichen, gegen D55). Live-`.env` `DM_NUM_PREDICT` 220 → 280.
-- **D142:** `cache=0` war echt — die CLI cacht den Systemprompt als einen Block, unserer änderte sich jeden Zug. Jetzt
-  gehen nur Persona + Recap als Systemprompt, Szene/Zustand/RAG vor den Prompt; gemessen 10877 Cache-Tokens im
-  zweiten Zug statt 0. Neues Feld `cache_w=` in `[latency]`. Lesson `cli-caches-the-system-prompt-as-one-block`.
-- **D143 / ADR 066 B:** ein Haiku-Call für Szene, Fakten und NSCs auf Claude, hinter `DM_AUX_COMBINED=0` — Messung D
-  zeigte ~6700 statt 3800–4900 Tokens je Zug; der Abgleich (`dmbot.tools.aux_parity`, 35 Züge) stimmte 95/105,
-  zwei Timeouts, darum aus.
-- `/code-review abd1b49..HEAD`: zehn Befunde, alle aus dieser Runde. Drei mit Test behoben — Sprecher ohne Marker
-  bekommen auf Claude den Router; der Schalter liest den Erzähler der Marker-Runde, nicht `last_llm_stats`; ein
-  Timeout/Fehler des kombinierten Calls wird nicht mehr getrennt wiederholt (sonst ~40 s). Rest unter „Open questions“.
-- **D144 / ADR 062 Nachtrag #11:** Bree Marlok (19:11:48) und Vosk (19:20:54) standen als Karten-Figuren der nächsten Szene einen Zug lang in der verlassenen, weil die Erzählung die Gruppe vor die Tür brachte, bevor der Zeiger zog. Jetzt bleibt so eine Figur beim ersten Sehen in ihrer Szene; zwei Züge in Folge in derselben Szene gesehen, ist sie wirklich da.
-- **Manifestation mit Würfel-GIF:** der 🌀-Knopf spielte nur das Ergebnis aus (Tobi, Lauf 14.11., 19:32:09); jetzt
-  dieselbe Wurf-Animation wie bei einer Probe (ADR 064), Regelauswertung unverändert. Live-unverifiziert.
-- **D145 / ADR 063 Nachtrag:** Schicksal auch auf fehlgeschlagene Manifestationen (Regelwerk S. 220: „Reroll a
-  failed Test“, keine Ausnahme). Warp-Aufladung und Gefahren erst nach der Entscheidung, aus dem Ergebnis,
-  das gilt.
-- **Textvergleich mit dem 25.10. und Folgen (D146):** [textvergleich-2026-11-14.md](docs/plans/textvergleich-2026-11-14.md). Persona und Budget sind nicht die Ursache;
-  geschadet haben Proben ohne Wurf, längere Sätze und die frühe Auto-Zusammenfassung. Gebaut, je ein Commit mit
-  Test: `dmbot.tools.text_replay` (Nachlauf), Zusammenfassungstext im Debug-Log, Modell-Kennung in der Bootzeile,
-  Schlussfrage-Filter nur noch für den nackten Satz. Gemessen (Persona unverändert): Variante A 591 Zeichen je
-  Zug / 153 je Satz, B 639 / 100. pytest 1564 grün, ruff (F) sauber, `dm-eval` Exit 0.
+**Textvergleich mit dem 25.10., vier Folgen daraus und die Persona-Entscheidung (2026-11-14, D146/D147).**
+Der Tisch fand die Texte früher besser. Der Vergleich mit dem Zweier-Lauf vom 25.10. zeigt: Persona und Budget
+sind nicht die Ursache. Geschadet haben Proben ohne Wurf (4 von 15 mit Wurf, damals 12 von 13), weniger und
+längere Sätze (176 statt 123 Zeichen je Satz) und die Auto-Zusammenfassung schon nach Zug 18. Bericht mit Nachtrag:
+[textvergleich-2026-11-14.md](docs/plans/textvergleich-2026-11-14.md). pytest 1564 grün, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
+- **Gebaut, je ein Commit mit Test (D146):** `dmbot.tools.text_replay` schickt sechs Züge des Abends mit einer
+  Persona-Variante durch Opus; der Text jeder Auto-Zusammenfassung steht als 🪵-Zeile im Debug-Log; die Bootzeile
+  nennt die aufgelöste Modell-Kennung; der Schlussfrage-Filter streicht nur noch den nackten Satz (Testfall 19:29:29).
+- **Persona (D147):** nur „Lange Sätze sind erlaubt“ gestrichen (Variante A, gemessen 591 Zeichen je Zug, 153 je
+  Satz); die Regieanweisung von `!start` bleibt. Variante B ist Kandidat für nach dem Lauf („Next concrete step“).
+  Lesson `measure-persona-changes-on-replayed-turns`.
+
+**Der Claude-Abend vom 14.11. und die Folgerunde (D140–D145, live-unverifiziert).** Durchgang 1 mit Tobi + Sezgin,
+19:04–19:33, 33 Züge; Ergebnis im Beipackzettel [phase-11-abend.md](docs/phase-11-abend.md). Folgerunde: Opus'
+Marker zählt auf Claude (D140), Persona, Komma-Pausen und Budget 280 (D141), Prompt-Cache (D142), ADR 066 B gebaut
+und aus (D143), Karten-Figuren bleiben in ihrer Szene (D144), Manifestation mit Würfel-GIF und Schicksal (D145).
+Einzelheiten im [Archiv](docs/progress-archive.md), „rotiert (2026-11-14, Textvergleich D146/D147)“.
 
 ## Next concrete step
 
@@ -80,9 +65,14 @@ Würfel-/Panel-Punkte des fünften Laufs (Spieler-Panel bleibt eins, Zielauswahl
 Auto-Wechsel, „Was kann ich?“ aus dem Bogen). Danach `characters.json` zurück (`git checkout`), wenn Timo/Vinnie
 wieder mitspielen.
 
-**Kandidaten für nach dem Lauf (Textvergleich, „Vorschläge“):** `CLAUDE_NUM_CTX` 24 576 → 32 768; eine Regiezeile
-für den nächsten Zug, wenn auf eine Probenanforderung kein Wurf folgt; die Auto-Zusammenfassung lässt die letzten
-sechs Züge im Wortlaut stehen.
+**Kandidaten für nach dem Lauf (Textvergleich, „Vorschläge“ und Nachtrag):**
+- `CLAUDE_NUM_CTX` 24 576 → 32 768; eine Regiezeile für den nächsten Zug, wenn auf eine Probenanforderung kein
+  Wurf folgt; die Auto-Zusammenfassung lässt die letzten sechs Züge im Wortlaut stehen.
+- Persona-Variante B („drei bis fünf Sätze, kein Satz über etwa zwanzig Wörter“) und B mit fester Obergrenze
+  („höchstens fünf Sätze“, ungemessen). B brachte 100 statt 153 Zeichen je Satz, aber keine kürzeren Züge. Zwei
+  Beobachtungen aus der Messung: um 19:19:06 begann B mit einem Planungssatz, der vorgelesen worden wäre („Das
+  ist ein Überredungsversuch … Den Wurf fordere ich an.“), und um 19:10:05 gab B das Geständnis der Schwester in
+  indirekter statt wörtlicher Rede wieder. Eine spätere Messung nimmt mindestens zwölf Züge und zählt beides mit.
 
 **ADR 066 B einschalten?** Erst drei Abgleich-Läufe (`uv run python -m dmbot.tools.aux_parity … --live`, ADR 066
 Schritt 4) und die zwei Timeouts klären, dann ein Lauf mit `DM_AUX_COMBINED=1` als einziger Änderung.

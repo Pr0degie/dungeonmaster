@@ -508,5 +508,6 @@ Gespräch mit Bree (19:15:01), B, 680 Zeichen:
 **Aus den Vorschlägen umgesetzt (je ein Commit mit Test):** der Text jeder automatischen Zusammenfassung steht im
 Debug-Log; die aufgelöste Modell-Kennung steht in der Bootzeile; der Filter gegen die Schlussfrage streicht nur
 noch den nackten Satz ohne Anrede und Inhalt. **Offen, nach dem nächsten Lauf:** `CLAUDE_NUM_CTX`, die Regiezeile
-für Proben ohne Wurf, die Zusammenfassung mit sechs Zügen im Wortlaut. **Offen, Tobis Entscheidung:** die Persona
-(A, B oder B mit einer festen Obergrenze für die Satzzahl) und dazu passend die Regieanweisung von `!start`.
+für Proben ohne Wurf, die Zusammenfassung mit sechs Zügen im Wortlaut. **Entschieden (Tobi, D147):** Variante A steht in der Persona, die Regieanweisung von `!start` bleibt. B und B
+mit fester Obergrenze sind Kandidaten für nach dem Lauf; eine spätere Messung nimmt mindestens zwölf Züge und
+zählt vorgelesene Planungssätze und indirekte statt wörtlicher Rede (B um 19:10:05) mit.
