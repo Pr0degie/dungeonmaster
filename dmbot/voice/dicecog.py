@@ -581,7 +581,11 @@ class DiceCog(commands.Cog):
     def _make_manifest_roll(self, channel, req: ManifestRequest, resolved, *, prep=None):
         """Build the roll callback for a Manifest button: the engine rolls the Psychic Mastery Test,
         bookkeeps Warp Charge against the Threshold, resolves Perils when triggered, persists the
-        psyker's Warp Charge, and feeds every line back so the DM narrates the consequence."""
+        psyker's Warp Charge, and feeds every line back so the DM narrates the consequence.
+
+        A failed Manifest Test by a character with Fate left gets the Fate choice first (IM p.220:
+        Fate rerolls a failed Test, the Manifest Test is one). Warp Charge and Perils follow from the
+        result that stands (IM p.161, step 3), so nothing is booked before the choice."""
         power = resolved.power
         who = resolved.character.name if resolved.character else req.target_name
 
@@ -589,64 +593,142 @@ class DiceCog(commands.Cog):
             guild_id = channel.guild.id if channel.guild else None
             cid = self._rt._brain_channel(channel)
             self._repeats.rolled(cid)  # a roll decides the moment (D140)
-            state = self._rt._state.get(cid)
-            combatant = state.find(who) if (state and who) else None
-            test_result = None
+            dice_msg = {"message": interaction.message}
             if resolved.target is None:  # no Psi-Meisterschaft value on the sheet — roll, ask to compare
                 d = engine.roll(self._rt._profile.dice, self._rt._rng)
-                face = d.total
-                lines = [f"🌀 {power}: {d.total} — kein Psi-Meisterschaft-Wert hinterlegt, "
-                         "vergleicht mit eurem Bogen."]
-            else:
-                current = combatant.warp_charge if combatant is not None else 0
-                result = engine.resolve_manifest(
-                    self._rt._profile, test_target=resolved.target, power=power,
-                    warp_rating=resolved.warp_rating, current_charge=current,
-                    willpower_bonus=resolved.willpower_bonus, threshold=resolved.threshold,
-                    pushed=req.pushed, rng=self._rt._rng,
-                )
-                test_result, face = result.test, result.test.roll
-                lines = [engine.describe_manifest_de(result, character=who)]
-                if state is not None and combatant is not None:
-                    state.set_warp_charge(who, result.warp_charge)
-                    if result.test.success and (resolved.stats or {}).get("duration", "") == "Anhaltend":
-                        state.sustain_power(who, power)
-                    lines += self._resolve_warp_consequences(state, who, resolved, result)
-                    self._rt._persist_and_refresh(channel)
-                elif state is not None and self._rt._characters and self._rt._characters.get(who):
-                    # Known party psyker, but not seeded into this session's WorldState — Warp Charge
-                    # would silently never accumulate (current_charge stays 0 each call) and Perils
-                    # never fire. There is no safe single-character add on WorldState (seed_from_store
-                    # rebuilds the whole state, add_or_update_npc would mistype a PC as an NPC), so warn the GM
-                    # once instead of losing the resource silently.
-                    key = (cid, (who or "").lower())
-                    if key not in self._warp_untracked_warned:
-                        self._warp_untracked_warned.add(key)
-                        log.warning("Warp charge not tracked: %s is not in the current encounter state", who)
-                        lines.append(
-                            f"⚠️ Warp-Aufladung wird nicht verfolgt — {who} ist nicht in der "
-                            "aktuellen Szene/Encounter."
-                        )
-            line = "\n".join(lines)
-            log.info("%s", lines[0])
-            if self._dice_animation_on() and resolved.target is not None:
-                # The same throw as a skill test (live 2026-11-14: a Manifest showed only the
-                # result). Cosmetic, in its own task; the DM is fed below without waiting for it.
-                self._spawn_presentation(self._animate_result(
-                    channel, {"message": interaction.message}, target=resolved.target, line=line,
-                    face=face, palette=palette_for(test_result), view=None, prep=prep,
-                ))
-            else:
-                shown = await self._result_edit(line, face, palette_for(test_result))
-                try:
-                    await interaction.message.edit(**shown, view=None)
-                except discord.HTTPException:
-                    await self._rt._send_with_retry(channel, line)
-            for ln in lines:
-                self._rt._brain.add_test_result(cid, ln)
-            await self._rt.run_and_deliver(channel, guild_id)
+                line = (f"🌀 {power}: {d.total} — kein Psi-Meisterschaft-Wert hinterlegt, "
+                        "vergleicht mit eurem Bogen.")
+                log.info("%s", line)
+                await self._present_manifest(channel, dice_msg, resolved, line, d.total, None)
+                await self._feed_manifest(channel, guild_id, [line])
+                return
+            state = self._rt._state.get(cid)
+            combatant = state.find(who) if (state and who) else None
+            current = combatant.warp_charge if combatant is not None else 0
+            result = self._manifest_once(resolved, req, current)
+            line = engine.describe_manifest_de(result, character=who)
+            log.info("%s", line)
+            pc = self._fate_holder(channel, who) if not result.test.success else None
+            if pc is None:
+                lines = [line, *self._book_manifest(channel, cid, who, resolved, result)]
+                await self._present_manifest(channel, dice_msg, resolved, "\n".join(lines),
+                                             result.test.roll, result.test, prep=prep)
+                await self._feed_manifest(channel, guild_id, lines)
+                return
+            view = FateView(
+                pc.fate_available,
+                self._make_manifest_fate(channel, guild_id, dice_msg, req, resolved, result, line,
+                                         current),
+                timeout=float(self._rt._fate_wait_seconds),
+            )
+            await self._present_manifest(channel, dice_msg, resolved, line, result.test.roll,
+                                         result.test, prep=prep, view=view)
 
         return _roll
+
+    def _manifest_once(self, resolved, req: ManifestRequest, current: int):
+        """One Manifest Test through the engine against ``current`` Warp Charge — nothing booked."""
+        return engine.resolve_manifest(
+            self._rt._profile, test_target=resolved.target, power=resolved.power,
+            warp_rating=resolved.warp_rating, current_charge=current,
+            willpower_bonus=resolved.willpower_bonus, threshold=resolved.threshold,
+            pushed=req.pushed, rng=self._rt._rng,
+        )
+
+    def _book_manifest(self, channel, cid: int, who, resolved, result) -> list[str]:
+        """Book the Manifest result that stands: Warp Charge, a Sustained power, the Perils risk.
+        Returns the extra lines (Perils, containment, the untracked-charge warning)."""
+        state = self._rt._state.get(cid)
+        combatant = state.find(who) if (state and who) else None
+        if state is not None and combatant is not None:
+            state.set_warp_charge(who, result.warp_charge)
+            if result.test.success and (resolved.stats or {}).get("duration", "") == "Anhaltend":
+                state.sustain_power(who, resolved.power)
+            extra = self._resolve_warp_consequences(state, who, resolved, result)
+            self._rt._persist_and_refresh(channel)
+            return extra
+        if state is not None and self._rt._characters and self._rt._characters.get(who):
+            # Known party psyker, but not seeded into this session's WorldState — Warp Charge
+            # would silently never accumulate (current_charge stays 0 each call) and Perils
+            # never fire. There is no safe single-character add on WorldState (seed_from_store
+            # rebuilds the whole state, add_or_update_npc would mistype a PC as an NPC), so warn the GM
+            # once instead of losing the resource silently.
+            key = (cid, (who or "").lower())
+            if key not in self._warp_untracked_warned:
+                self._warp_untracked_warned.add(key)
+                log.warning("Warp charge not tracked: %s is not in the current encounter state", who)
+                return [f"⚠️ Warp-Aufladung wird nicht verfolgt — {who} ist nicht in der "
+                        "aktuellen Szene/Encounter."]
+        return []
+
+    async def _present_manifest(self, channel, dice_msg: dict, resolved, line: str, face,
+                                test_result, *, prep=None, view=None) -> None:
+        """Show a Manifest result in the button message: the throw first when the animation is on
+        (live 2026-11-14: a Manifest showed only the result), else the result straight away."""
+        if self._dice_animation_on() and resolved.target is not None:
+            # Cosmetic, in its own task; the caller feeds the DM without waiting for it.
+            self._spawn_presentation(self._animate_result(
+                channel, dice_msg, target=resolved.target, line=line, face=face,
+                palette=palette_for(test_result), view=view, prep=prep,
+            ))
+            return
+        shown = await self._result_edit(line, face, palette_for(test_result))
+        try:
+            await dice_msg["message"].edit(**shown, view=view)
+        except discord.HTTPException:
+            await self._rt._send_with_retry(channel, line, view=view)
+
+    async def _feed_manifest(self, channel, guild_id, lines: list[str]) -> None:
+        cid = self._rt._brain_channel(channel)
+        for ln in lines:
+            self._rt._brain.add_test_result(cid, ln)
+        await self._rt.run_and_deliver(channel, guild_id)
+
+    def _make_manifest_fate(self, channel, guild_id, dice_msg: dict, req: ManifestRequest,
+                            resolved, result, line: str, current: int):
+        """The Fate choice under a failed Manifest Test (ADR 063 on ADR 022): spend → the point is
+        booked and the Test rerolled against the same Warp Charge, the second result stands; keep /
+        timeout → the first stands. Only then is Warp Charge booked and the DM fed."""
+        who = resolved.character.name if resolved.character else req.target_name
+
+        async def _decide(interaction, spend: bool) -> None:
+            cid = self._rt._brain_channel(channel)
+            state = self._rt._state.get(cid)
+            final, head, shown = result, line, line
+            if spend and state is not None and state.spend_fate(who):
+                left = state.find(who).fate_available
+                final = self._manifest_once(resolved, req, current)
+                head = (f"🙏 {who} gibt einen Schicksalspunkt aus (noch {left}) und würfelt neu — "
+                        f"dieses Ergebnis gilt: {engine.describe_manifest_de(final, character=who)}")
+                shown = f"{line}\n{head}"
+                log.info("%s", head)
+                self._rt._persist_and_refresh(channel)
+            lines = [head, *self._book_manifest(channel, cid, who, resolved, final)]
+            text = "\n".join([shown, *lines[1:]])
+            if final is not result:  # the reroll is thrown like the first roll
+                await self._present_manifest(channel, dice_msg, resolved, text, final.test.roll,
+                                             final.test,
+                                             prep=(self._spawn_presentation(prepare_throw_async())
+                                                   if self._dice_animation_on() else None))
+            elif len(lines) > 1 or not self._dice_images_on():
+                await self._edit_manifest_text(channel, dice_msg, text, final)
+            else:
+                try:  # kept, nothing new: the embed with the die stays, only the buttons go
+                    await dice_msg["message"].edit(view=None)
+                except discord.HTTPException:
+                    pass
+            await self._feed_manifest(channel, guild_id, lines)
+
+        return _decide
+
+    async def _edit_manifest_text(self, channel, dice_msg: dict, text: str, result) -> None:
+        """Replace the kept Manifest result with ``text`` (it gained Perils/containment lines)."""
+        shown = (await self._result_edit(text, result.test.roll, palette_for(result.test), large=True)
+                 if self._dice_images_on() else {"content": text})
+        try:
+            await dice_msg["message"].edit(**shown, view=None)
+        except discord.HTTPException:
+            await self._rt._send_with_retry(channel, text)
 
     def _resolve_warp_consequences(self, state, who, resolved, result) -> list[str]:
         """Resolve the Perils-of-the-Warp risk a manifest just created (ADR 022). A Push-Fumble

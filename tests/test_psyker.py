@@ -378,3 +378,89 @@ def test_a_manifest_roll_plays_the_throw_gif_when_the_animation_is_on() -> None:
     assert len(thrown) == 1
     assert thrown[0]["target"] == resolved.target and thrown[0]["line"].startswith("🌀")
     assert thrown[0]["view"] is None
+
+
+
+# ---- Fate on a failed Manifest Test (IM p.220 "Reroll a failed Test"; Tobi 2026-11-14) ----------
+
+class _SeqRng:
+    """randint returns the scripted values in order (one per die rolled)."""
+
+    def __init__(self, *values: int) -> None:
+        self._values = list(values)
+
+    def randint(self, a: int, b: int) -> int:
+        return self._values.pop(0)
+
+    def random(self) -> float:
+        return 0.5
+
+
+def _psyker_with_fate(*rolls: int):
+    store = CharacterStore([
+        Character.from_dict({
+            "name": "Mortn",
+            "characteristics": {"Wil": 48},
+            "skills": {"Psi-Meisterschaft": 45, "Disziplin (Psi)": 30},
+            "psyker": True,
+            "known_powers": ["Smite"],
+            "fate_total": 2,
+        })
+    ])
+    state = WorldState.seed_from_store(store)
+    state.start_fate_session(default=3)
+    rt = _fake_runtime(store=store, state=state)
+    rt._rng = _SeqRng(*rolls)
+    fed: list[str] = []
+    rt._brain = make_brain(add_test_result=lambda cid, ln: fed.append(ln))
+    cog = DiceCog(None, rt)
+    shown: list[tuple[str, object]] = []
+
+    async def _present(channel, dice_msg, resolved, line, face, test_result, *, prep=None, view=None):
+        shown.append((line, view))
+
+    cog._present_manifest = _present
+    resolved = resolve_manifest_request(_IM, store, power="Smite", target_name="Mortn")
+    roll = cog._make_manifest_roll(types.SimpleNamespace(guild=None),
+                                   ManifestRequest(power="Smite", target_name="Mortn"), resolved)
+    return state, cog, roll, shown, fed, resolved
+
+
+def test_a_failed_manifest_offers_fate_and_books_no_warp_before_the_choice() -> None:
+    state, cog, roll, shown, fed, _ = _psyker_with_fate(95)
+    asyncio.run(roll(_FakeInteraction()))
+    line, view = shown[-1]
+    assert line.startswith("🌀") and "Fehlschlag" in line
+    assert view is not None                                   # the Fate choice is offered
+    assert state.find("Mortn").warp_charge == 0               # step 3 waits for the result that stands
+    assert fed == []                                          # the DM waits too
+
+
+def test_spending_fate_on_a_manifest_rerolls_and_books_only_the_second_result() -> None:
+    state, cog, roll, shown, fed, resolved = _psyker_with_fate(95, 12)
+    asyncio.run(roll(_FakeInteraction()))
+    _, view = shown[-1]
+    asyncio.run(view._on_decide(None, True))
+    mortn = state.find("Mortn")
+    assert mortn.fate_available == 1                          # one of the sheet's two spent
+    assert fed[0].startswith("🙏 Mortn gibt einen Schicksalspunkt aus") and "Erfolg" in fed[0]
+    assert mortn.warp_charge == resolved.warp_rating          # a success gains the full rating, once
+
+
+def test_keeping_a_failed_manifest_books_its_warp_and_spends_nothing() -> None:
+    state, cog, roll, shown, fed, _ = _psyker_with_fate(95)
+    asyncio.run(roll(_FakeInteraction()))
+    _, view = shown[-1]
+    asyncio.run(view._on_decide(None, False))
+    mortn = state.find("Mortn")
+    assert mortn.fate_available == 2
+    assert fed[0].startswith("🌀") and "Fehlschlag" in fed[0]
+    assert mortn.warp_charge > 0                              # a failure still leaks Warp Charge
+
+
+def test_a_successful_manifest_offers_no_fate() -> None:
+    state, cog, roll, shown, fed, resolved = _psyker_with_fate(12)
+    asyncio.run(roll(_FakeInteraction()))
+    line, view = shown[-1]
+    assert view is None and "Erfolg" in line
+    assert state.find("Mortn").warp_charge == resolved.warp_rating and fed

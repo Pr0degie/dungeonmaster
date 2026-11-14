@@ -43,3 +43,15 @@ sheet lists 3 Fate; the bot knew nothing about it. Tobi asked for it directly.
 - A `!join` mid-evening recovers spent Fate; the table can exploit that, but a restart after a
   crash should not cost the players their points.
 - Spent Fate survives restarts with `state.json`; NPCs never have Fate.
+
+## Amendment (2026-11-14) — Fate on a failed Manifest Test
+
+- **Status:** built 2026-11-14, **live-unverified** — suite only. Decision row **D145**.
+- **Rule check (IM Core):** "Spending Fate" (p.220) lists "Reroll a failed Test" with no exception for
+  the Psychic Mastery Test; the Manifest Test *is* that Test (p.161). The only named exception in the
+  book is reading the Emperor's Tarot. Tobi asked for it after the run of 2026-11-14.
+
+A failed Manifest Test by a player character with Fate left gets the same two buttons as a skill
+test. **Warp Charge, a Sustained power and the Perils risk are booked only after the choice**, from
+the result that stands: step 3 of manifesting ("Gain Warp Charge", p.161) depends on that result.
+A reroll runs against the same Warp Charge as the first roll and is thrown like it.
