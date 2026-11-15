@@ -291,10 +291,10 @@ ein Ortswechsel mit Ankunft bei jemandem.
 | F3 | **Fortschritt pro Zug** (D141) | jeder Zug bringt etwas Neues; Sätze dürfen lang sein, aber mit Kommas | 8 von 33 gekappt am 14.11. → jetzt deutlich weniger `✂` |
 | F4 | **Die Stimme atmet an Kommas** (D141, `DM_TTS_COMMA_SPLIT=120`) | lange Sätze mit kurzen Pausen, keine abgehackten Mini-Stücke, kein Gebrabbel am Stückende | nur Ohr; zum Vergleich `DM_TTS_COMMA_SPLIT=0` |
 | F5 | **Prompt-Cache greift** (D142) | erster Ton schneller als 8–13 s | ab dem zweiten Zug `cache=` deutlich über 0 in `[latency]`; nach einem Auto-Recap einmal wieder `cache_w=` hoch |
-| F6 | **Zusatzanfrage der CLI?** (D142, offen) | — | im Verbrauch: kostet jeder Zug eine zweite kleine Opus-Anfrage (Sitzungsname)? Nur wenn auffällig |
+| F6 | **Zusatzanfrage der CLI?** (D142, offen) | — | im Verbrauch: kostet jeder Zug eine zweite kleine Opus-Anfrage (Sitzungsname)? Nur wenn auffällig. Hintergrund: die CLI schickt vor unserem Prompt einen Systemhinweis mit der Account-E-Mail und eine Umgebungsnachricht mit Temp-Ordner und Datum mit; die Sitzungsnamen-Anfrage wurde bisher nur bei einer absichtlich scheiternden Anfrage gesehen |
 | F7 | **NSCs in der richtigen Szene** (D144) | Eine Karten-Figur der nächsten Szene, gesehen bevor der Zeiger dort ist, bleibt in ihrer Szene | `👥 … (gehört nach '<Szene>', bleibt dort)`; schlecht: eine Karten-Figur `anwesend in '<alte Szene>'` |
 | F8 | **Zwei Spieler, eine Probe von Opus** (D140, Review) | wer keinen Marker bekam, bekommt seinen Knopf vom Router | `🎲 Marker entscheidet: A …` und `🎲 router: B …` im selben Zug |
-| F9 | **Kontext ohne Überschrift** (D142, offen) | Opus verwechselt Regelbuch-/Abenteuertext nicht mit Spielerrede, hält den Zustand (Wunden, Gegenstände) ein | nur Ohr; Verdacht mit Uhrzeit notieren |
+| F9 | **Kontext ohne Überschrift** (D142, offen) | Opus verwechselt Regelbuch-/Abenteuertext nicht mit Spielerrede, hält den Zustand (Wunden, Gegenstände) ein | nur Ohr; Verdacht mit Uhrzeit notieren. Scheitert der Punkt, ist die Abhilfe eine Kopfzeile vor dem Block (ändert den Prompt, braucht `dm-eval` und einen Lauf) |
 | F10 | **Urteil des Tisches** | jeder sagt drei Sätze: besser als am 14.11.? | wörtlich aufschreiben |
 
 ### Teil A — dabei mitprüfen, noch offen aus früheren Runden

@@ -12,16 +12,17 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** Der Claude-Abend vom 14.11. (Durchgang 1, 33 Züge) und die Folgerunde darauf: auf Claude zählt
-  Opus' Würfelmarker (D140), Fortschritt statt Atmosphäre + Kommas fürs Vorlesen + Komma-Pausen in der Stimme +
-  Budget 280 (D141), Prompt-Cache der Erzählung repariert (D142), ADR 066 B gebaut, Schalter aus (D143),
-  Karten-Figuren der Nachbarszene bleiben zu Hause (D144), Psionik mit Würfel-GIF und Schicksal (D145), Textvergleich mit dem 25.10. samt Folgen (D146), Persona ohne „Lange Sätze sind erlaubt“ (D147). Details: „Last session“.
-- **Suite:** 1565 Tests grün, 4 xfail; `dm-eval` Exit 0. Neu: ERROR-Log bei Erzähl-Call ohne Cache-Kopf (D142-Wache).
-- **Live-unverifiziert:** D146, D147, D140–D145 (Prüfpunkte F1–F10, W1–W6 in [phase-11-abend.md](docs/phase-11-abend.md), „Nächster
-  Lauf“), D139 (Pause statt Nemo — Durchgang 3 nicht gespielt), D138 (am 14.11. teils widerlegt: NSCs landen in der
-  verlassenen Szene), D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134.
+- **Newest round:** Nacharbeiten vom 15.11., am Tisch ändert sich dadurch nichts: der kombinierte Klassifikator-Call
+  (ADR 066 B, D143) ist nach dem Abgleich verworfen und entfernt (D148); der Entwurf „für Karten-Figuren gilt die
+  Karte“ (ADR 062) bleibt Kandidat, nicht gebaut; die offenen Punkte sind von 62 auf 18 gesichtet. Davor: der
+  Claude-Abend vom 14.11. und die Folgerunde D140–D147 (Marker, Persona, Cache, NSC-Szenen, Psionik). „Last session“.
+- **Suite:** 1537 Tests grün, 4 xfail; `dm-eval` Exit 0 (die 29 Tests des kombinierten Calls sind mit ihm entfernt).
+- **Live-unverifiziert:** D140–D142 und D144–D147 (Prüfpunkte F1–F10, W1–W6 in
+  [phase-11-abend.md](docs/phase-11-abend.md), „Nächster Lauf“), D139 (Pause statt Nemo — Durchgang 3 nicht
+  gespielt), D138 (am 14.11. teils widerlegt: NSCs landen in der verlassenen Szene), D137, `DMBrain`-Befunde
+  Nr. 1–4/9/12, D134.
 - **Next concrete step:** ein Lauf, der die Folgerunde prüft (F1–F10, W1–W6, Pause-Probe) — vorbereitet am 14.11.,
-  20:55 (Sandbox leer; Bot vorher neu starten, er kennt D146 nicht); Abschnitt „Next concrete step“.
+  20:55 (Sandbox leer; Bot vorher neu starten, er kennt D146 und D148 nicht); Abschnitt „Next concrete step“.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
   geparkt (ADR 061, im [Live-Run-Skript](docs/live-run-script.md) markiert) und werden nach dem
   Abend neu gesichtet; sie zählen nicht gegen die WIP-Grenze.
@@ -30,16 +31,29 @@ is on-demand._
 
 **Phase 11 — Claude als Erzähler (ADR 061), code-komplett; Live-Gate offen.** Opus erzählt, Haiku klassifiziert,
 über Tobis Abo; fällt Claude aus, pausiert das Spiel (D139). Erster Abend am 14.11. gespielt, die Folgerunde
-D140–D144 wartet auf ihren Lauf (Prüfliste F1–F10 im Beipackzettel).
+D140–D147 (ohne D143, verworfen) wartet auf ihren Lauf (Prüfliste F1–F10 im Beipackzettel).
 
 _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Current focus (Verlauf)`._
 
 ## Last session
 
-**Verlorener Cache-Kopf wird laut (2026-11-15).** `ClaudeClient._begin` loggt einen ERROR, wenn ein gesprochener
-Erzähl-Call (`chat_stream`) ohne `stable`-Kopf ankommt: eine String-Operation unterwegs hat dann den `SystemPrompt`
-zum nackten `str` gemacht, und der Erzähl-Cache bliebe still auf null (D142). Sonst kein Verhaltenswechsel; Test
-`test_a_spoken_turn_that_lost_its_stable_head_logs_an_error`. pytest 1565 grün, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
+**Nacharbeiten zum Claude-Abend (2026-11-15, D148).** Am Tisch ändert sich nichts; der nächste Lauf prüft dieselbe
+Folgerunde wie geplant. pytest 1537 grün, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
+- **ADR 066 B verworfen und entfernt (D148, Commit `a75bce0`):** der kombinierte Klassifikator-Call, das
+  Abgleich-Werkzeug, ihre 29 Tests und `DM_AUX_COMBINED` sind weg; Szene, Fakten und NSCs bleiben drei Calls. Die
+  Auswertung ([adr-066-b-parity-evaluation-2026-11-15.md](docs/plans/adr-066-b-parity-evaluation-2026-11-15.md))
+  zeigt: von den 10 abweichenden Urteilen kamen 6 aus zwei Timeouts, beide in Zügen mit einer neuen Person, und
+  ein Timeout verliert Szene, Fakt und Sichtung des Zugs zusammen. Das `/code-review` auf den Commit fand eine
+  Testlücke: kein Test prüfte mehr die Journal-Notizen der drei Klassifikatoren. Zwei Tests in
+  `tests/test_turn_boundary.py` halten sie jetzt fest (eine Notiz je gefragtem Klassifikator, keine alte Notiz
+  eines abgeschalteten).
+- **NSC-Anwesenheit nicht umgebaut:** der Entwurf „für Karten-Figuren gilt die Karte“
+  ([adr-062-card-is-authoritative-draft-2026-11-15.md](docs/plans/adr-062-card-is-authoritative-draft-2026-11-15.md))
+  bleibt Kandidat. Gegenüber D144 verhindert er keinen zusätzlichen der acht beobachteten Fehler, die Zeilenzahl
+  bleibt etwa gleich, und eine mitgehende Karten-Figur bräuchte einen getippten Befehl.
+- **Offene Punkte gesichtet:** aus 62 Einträgen wurden 18; der alte Wortlaut steht im Archiv.
+- **Davor am selben Tag:** `ClaudeClient._begin` loggt einen ERROR, wenn ein gesprochener Erzähl-Call ohne
+  `stable`-Kopf ankommt (D142-Wache, Test `test_a_spoken_turn_that_lost_its_stable_head_logs_an_error`).
 
 **Textvergleich mit dem 25.10., vier Folgen daraus und die Persona-Entscheidung (2026-11-14, D146/D147).**
 Der Tisch fand die Texte früher besser. Der Vergleich mit dem Zweier-Lauf vom 25.10. zeigt: Persona und Budget
@@ -53,11 +67,8 @@ längere Sätze (176 statt 123 Zeichen je Satz) und die Auto-Zusammenfassung sch
   Satz); die Regieanweisung von `!start` bleibt. Variante B ist Kandidat für nach dem Lauf („Next concrete step“).
   Lesson `measure-persona-changes-on-replayed-turns`.
 
-**Der Claude-Abend vom 14.11. und die Folgerunde (D140–D145, live-unverifiziert).** Durchgang 1 mit Tobi + Sezgin,
-19:04–19:33, 33 Züge; Ergebnis im Beipackzettel [phase-11-abend.md](docs/phase-11-abend.md). Folgerunde: Opus'
-Marker zählt auf Claude (D140), Persona, Komma-Pausen und Budget 280 (D141), Prompt-Cache (D142), ADR 066 B gebaut
-und aus (D143), Karten-Figuren bleiben in ihrer Szene (D144), Manifestation mit Würfel-GIF und Schicksal (D145).
-Einzelheiten im [Archiv](docs/progress-archive.md), „rotiert (2026-11-14, Textvergleich D146/D147)“.
+_Der Claude-Abend vom 14.11. und die Folgerunde D140–D145: [Archiv](docs/progress-archive.md), „rotiert (2026-11-14,
+Textvergleich D146/D147)“; Ergebnis des Abends im Beipackzettel [phase-11-abend.md](docs/phase-11-abend.md)._
 
 ## Next concrete step
 
@@ -70,17 +81,24 @@ Würfel-/Panel-Punkte des fünften Laufs (Spieler-Panel bleibt eins, Zielauswahl
 Auto-Wechsel, „Was kann ich?“ aus dem Bogen). Danach `characters.json` zurück (`git checkout`), wenn Timo/Vinnie
 wieder mitspielen.
 
-**Kandidaten für nach dem Lauf (Textvergleich, „Vorschläge“ und Nachtrag):**
-- `CLAUDE_NUM_CTX` 24 576 → 32 768; eine Regiezeile für den nächsten Zug, wenn auf eine Probenanforderung kein
-  Wurf folgt; die Auto-Zusammenfassung lässt die letzten sechs Züge im Wortlaut stehen.
+**Kandidaten für nach dem Lauf (die ersten zwei aus der Runde vom 15.11., der Rest aus dem Textvergleich):**
+- **Ortsmarker in der Ankunftsantwort:** ein Persona-Satz, der `<<ORT>>` in dieselbe Antwort zieht, die die Ankunft
+  erzählt. Am 14.11. kam der Marker je einen Zug später (Ankunft erzählt 19:11:39, Marker 19:12:46; 19:20:48 und
+  19:21:58), und in dieser Lücke landeten Sichtungen in der verlassenen Szene. Nicht gebaut, ungemessen.
+- **Spielerzeile für den Anwesenheits-Klassifikator:** er bekommt die Spielerzeile des Zugs mit. Im Abgleich zu
+  ADR 066 erkannte nur der Call mit diesem Kontext Bree Marlok („ist der Marlok hier“); das zielt auf die
+  Doppelgänger, die keine Ortsregel verhindert. Nicht gebaut.
+- `CLAUDE_NUM_CTX` 24 576 → 32 768 (als zweiter Schritt 65 536: Gedächtnis gegen Verbrauch und Antwortzeit); eine
+  Regiezeile für den nächsten Zug, wenn auf eine Probenanforderung kein Wurf folgt; die Auto-Zusammenfassung lässt
+  die letzten sechs Züge im Wortlaut stehen.
 - Persona-Variante B („drei bis fünf Sätze, kein Satz über etwa zwanzig Wörter“) und B mit fester Obergrenze
   („höchstens fünf Sätze“, ungemessen). B brachte 100 statt 153 Zeichen je Satz, aber keine kürzeren Züge. Zwei
   Beobachtungen aus der Messung: um 19:19:06 begann B mit einem Planungssatz, der vorgelesen worden wäre („Das
   ist ein Überredungsversuch … Den Wurf fordere ich an.“), und um 19:10:05 gab B das Geständnis der Schwester in
   indirekter statt wörtlicher Rede wieder. Eine spätere Messung nimmt mindestens zwölf Züge und zählt beides mit.
-
-**ADR 066 B einschalten?** Erst drei Abgleich-Läufe (`uv run python -m dmbot.tools.aux_parity … --live`, ADR 066
-Schritt 4) und die zwei Timeouts klären, dann ein Lauf mit `DM_AUX_COMBINED=1` als einziger Änderung.
+- **Reserve:** der Entwurf „für Karten-Figuren gilt die Karte“ (ADR 062,
+  [docs/plans](docs/plans/adr-062-card-is-authoritative-draft-2026-11-15.md)) — nur, wenn der Lauf einen
+  Anwesenheitsfehler zeigt, den D144 nicht fängt.
 
 **Klein, Tobi entscheidet:** welcher Sprach-Trigger als nächster gebaut wird (alle nach dem Muster von
 `dmbot/voice/kick_phrase.py` + `_maybe_kick`). Rangfolge: (1) „Baby, welcome to the party!“ trennt BloodyP;
@@ -221,200 +239,86 @@ Legend: ⬜ open · 🔄 in progress · ✅ done (with proof)
 - [ ] Per-NPC voices
 - [ ] Automatic character progression
 - [ ] Long-term vector memory
+- [ ] Golden-Rules-Konformitäts-Check — ein Skill, der einen Diff gegen die Golden Rules und
+      `docs/conventions.md` prüft (`/code-review` sucht Bugs, nicht Regelbruch). Geparkt seit D78.
 
 ---
 
 ## Open questions / to clarify
 
-**Offene Punkte der Folgerunde vom 14.11. (D140–D143) — aus `/code-review abd1b49..HEAD` und den Agenten-Berichten.**
-ADR 066 ist entschieden (B, Schalter aus); die alte offene Frage dazu ist erledigt.
-- **Kontext ohne Überschrift im Prompt (D142):** Szenenkarte, Zustand, NSC-Gedächtnis und RAG stehen jetzt ohne
-  Kennzeichnung vor dem Spieler-Transkript bzw. der Regie-Zeile. Risiko: Opus liest RAG-Text als Spielerrede oder gewichtet
-  harten Zustand schwächer (Golden Rules #3/#7). Am Tisch beobachten; Abhilfe wäre eine klare Kopfzeile vor dem Block
-  (ändert den Prompt, braucht `dm-eval` + Lauf).
-- **`SystemPrompt` ist ein `str`-Subtyp (D142):** jede String-Operation (`system + …`, f-String) verliert den stabilen
-  Kopf, und der Cache fällt still wieder aus. Robuster: den Kopf explizit durch die `LLMClient`-Naht reichen.
-- **`marker_decides` nennt `"claude"` an einer Würfel-Stelle (D140):** besser ein Hook in `dmbot/llm/__init__.py` neben
-  `post_turn_combined` / `recap_cap`, damit keine Aufrufstelle ein Backend nennt.
-- **Doppelter Code (D143):** der „getrennt fragen“-Pfad steht in `session/scenes.py` und `orchestrator.classify_post_turn`;
-  das chat → wait_for → JSON-Muster jetzt viermal (drei Router + `post_turn`). Ein gemeinsamer Helfer in `dmbot/llm`.
-- **ADR 066 vor `DM_AUX_COMBINED=1`:** zwei Timeouts im Abgleich klären; drei Abgleich-Läufe; Klassifikator-Kategorie
-  in `dm-eval` fehlt; Nachträge in Lesson `mandatory-decisions-need-a-separate-classifier` und ADR 057/058/062 fehlen.
-- **Replay-Notizen überschrieben (gefunden bei D143):** Notizen werden je Kanal beim Autosave geleert; startet der
-  nächste Zug vorher (Würfel-Zug direkt hinter einem erzählten), überschreibt er die Notizen samt `state_before`
-  (Journal-Eintrag 24 vom 14.11.). In ADR 066 beschrieben, nicht behoben.
-- **Was die CLI selbst mitschickt (D142, ADR 061):** einen Systemhinweis mit der Account-E-Mail vor unserem Prompt,
-  eine Umgebungsnachricht mit Temp-Ordner und Datum, und vermutlich vor jedem Zug eine kleine Opus-Anfrage für den
-  Sitzungsnamen — Letzteres nur bei absichtlich scheiternder Anfrage gesehen; ob es im echten Lauf Kontingent kostet, ist offen.
+_Gesichtet am 2026-11-15: aus 62 Einträgen wurden 18. Die Einordnung je Eintrag steht in
+[open-questions-triage-2026-11-15.md](docs/plans/open-questions-triage-2026-11-15.md), der Abschnitt im alten Wortlaut im
+[Archiv](docs/progress-archive.md) unter „Open questions (erledigt/archiviert)“, rotiert 2026-11-15._
+
+**Steht woanders, nicht mehr hier:**
+- **Im Beipackzettel [phase-11-abend.md](docs/phase-11-abend.md), „Nächster Lauf“:** Kontext ohne Überschrift (F9),
+  Prompt-Cache (F5), Zusatzanfrage der CLI (F6) und die behobenen, live-unverifizierten `DMBrain`-Befunde Nr. 1–4, 9
+  und 12 (N3, N4, N6, N7; Tests in `tests/test_orchestrator_open_findings.py`).
+- **Unter „Next concrete step“:** das größere `CLAUDE_NUM_CTX`.
+- **Im geparkten [Live-Run-Skript](docs/live-run-script.md):** Modellvergleich Nemo gegen Mistral Small, die
+  `!intro`-Prosa, `!lore tts` liest jeden Block doppelt (Bot A) und die Streaming-Watch-Items. Diese vier müssen die
+  Neusichtung der geparkten Gates nach dem Abend überleben.
+
+**Entscheidungen von Tobi:**
+- **Sprechmodus-Default** — bleibt `stream`+`flach`, bis die drei Modi am Tisch verglichen sind (der Vergleich steht
+  als Schritt im geparkten Live-Run-Skript).
 - **Charakterbögen in den gecachten Kopf?** Sie stehen im Zustandsblock und gehen jeden Zug frisch raus; in den Kopf
-  verschoben würden einige tausend Tokens mehr gecacht — ändert die Reihenfolge in `docs/conventions.md`, eigene Entscheidung.
+  verschoben würden einige tausend Tokens mehr gecacht. Das ändert die Reihenfolge in `docs/conventions.md`.
+- **Deutsche Log-Zeilen in `session/scenes.py`** („mit der Gruppe nach“, „gemeldet als“, „bleibt in“): in CLAUDE.md
+  erlauben oder übersetzen. Die Prüfpunkte F7, N1 und N2 im Beipackzettel greppen genau diese Zeilen; die Frage
+  bleibt offen, bis der nächste Lauf ausgewertet ist.
+- **Würfel-Animation:** der Würfel dreht sich nicht (`tools/dice_throw.py` schreibt `angle` nie fort; eine Zeile,
+  ändert nur das Bild, nicht die Seed-Auswahl — Vorschau zuerst), und alte GIF-Sätze in `data/dice/anim/` und in
+  `#bot-commands` werden nie aufgeräumt (ein Aufräum-Schritt beim Start wäre klein).
 
-**Offene `DMBrain`-Befunde (2026-11-13) — dokumentiert; Nr. 1–4, 9 und 12 behoben (13.11., live-unverifiziert), der Rest offen; Nr. 12–14 kamen aus dem `/code-review` der Fixes.** Nr. 1–7 stammen aus
-`/code-review` auf `ddaae08..9ec06b6` (aus dem Code hergeleitet; der Umbau hat sie unverändert übernommen), Nr. 8–11
-aus dem Live-Lauf 01:48–02:16; alle gab es schon vor dem Umbau. Die Tests stehen als `xfail(strict=True)` in
-`tests/test_orchestrator_open_findings.py`; der Fix muss die Markierung entfernen.
-1. **Behoben 13.11., live-unverifiziert.** `!redo` nach einem nicht gespeicherten Zug löschte den Zug davor —
-   `test_redo_after_a_suppressed_turn_keeps_the_turn_before_it`.
-2. **Behoben 13.11., live-unverifiziert.** `clear_history` tauschte die geleerte Liste aus; ein Zug, der dann noch läuft, geht verloren —
-   `test_a_turn_still_in_flight_survives_the_compaction_wipe`. Der bestehende Test
-   `test_clear_history_preserves_a_turn_appended_during_summarize` deckt nur den Zug ab, der während des
-   Zusammenfassens schon fertig wurde.
-3. **Behoben 13.11., live-unverifiziert.** Am History-Limit löschte `clear_history` den Zug, der während des Zusammenfassens dazukam (Kopfzählung) —
-   `test_a_turn_appended_during_summarize_survives_at_the_history_cap`.
-   Live eingetreten (2026-11-13): beim Recap-Start stand die History genau am Limit (40 Nachrichten), Zug 20
-   („Ich erzähle ihr, wer mich schickt.“, fertig 02:05:49) kam während des Zusammenfassens dazu. Er fehlt im
-   Recap; laut Code hat `clear_history` ihn mitgelöscht (im Log nicht direkt sichtbar). Im Journal steht er hinter
-   dem `compact`-Ereignis, ein Neustart lädt ihn wieder.
-4. **Behoben 13.11., live-unverifiziert.** Ein Opening nach einem Spielerzug erbte dessen `last_action` und reihte Würfel-Marker ein —
-   `test_an_opening_after_a_player_turn_requests_no_dice`.
-5. Ein verworfener Konsistenz-Retry lässt seine Marker stehen —
-   `test_a_discarded_consistency_retry_leaves_no_markers_behind`.
-6. Der Intro-Retry lässt die Marker der verworfenen Antwort stehen —
-   `test_a_discarded_weak_opening_leaves_no_markers_behind`.
-7. Ein leerer Echo-Retry wird im Batch-Pfad als leerer Zug gespeichert —
-   `test_an_empty_echo_retry_stores_no_empty_turn`.
-8. Die Replay-Felder im Journal (`lines`/`results`/`raw`/`markers`) gehören bei 13 von 22 Zügen zum Folgezug, weil der
-   schon lief, bevor die Wiedergabe des Zugs endete; 7 weitere Records haben gar keine (31.10.: 6 von 21 falsch).
-   Ein Golden aus so einem Journal wäre falsch. xfail:
-   `test_a_turn_started_during_playback_leaves_the_previous_turns_replay_fields`.
-9. **Behoben 13.11., live-unverifiziert.** Ein vollständiger Schlusssatz auf `?“`, `.“` oder `!“` fiel weg — nicht gesprochen, nicht gepostet, nicht
-   gespeichert, auch ohne ✂-Schnitt: `_SENTENCE_END` kennt `“` (und `«`) nicht, `_trim_to_last_sentence` hält den
-   Satz für ein Bruchstück. 5 von 22 Antworten im Lauf (Zug 20: „Wessen Namen soll ich neben deinen schreiben?“),
-   15 von 136 davor im Log. Weiter als die Lücke beim Sprechbudget („Next concrete step“), die nur den Schnitt-Fall nennt. xfail:
-   `test_a_final_sentence_ending_on_the_german_closing_quote_is_spoken_and_stored`.
-10. `!redo` eines Zugs mit Regie-Impuls läuft ohne den Impuls: der Redo-Prompt war 133 Tokens kleiner (15.266 statt
-    15.399). Der Impuls der Szene `schrein` hat 257 Zeichen, bei den 1,95 Zeichen je Token des Laufs sind das 132.
-    Nach dem Join steht `_scene_turns` auf 0, der Originalzug trägt den Impuls; `close_turn` zählt hoch und frischt
-    den Kontext auf, bevor das Redo seinen Prompt baut. Das Redo zählt außerdem als eigener Szenenzug. Aus Code und
-    Größe hergeleitet, der Prompt selbst wird nicht geloggt. Kein Test.
-11. Das Journal rotiert nur bei `!leave` (`voicecog.leave`), nicht beim Beenden: von 19 Starts seit dem 30.10.
-    (17 mit Zügen) endete einer so. Die rotierte Datei enthielt 57 Züge aus vier Tagen (30.10.: 10, 31.10.: 21,
-    12.11.: 2, 13.11.: 24); der Session-Ingest hat sie als 22 Chunks unter „Session vom 13.11.“ abgelegt. Bis
-    dahin war nichts davon im Kampagnengedächtnis. Kein Test.
-12. **Behoben 13.11. (`af5056e`, D137), live-unverifiziert.** `tts/textsplit.py` und `llm/sanitize.py` hatten zwei
-    Satzende-Regeln, die sich bei `“` und `«` widersprachen; jetzt eine (`textsplit.SENTENCE_END`).
-13. (Review `e4cb0a2..fdf64c6`) Ein `!start`/`!intro` mitten in einem laufenden Spielerzug setzt seit Fix 4
-    `last_action` zurück; `_queue_markers` liest den Wert erst beim Einreihen, der Spielerzug verliert seinen
-    `<<TEST>>`. Selten (jemand tippt `!start`, während der DM streamt). Kern: `queued` gehört pro Zug in den
-    Prepare-Schritt. Kein Test.
-14. `respond` bricht mit einer Exception ab (Batch: `_chat_once` wirft; auch eine Exception außerhalb des Stream-Aufrufs),
-    danach `!redo`: der Speicher behält seit Fix 1 den Zug davor, aber die Delivery schreibt den Redo mit `redo: true`
-    ins Journal, und `load_turns` ersetzt damit den letzten Eintrag — den Zug davor. Nach einem Neustart fehlt er.
-    (Ein unterdrückter Zug ist nicht betroffen: er steht mit leerer Antwort im Journal, der Redo ersetzt genau ihn.
-    Ein Stream-Fehler ohne Text speichert ein leeres Paar — Speicher und Journal stimmen, das leere Paar steht aber bis
-    zum Redo in der History.) Aus dem Code hergeleitet. Kein Test.
-15. (D137) Unter Ollama schreibt ein gekappter Zug keine ✂-Zeile: `OllamaClient` liest `done_reason` nicht und meldet
-    kein `truncated`. Gekürzt wird der Zug trotzdem (der Schnitt am letzten Satz gilt für jede Antwort). Bewusst
-    weggelassen (Tobi, 13.11.); Fix wäre `done_reason == "length"` → `truncated` in `client.py`. Kein Test.
+**Am Tisch spürbar:**
+- **Stall-Detektor** — nach N Zügen ohne Fortschritt selbst weiterschieben. Nur bauen, wenn F2 („keine
+  Hängeschleife“) im nächsten Lauf scheitert; der Hänger vom 14.11., 19:25–19:31, ist der Anlass, D140/D141 und das
+  `🎲 Sicherheitsnetz` sind die erste Antwort darauf.
+- **Das Journal rotiert nur bei `!leave`** (`DMBrain`-Befund Nr. 11), nicht beim Beenden: von 19 Starts seit dem
+  30.10. endete einer so. Die rotierte Datei enthielt 57 Züge aus vier Tagen, der Session-Ingest hat sie als eine
+  Sitzung abgelegt; bis dahin fehlten sie im Kampagnengedächtnis. Kein Test.
+- **`!redo` eines Zugs mit Regie-Impuls läuft ohne den Impuls** (Nr. 10): `close_turn` zählt den Szenenzug hoch,
+  bevor das Redo seinen Prompt baut, und das Redo zählt als eigener Szenenzug. Aus Code und Promptgröße hergeleitet
+  (133 Tokens weniger), nie gehört. Kein Test.
+- **RAG-Lücken:** Waffen- und Statblock-Tabellen werden nicht gefunden (Fix wäre ein deutsches Waffen-Glossar unter
+  `data/rules_de/`, wie `conditions.md`), und `!lore`-Antworten zu Rokarth kommen englisch aus dem Setting-Guide.
+- **Discord-Last des Panels:** einmal gesehen am 13.11., 00:40 — drei 429 auf denselben PATCH während eines
+  Szenenwechsels, rund 13 s Retry; welche Nachricht es war, steht nicht im Log. Im nächsten Lauf die
+  `429`-Warnungen zählen.
 
-**Aus dem Review der Pause (2026-11-14, D139 / ADR 061 vierter Nachtrag) — offen, nicht angefasst:**
-- **Ein Zug in der Pause leert erst die Puffer und fragt die RAG ab, bevor der Client ablehnt.** Kostet je
-  Mikro-Freigabe ein Embedding. Eine Vorab-Abfrage würde die Zeilenzahl ändern, die ein Test dieser Runde prüft.
-- **Rückkehr bei eingefrorenem Spiel (Esc):** kein eigener Zug; die vorgemerkten Zeilen warten auf die nächste
-  Spielerzeile, wie Würfelergebnisse heute schon.
-- **„Zug vorgemerkt“ ist ein Sitzungs-Flag, kein Rückgabewert.** Es wird jetzt erst am Ende eines Zugs
-  geschrieben; ein eigener Rückgabewert hieße, alle 13 Aufrufstellen von `respond`/`redo` anzufassen.
-- **Würfelergebnisse und Regie-Notizen zweier gleichzeitig laufender Züge** können die Reihenfolge tauschen.
-- **Ein Zug, dessen Call in der Pause begann und nach ihrem Ende scheitert,** wird vorgemerkt, ohne dass eine
-  neue ⏸-Zeile kommt; die nächste Spielerzeile beantwortet ihn mit.
-- **`ON_FAILURE` steht in `config.py` und in `failover.py`**; ein Test hält beide gleich.
-- **Bestand schon vorher (nicht aus dieser Runde):** Auf dem reinen Ollama-Pfad und in der Stellung `fallback`
-  landet ein gestreamter Zug, der vor dem ersten Delta scheitert, mit leerer Antwort in der History, und seine
-  Spielerzeilen sind verbraucht (`_stream_once` fängt jeden Fehler).
-
-**Aus dem Review von `b71c12f` (2026-11-13, ADR 062 Nachtrag) — offen, bewusst nicht angefasst (Tobi):**
-- **↩ trägt die falschen Figuren (Review Nr. 6).** Beginnt innerhalb der Undo-Minute schon der nächste Zug, trägt ↩
-  dessen Sichtungen zurück und lässt die Figuren stehen, die der zurückgenommene Wechsel mitgenommen hat. Fix-Idee:
-  die mitgenommenen Namen am `SceneUndo` merken. Kein Test.
-- **Die Liste der Zug-Sichtungen überlebt `!leave`/`!join` (Nr. 7).** `_turn_sightings` leert nur die nächste
-  Zuggrenze; ein `!ort` vor dem ersten Zug der neuen Sitzung nimmt die Figuren des letzten Zugs mit. Überlappen zwei
-  Zuggrenzen (Klassifikator bis 20 s), folgen die Figuren des älteren Zugs. Kein Test.
-- **Der Prompt verlangt, was das Schema nicht erlaubt (Nr. 8).** „statblock = deren Name“ gilt für jede Kandidatin,
-  das Schema lässt nur Statblock-Namen zu. Heute ohne Wirkung: Jede Karten-Figur beider Abenteuer hat einen
-  Statblock. Kein Test.
-- **Deutsche Log-Zeilen (Nr. 10).** Die neuen Zeilen in `session/scenes.py` („mit der Gruppe nach“, „gemeldet als“,
-  „bleibt in“) sind deutsch wie ihre Nachbarn; CLAUDE.md verlangt englische Logs.
-
-**Aus der Würfel-Animation (2026-10-30/31) — offen:**
-- **Würfel dreht sich nicht:** Tobis Prototyp integriert `angle` nie (`w` wird berechnet, `angle += w*dt`
-  fehlt); wörtlich übernommen. Eine Zeile, ändert nur das Bild, nicht die Seed-Auswahl — Tobi fragen.
-- **Caches wachsen ohne Aufräumen:** `data/dice/anim/` (Wurf-GIFs je Ergebnis/Bahn/Farbe, alte `gif_version`en
-  bleiben liegen) und in `#bot-commands` die alten GIF-Sätze jeder Version (der Bot vergisst sie, löscht sie aber
-  nicht). Ein Aufräum-Schritt beim Start wäre klein.
-- **Discord-Ladelücke beim Bildtausch:** bleibt, Tobi hat sie gegen „neue Nachricht“ in Kauf genommen. Nächster
-  Hebel, falls sie stört: weniger Flugbahnen pro Farbe (der Client cacht sie dann schneller).
-
-**Aus den Opus-Läufen (2026-10-25) — offen:**
-- **Größeres `CLAUDE_NUM_CTX`** (z. B. 65536) als eigener Versuch nach dem Abend: Gedächtnis vs. Verbrauch und Antwortzeit. Heute bewusst gleich wie Nemo.
-- **`cache=0` in fast jedem Opus-Zug** — der Prompt-Cache greift kaum (Zustand und RAG ändern den Prompt jeden Zug). Kostet Verbrauch; prüfen, ob die stabile Persona vorn gecacht werden kann.
-- **Recap auf Nemo wird mit der Zeit auch gekappt** (`num_predict` 400, kumulativ) und verliert dann ebenso die neuesten Ereignisse. Auf Claude behoben, auf Nemo latent.
-- **`DM_STREAMING=0` auf Claude** hat keine Sprechgrenze unter ~1244 Tokens (ADR 061). Nicht die Abend-Konfiguration.
-
-**Aus dem Review der Bau-Runde (2026-08-23) — nicht behoben, bewusst vertagt:**
-- **Gegenrichtung der Fakten** — der Klassifikator kennt nur Hinzufügen; Rücknahme läuft über
-  `!fakt weg` von Hand. ADR 058 ist auf den gebauten Umfang korrigiert, die Erweiterung wäre additiv.
-- **`!ortmodus frei` wirkt nur noch auf den Marker**, nicht auf den Klassifikator-Pfad. Beobachten.
-- **Discord-Last des Panels** — mehrere Edits pro Zug; ein 429 verschwindet in einer Warnung. Messen.
-- **Drei Beweger auf einem Szenenzeiger** — beim Debriefing die `scene_move`-Auslöser auszählen.
-
-**Aus der Debug-Lauf-Triage (2026-08-23, D107) — bewusst offen gelassen:**
-- **Deterministischer Meta-Satz-Filter** — ✅ erledigt in D112, satzweise und quotensicher.
-  Offen bleibt nur die Wirkung im Stream: der Filter läuft auch auf der inkrementellen Naht, aber
-  ein Satz, der beim Sprechen noch unvollständig ist, kann per Konstruktion nicht erkannt werden.
-- **Halluzinations-Blockliste für STT** — ✅ D114, kuratiert im Code (kein Knopf, der still
-  veraltet). Offen bleibt die Pflege: was am nächsten Abend durchrutscht, gehört hinein; die
-  `🚫 Whisper-Halluzination verworfen`-Zeile zeigt umgekehrt, was sie schon fängt.
-- **Stall-Detektor** — nach N Zügen ohne Fortschritt selbst weiterschieben. Aufgeschoben, weil drei
-  Beweger des Szenenzeigers im ersten Lauf schwer auseinanderzuhalten wären (ADR 057).
-- **Sprechmodus-Default** — bleibt `stream`+`flach`, bis die drei Modi am Tisch verglichen sind.
-
-**Von der Replay-Eval-Runde (2026-07-03, D93 / ADR 046):**
-- **Live-Modellvergleich (Nemo vs. Mistral Small auf Timos Box)** — braucht dieses Harness mit
-  echten LLM-Calls; nicht vor dem Tuning-Live-Run starten, sonst vergleicht man ein untuned Setup.
-- **Würfel-RNG-Replay aufgeschoben** — lohnt erst, wenn ein Refactor den Roll→Damage-Pfad anfasst;
-  die Fixed-Seed-Engine-Tests decken ihn heute dicht ab (ADR 046).
-- **Erstes Live-Golden fehlt noch** — die eingecheckten Goldens sind synthetisch; das echte kommt
-  aus dem rotierten Journal des nächsten Live-Runs (siehe `## Next concrete step`).
-
-- **`!intro`-Prosa-Reichheit** (Playtest-Fix-Runde 2026-06-16, D82–D84) — die drei Chat-Tics sind
-  deterministisch gestrippt, ob die Prosa atmosphärisch statt formelhaft klingt, ist Modell-Sache und
-  am Tisch zu prüfen (`DM_INTRO_TEMPERATURE`). Volltext: `docs/progress-archive.md`.
-
-**From the skill-tooling round (2026-06-15, D78):**
-- **Golden-Rules-Konformitäts-Check noch offen** — ein Skill, der einen Diff gegen die Golden
-  Rules + `docs/conventions.md` prüft (`/code-review` sucht Bugs, nicht Regelbruch). Bewusst geparkt.
-
-**Cross-repo (Bot A):**
-- **`!lore tts` reads each block twice** — verified NOT in DMbot (lore_pages/loop/synth/concat all
-  1×, no custom `on_message`). If the live `debug.log` shows **one** `🔊 TTS … speaking` + **one**
-  `/speak` per block, the doubling is **Bot A's playback** (separate `Pr0degie/musicbot` repo) → fix
-  there (two-bot isolation). A Bot-A `/stop` would also enable true mid-block skip in the lore reader.
-- **Weapon / stat-block tables don't retrieve** (calibration finding, ADR 025) — table-row chunking;
-  a German weapon glossary under `data/rules_de/` (same pattern as `conditions.md`) is the likely fix.
-
-**From the cog-split refactor (2026-06-13, D60 / ADR 029):**
-- **Smoke-Test offen:** der Schnitt ist test-grün (263), aber live nur per Smoke-Test abzunehmen
-  (`!join`→sprechen→`!dm`→Würfel→`!leave`) — siehe „Next concrete step".
-
-**Deferred altitude debt (2026-06-13, D61 / ADR 030) — geparkt bis Phase 10b (zweites System):**
-- Engine-IM-Arithmetik (`warp_charge_gain`, `reverse_d100`) + IM-/OCR-RAG-Katalog
-  (`retrieve._SOURCES`, `_is_junk_hit`) wandern dann in Profil/Daten. Volltext im Archiv.
-
-**From the lore work (2026-06-13):**
-- **`!lore`-Antworten zu Rokarth sind englisch** — die `setting`-Quelle ist der englische
-  Setting-Guide (Imperium/Chaos kommen deutsch aus dem Kompendium). Kosmetik; Fix wäre eine
-  deutsche Rokarth-Sektion oder `setting` aus den `!lore`-Quellen nehmen. Erst mal beobachten.
-
-**Phase-7-Playtests (2026-06-06):** Latenz wächst mit dem Kontext (`[latency]`-Zeile, 85-%-
-Warnung); Auto-Recap ist der Fix, die Baseline nimmt der Live-Run. Volltext im Archiv.
-
-**Loose ends (Phase 3):** `!join`-Voice-`TimeoutError` einmal gesehen (Retry half — nur beobachten);
-Silero läuft auf Stille bei ~1–2 %/Core (fein für einen kleinen Tisch). Volltext im Archiv.
-
-**Streaming/Robustheit (2026-06-10):** die damalige Live-Checkliste ist im Live-Run-Skript
-aufgegangen; als Watch-Items bleiben Meta-Ramble (nemos Ceiling) und first_audio/`tts=`-Lücken
-(XTTS-Tempo) — beide stehen dort unter „Nebenbei“. Der `gen=`-stale-Caveat nach einem
-Stop-Abbruch ist im Skript (Akt 1) notiert; Volltext im Archiv.
+**Nur unter Bedingungen, die im heutigen Betrieb nicht eintreten:**
+- **Replay-Daten überlappender Züge** (Nr. 8): startet der nächste Zug, bevor Wiedergabe oder Autosave des vorigen
+  enden, landen dessen Replay-Felder und Notizen samt `state_before` beim falschen Journal-Eintrag (13 von 22 Zügen
+  am 13.11., Eintrag 24 am 14.11.). Am Tisch unsichtbar; ein Golden aus so einem Journal wäre falsch, deshalb fehlt
+  das erste echte Live-Golden noch. xfail `test_a_turn_started_during_playback_leaves_the_previous_turns_replay_fields`.
+- **Lücken außerhalb der Abend-Konfiguration** — erst wieder ansehen, wenn einer dieser Pfade gespielt wird.
+  Batch-Pfad (`DM_STREAMING=0`, `nahtlos`): ein verworfener Konsistenz- oder Intro-Retry lässt seine Marker stehen,
+  ein leerer Echo-Retry wird als leerer Zug gespeichert (Nr. 5–7, drei xfails), und auf Claude gibt es dort keine
+  Sprechgrenze unter ~1244 Tokens. Ollama: ein gekappter Zug schreibt keine ✂-Zeile (Nr. 15, bewusst weggelassen),
+  der Recap wird bei `num_predict` 400 gekappt. Ollama und `fallback`: ein gestreamter Zug, der vor dem ersten Delta
+  scheitert, steht mit leerer Antwort in der History.
+- **Randfälle der Pause (Review D139)** — erst wieder ansehen, wenn die Pause-Probe (Durchgang 3) etwas zeigt: ein
+  Zug in der Pause fragt die RAG ab, bevor der Client ablehnt; die Rückkehr bei eingefrorenem Spiel (Esc) bekommt
+  keinen eigenen Zug; „Zug vorgemerkt“ ist ein Sitzungs-Flag statt eines Rückgabewerts; Würfelergebnisse und
+  Regie-Notizen zweier gleichzeitiger Züge können die Reihenfolge tauschen; ein Zug, dessen Call in der Pause begann
+  und danach scheitert, wird ohne neue ⏸-Zeile vorgemerkt.
+- **Buchführung der Zug-Sichtungen (ADR 062, Review Nr. 6 und 7):** ↩ innerhalb der Undo-Minute trägt die
+  Sichtungen des nächsten Zugs zurück statt der mitgenommenen Figuren, und `_turn_sightings` überlebt
+  `!leave`/`!join`. Fix-Idee: die mitgenommenen Namen am `SceneUndo` merken, die Liste beim Verlassen leeren.
+- **LLM-Naht:** `marker_decides` nennt `"claude"` an einer Würfel-Stelle (besser ein Hook neben `recap_cap`); das
+  Muster chat → wait_for → JSON steht dreimal in den Routern (ein Helfer in `dmbot/llm`); `SystemPrompt` ist ein
+  `str`-Subtyp, jede String-Operation verliert den stabilen Kopf — seit dem 15.11. laut (ERROR-Log), robuster wäre,
+  den Kopf explizit durch die `LLMClient`-Naht zu reichen.
+- **Wer bewegt den Szenenzeiger:** am 14.11. kamen alle drei Wechsel über Opus' `<<ORT>>`-Marker, keiner über den
+  Klassifikator, und `!ortmodus frei` wirkt nur auf den Marker-Pfad. Im nächsten Lauf die `scene →`-Auslöser zählen.
+- **`!start`/`!intro` mitten in einem laufenden Spielerzug** (Nr. 13): der Spielerzug verliert seinen `<<TEST>>`,
+  weil `_queue_markers` `last_action` erst beim Einreihen liest. Kern: `queued` gehört pro Zug in den Prepare-Schritt.
+- **Exception in `respond`, danach `!redo`** (Nr. 14): das Journal ersetzt den Zug davor, nach einem Neustart fehlt
+  er. Aus dem Code hergeleitet.
+- **Der NSC-Prompt verlangt, was das Schema nicht erlaubt** (ADR 062, Review Nr. 8): „statblock = deren Name“ gilt
+  für jede Kandidatin, das Schema lässt nur Statblock-Namen zu. Wirkt erst mit einem Abenteuer, dessen Karten-Figur
+  keinen Statblock hat.
 
 ---
 
