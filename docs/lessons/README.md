@@ -74,6 +74,8 @@ or an ADR already holds — link there instead.
   not just the fix.
 - [read-the-installed-library-source](read-the-installed-library-source.md) — The truth is
   in the installed library's code; mock its real contract, not your mental model.
+- [routine-steps-move-never-delete](routine-steps-move-never-delete.md) — A prep step that
+  deletes or overwrites run artefacts by hand loses the record you need; code archives instead.
 
 ### RAG & live process
 - [topk-post-filter-starves-partition-the-index](topk-post-filter-starves-partition-the-index.md) —

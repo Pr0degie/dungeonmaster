@@ -20,9 +20,8 @@ läuft auf Tobis Rechner.
 | Claude-Login | in `cmd`: `claude -p "hi"` | eine kurze Antwort kommt |
 | Kein API-Key | in `cmd`: `echo %ANTHROPIC_API_KEY%` | es steht wörtlich `%ANTHROPIC_API_KEY%` da |
 | Ollama | `ollama list` | `mistral-nemo` und `bge-m3` sind da |
-| Sandbox leer | erst `history.debug.jsonl` nach `logs\` kopieren (das Replay-Journal des letzten Laufs, ADR 046/066 brauchen es), dann in `data/sessions/<channel-id>/` alle Dateien mit `.debug` im Namen löschen, dann `uv run python -m dmbot.rag.ingest_session --wipe-debug <channel-id>` | nichts ohne `.debug` wurde angefasst |
+| Sandbox leer | Bot aus; `uv run python -m dmbot.rag.ingest_session --wipe-debug <channel-id>`. Der Befehl verschiebt alle Dateien mit `.debug` im Namen (auch das Replay-Journal `history.debug.jsonl`, das ADR 046/066 brauchen) nach `logs\archive\sandbox\<Zeitstempel>_<channel-id>\` und leert danach die Sandbox im RAG-Speicher | `[OK] archived … sandbox file(s)` und `[OK] wiped … chunks`; nichts ohne `.debug` wurde angefasst. Steht `[!!] … store NOT wiped` da, hält etwas eine Datei offen: schließen, Befehl wiederholen |
 | `.env` | Block aus [§9.2](testabend-ablauf.md) eintragen | `DM_LLM_BACKEND=claude`, `DM_LLM_ON_FAILURE=pause`, `DM_NPC_MEMORY=0`, `DM_CONSISTENCY_GUARD=0`, `DM_DEBUG_OVERLAY=0`, `DM_CLOCKS=0`, `DM_FLAG_CONFIRM=0`, `DM_LOG_FILE=1` |
-| Altes Log weg | Bot aus; in PowerShell im Repo-Ordner: `Rename-Item logs\debug.log "debug-bis-$(Get-Date -Format yyyy-MM-dd).log"` | `logs\debug.log` gibt es nicht mehr; der Bot legt beim Start eine leere an, der Abend beginnt mit einer leeren Datei |
 | Verbrauch | claude.ai → Verbrauchsanzeige | Stand notiert: ______ |
 
 ## Beim Start
@@ -100,17 +99,11 @@ dafür nicht nötig.
 | N7 | **Opening mitten in der Sitzung** (Befund 4) | nur falls nötig: `!start` oder `!intro` nach einem Spielerzug | das Opening bringt keinen 🎲-Knopf mit | keine Logzeile |
 | N8 | **Sprachbefehl „… war ein sehr böser Junge"** (D134) | nur wenn Tobi es am Abend will; braucht „Mitglieder verschieben" | der Genannte fliegt aus dem Voice-Kanal, der DM hört die Zeile nicht | `⚡ <Name> war ein sehr böser Junge — vom Voice-Kanal getrennt` |
 
-### Zwischen Durchgang 1 und 2 — Logs von Durchgang 1 sichern
+### Zwischen Durchgang 1 und 2 — nichts zu sichern
 
-Bot stoppen und, **bevor** er für Durchgang 2 wieder startet, in PowerShell im Repo-Ordner:
-
-```
-Copy-Item logs\debug.log    logs\debug-d1.log
-Copy-Item logs\terminal.log logs\terminal-d1.log
-```
-
-`terminal.log` wird bei jedem Start geleert, `debug.log` läuft weiter und bekommt die Züge von
-Durchgang 2 und 3 dazu. Alle vier Messungen laufen deshalb auf `debug-d1.log`.
+Jeder Bot-Start ist ein eigener Lauf. Startet der Bot für Durchgang 2, wandern die drei Logs von
+Durchgang 1 nach `logs\archive\runs\<Startzeit von Durchgang 1>\`; `logs\` beginnt leer. Die
+Messungen finden Durchgang 1 über `logruns` (siehe „Die vier Messungen“).
 
 ### Durchgang 2 — setzt Opus den Würfel-Marker selbst? (Punkt 7a)
 
@@ -160,19 +153,27 @@ muss einen Fehler melden („keine … gefunden“).
 | 6 | Verbrauch | Anzeige auf claude.ai, Differenz zum Startwert |
 | 6b | Was die Klassifikatoren davon kosten (ADR 066) | Messung D unten; dazu: kam eine ⏸-Zeile wegen eines Verbrauchslimits („Limit bis etwa …“), und nach wie vielen Zügen? |
 | 8 | Anteil abgeschnittener Antworten | Messung C unten |
-| — | Logs sichern, **bevor** der Bot wieder startet | `logs/debug.log`, `logs/transcript.log`, `logs/terminal.log` |
+| — | Lauf anpinnen, wenn er als Vergleich taugt (die Archivgrenze löscht sonst nach 30 gespielten Läufen) | `uv run python -m dmbot.tools.logruns --pin <N> --name <name>`; `N` aus der Liste von `logruns` |
 
 ---
 
 ## Die vier Messungen (nach dem Abend, in PowerShell im Repo-Ordner)
 
-Nur Züge aus Durchgang 1 werten. Durchgang 3 ist die Pause-Probe. Alle vier Messungen laufen auf
-der Kopie `logs\debug-d1.log` (Schritt zwischen Durchgang 1 und 2), nicht auf dem Gesamt-Log.
+Nur Züge aus Durchgang 1 werten. Durchgang 3 ist die Pause-Probe. Jeder Bot-Start hat sein eigenes
+Log; zuerst den Ordner von Durchgang 1 nach `$d` holen:
+
+```
+uv run python -m dmbot.tools.logruns                    # Liste: Start, Ende, Züge je Lauf
+$d = uv run python -m dmbot.tools.logruns --path <N>    # N = die Zeile mit der Startzeit von Durchgang 1
+```
+
+`0` ist `logs\` selbst: der laufende oder zuletzt gestoppte Lauf. War Durchgang 1 der letzte Start,
+reicht `$d = 'logs'`.
 
 **A — Wie schnell ist ein Opus-Zug?**
 
 ```
-Select-String -Path logs\debug-d1.log -Pattern '\[latency\]' | Select-Object -First 8
+Select-String -Path "$d\debug.log" -Pattern '\[latency\]' | Select-Object -First 8
 ```
 
 Aus zwei Zeilen (erster Zug nach `!start`, einer aus der Mitte) ablesen: `spawn=` (Start der
@@ -181,7 +182,7 @@ CLI), `first_audio=` (Auslöser bis erster Ton), `cache=` (Prompt-Tokens aus dem
 **B — Wie lange bis zum Würfelknopf?**
 
 ```
-Select-String -Path logs\debug-d1.log -Pattern '\[classifier\] roll'
+Select-String -Path "$d\debug.log" -Pattern '\[classifier\] roll'
 ```
 
 Drei Zeilen mit einem Urteil (nicht `no test`) notieren, je die Millisekunden.
@@ -189,8 +190,8 @@ Drei Zeilen mit einem Urteil (nicht `no test`) notieren, je die Millisekunden.
 **C — Wie oft wurde abgeschnitten?**
 
 ```
-$alle = (Select-String -Path logs\debug-d1.log -Pattern '\[latency\]').Count
-$cut  = (Select-String -Path logs\debug-d1.log -Pattern '\[latency\].* cut ').Count
+$alle = (Select-String -Path "$d\debug.log" -Pattern '\[latency\]').Count
+$cut  = (Select-String -Path "$d\debug.log" -Pattern '\[latency\].* cut ').Count
 "$cut von $alle"
 ```
 
@@ -204,8 +205,8 @@ Jeder Schema-Call auf Claude schreibt eine `[aux]`-Zeile: `in=` (Input-Tokens, C
 `ziel` Szene, `art,sache,an,von` Fakten, `npcs` NSCs, `needs_test,skill,difficulty` Würfel-Router.
 
 ```
-$aux   = Select-String -Path logs\debug-d1.log -Pattern '\[aux\] \S+ fields=(\S+) in=(\d+) cache=(\d+) out=(\d+) turns=(\d+) spawn=(\d+)ms'
-$zuege = (Select-String -Path logs\debug-d1.log -Pattern '\[latency\]').Count
+$aux   = Select-String -Path "$d\debug.log" -Pattern '\[aux\] \S+ fields=(\S+) in=(\d+) cache=(\d+) out=(\d+) turns=(\d+) spawn=(\d+)ms'
+$zuege = (Select-String -Path "$d\debug.log" -Pattern '\[latency\]').Count
 $aux | Group-Object { $_.Matches[0].Groups[1].Value } | ForEach-Object {
   $in    = ($_.Group | ForEach-Object { [int]$_.Matches[0].Groups[2].Value } | Measure-Object -Sum).Sum
   $cache = ($_.Group | ForEach-Object { [int]$_.Matches[0].Groups[3].Value } | Measure-Object -Sum).Sum
@@ -219,15 +220,14 @@ $summe = ($aux | ForEach-Object { [int]$_.Matches[0].Groups[2].Value } | Measure
 Notieren: die Zeile je Call-Art und die Summenzeile. Der Vergleichswert aus ADR 066 ist eine
 Schätzung: Szene, Fakten und NSCs zusammen 3800–4900 Input-Tokens je Zug. Liegt die Messung
 deutlich darüber oder kam am Abend ein Verbrauchslimit, ist das der Anlass, ADR 066 neu zu
-entscheiden. Die Zahl stimmt nur, wenn die Kopie allein Durchgang 1 enthält — dafür sorgt der
-Schritt „Altes Log weg“ unter „Vor dem Start“.
+entscheiden. Die Zahl stimmt, weil `$d` genau einen Bot-Start enthält, also allein Durchgang 1.
 
 ---
 
 ## Ergebnis vom 14.11.2026 (Durchgang 1, 19:04–19:33, Tobi + Sezgin, mit Bot A)
 
-Durchgang 2 und 3 nicht gespielt; D139 (Pause statt Nemo) bleibt live-unverifiziert. Logs: `logs/debug-d1.log`,
-`terminal-d1.log`, `transcript-d1.log`.
+Durchgang 2 und 3 nicht gespielt; D139 (Pause statt Nemo) bleibt live-unverifiziert. Logs (angepinnt):
+`logs/archive/pinned/2026-11-14_d1/` mit `debug.log`, `terminal.log`, `transcript.log`.
 
 | Punkt | Ergebnis |
 |---|---|
@@ -274,10 +274,13 @@ Komma-Pausen im Code, Budget 280), D142 (Cache), D143 (ADR 066 B, Schalter aus).
 ## Nächster Lauf — die Folgerunde vom 14.11. prüfen
 
 Alles darin ist nur durch Tests belegt. **Vorbereitet am 14.11., 20:40:** Sandbox leer, altes Log als
-`logs/debug-2026-11-14-nach-abend.log`, Bot A antwortet, Bot mit allen Preflights grün. Es fehlt nur `!j`.
+`logs/debug-2026-11-14-nach-abend.log` (wandert beim ersten Start nach dem Archiv-Umbau nach
+`logs/archive/pinned/2026-11-14-nach-abend/`), Bot A antwortet, Bot mit allen Preflights grün. Der Bot muss vorher
+neu starten (er kennt D146, D148 und das Log-Archiv nicht); danach fehlt nur `!j`.
 
 **Ablauf:** `!j` → die vier Kontrollbefehle aus „Beim Start“ → `!start` → spielen (Teil A) → `!wrap` → Teil B
-(Pause-Probe, zehn Minuten) → Bot stoppen, Logs sichern (wie „Zwischen Durchgang 1 und 2“), mir Bescheid geben.
+(Pause-Probe, zehn Minuten) → Bot stoppen, mir Bescheid geben („werte den letzten Lauf aus“). Zu sichern ist nichts:
+die Logs bleiben bis zum nächsten Start in `logs\` und wandern dann nach `logs\archive\runs\`.
 
 ### Teil A — im Spiel, Prüfpunkte der Folgerunde
 

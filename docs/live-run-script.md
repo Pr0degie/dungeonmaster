@@ -392,7 +392,7 @@ Kann eine ganz normale Spielsession sein — die Checks kosten keine zehn Minute
 
 ## Nach dem Run
 
-1. `logs/transcript.log` + `logs/debug.log` sichern und pasten → `/playtest-triage`.
+1. `/playtest-triage` („werte den letzten Lauf aus“) — liest `logs/` und über `logruns` die früheren Bot-Starts des Abends; sichern muss man nichts mehr.
 2. Ergebnisse in `progress.md` zurückschreiben: Phase-9/10-`VERIFY EVIDENCE`, die
    D87/D91–D97-Befunde in den Last-session-Block, gebliebene Tuning-Werte als
    `.env.example`-Kommentare. **G9 bleibt offen bis nach Session 2.**

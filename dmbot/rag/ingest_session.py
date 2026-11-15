@@ -356,7 +356,43 @@ def wipe_debug_source(db_path: Path, channel_id: int | str) -> int:
     return len(ids)
 
 
-def main() -> int:
+def reset_debug_sandbox(
+    channel_id: int | str, *, sessions_dir: Path, db_path: Path, archive_dir: Path | None = None,
+    keep: int | None = None,
+) -> int:
+    """The whole sandbox reset (ADR 055/056) in one step: move every ``.debug`` file of
+    ``sessions_dir/<channel_id>/`` into ``logs/archive/sandbox/<stamp>_<channel_id>/`` (nothing is
+    deleted, nothing without ``.debug`` is touched), then wipe the sandbox rows from the store.
+    If a file cannot be moved, the store is left alone and the exit code is 1 — rerun after
+    closing whatever holds the file."""
+    from .. import logarchive
+
+    session_dir = Path(sessions_dir) / str(channel_id)
+    if not session_dir.is_dir():
+        # wrong channel id or working dir: wiping the store now would orphan the sandbox files
+        print(f"[!!] no session dir {session_dir} — store NOT wiped (check the channel id)")
+        return 1
+    report = logarchive.archive_sandbox(
+        Path(sessions_dir) / str(channel_id), channel_id, archive_dir=archive_dir,
+        keep=logarchive.archive_keep() if keep is None else keep,
+    )
+    if report.archived is not None:
+        print(f"[OK] archived {len(report.moved)} sandbox file(s) -> {report.archived}")
+    elif not report.errors:
+        print(f"[OK] no .debug files in {Path(sessions_dir) / str(channel_id)}")
+    for p in report.pruned:
+        print(f"[OK] archive limit: removed {p.name}")
+    if report.errors:
+        for err in report.errors:
+            print(f"[!!] sandbox archive failed — {err}")
+        print("[!!] store NOT wiped; close whatever holds the file and run --wipe-debug again")
+        return 1
+    n = wipe_debug_source(db_path, channel_id)
+    print(f"[OK] wiped {n} chunks (source={session_source(channel_id, debug=True)})")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Ingest rotated session journals into the RAG store (campaign memory)."
     )
@@ -371,16 +407,23 @@ def main() -> int:
     parser.add_argument("--host", default=None, help="Ollama host (default: OLLAMA_HOST env)")
     parser.add_argument(
         "--wipe-debug", metavar="CHANNEL_ID", default=None,
-        help="delete the debug-run sandbox source session_debug_<CHANNEL_ID> from the store "
-             "(debug-campaign reset, ADR 055); live session rows stay untouched",
+        help="reset the debug-run sandbox (ADR 055/056): move every .debug file of "
+             "<sessions-dir>/<CHANNEL_ID>/ to logs/archive/sandbox/<stamp>_<CHANNEL_ID>/, then "
+             "delete the source session_debug_<CHANNEL_ID> from the store; live files and rows "
+             "stay untouched",
     )
-    args = parser.parse_args()
+    parser.add_argument("--sessions-dir", type=Path,
+                        default=Path(__file__).resolve().parents[2] / "data" / "sessions",
+                        help="parent of the per-channel session dirs (for --wipe-debug; "
+                             "default: the repo's data/sessions, whatever the working dir)")
+    args = parser.parse_args(argv)
     import os
 
     if args.wipe_debug is not None:
-        n = wipe_debug_source(args.db, args.wipe_debug)
-        print(f"[OK] wiped {n} chunks (source={session_source(args.wipe_debug, debug=True)})")
-        return 0
+        from dotenv import load_dotenv
+
+        load_dotenv()  # DM_LOG_ARCHIVE_KEEP
+        return reset_debug_sandbox(args.wipe_debug, sessions_dir=args.sessions_dir, db_path=args.db)
     if args.path is None:
         parser.error("path is required (unless --wipe-debug is given)")
     host = args.host or os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")

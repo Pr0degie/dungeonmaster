@@ -473,7 +473,8 @@ retrieval together. **Debug-campaign runs are sandboxed (ADR 055):** detected by
 testplan sidecar's file presence, their archives carry a `.debug` filename marker and route —
 by filename alone — into `session_debug_<channel_id>`; catch-up and retrieval see only their
 own mode, so cross-contamination with the live campaign's memory is structurally impossible
-(reset via `python -m dmbot.rag.ingest_session --wipe-debug <channel_id>`).
+(reset via `python -m dmbot.rag.ingest_session --wipe-debug <channel_id>`, which first moves the
+`.debug` files to `logs/archive/sandbox/<stamp>_<channel_id>/` — a reset never deletes a session record).
 
 > Interplay: JSON = state (what *is*), recap = story (what *was*), NPC memories = what each
 > NPC believes happened, agendas = what important NPCs are *doing about it*, the Chekhov

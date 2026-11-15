@@ -12,17 +12,16 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** Nacharbeiten vom 15.11., am Tisch ändert sich dadurch nichts: der kombinierte Klassifikator-Call
-  (ADR 066 B, D143) ist nach dem Abgleich verworfen und entfernt (D148); der Entwurf „für Karten-Figuren gilt die
-  Karte“ (ADR 062) bleibt Kandidat, nicht gebaut; die offenen Punkte sind von 62 auf 18 gesichtet. Davor: der
-  Claude-Abend vom 14.11. und die Folgerunde D140–D147 (Marker, Persona, Cache, NSC-Szenen, Psionik). „Last session“.
-- **Suite:** 1537 Tests grün, 4 xfail; `dm-eval` Exit 0 (die 29 Tests des kombinierten Calls sind mit ihm entfernt).
+- **Newest round:** Log-Archiv (D149, 15.11.): jedes Log hält einen Bot-Start, der nächste Start schiebt es nach
+  `logs/archive/runs/`, `--wipe-debug` verschiebt die Sandbox statt sie zu löschen; am Tisch ändert sich nichts.
+  Davor am selben Tag: ADR 066 B verworfen (D148), offene Punkte von 62 auf 18. „Last session“.
+- **Suite:** 1556 Tests grün, 4 xfail; `dm-eval` Exit 0.
 - **Live-unverifiziert:** D140–D142 und D144–D147 (Prüfpunkte F1–F10, W1–W6 in
   [phase-11-abend.md](docs/phase-11-abend.md), „Nächster Lauf“), D139 (Pause statt Nemo — Durchgang 3 nicht
   gespielt), D138 (am 14.11. teils widerlegt: NSCs landen in der verlassenen Szene), D137, `DMBrain`-Befunde
   Nr. 1–4/9/12, D134.
 - **Next concrete step:** ein Lauf, der die Folgerunde prüft (F1–F10, W1–W6, Pause-Probe) — vorbereitet am 14.11.,
-  20:55 (Sandbox leer; Bot vorher neu starten, er kennt D146 und D148 nicht); Abschnitt „Next concrete step“.
+  20:55 (Sandbox leer; Bot vorher neu starten, er kennt D146, D148 und das Log-Archiv D149 nicht); Abschnitt „Next concrete step“.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
   geparkt (ADR 061, im [Live-Run-Skript](docs/live-run-script.md) markiert) und werden nach dem
   Abend neu gesichtet; sie zählen nicht gegen die WIP-Grenze.
@@ -36,6 +35,21 @@ D140–D147 (ohne D143, verworfen) wartet auf ihren Lauf (Prüfliste F1–F10 im
 _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Current focus (Verlauf)`._
 
 ## Last session
+
+**Log-Archiv statt Überschreiben (2026-11-15, D149).** Am 14.11. ging die Sitzungsaufzeichnung des Abends verloren:
+`terminal.log` wurde bei jedem Start überschrieben, „Sandbox leer“ löschte die `.debug`-Dateien. Jetzt hält jedes Log
+genau einen Bot-Start, und nichts wird mehr von Hand gesichert; am Tisch ändert sich nichts. pytest 1556 grün, 4 xfail;
+ruff (F) sauber; `dm-eval` Exit 0. Live-unverifiziert: der erste Start, der die alten Logs umzieht.
+- **Beim Start** wandert der vorige Lauf nach `logs/archive/runs/<Startzeit>/` (`dmbot/logarchive.py`). Scheitert das,
+  startet der Bot trotzdem, hängt an die alte Datei an und meldet `📦 LOG ARCHIVE FAILED` als ERROR.
+- **`ingest_session --wipe-debug <id>`** verschiebt die `.debug`-Dateien nach `logs/archive/sandbox/<stamp>_<id>/` und
+  leert erst danach den Store. **Grenze:** `DM_LOG_ARCHIVE_KEEP=30` je Art; Läufe ohne Zug zählen nicht mit, von ihnen
+  bleiben fünf; `pinned/` wird nie gelöscht. `python -m dmbot.tools.logruns` listet, findet (`--path N`) und pinnt.
+- **Der erste Start** schiebt die alten Dateien nach `pinned/`: `2026-11-14_d1/` (dort liest `text_replay`),
+  `bis-2026-11-14/` (mit dem 25.10.), `2026-11-14-nach-abend/`, `2026-06-15/` (Trockenprobe auf einer Kopie von
+  `logs/`). Die Beipackzettel messen über `$d`. Das `/code-review` vor dem Commit fand neun Befunde dieser Runde,
+  alle behoben, sechs mit eigenem Test (u. a.: `--path 1` konnte einen angepinnten Ordner liefern; eine gesperrte
+  Altdatei stoppte die Rotation; `--wipe-debug` aus einem anderen Ordner leerte den Store ohne Verschieben).
 
 **Nacharbeiten zum Claude-Abend (2026-11-15, D148).** Am Tisch ändert sich nichts; der nächste Lauf prüft dieselbe
 Folgerunde wie geplant. pytest 1537 grün, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
@@ -55,19 +69,8 @@ Folgerunde wie geplant. pytest 1537 grün, 4 xfail; ruff (F) sauber; `dm-eval` E
 - **Davor am selben Tag:** `ClaudeClient._begin` loggt einen ERROR, wenn ein gesprochener Erzähl-Call ohne
   `stable`-Kopf ankommt (D142-Wache, Test `test_a_spoken_turn_that_lost_its_stable_head_logs_an_error`).
 
-**Textvergleich mit dem 25.10., vier Folgen daraus und die Persona-Entscheidung (2026-11-14, D146/D147).**
-Der Tisch fand die Texte früher besser. Der Vergleich mit dem Zweier-Lauf vom 25.10. zeigt: Persona und Budget
-sind nicht die Ursache. Geschadet haben Proben ohne Wurf (4 von 15 mit Wurf, damals 12 von 13), weniger und
-längere Sätze (176 statt 123 Zeichen je Satz) und die Auto-Zusammenfassung schon nach Zug 18. Bericht mit Nachtrag:
-[textvergleich-2026-11-14.md](docs/plans/textvergleich-2026-11-14.md). pytest 1564 grün, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
-- **Gebaut, je ein Commit mit Test (D146):** `dmbot.tools.text_replay` schickt sechs Züge des Abends mit einer
-  Persona-Variante durch Opus; der Text jeder Auto-Zusammenfassung steht als 🪵-Zeile im Debug-Log; die Bootzeile
-  nennt die aufgelöste Modell-Kennung; der Schlussfrage-Filter streicht nur noch den nackten Satz (Testfall 19:29:29).
-- **Persona (D147):** nur „Lange Sätze sind erlaubt“ gestrichen (Variante A, gemessen 591 Zeichen je Zug, 153 je
-  Satz); die Regieanweisung von `!start` bleibt. Variante B ist Kandidat für nach dem Lauf („Next concrete step“).
-  Lesson `measure-persona-changes-on-replayed-turns`.
-
-_Der Claude-Abend vom 14.11. und die Folgerunde D140–D145: [Archiv](docs/progress-archive.md), „rotiert (2026-11-14,
+_Textvergleich D146/D147: [Archiv](docs/progress-archive.md), „rotiert (2026-11-15, Log-Archiv D149)“. Der
+Claude-Abend vom 14.11. und die Folgerunde D140–D145: [Archiv](docs/progress-archive.md), „rotiert (2026-11-14,
 Textvergleich D146/D147)“; Ergebnis des Abends im Beipackzettel [phase-11-abend.md](docs/phase-11-abend.md)._
 
 ## Next concrete step

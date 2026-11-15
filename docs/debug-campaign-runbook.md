@@ -108,20 +108,24 @@ grep '"kind": "scene"' data/sessions/<id>/history*.jsonl | head -3
 
 ## Reset für einen Re-Run
 
-1. In `data/sessions/<channel-id>/` (live: `1343673766487654464/`) löschen:
+1. Bot aus, dann `uv run python -m dmbot.rag.ingest_session --wipe-debug <channel-id>`
+   (live: `1343673766487654464`). Der Befehl verschiebt alle Dateien mit `.debug` im Namen aus
+   `data/sessions/<channel-id>/` nach `logs/archive/sandbox/<Zeitstempel>_<channel-id>/` —
    `state.debug.json` (HP, Szene, Flags, Uhren, Zeit, NPC-Gedächtnis, Recap),
-   `history.debug.jsonl` (Gesprächs-Autosave), `chekhov.debug.json` (Fäden) und
-   `recap.debug.md`. Zusätzlich (Session-RAG-Sandbox, ADR 055): alle
-   `history.*.debug.jsonl` löschen und die Sandbox-Rows aus dem Store wipen:
-   `uv run python -m dmbot.rag.ingest_session --wipe-debug <channel-id>`.
+   `history.debug.jsonl` (Gesprächs-Autosave), `chekhov.debug.json` (Fäden), `recap.debug.md`
+   und die rotierten `history.*.debug.jsonl` — und wipet danach die Sandbox-Rows aus dem Store
+   (Session-RAG-Sandbox, ADR 055). Gelöscht wird nichts; das Archiv hält die neuesten 30 Resets
+   (`DM_LOG_ARCHIVE_KEEP`). Lässt sich eine Datei nicht verschieben, bleibt der Store unberührt
+   und der Befehl endet mit `[!!]` — Datei freigeben, wiederholen.
    **Warnung:** Alles ohne `.debug` im Namen — `state.json`, `history.jsonl`,
    `chekhov.json`, `recap.md` und die Plain-Archive `history.<stamp>.jsonl` —
    gehört der ECHTEN Kampagne in diesem geteilten Channel und wird bei einem
-   Reset **niemals gelöscht** (`--wipe-debug` rührt ihre Store-Rows nie an).
+   Reset **niemals angefasst** (`--wipe-debug` rührt weder die Dateien noch ihre Store-Rows an).
    Der Debug-Run schreibt seit ADR 056 ausschließlich in die `.debug`-Zwillinge,
    die Live-Dateien sind für ihn unerreichbar.
 2. `characters.json` und `sheets/` **behalten** — das sind die Spielerbögen.
-3. `logs/debug.log` leeren oder wegrotieren, damit die Debrief-Greps sauber bleiben.
+3. Nichts an den Logs tun: der Neustart verschiebt das Log des vorigen Laufs nach
+   `logs/archive/runs/<Startzeit>/`, `logs/debug.log` beginnt leer (Liste: `uv run python -m dmbot.tools.logruns`).
 4. Bot neu starten → `!j` seedet frisch auf `zollhaus`; das 🧪-Panel begleitet ab Szene 1.
 5. Für einen Normal-Spielabend ohne Overlay: `DM_DEBUG_OVERLAY=0` (Kampagne bleibt spielbar).
 6. Gate G2 (Uhren) braucht `DM_CLOCKS=1`. Wurde die Sandbox mit `DM_CLOCKS=0` begonnen (Phase-11-Abend),

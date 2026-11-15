@@ -364,16 +364,19 @@ Pflichtbeweis: sie erscheint nur, wenn der Ingest aus Sitzung 1 nicht durchlief.
 
 ## 6. Übergabe
 
-Nichts davon reist über git — `*.log` und `data/sessions/<id>/` sind ignoriert. Also von Hand,
-**bevor der Bot noch einmal gestartet wird**: `logs/terminal.log` wird bei jedem Start
-überschrieben.
+Nichts davon reist über git — `*.log` und `data/sessions/<id>/` sind ignoriert. Verloren geht
+aber nichts mehr: jeder Bot-Start ist ein eigener Lauf, und der nächste Start verschiebt die Logs
+des vorigen nach `logs/archive/runs/<Startzeit>/`. `uv run python -m dmbot.tools.logruns` listet
+die Läufe (Start, Ende, Züge); `--path N` gibt den Ordner eines Laufs aus, `--pin N --name …`
+nimmt ihn aus der Archivgrenze (30 gespielte Läufe, `DM_LOG_ARCHIVE_KEEP`). Spielt der Abend auf
+dem anderen Rechner, die Ordner der Läufe des Abends von dort herüberkopieren.
 
-| Datei | Warum |
+| Datei (je Lauf) | Warum |
 |---|---|
-| `logs/debug.log` | die Beweiszeilen, Basis aller Debrief-Greps |
-| `logs/transcript.log` | Gespräch mit Zeitstempeln — die Qualitätsbewertung |
-| `logs/terminal.log` | Konsolen-Spiegel inkl. Boot-Sequenz |
-| `data/sessions/<id>/history.<stamp>.debug.jsonl` | das rotierte Journal, Quelle fürs Live-Golden |
+| `debug.log` | die Beweiszeilen, Basis aller Debrief-Greps |
+| `transcript.log` | Gespräch mit Zeitstempeln — die Qualitätsbewertung |
+| `terminal.log` | Konsolen-Spiegel inkl. Boot-Sequenz |
+| `data/sessions/<id>/history.<stamp>.debug.jsonl` | das rotierte Journal, Quelle fürs Live-Golden; nach `--wipe-debug` unter `logs/archive/sandbox/<Zeitstempel>_<id>/` |
 
 Dazu formlos: was am Tisch genervt hat. Das ist der wertvollste Teil — die Gate-Beweise sagen,
 ob eine Funktion *läuft*, nicht ob sie sich gut anfühlt.
@@ -458,10 +461,11 @@ live unverifiziert.**
    `claude -p "hi"` antwortet, `echo %ANTHROPIC_API_KEY%` gibt den Namen zurück (= nicht gesetzt).
 2. Ollama läuft weiter und hat `mistral-nemo` und `bge-m3` (Rückfall und Embeddings).
 3. Sandbox der Debug-Kampagne leeren, damit kein alter Stand mitspielt
-   ([Runbook „Reset für einen Re-Run"](debug-campaign-runbook.md)): in
-   `data/sessions/<channel-id>/` die vier `.debug`-Dateien und `history.*.debug.jsonl` löschen,
-   dann `uv run python -m dmbot.rag.ingest_session --wipe-debug <channel-id>`. **Nichts ohne
-   `.debug` im Namen anfassen.**
+   ([Runbook „Reset für einen Re-Run"](debug-campaign-runbook.md)): Bot aus, dann
+   `uv run python -m dmbot.rag.ingest_session --wipe-debug <channel-id>`. Der Befehl verschiebt
+   alle Dateien mit `.debug` im Namen aus `data/sessions/<channel-id>/` nach
+   `logs/archive/sandbox/<Zeitstempel>_<channel-id>/` und leert danach die Sandbox im RAG-Speicher;
+   Dateien ohne `.debug` fasst er nicht an. Kein Handgriff von Hand mehr.
 4. Verbrauchsanzeige auf claude.ai öffnen und den Stand notieren (Gate-Punkt 6).
 
 ### 9.2 `.env` für den Abend
@@ -562,7 +566,8 @@ trotzdem starten und beim ersten Zug pausieren (in der Stellung `fallback`: aus 
 ### 9.5 Gate-Punkte 0–9
 
 Abhaken und die Beweiszeile aus `logs/debug.log` dazulegen. Reihenfolge wie hier; 5 und 7 ändern
-die `.env` und brauchen je einen Neustart, deshalb stehen sie hinten.
+die `.env` und brauchen je einen Neustart, deshalb stehen sie hinten. Nach einem Neustart liegt
+das Log davor unter `logs/archive/runs/<Startzeit>/` (`uv run python -m dmbot.tools.logruns`).
 
 - [ ] **0 — Aufbau.** `.env` wie 9.2, Sandbox leer, Uhren per `DM_CLOCKS=0` aus (9.3). `!automatik` zeigt sechs
       Schalter an, `!fäden` ist leer, `!backend` nennt Claude als Primär.
@@ -608,7 +613,13 @@ die `.env` und brauchen je einen Neustart, deshalb stehen sie hinten.
 
 ### 9.6 Drei Messungen
 
-Alle drei lassen sich nach dem Abend aus `logs/debug.log` ziehen. Am Tisch nichts stoppen.
+Alle drei lassen sich nach dem Abend aus dem Log ziehen. Am Tisch nichts stoppen. Jeder Bot-Start
+hat sein eigenes Log; die Messungen gehören auf den Lauf vor den Neustarts von Gate-Punkt 5 und 7:
+
+```
+uv run python -m dmbot.tools.logruns                    # Liste: Start, Ende, Züge je Lauf
+$d = uv run python -m dmbot.tools.logruns --path <N>    # N = der Hauptlauf; 0 = logs\ (letzter Lauf)
+```
 
 **A — Ein Opus-Zug mit vollem Systemprompt: `spawn` und `first_audio`.**
 Quelle ist die `[latency]`-Zeile, die jeder Erzählzug schreibt:
@@ -624,7 +635,7 @@ Systemprompt ist dann echt voll: Persona, Szenenkarte, Weltzustand, Regelwerk-Tr
 Bisher gemessen ist nur Haiku mit einem Einzeiler (Spawn rund 0,7 s).
 
 ```
-Select-String -Path logs\debug.log -Pattern '\[latency\]' | Select-Object -First 8
+Select-String -Path "$d\debug.log" -Pattern '\[latency\]' | Select-Object -First 8
 ```
 
 **B — Klassifikator-Latenz auf Haiku: Zeit bis zum Würfelknopf.**
@@ -645,7 +656,7 @@ CLI. `scene` und `fact` laufen nach dem Zug nebeneinander. Steht hinter dem Pfei
 Würfelknopf notieren, alle drei Werte, nicht den Mittelwert.
 
 ```
-Select-String -Path logs\debug.log -Pattern '\[classifier\]'
+Select-String -Path "$d\debug.log" -Pattern '\[classifier\]'
 ```
 
 Diese Zahl entscheidet in Phase 12, ob der Router früher im Zug starten muss. Die Züge aus
@@ -657,8 +668,8 @@ Jeder Erzählzug schreibt genau eine `[latency]`-Zeile; ein an der Ausgabegrenze
 Zug trägt dort `cut` und zusätzlich die Warnung `✂ Antwort an der Ausgabegrenze abgeschnitten`.
 
 ```
-$alle = (Select-String -Path logs\debug.log -Pattern '\[latency\]').Count
-$cut  = (Select-String -Path logs\debug.log -Pattern '\[latency\].* cut ').Count
+$alle = (Select-String -Path "$d\debug.log" -Pattern '\[latency\]').Count
+$cut  = (Select-String -Path "$d\debug.log" -Pattern '\[latency\].* cut ').Count
 "$cut von $alle"
 ```
 
@@ -693,8 +704,7 @@ tragen nie `cut` — solche Züge und die aus Gate-Punkt 5 deshalb vorher abzieh
 
 ### 9.8 Danach
 
-Übergabe wie §6 (`logs/debug.log`, `logs/transcript.log`, `logs/terminal.log`, das rotierte
-`history.<stamp>.debug.jsonl`). Dann in der nächsten Sitzung: Befunde in `progress.md` (Phase 11
+Übergabe wie §6 (die Läufe des Abends aus `logruns`, das rotierte `history.<stamp>.debug.jsonl`). Dann in der nächsten Sitzung: Befunde in `progress.md` (Phase 11
 `VERIFY EVIDENCE`), ADR 061 auf „Accepted" oder mit Begründung zurück, die 17 geparkten Gates
 neu sichten, und erst danach das PRD für Phase 12 — die drei Messungen und die Marker-Sonde sind
 dessen Eingabe.

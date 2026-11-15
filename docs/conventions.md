@@ -136,7 +136,8 @@ here is its contract, which DMbot calls:
   route by **filename** (`.debug` → `session_debug_<id>`); retrieval is hybrid KNN+FTS with
   its own budget/threshold. Everything here degrades silently — a missing table/store/FTS5
   build must return empty, never raise. Manual runs: `python -m dmbot.rag.ingest_session
-  <dir|file>` (refuses the live journal); debug reset: `--wipe-debug <channel_id>`.
+  <dir|file>` (refuses the live journal); debug reset: `--wipe-debug <channel_id>` (moves the
+  `.debug` files to `logs/archive/sandbox/<stamp>_<id>/` first — never deletes them).
 
 ## Testing
 
@@ -294,10 +295,11 @@ dmbot/          the DM bot
   memory/       JSON state + recaps + gametime.py (pure in-game-time helpers, ADR 048) + chekhov.py (loose-thread list, ADR 050)
   rules/        engine.py (generic) + combat.py (attack/Warp resolution, ADR 037) + scene_flow.py (exit resolution, flag gate, scene undo — ADR 057) + profile loader (+ tests)  ← deterministic core
   discord_ui/   buttons, turn-order view + panel.py (the player panel: scene, mission, time, what is still open) + undo.py (take back an automatic scene change, ADR 057)
-  tools/        dev CLIs via [project.scripts]: sync_check (`uv run dm-sync`, D89/D90) + eval_replay (`uv run dm-eval`, golden-transcript regression replay, ADR 046 — goldens in tests/golden/); text_replay (`python -m dmbot.tools.text_replay dry|run|show`, six turns of the 2026-11-14 evening through the narration model with a persona variant — measures turn and sentence length before a persona change goes live; needs `logs/debug-d1.log`)
+  tools/        dev CLIs via [project.scripts]: sync_check (`uv run dm-sync`, D89/D90) + eval_replay (`uv run dm-eval`, golden-transcript regression replay, ADR 046 — goldens in tests/golden/); text_replay (`python -m dmbot.tools.text_replay dry|run|show`, six turns of the 2026-11-14 evening through the narration model with a persona variant — measures turn and sentence length before a persona change goes live; needs `logs/archive/pinned/2026-11-14_d1/debug.log`); logruns (`python -m dmbot.tools.logruns [--path N | --pin N]`, the archived runs)
   orchestrator.py   the DM brain (history + buffer → LLM)
   bridge.py     HTTP client to Bot A's /speak
   logsetup.py   console (green chat) + file logging
+  logarchive.py one run per log file: rotation at start, sandbox archive, archive limit, pinning (logs/archive/runs|sandbox|pinned)
   dice_images.py  dice pictures + throw GIFs: render-on-demand cache over tools/generate_dice.py (presentation only)
   dice_assets.py  the throw GIFs stored once in a Discord channel, clicks point at them (ADR 064)
   ready_sound.py  the pop when the bot has logged in (D130)

@@ -170,7 +170,8 @@ def _install_sigint_guard() -> None:
 def main() -> None:
     config = Config.load()
     setup_logging(
-        config.log_level, to_file=config.log_to_file, transcript_file=config.transcript_file
+        config.log_level, to_file=config.log_to_file, transcript_file=config.transcript_file,
+        archive_keep=config.log_archive_keep,
     )
     _ensure_opus()
     # Surface a down/misconfigured LLM host at boot (clear log line) instead of a cryptic

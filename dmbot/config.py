@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
+from . import logarchive
 from .memory.state import TURN_ADVANCE_MINUTES
 
 LLM_BACKENDS = ("ollama", "claude")
@@ -91,6 +92,9 @@ class Config:
     llm_pause_auto_turn_s: int = 180
     # Consequence clocks (ADR 047/059). Default on.
     clocks: bool = True
+    # Archive limit (dmbot/logarchive.py): newest N played runs in logs/archive/runs/ and newest N
+    # sandbox resets in logs/archive/sandbox/; pinned/ is never pruned. DM_LOG_ARCHIVE_KEEP.
+    log_archive_keep: int = 30
     # Post each DM-routed player line to the text channel (story readable in Discord).
     post_player_lines: bool = True
     # Presence classifier (ADR 062): improvised NPCs join the scene. Default on.
@@ -195,6 +199,7 @@ class Config:
             # stays pasteable as a record of what happened. On by default; DM_TRANSCRIPT_FILE=0 off.
             transcript_file=os.environ.get("DM_TRANSCRIPT_FILE", "1").strip().lower()
             in ("1", "true", "yes", "on"),
+            log_archive_keep=logarchive.archive_keep(),
             # STT (Phase 4). Default to medium (GPU float16) — it clearly out-transcribed
             # small in live German testing and still fits next to Ollama on the 4070. Drop to
             # small via env if VRAM gets tight, or bump to large-v3 for max accuracy.

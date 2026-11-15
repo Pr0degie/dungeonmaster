@@ -5,8 +5,9 @@ The question it answers: what does a change to ``prompts/dm_core_de.md`` do to t
 spoken turn (length, sentence length, cuts) — measured on real turns before a table hears it.
 Background and the first measurements: ``docs/plans/textvergleich-2026-11-14.md``.
 
-The session journal of that evening is gone, so the inputs are rebuilt from ``logs/debug-d1.log``
-(git-ignored; the tool needs that file): the player lines and the spoken answers become the
+The session journal of that evening is gone, so the inputs are rebuilt from
+``logs/archive/pinned/2026-11-14_d1/debug.log`` (git-ignored, pinned so the archive limit never
+removes it; the tool needs that file): the player lines and the spoken answers become the
 history, the dice lines and the world-state events of the evening (:data:`EVENTS`) are written
 down here, and the prompt blocks come from the runtime's own builders
 (``PersistenceMixin._persist_and_refresh``). Each turn then runs through
@@ -47,7 +48,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CID = 1  # one synthetic channel — every replayed turn gets a fresh brain
-DEFAULT_LOG = REPO_ROOT / "logs" / "debug-d1.log"
+DEFAULT_LOG = REPO_ROOT / "logs" / "archive" / "pinned" / "2026-11-14_d1" / "debug.log"
 DEFAULT_SHEET = REPO_ROOT / "data" / "sessions" / "1343673766487654464" / "characters.json"
 DEFAULT_OUT = Path(tempfile.gettempdir()) / "text_replay.json"
 

@@ -7,11 +7,14 @@ faster-whisper's per-utterance lines) is hidden from the console.
 
 Two **files** (both opt-in via ``DM_LOG_FILE=1``, UTF-8, both kept token-light so they can be
 pasted whole when debugging):
-- ``logs/terminal.log`` — a plain (no-ANSI) **mirror of exactly what the console shows**, **reset
-  on every start** (it only ever holds the current run; ``debug.log`` stays append).
+- ``logs/terminal.log`` — a plain (no-ANSI) **mirror of exactly what the console shows**.
 - ``logs/debug.log`` — **more** detail for debugging (third-party INFO like the ``httpx`` request
   lines, full tracebacks), but the 2 s ``PCM ⟳`` heartbeat flood is collapsed to ~one-in-N so it
   stays small.
+
+Plus ``logs/transcript.log`` (``DM_TRANSCRIPT_FILE``, on by default). All three hold exactly one
+run: at start the previous run's files move to ``logs/archive/runs/<stamp>/`` (see
+:mod:`dmbot.logarchive`; list and pin runs with ``python -m dmbot.tools.logruns``).
 
 ANSI colours are enabled on the Windows console via ``colorama.just_fix_windows_console()``
 (turns on virtual-terminal processing for the conhost that ``start_dmbot.bat`` opens).
@@ -26,6 +29,8 @@ import textwrap
 import time
 from pathlib import Path
 
+from . import logarchive
+
 try:  # enable ANSI on the Windows console; harmless elsewhere / if missing
     import colorama
 
@@ -33,14 +38,12 @@ try:  # enable ANSI on the Windows console; harmless elsewhere / if missing
 except Exception:  # pragma: no cover
     pass
 
-_LOGS_DIR = Path(__file__).resolve().parent.parent / "logs"
+_LOGS_DIR = logarchive.LOGS_DIR  # one definition: the archive rotates exactly these files
 # Two opt-in debugging files (DM_LOG_FILE=1): a plain mirror of the console, and a fuller-but-
-# -reduced debug log (heartbeat flood collapsed) — both pasteable without eating tokens.
-_TERMINAL_FILE = _LOGS_DIR / "terminal.log"
-_DEBUG_FILE = _LOGS_DIR / "debug.log"
-# A clean, human-readable session transcript — just the conversation (player lines + DM answers)
+# -reduced debug log (heartbeat flood collapsed) — both pasteable without eating tokens. Plus a
+# clean, human-readable session transcript — just the conversation (player lines + DM answers)
 # with timestamps, none of the debug chatter. Meant to be pasted whole to show "what went down".
-_TRANSCRIPT_FILE = _LOGS_DIR / "transcript.log"
+_TERMINAL_FILE, _DEBUG_FILE, _TRANSCRIPT_FILE = (_LOGS_DIR / n for n in logarchive.LOG_NAMES)
 
 _RESET = "\033[0m"
 _DIM = "\033[2m"
@@ -243,13 +246,26 @@ class _TranscriptFormatter(logging.Formatter):
 
 
 def setup_logging(
-    level: str, *, to_file: bool = False, transcript_file: bool = False
+    level: str,
+    *,
+    to_file: bool = False,
+    transcript_file: bool = False,
+    archive_keep: int = logarchive.DEFAULT_KEEP,
+    logs_dir: Path | None = None,
 ) -> Path | None:
     """Install the console handler (always) and the file handler (only when ``to_file``).
 
     The console is kept lean (see :class:`_ConsoleNoiseFilter`). The full-detail file log is
     **off by default** — enable it with ``DM_LOG_FILE=1`` when you need to inspect a run after the
-    window closes. Returns the log-file path when file logging is on, else ``None``."""
+    window closes. Returns the log-file path when file logging is on, else ``None``.
+
+    Before any file is opened, the previous run's logs move to ``logs/archive/runs/<stamp>/``
+    (:func:`logarchive.rotate_run_logs`), so every run starts with empty files. If that fails
+    (locked file, full disk), the bot starts anyway, appends to what stayed, and says so at ERROR."""
+    logs_dir = logs_dir or _LOGS_DIR
+    terminal_file = logs_dir / _TERMINAL_FILE.name
+    debug_file = logs_dir / _DEBUG_FILE.name
+    transcript_log = logs_dir / _TRANSCRIPT_FILE.name
     root = logging.getLogger()
     root.setLevel(getattr(logging, level, logging.INFO))
     for handler in list(root.handlers):  # idempotent across restarts/tests
@@ -260,44 +276,51 @@ def setup_logging(
     console.addFilter(_ConsoleNoiseFilter())
     root.addHandler(console)
 
+    archive: logarchive.ArchiveReport | None = None
+    if to_file or transcript_file:
+        try:
+            logs_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass  # the handlers below report it
+        archive = logarchive.rotate_run_logs(logs_dir, keep=archive_keep)
+
+    # All three files open in append mode: after a successful rotation they don't exist (the run
+    # starts empty); after a failed one, nothing of the previous run is truncated away.
     log_file: Path | None = None
     if to_file:
         debug_fmt = _DebugFormatter(
             "%(asctime)s %(levelname)-7s %(name)s | %(message)s", datefmt="%H:%M:%S"
         )
         try:
-            _LOGS_DIR.mkdir(parents=True, exist_ok=True)
             # 1) terminal.log — a plain (no-ANSI) mirror of exactly what the console shows: the
             #    curated, lean view (dmbot.* + WARNING/ERROR; no PCM heartbeat, no third-party INFO).
-            #    Truncated on every start (mode="w") so it only ever holds the current run's console.
-            term_h = logging.FileHandler(_TERMINAL_FILE, mode="w", encoding="utf-8")
+            term_h = logging.FileHandler(terminal_file, mode="a", encoding="utf-8")
             term_h.setFormatter(_PlainMirrorFormatter())
             term_h.addFilter(_ConsoleNoiseFilter())
             root.addHandler(term_h)
             # 2) debug.log — fuller detail for debugging (third-party INFO like httpx + tracebacks),
             #    but the PCM heartbeat flood is collapsed (one-in-N) so it stays token-light/pasteable.
-            debug_h = logging.FileHandler(_DEBUG_FILE, mode="a", encoding="utf-8")
+            debug_h = logging.FileHandler(debug_file, mode="a", encoding="utf-8")
             debug_h.setFormatter(debug_fmt)
             debug_h.addFilter(_HeartbeatThrottle())
             root.addHandler(debug_h)
-            log_file = _DEBUG_FILE
+            log_file = debug_file
         except OSError:
             logging.getLogger("dmbot").warning(
-                "could not open log files in %s — console only", _LOGS_DIR, exc_info=True
+                "could not open log files in %s — console only", logs_dir, exc_info=True
             )
 
     transcript_path: Path | None = None
     if transcript_file:
         try:
-            _TRANSCRIPT_FILE.parent.mkdir(parents=True, exist_ok=True)
-            transcript_h = logging.FileHandler(_TRANSCRIPT_FILE, mode="a", encoding="utf-8")
+            transcript_h = logging.FileHandler(transcript_log, mode="a", encoding="utf-8")
             transcript_h.setFormatter(_TranscriptFormatter())
             transcript_h.addFilter(_TranscriptFilter())  # only 📝/🎭 — the conversation
             root.addHandler(transcript_h)
-            transcript_path = _TRANSCRIPT_FILE
+            transcript_path = transcript_log
         except OSError:
             logging.getLogger("dmbot").warning(
-                "could not open transcript file %s", _TRANSCRIPT_FILE, exc_info=True
+                "could not open transcript file %s", transcript_log, exc_info=True
             )
 
     # discord.py gateway/voice logs are noisy; keep them civil (console + file).
@@ -312,7 +335,22 @@ def setup_logging(
     )
     if transcript_path:
         where += f"; transcript {transcript_path}"
-    logging.getLogger("dmbot").info(
-        "=== DMbot starting (%s) — %s ===", time.strftime("%Y-%m-%d %H:%M:%S"), where
-    )
+    log = logging.getLogger("dmbot")
+    log.info("=== DMbot starting (%s) — %s ===", time.strftime("%Y-%m-%d %H:%M:%S"), where)
+    if archive is not None:
+        _log_archive_report(log, archive, logs_dir)
     return log_file
+
+
+def _log_archive_report(log: logging.Logger, report: logarchive.ArchiveReport, logs_dir: Path) -> None:
+    """The start-time archive step, said after the start line (that line is how a run is found)."""
+    for line in report.migrated:
+        log.info("📦 old log layout: %s", line)
+    if report.archived is not None:
+        log.info("📦 previous run archived → %s (%s)",
+                 report.archived.relative_to(logs_dir.parent).as_posix(), ", ".join(report.moved))
+    if report.pruned:
+        log.info("📦 archive limit: removed %s", ", ".join(p.name for p in report.pruned))
+    for err in report.errors:
+        log.error("📦 LOG ARCHIVE FAILED — %s. What could not be moved stays in %s and this run "
+                  "appends to it; the previous run is NOT archived cleanly.", err, logs_dir)

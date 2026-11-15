@@ -72,6 +72,7 @@ optional, sensible defaults):
 | `DM_BRIDGE_HOST` / `DM_BRIDGE_PORT` | `127.0.0.1` / `8765` | Bot A's `/speak` bridge |
 | `DM_ADVENTURE` | — | scene-card adventure to load (e.g. `chemical_burn`); unset → no adventure |
 | `DM_LOG_FILE` | off | `1` records a run to `logs/terminal.log` + `logs/debug.log` |
+| `DM_LOG_ARCHIVE_KEEP` | 30 | played runs kept in `logs/archive/runs/` (and sandbox resets in `logs/archive/sandbox/`); `pinned/` is never pruned |
 
 ## Run
 
@@ -87,7 +88,9 @@ optional, sensible defaults):
 Logs go to the console — kept lean (DMbot's own lines + any warnings/errors, timestamped).
 File logging is **off by default**; set `DM_LOG_FILE=1` to record a run as two pasteable
 files: `logs/terminal.log` (plain console mirror) and `logs/debug.log` (fuller detail +
-tracebacks, heartbeat flood collapsed).
+tracebacks, heartbeat flood collapsed). Each file holds exactly one run: at start the previous
+run's logs move to `logs/archive/runs/<start-stamp>/`. `uv run python -m dmbot.tools.logruns`
+lists the runs, `--path N` prints one's folder, `--pin N [--name …]` keeps it for good.
 
 ## Troubleshooting (gotchas we actually hit)
 
