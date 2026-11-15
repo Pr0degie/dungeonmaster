@@ -337,7 +337,8 @@ after the recap and before the history.
 >
 > - **`data/sessions/<channel>/characters.json`** — the **read-only sheet** (characteristics,
 >   skills, `max_wounds`, aliases), transferred **once** from the player sheets (ADR 004). Code
->   never rewrites it.
+>   never rewrites it. A git-ignored `characters.local.json` in the same folder wins over it — a
+>   per-machine party edit that never shows up as a repo change.
 > - **`data/sessions/<channel>/state.json`** — the **code-owned mutable layer** (`dmbot/memory/state.py`):
 >   current `wounds`/`conditions`/`inventory` per character, the `npcs`, `quests`, `location`,
 >   `time_minutes`/`time_ingame`/`deadlines` (ADR 048), and the stored `recap`. **Seeded once**

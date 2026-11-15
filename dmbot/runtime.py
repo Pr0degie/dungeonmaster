@@ -124,6 +124,17 @@ def _safe_remove(path: str) -> None:
         pass
 
 
+def _party_sheet(folder: Path) -> Path | None:
+    """The party file of a session folder: the git-ignored ``characters.local.json`` if present
+    (the ``**/characters.local.json`` rule in ``.gitignore``), else the tracked ``characters.json``,
+    else None."""
+    for name in ("characters.local.json", "characters.json"):
+        candidate = folder / name
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 class SessionRuntime(SessionIngestMixin, ClocksMixin, NpcMemoryMixin, PanelsMixin,
                      PersistenceMixin, SeedingMixin, SceneFlowMixin):
     """Shared session state + services, built once from :class:`Config` and injected into every cog.
@@ -659,16 +670,19 @@ class SessionRuntime(SessionIngestMixin, ClocksMixin, NpcMemoryMixin, PanelsMixi
         values otherwise go unnoticed). The committed
         ``_default`` party is the *intended* fallback and loads silently — so a teammate's clone and
         every voice channel get the real party without binding it to one channel id. A missing file
-        yields an empty store (the engine then rolls without a target)."""
+        yields an empty store (the engine then rolls without a target).
+
+        In each folder a git-ignored ``characters.local.json`` wins over the tracked
+        ``characters.json`` — a per-machine party edit that never shows up as a repo change."""
         sessions = _DATA_DIR / "sessions"
         if channel_id is not None:
-            specific = sessions / str(channel_id) / "characters.json"
-            if specific.is_file():
+            specific = _party_sheet(sessions / str(channel_id))
+            if specific is not None:
                 log.info("loaded characters from %s", specific)
                 return CharacterStore.load(specific), False
         if self._default_party:
-            default = sessions / self._default_party / "characters.json"
-            if default.is_file():
+            default = _party_sheet(sessions / self._default_party)
+            if default is not None:
                 log.info("no channel sheet — loaded default party from %s", default)
                 return CharacterStore.load(default), False
         return CharacterStore.load(sessions / "_example" / "characters.json"), True

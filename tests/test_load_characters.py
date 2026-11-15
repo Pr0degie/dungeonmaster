@@ -73,3 +73,14 @@ def test_boot_load_none_channel_uses_default_party(tmp_path: Path, monkeypatch) 
     store, fallback = _runtime("_default")._load_characters(None)
     assert [c.name for c in store.characters()] == ["Fridolin", "Gellicus"]
     assert fallback is False
+
+
+def test_local_sheet_wins_over_tracked_one(tmp_path: Path, monkeypatch) -> None:
+    # A git-ignored characters.local.json next to the tracked file is the per-machine override,
+    # for the channel sheet and the default party alike; without it the tracked file loads (above).
+    _seed(tmp_path, monkeypatch)
+    _write_party(tmp_path / "sessions" / "123" / "characters.local.json", "LocalChannel")
+    _write_party(tmp_path / "sessions" / "_default" / "characters.local.json", "LocalDefault")
+    rt = _runtime("_default")
+    assert [c.name for c in rt._load_characters(123)[0].characters()] == ["LocalChannel"]
+    assert [c.name for c in rt._load_characters(999)[0].characters()] == ["LocalDefault"]
