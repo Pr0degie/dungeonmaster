@@ -1560,7 +1560,8 @@ def test_a_label_that_is_an_authored_alias_is_that_card_figure() -> None:
         ("Schwester Vall", 10), ("Alter Fenk", 5), ("Alter", 10)]   # no second Fenk
 
 
-def test_the_three_post_turn_questions_go_out_as_three_calls(tmp_path) -> None:
+def test_the_three_post_turn_questions_are_three_calls_and_each_journals_its_verdict(
+        tmp_path) -> None:
     from fakes import FakeLLMClient
 
     adv = _adventure()
@@ -1576,3 +1577,29 @@ def test_the_three_post_turn_questions_go_out_as_three_calls(tmp_path) -> None:
 
     assert [list(c["format"]["properties"]) for c in client.calls] == [
         ["ziel"], ["art", "sache", "an", "von"], ["npcs"]]
+    # Replay journal (ADR 046): dm-eval replays these notes, one per classifier asked.
+    notes = rt.take_replay_notes(channel)
+    assert {key: notes[key]["raw"] for key in ("scene_router", "facts", "npcs")} == {
+        "scene_router": '{"ziel": "nein"}',
+        "facts": '{"art": "nichts", "sache": "", "an": "", "von": ""}',
+        "npcs": '{"npcs": []}'}
+    assert [notes[key]["failure"] for key in ("scene_router", "facts", "npcs")] == [None] * 3
+
+
+def test_a_classifier_that_sat_out_journals_no_note_from_an_older_turn(tmp_path) -> None:
+    from fakes import FakeLLMClient
+
+    adv = _adventure()
+    state = _state(adv)
+    channel = _FakeChannel()
+    client = FakeLLMClient(['{"ziel": "nein"}',
+                            '{"art": "nichts", "sache": "", "an": "", "von": ""}'])
+    brain = FakeBrain(client=client)
+    brain.last_npcs = {"raw": '{"npcs": ["Kettenmann"]}', "verdict": [], "failure": None}
+    rt = _runtime(adv, state, brain, channel, sessions_dir=tmp_path, _autosave=True,
+                  _npc_router=False)
+
+    _run(rt._classify_turn(channel, state, "Ihr bleibt stehen."))
+
+    notes = rt.take_replay_notes(channel)
+    assert sorted(notes) == ["facts", "scene_router"]      # the presence layer is off this turn
