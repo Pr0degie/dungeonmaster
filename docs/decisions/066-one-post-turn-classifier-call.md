@@ -1,8 +1,9 @@
 # ADR 066 — Should the scene, fact and presence classifiers share one schema call?
 
-- **Status:** Accepted 2026-11-14 — option **B**, built behind `DM_AUX_COMBINED` (default `0`
-  until the parity holds); see "Decision". Live-unverified.
-- **Date:** 2026-11-13 (draft), 2026-11-14 (decision)
+- **Status:** Rejected after the parity pass, 2026-11-15 (D148). Option **B** was built behind
+  `DM_AUX_COMBINED` on 2026-11-14 (D143) and removed again; the three classifiers stay three
+  calls. See the amendment of 2026-11-15 at the end.
+- **Date:** 2026-11-13 (draft), 2026-11-14 (decision), 2026-11-15 (rejected)
 - **Refs:** ADR 057 (scene classifier), ADR 058 (fact classifier), ADR 062 with its 2026-11-13
   amendment (presence classifier, D138), ADR 061 with all amendments (Claude backend, tier rule),
   ADR 046 (replay journal, `dm-eval`), ADR 014 (roll router — stays separate either way); lessons
@@ -99,6 +100,9 @@ there is prompt-evaluation time, unmeasured.
 
 ## Decision
 
+> Superseded on 2026-11-15: option B was removed after the parity pass (amendment at the end).
+> This section stays as the record of what was built and measured.
+
 **Option B, 2026-11-14 (D143).** The draft's trigger for B was "measured aux tokens that are a
 larger share of the turn than estimated here". The Phase-11 evening of 2026-11-14 measured them
 (33 turns, `[aux]` lines in `logs/debug-d1.log`):
@@ -150,7 +154,8 @@ but the parity does not hold:**
 - 2 combined calls hit the 20 s timeout (`log-0155`, `history.debug#22`) — both turns with
   sightings; the separate calls of the same turns answered. In the bot the fallback would have
   asked separately, 20 s late.
-- 5 positives decided differently: `log-2056` scene — combined `schrein` (= the recorded move),
+- 4 positives decided differently (this line said "5" until 2026-11-15; three more positives
+  were lost to the two timeouts, see the amendment of 2026-11-15): `log-2056` scene — combined `schrein` (= the recorded move),
   separate `nein`; `log-0159` presence — combined names the newcomer as Bree Marlok (what D138
   wants), separate an unidentified person; `d1-1921` presence — combined "nobody new" for a
   man already registered the turn before, separate an unidentified newcomer; `history.debug#4`
@@ -324,3 +329,62 @@ To adopt A, additionally:
 ## Amendment 2026-11-14 (code review of the round)
 
 A combined call that **times out or fails** is no longer retried through the separate calls. The retry put the verdicts about 40 s behind the narration (20 s + 20 s), or sent three more calls to the backend that had just failed (a paused client, or a cold Nemo under `fallback`). The turn loses those verdicts, as a separate call that times out loses its own. Only a usable call with an unusable answer (empty, unparseable, a part missing) is still asked again separately.
+
+## Amendment 2026-11-15 — rejected after the parity pass (D148)
+
+The parity pass of 2026-11-14 was evaluated from its raw output, without a new run:
+[adr-066-b-parity-evaluation-2026-11-15.md](../plans/adr-066-b-parity-evaluation-2026-11-15.md)
+holds the ten rows verbatim, each with the turn text it was judged against. Option B is rejected
+and its code is removed.
+
+**The count, corrected.** The ten differing verdicts of the 105 are:
+
+- **6 from the two timeouts** (`log-0155`, `history.debug#22`; three verdicts each). Three of
+  the six were positives: an item fact, a real newcomer and a false newcomer.
+- **4 decided differently:** `log-2056` scene, `log-0159` presence, `d1-1921` presence,
+  `history.debug#4` fact. By the turn text the combined call was right in three and one is
+  unclear.
+
+The Decision section above and the D143 row said "5 positives decided differently" and named
+four. The tool's own line lists seven positives with another combined verdict: these four plus
+the three lost to the timeouts.
+
+**Why rejected.**
+
+- **The gain is small and lands where nothing hurts.** Two CLI starts per turn and an estimated
+  third of the classifier input, all on Haiku. No usage limit was reached on 2026-11-14, and
+  nothing gets faster, because the three calls already run side by side behind the DM's voice.
+  The combined call's own tokens and duration were never measured (the pass logged at WARNING).
+- **The cost lands on the turns that matter.** Both timeouts fell on turns where someone new
+  appears: 2 of the 7 turns in which the separate presence call saw a person, none of the other
+  28. The cause cannot be determined from what is on disk; an output-heavy answer running into
+  the 1024-token request cap is a guess. A timeout loses the scene, fact and presence verdicts of
+  the turn together, where a separate call that times out loses only its own.
+- **The upside is unproven.** On two of the four decided differences the separate path itself
+  answered differently at the table than in the pass, so one pass cannot separate Haiku's spread
+  from the merge. Where the combined call was better on presence (it named Bree Marlok; it did
+  not register the chain man a second time), it had the scene question's context — the previous
+  narration and the player lines — which the separate presence call does not get.
+- **Switching it on was a chain, not a step.** The evaluation found two defects in the
+  switched-off path, both reproduced with a fake chat: after a combined timeout the journal
+  repeated the previous turn's three notes as this turn's, and the parity tool reported a
+  timeout on an empty turn as `HOLDS` with 0 of 3 verdicts agreeing. Fixing both, measuring the
+  timeout, the three-run replay and a live run would each have bought only the small gain above.
+
+**Removed:** `dmbot/llm/post_turn.py`, `dmbot/tools/aux_parity.py`, the hook
+`dmbot.llm.post_turn_combined`, `DMBrain.combines_post_turn` / `classify_post_turn` /
+`last_post_turn`, the `combine_post_turn` wiring, `Config.aux_combined` with `DM_AUX_COMBINED`,
+the branch in `SceneFlowMixin._classify_turn`, `tests/test_post_turn.py`,
+`tests/test_aux_parity.py` and `tests/aux_parity/log_positives.jsonl` (the nine recorded
+positives; in git up to commit `9a4f3e1`).
+
+**Kept**, because the three separate calls use them: the question builders `scene_question` /
+`fact_question` / `npc_question`, `SceneFlowMixin._post_turn_questions`, the journal rule that
+only the layers asked in a turn write their note, and the `[aux]` log line.
+
+**At the table nothing changes:** the flag defaulted to `0` and was never switched on.
+
+**What stays open from this ADR:** the cheaper levers of option C (skipping the `claude -v`
+probe before each spawn, a shorter `sache` on `nichts`), and one question the pass raised for
+ADR 062: whether the separate presence classifier should get the turn's player lines. Neither
+is built; the second is listed as a candidate in `progress.md`.

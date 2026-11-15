@@ -155,10 +155,8 @@ def scene_schema(exits: ExitsArg) -> dict:
 
 
 def scene_question(exits: ExitsArg, *, current_title: str = "") -> str:
-    """The question and its bar, without the role line and the JSON instruction — the one text
-    both the separate call (:func:`scene_system`) and the combined post-turn call on Claude
-    (``dmbot.llm.post_turn``, ADR 066 B) ask, so the two paths cannot drift
-    (``docs/lessons/parity-by-construction.md``)."""
+    """The question and its bar, without the role line and the JSON instruction
+    (:func:`scene_system` adds both)."""
     lines = [f"- {e.label()}" for e in normalize_exits(exits)]
     here = f"Die Gruppe war zuletzt hier: {current_title}.\n" if current_title.strip() else ""
     return (

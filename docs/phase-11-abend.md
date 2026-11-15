@@ -319,10 +319,11 @@ Nemo, eine ▶-Zeile, der liegengebliebene Zug wird beantwortet; zum Schluss die
 Messungen A–D wie oben (A: `cache=` > 0 ab Zug 2 = F5), Anteil `✂`, Zahl der `Marker entscheidet` / `Sicherheitsnetz` /
 `router`, NSC-Zeilen `gehört nach …`, Verbrauch vorher/nachher auf claude.ai.
 
-ADR 066 B (ein Haiku-Call statt drei) ist gebaut, aber `DM_AUX_COMBINED=0`: der Abgleich gegen 35 Züge stimmte in
-95 von 105 Urteilen überein, zwei Calls liefen ins 20-s-Timeout. Vor dem Einschalten: drei Abgleich-Läufe (ADR 066
-Schritt 4), dann ein Lauf mit dem Schalter als einziger Änderung. Das Journal des 14.11. (`history.debug.jsonl`) ist
-beim Vorbereiten am 14.11., 20:40 gelöscht worden; die Abgleich-Läufe nehmen das Journal dieses Laufs.
+ADR 066 B (ein Haiku-Call statt drei) ist am 15.11. nach dem Abgleich verworfen und wieder entfernt worden (D148,
+ADR 066, Nachtrag 2026-11-15): der Abgleich gegen 35 Züge stimmte in 95 von 105 Urteilen überein, zwei Calls liefen
+ins 20-s-Timeout, beide in Zügen, in denen jemand Neues auftaucht. Szene, Fakten und NSCs bleiben drei Calls; am
+Tisch ändert sich dadurch nichts. Das Journal des 14.11. (`history.debug.jsonl`) ist beim Vorbereiten am 14.11.,
+20:40 gelöscht worden.
 
 ## Protokoll zum Ausfüllen
 

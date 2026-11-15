@@ -124,9 +124,7 @@ def npc_question(
     *, party: Sequence[str], roster: Sequence[str], present: Sequence[str],
     candidates: Sequence[tuple] = (),
 ) -> str:
-    """The question and its bar without the JSON instruction — shared by the separate call
-    (:func:`npc_system`) and the combined post-turn call on Claude (``dmbot.llm.post_turn``,
-    ADR 066 B), so the two paths cannot drift."""
+    """The question and its bar without the JSON instruction (:func:`npc_system` adds it)."""
     people = "".join(
         f"\n  · {c.name}" + (f" — {c.role}" if c.role else "")
         + (f" (auch: {', '.join(c.aliases)})" if c.aliases else "")
