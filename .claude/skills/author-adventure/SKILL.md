@@ -19,7 +19,7 @@ compendium. Goal: a 50-page adventure costs an afternoon of *redigieren*, not da
 
 ## Hard rules
 
-1. **Everything player-facing is German** (docs/code English — CLAUDE.md language convention).
+1. **Everything player-facing is German** (docs/code English — CLAUDE.md golden rule #8).
 2. **Profile vocabulary, never invented terms.** Skill names and difficulties in
    `opportunities_de` must match the active profile (`data/systems/<DM_SYSTEM>.json`, default
    `imperium_maledictum`) and the party sheets — that's the roll router's vocabulary.

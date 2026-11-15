@@ -38,8 +38,8 @@ in code that already exists.
    A test that was never red proves nothing.
 3. **GREEN — minimal implementation.** Write the smallest change to `engine.py` (or the target
    module) that makes the test pass. Read the profile block as data; keep the function pure.
-4. **Confirm green.** Re-run the file, then the full suite
-   (`uv run --with pytest python -m pytest`) so the change didn't break a sibling.
+4. **Confirm green.** Re-run the file, then `uv run dm-check` (ruff F + full suite + dm-eval)
+   so the change didn't break a sibling.
 5. **REFACTOR.** Only once green: dedupe, rename, extract helpers. Tests stay untouched and
    must stay green throughout.
 6. Repeat from 1 for the next behaviour.
@@ -61,7 +61,7 @@ in code that already exists.
 
 ## Close-out
 
-- Full suite green: `uv run --with pytest python -m pytest`.
+- `uv run dm-check` green.
 - Commit test + implementation **together**, imperative scoped message
   (`rules(im): success-level edge band`). Direct to `main` (no feature branch for this repo).
 - A real design trade-off → write an ADR; pure red-green of existing behaviour → no ADR needed.

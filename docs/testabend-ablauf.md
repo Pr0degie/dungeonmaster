@@ -402,8 +402,6 @@ Gate nicht ausgelöst): [Debrief in 5 Minuten](debug-campaign-runbook.md).
    `VERIFY EVIDENCE` und ins Decision-Log (`docs/decision-log.md`), nicht in einen ADR. Nächste freie Nummer: 057.
 5. **Setup-Pannen werden Preflights.** Was an Timos Rechner schiefging, wird zu einer
    Boot-Prüfung oder einer `dm-sync`-Zeile, nicht nur zu einem Einzelfix.
-6. **Gates, die zufielen, heben die WIP-Sperre** — erst danach dürfen wieder Feature-Runden
-   starten, die ein neues Live-Gate öffnen.
 
 Und: G9 und G10 bleiben offen, bis die zweite Sitzung gelaufen ist. Nicht vorher abhaken.
 

@@ -7,8 +7,7 @@
 > (`docs/lessons/one-variable-per-live-run.md`). **Dieses Skript wird am Phase-11-Abend nicht
 > gespielt.** Der nächste Abend läuft nach [testabend-ablauf.md](testabend-ablauf.md) §9
 > „Phase-11-Abend“ und hat genau ein Gate. Danach wird jedes geparkte Gate neu gesichtet:
-> behalten, für den Werkzeug-Pfad (Phase 12) umschreiben oder streichen. Bis dahin zählt keines
-> davon gegen die WIP-Grenze.
+> behalten, für den Werkzeug-Pfad (Phase 12) umschreiben oder streichen.
 
 Stand: 2026-07-18 (G10 ergänzt nach D102 / ADR 055; davor 2026-07-11, D98 / ADR 051).
 **Ersetzt `docs/live-test-checklist.md`** — alle offenen Live-Gates (G1–G10), die

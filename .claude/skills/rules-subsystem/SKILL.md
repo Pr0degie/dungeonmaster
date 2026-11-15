@@ -37,7 +37,7 @@ them. A new subsystem follows the exact shape of psyker (ADR 022) and augmetics 
 6. **Surface it to the DM.** Add a block to the state summary so the value reaches the prompt
    as structured data, and a short persona line in `prompts/dm_core_de.md` (German). Per-entry
    prose (full power/implant descriptions) comes from **RAG**, not the profile (golden rule #7).
-7. **Run the suite** (`uv run --with pytest python -m pytest`) and **write an ADR** — a new
+7. **Run `uv run dm-check`** (ruff F + suite + dm-eval) and **write an ADR** — a new
    subsystem is a real decision.
 
 ## Gotchas

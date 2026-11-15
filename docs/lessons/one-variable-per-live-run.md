@@ -22,5 +22,4 @@ Sequence live work: tune first, live-verify the baseline, then compare. Stacking
 ## Why it matters
 
 Live sessions need three players' schedules, so "also try the new model while we're at it"
-resurfaces before every run. CLAUDE.md's WIP limit governs gate *count*; this governs
-confounding.
+resurfaces before every run. This lesson governs confounding.

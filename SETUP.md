@@ -113,7 +113,8 @@ lists the runs, `--path N` prints one's folder, `--pin N [--name …]` keeps it 
 ## Tests
 
 ```bash
-uv run --with pytest python -m pytest     # the deterministic core (rules/, memory)
+uv run dm-check                          # ruff (F) + test suite + dm-eval, one verdict
+git config core.hooksPath tools/hooks    # once per clone: the pre-commit hook (skips while the dm-check stamp matches)
 ```
 
 Voice/VAD/STT/TTS/full-loop are verified manually per phase gate (see `progress.md`); real-time

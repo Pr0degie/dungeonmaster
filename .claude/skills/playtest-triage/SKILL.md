@@ -31,6 +31,11 @@ run 0 plus the runs before it on the same date — name each run by its start ti
 numbers apart. Get a run's folder with `--path N`. Per run: `debug.log` (the evidence),
 `transcript.log` (the conversation with times), `terminal.log` (the console incl. boot).
 
+**Reading goes to the `log-reader` subagent** (`.claude/agents/log-reader.md`, read-only, cheaper
+model): hand it the run folders from this step plus the patterns of steps 3–5 (check items'
+"Beweis im Log", metric counts, `👥` lines, journal and `state.debug.json` cross-checks), in one or
+a few batches, and work from the lines it returns. Verdicts, metrics and the report stay here.
+
 Logs are 100–300 KB: grep, never read a whole `debug.log` into context. A run without
 `debug.log` (`DM_LOG_FILE=0`) → say which metrics cannot be computed. If run 0 has no
 `DMbot starting` line or looks still running, say so before evaluating it.
@@ -130,8 +135,8 @@ is named as missing, never estimated.
 2. **Fix deterministically.** Prefer a code guard over a prompt nudge. Prompt-only is allowed
    only when the failure is genuinely stylistic — and then note that a code guard is the
    fallback if the model doesn't adhere.
-3. **Run the suite:** `uv run --with pytest python -m pytest`, plus `uv run dm-eval` for prompt
-   or turn-path changes. Add fixed-seed tests for any new deterministic logic.
+3. **Run `uv run dm-check`** (ruff F + suite + dm-eval). Add fixed-seed tests for any new
+   deterministic logic.
 4. **Commit per round** with a scoped imperative message
    (e.g. `dmbot(memory): cumulative auto-recap so wrap-up can't drop the session start`).
 5. **Record the round** per the `session-ritual` wrap-up (progress update + rotation; ADR if

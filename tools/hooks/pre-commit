@@ -1,35 +1,32 @@
 #!/usr/bin/env bash
-# git pre-commit hook — gate every commit with the same zero-token checks as the manual
-# tools/hooks/test-on-change.sh (ruff pyflakes-F + the test suite), but BLOCKING: a red check aborts the commit.
-# Bypass a deliberate WIP / partial commit with `git commit --no-verify`.
+# git pre-commit hook — gate commits that touch code, tests or profiles with `uv run dm-check`
+# (ruff F + test suite + dm-eval, dmbot/tools/dm_check.py). BLOCKING: a red check aborts the commit.
+# Bypass a deliberate partial commit with `git commit --no-verify`.
 #
-# Installed via `git config core.hooksPath tools/hooks` (so this tracked script IS the hook — no
-# copy into .git/hooks that would drift). On a fresh clone run that one command once (setup.ps1
-# can do it).
+# Installed via `git config core.hooksPath tools/hooks` (this tracked script IS the hook — no copy
+# in .git/hooks that could drift). On a fresh clone run that one command once. Runs under Git for
+# Windows' bash.
 #
-# Scope guard: runs only when STAGED changes touch dmbot/ tests/ data/systems/ — a docs-only commit
-# passes straight through (fast). ruff is F-only on purpose (line-length/style E* stays off; long
-# doc lines are deliberate, re-export shims carry `# noqa: F401`). Tests run against the WORKING
-# TREE, not a stashed staged snapshot — keep the tree clean at commit time, or use --no-verify.
+# 1. Scope guard: only when STAGED changes touch dmbot/ tests/ data/systems/ — a docs-only commit
+#    passes straight through.
+# 2. Stamp: a green dm-check remembers the git tree hash of those three paths in .dm-check.stamp
+#    (git-ignored). If it still matches the WORKING TREE (`dm-check --fresh`), the commit passes
+#    without re-running anything. Any edit, deletion or new untracked file under the three paths
+#    changes the hash; a red run leaves no stamp; a missing or unreadable stamp means "run".
+# 3. Otherwise: full dm-check against the working tree (not a stashed staged snapshot — keep the
+#    tree clean at commit time, or use --no-verify).
 set -uo pipefail
 
 staged="$(git diff --cached --name-only -- dmbot tests data/systems 2>/dev/null || true)"
 [ -z "$staged" ] && exit 0
 
-echo "[pre-commit] code/tests/profiles staged -> ruff (F) + pytest (bypass: git commit --no-verify) ..."
-fail=0
-
-if ! uv run --with ruff ruff check --select F dmbot tests; then
-  echo "[pre-commit] ruff (F) FAILED -- fix: uv run --with ruff ruff check --select F --fix dmbot tests" >&2
-  fail=1
+if uv run --quiet python -m dmbot.tools.dm_check --fresh >/dev/null 2>&1; then
+  echo "[pre-commit] dm-check stamp matches the working tree -> no re-run."
+  exit 0
 fi
 
-if ! uv run --with pytest python -m pytest -q --tb=short; then
-  echo "[pre-commit] pytest FAILED" >&2
-  fail=1
-fi
-
-if [ "$fail" -ne 0 ]; then
+echo "[pre-commit] code/tests/profiles staged, no matching dm-check stamp -> uv run dm-check (bypass: git commit --no-verify) ..."
+if ! uv run dm-check; then
   echo "[pre-commit] commit aborted (bypass once with: git commit --no-verify)." >&2
   exit 1
 fi

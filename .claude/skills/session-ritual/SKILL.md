@@ -1,6 +1,6 @@
 ---
 name: session-ritual
-description: Use at the start of a working session for the handshake (CLAUDE.md + the State header of progress.md, more only for subsystem/phase work), and at the end of a bigger round or on "wrap up" / "update progress" to update progress.md within its size caps, rotate history, check the WIP limit and scaffold the next-numbered ADR. Small rounds update progress.md inside the change's own commit and don't need this skill.
+description: Use at the start of a working session for the handshake (CLAUDE.md + the State header of progress.md, more only for subsystem/phase work), and at the end of a bigger round or on "wrap up" / "update progress" to update progress.md within its size caps, rotate history and scaffold the next-numbered ADR. Small rounds update progress.md inside the change's own commit and don't need this skill.
 ---
 
 # Session ritual — handshake, wrap-up, ADR scaffold
@@ -18,8 +18,7 @@ what the task needs.
    the headings first (`grep -n "^## " <adr>`), read `## Decision` and the newest amendment,
    the rest only if the task needs it. A small task (one feature, a fix, a doc edit, a
    question) skips this step.
-3. State in 2–3 sentences where we are and what's next. Don't touch files before that. If the
-   WIP limit makes this a live-verification session, say so here.
+3. State in 2–3 sentences where we are and what's next. Don't touch files before that.
 
 Never read eagerly: `architecture.md`, `roadmap.md`, `SETUP.md`, `docs/conventions.md`, older
 ADRs, single lessons, `docs/progress-archive.md`, and `docs/decision-log.md` (grep one
@@ -51,10 +50,8 @@ caps below and says "already done". Don't reload this skill just to confirm that
 - Decision-log rows with an ADR: max 2 lines (what + one-clause why + → ADR NNN). The log and
   the phase → ADR map are never rotated (stable `D##` refs).
 
-**WIP limit:** max 3 open live gates. A round that would leave a fourth open doesn't start —
-set `## Next concrete step` to a live-verification session and propose the shortest script to
-close the oldest gates. Exempt: rounds that open no live gate (dev tooling, refactors covered by
-suite + dm-eval). Tobi can say "WIP-Override" when a live session isn't schedulable — note it.
+**Live-unverified:** a round whose result only the table can confirm goes into the State header's
+`Live-unverifiziert` line with the D-number, and leaves it once a run confirmed it.
 
 Write for a fresh reader: one plain sentence on what changed and why it matters for play, then
 the evidence, then at most five lines of mechanism — the rest goes in the ADR. No arrow chains.

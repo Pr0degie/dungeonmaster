@@ -157,10 +157,9 @@ deterministischen Entscheidungen — Turn-Komposition, Sanitizer-Antwort, gepars
 Roll-Router-Verdikt, Szenen-/Flag-/Uhr-/Zeit-Verdikte (ADR 043/047/048). **Regression,
 nicht Qualität.** Exit 0 grün / 1 Abweichung / 2 unbrauchbares Transcript.
 
-- **Wann laufen lassen:** vor dem Merge/Push einer **Refactor-Runde**, die orchestrator /
-  llm-Helfer / marker / roll_router / delivery-Verdikte anfasst — zusätzlich zur Suite (die
-  Suite prüft Einheiten, `dm-eval` die aufgezeichnete End-to-End-Kette). Nicht im Stop-Hook:
-  bewusst ein gezieltes Gate, wie `/code-review`.
+- **Wann laufen lassen:** läuft in `uv run dm-check` mit (also auch im pre-commit-Hook, wenn
+  Code/Tests/Profile im Commit sind). Die Suite prüft Einheiten, `dm-eval` die aufgezeichnete
+  End-to-End-Kette. Einzeln (`uv run dm-eval <datei>`) nur beim Ziehen eines neuen Goldens.
 - **Gewollte Verhaltensänderung:** `dm-eval` schlägt an → Diff lesen, prüfen, dass nur die
   beabsichtigte Kategorie abweicht, dann Goldens **neu erzeugen** (synthetisch:
   `uv run python tests/golden/generate_synthetic.py`, dann den `.jsonl`-git-Diff absegnen;
@@ -172,15 +171,21 @@ nicht Qualität.** Exit 0 grün / 1 Abweichung / 2 unbrauchbares Transcript.
 
 Zwei Ebenen, bewusst getrennt — die billige läuft von selbst, die teure nach Urteil.
 
-**Von Hand, vor dem Commit** (`bash tools/hooks/test-on-change.sh`; der Stop-Hook dafür ist seit
-2026-10-31 auf Tobis Wunsch aus — er ließ die ganze Suite nach jeder Antwort laufen, solange etwas
-uncommittet war): wenn etwas
-unter `dmbot/` `tests/` `data/systems/` geändert wurde, laufen **`ruff --select F`** (pyflakes:
-ungenutzte Importe/Namen, undefinierte Namen — fängt den Dead-Import-Cruft, den eine
-Auslagerung hinterlässt) **+ die Test-Suite**. Still bei grün, Ausgabe nur bei Fehler
-(nicht-blockierend, `exit 1` im Terminal; der Fix-Befehl steht in der Meldung). _Zeilenlänge/
-Style (`E*`) bleibt bewusst aus — lange Doc-Zeilen sind Absicht, Re-Export-Shims tragen
-`# noqa: F401`._
+**Ein Prüfbefehl: `uv run dm-check`** (`dmbot/tools/dm_check.py`) führt **`ruff --select F`**
+(pyflakes: ungenutzte Importe/Namen, undefinierte Namen — fängt den Dead-Import-Cruft, den eine
+Auslagerung hinterlässt), **die Test-Suite** und **`dm-eval`** aus und meldet ein Gesamtergebnis
+(Fix für ruff: `uv run --with ruff ruff check --select F --fix dmbot tests`). _Zeilenlänge/Style
+(`E*`) bleibt bewusst aus — lange Doc-Zeilen sind Absicht, Re-Export-Shims tragen `# noqa: F401`._
+
+**Merkzettel + pre-commit-Hook** (`tools/hooks/pre-commit`, aktiv über
+`git config core.hooksPath tools/hooks`): Ist `dm-check` grün, schreibt er den git-Tree-Hash von
+`dmbot/` `tests/` `data/systems/` im Arbeitsbaum (inkl. ungetrackter, nicht ignorierter Dateien)
+nach `.dm-check.stamp` (git-ignoriert). Der Hook läuft nur, wenn einer der drei Pfade im Commit
+ist; passt der Merkzettel zum Arbeitsbaum (`uv run dm-check --fresh`), geht der Commit sofort
+durch, sonst läuft `dm-check` und blockiert bei rot (`git commit --no-verify` umgeht ihn). Jede
+Änderung an den drei Pfaden ändert den Hash; ein roter oder abgebrochener Lauf löscht den
+Merkzettel vorher; fehlt er oder ist er unlesbar, läuft `dm-check`. Ein Stop-Hook ist seit
+2026-10-31 auf Tobis Wunsch aus (er ließ die Suite nach jeder Antwort laufen).
 
 **Manuell, gezielt — `/code-review`** ist abgerechnet + langsam, also **nicht vor jedem
 Commit**, sondern wenn ein Commit/Batch eine heiße Zone anfasst. Trigger-Checkliste (greift
@@ -193,15 +198,21 @@ mind. eins → Review lohnt sich):
   Mute-Tiefenzähler) — da verstecken sich Regressionen, die die Suite selten fängt.
 - [ ] **Neue Datei** oder nennenswert neue, nicht-triviale Logik (nicht bloß „verschoben").
 
-Greift **kein** Kästchen → Suite + Lint-Hook reichen. **Tagesende / vor einem Meilenstein**
+Greift **kein** Kästchen → `dm-check` reicht. **Tagesende / vor einem Meilenstein**
 mit viel akkumulierter Arbeit → der schwere Fan-out (`/code-review ultra` bzw. ein
 Fan-out-Workflow über den Commit-Range): der **gibt verhaltenserhaltende Refactors verifiziert
 frei**, statt einzelne Bugs zu suchen — genau dort liegt sein Wert. _Beleg D76: 14 Findings, 3
 bestätigt, alle in neuem Logik-/Test-Code, kein einziger in den byte-exakten Move-Commits._
 
+**Umgang mit Befunden.** Pro Runde läuft **höchstens ein** Review, am Ende der Runde.
+- Befunde aus der **aktuellen Runde**, die sich deterministisch zeigen lassen → mit Test beheben.
+- **Ältere** Befunde → nur dann unter `## Open questions` in `progress.md`, wenn sie am Tisch
+  spürbar wären.
+- Alle übrigen → je eine Zeile im Abschlussbericht, danach nicht weiterverfolgt.
+
 **Manuell, schreibend — `/simplify`** ist ein Sonderfall: es findet nicht nur, es **schreibt
 deinen Code um** (es *applied* die Cleanups). Darum **nie automatisch** und nur bewusst + mit
-Blick auf den Diff — das Sicherheitsnetz (Stop-Hook + pre-commit: ruff + Suite) fängt danach ab,
+Blick auf den Diff — das Sicherheitsnetz (`dm-check` im pre-commit-Hook) fängt danach ab,
 ob der Umbau etwas gebrochen hat. Andere Auslöser als bei `/code-review`:
 - [ ] Gerade **fast-duplikaten** Code geschrieben (Copy-Paste über Branches/Dateien) oder die
   **dritte** Instanz eines Musters (rule of three → extrahieren).
@@ -295,7 +306,7 @@ dmbot/          the DM bot
   memory/       JSON state + recaps + gametime.py (pure in-game-time helpers, ADR 048) + chekhov.py (loose-thread list, ADR 050)
   rules/        engine.py (generic) + combat.py (attack/Warp resolution, ADR 037) + scene_flow.py (exit resolution, flag gate, scene undo — ADR 057) + profile loader (+ tests)  ← deterministic core
   discord_ui/   buttons, turn-order view + panel.py (the player panel: scene, mission, time, what is still open) + undo.py (take back an automatic scene change, ADR 057)
-  tools/        dev CLIs via [project.scripts]: sync_check (`uv run dm-sync`, D89/D90) + eval_replay (`uv run dm-eval`, golden-transcript regression replay, ADR 046 — goldens in tests/golden/); text_replay (`python -m dmbot.tools.text_replay dry|run|show`, six turns of the 2026-11-14 evening through the narration model with a persona variant — measures turn and sentence length before a persona change goes live; needs `logs/archive/pinned/2026-11-14_d1/debug.log`); logruns (`python -m dmbot.tools.logruns [--path N | --pin N]`, the archived runs)
+  tools/        dev CLIs via [project.scripts]: sync_check (`uv run dm-sync`, D89/D90) + eval_replay (`uv run dm-eval`, golden-transcript regression replay, ADR 046 — goldens in tests/golden/) + dm_check (`uv run dm-check`, ruff F + suite + dm-eval, stamp for the pre-commit hook); text_replay (`python -m dmbot.tools.text_replay dry|run|show`, six turns of the 2026-11-14 evening through the narration model with a persona variant — measures turn and sentence length before a persona change goes live; needs `logs/archive/pinned/2026-11-14_d1/debug.log`); logruns (`python -m dmbot.tools.logruns [--path N | --pin N]`, the archived runs)
   orchestrator.py   the DM brain (history + buffer → LLM)
   bridge.py     HTTP client to Bot A's /speak
   logsetup.py   console (green chat) + file logging

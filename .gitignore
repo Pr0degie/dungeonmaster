@@ -75,9 +75,11 @@ tools/rag_calibrate_report.md
 
 # Agent / editor / OS cruft
 .claude/**
-# ...but share the project skills + the team hook config; settings.local.json stays local.
+# ...but share the project skills, subagents + the team permission config; settings.local.json stays local.
 !.claude/skills
 !.claude/skills/**
+!.claude/agents
+!.claude/agents/**
 !.claude/settings.json
 .vscode/
 .idea/
@@ -90,3 +92,10 @@ aaa.py
 
 # dice result thumbnails (dmbot/dice_images.py) — rendered on demand, never committed
 data/dice/
+
+# dm-check stamp: fingerprint of the last green dmbot/ tests/ data/systems/ (dmbot/tools/dm_check.py)
+.dm-check.stamp
+
+# per-machine party override next to a tracked characters.json (dmbot/runtime.py) — always local,
+# even inside an allowlisted session folder; must stay AFTER the data/ allowlist above
+**/characters.local.json

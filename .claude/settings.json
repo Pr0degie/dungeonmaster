@@ -1,7 +1,25 @@
 {
   "permissions": {
     "allow": [
-      "Bash(uv run --with pytest python -m pytest:*)"
+      "Bash(uv run --with pytest python -m pytest:*)",
+      "Bash(uv run dm-check)",
+      "Bash(uv run dm-check --fresh)",
+      "Bash(uv run dm-eval)",
+      "Bash(uv run dm-eval *)",
+      "Bash(uv run --with ruff ruff check --select F dmbot tests)",
+      "Bash(uv run dm-sync)",
+      "Bash(uv run python -m dmbot.tools.logruns)",
+      "Bash(uv run python -m dmbot.tools.logruns --path *)",
+      "Bash(uv run python -m dmbot.tools.text_replay dry)",
+      "Bash(uv run python -m dmbot.tools.text_replay dry *)",
+      "Bash(uv run python -m dmbot.tools.text_replay show)",
+      "Bash(uv run python -m dmbot.tools.text_replay show *)",
+      "Bash(git status)",
+      "Bash(git status *)",
+      "Bash(git diff)",
+      "Bash(git diff *)",
+      "Bash(git log)",
+      "Bash(git log *)"
     ]
   }
 }

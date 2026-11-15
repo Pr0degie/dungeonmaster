@@ -60,6 +60,9 @@ dependencies = [
 dm-sync = "dmbot.tools.sync_check:main"
 # The golden-transcript replay gate (ADR 046): regression check for the deterministic pipeline.
 dm-eval = "dmbot.tools.eval_replay:main"
+# The one check command: ruff (F) + test suite + dm-eval, one verdict; on green it stamps the
+# checked tree so the pre-commit hook can skip a re-run (`uv run dm-check`).
+dm-check = "dmbot.tools.dm_check:main"
 
 # Packaged (editable install of `dmbot`) solely so the [project.scripts] entry points exist;
 # still an application, not a published library.

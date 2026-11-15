@@ -26,14 +26,21 @@ all of them); the full body loads only when the skill is actually used.
 | **grill-me** | `/grill-me` | Stress-test a plan before building: walk the decision tree one fork at a time, answer from docs/ADRs/code where possible, recommend an answer per question, grill in German until the design is unambiguous → offer an ADR. Adapted from Matt Pocock's grill-me. |
 | **improve-architecture** | `/improve-architecture` | Whole-codebase deepening review: find shallow pass-through modules (deletion test) and propose turning them deep, for testability/AI-navigability. Markdown report → pick one → settle the design (grill only if it has real forks; + architecture.md/ADR updates). Informed by architecture.md + docs/decisions/; not diff-scoped (use /simplify or /code-review for that). Adapted from Matt Pocock. |
 | **author-adventure** | `/author-adventure <md> <id>` | Draft a new adventure compendium from a converted book md: structure pass (scene cut — **stops for confirmation**) → cards/NPCs/summary in profile-aligned German → spoiler self-check → `validate.py` against the real `Adventure.load` → review checklist of its own weak spots. Output under untracked `data/adventures/<id>/`; never commits. |
+| **adopt-workflow** | `/adopt-workflow <target folder> <stack>` | Carry this repo's working method into a new project: read the current CLAUDE.md, skills, hook, `progress.md` and the ADR/lessons/decision-log structure → split into general / project-specific / stack-dependent → **stop for OK** → scaffold the target with a check command + stamp hook for the stack → three hook probes. Keeps an exclusion list (golden rules, live gates/Beipackzettel, dice, RAG, Discord, any WIP rule) that grows from Tobi's feedback after the move. |
 | **to-prd** | `/to-prd` | Synthesize a grilled-out plan into a PRD written to `docs/plans/<slug>.md` (no interview — companion to `/grill-me`). Explores code + architecture.md + ADRs, sketches test seams at the engine boundary, writes Problem/Solution/User-Stories/Impl-/Testing-Decisions/Scope, points `progress.md`'s next step at it. Adapted from Matt Pocock. |
 
-## Related: the test hook (not a skill)
+## Related: the check command and the commit hook (not skills)
 
-`tools/hooks/test-on-change.sh` runs ruff (F) + the test suite **only when `dmbot/`, `tests/`, or
-`data/systems/` changed**, and stays **silent on green**. It is a manual check before a commit —
-no longer a `Stop` hook (dropped 2026-10-31); the blocking gate is the git `tools/hooks/pre-commit`
-(`docs/conventions.md`).
+`uv run dm-check` runs ruff (F) + the test suite + `dm-eval` with one verdict and, on green,
+stamps the checked tree of `dmbot/`, `tests/`, `data/systems/` in `.dm-check.stamp`. The git
+`tools/hooks/pre-commit` runs only when those paths are in the commit and skips the re-run while
+the stamp matches the working tree (`docs/conventions.md`). No `Stop` hook (dropped 2026-10-31).
+
+## Related: subagents (`.claude/agents/`)
+
+| Agent | Model | What it does |
+|---|---|---|
+| **log-reader** | opus (cheaper than Fable; tools Read/Grep/Glob only) | Read-only reading for `playtest-triage`: greps the run logs (`logs/`, `logs/archive/runs/`), the journal and the game state for given patterns and returns the lines with time and run. Never edits, never pins, never judges. |
 
 ## Maintenance
 

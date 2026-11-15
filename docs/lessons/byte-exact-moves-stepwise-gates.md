@@ -1,7 +1,7 @@
 # Refactors: byte-exact moves, zero test edits, stepwise gates
 
 **Move code with byte-exact line-slice scripts (never retype), cut the seam so existing
-tests need zero edits, and migrate one seam at a time with suite + ruff-F + `dm-eval` green
+tests need zero edits, and migrate one seam at a time with `uv run dm-check` green
 after every step. Review effort belongs on new logic — the moves are the safe part.**
 
 ## What happened

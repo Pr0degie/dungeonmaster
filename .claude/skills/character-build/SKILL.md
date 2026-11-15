@@ -61,7 +61,7 @@ Fix on failure, or flag it back to the player; summarize the result in the JSON'
    - whether `state.json` / `recap.md` must be cleared (yes when replacing the party, so the
      first `!join` seeds fresh from the new sheet).
    Apply only after the user's OK.
-4. **Sanity + commit:** `uv run --with pytest python -m pytest` (schema loads via
+4. **Sanity + commit:** `uv run dm-check` (schema loads via
    `Character.from_dict`); commit per repo norm (scoped, imperative).
 
 ## Gotchas

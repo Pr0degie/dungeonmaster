@@ -12,10 +12,10 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** Log-Archiv (D149, 15.11.): jedes Log hält einen Bot-Start, der nächste Start schiebt es nach
-  `logs/archive/runs/`, `--wipe-debug` verschiebt die Sandbox statt sie zu löschen; am Tisch ändert sich nichts.
-  Davor am selben Tag: ADR 066 B verworfen (D148), offene Punkte von 62 auf 18. „Last session“.
-- **Suite:** 1556 Tests grün, 4 xfail; `dm-eval` Exit 0.
+- **Newest round:** Arbeitsablauf (D150, 15.11.): `uv run dm-check` mit Merkzettel-Hook, WIP-Grenze entfernt,
+  `characters.local.json`; am Tisch ändert sich nichts. Davor am selben Tag: Log-Archiv (D149), ADR 066 B verworfen
+  (D148). „Last session“.
+- **Suite:** `uv run dm-check` grün — 1561 Tests, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
 - **Live-unverifiziert:** D140–D142 und D144–D147 (Prüfpunkte F1–F10, W1–W6 in
   [phase-11-abend.md](docs/phase-11-abend.md), „Nächster Lauf“), D139 (Pause statt Nemo — Durchgang 3 nicht
   gespielt), D138 (am 14.11. teils widerlegt: NSCs landen in der verlassenen Szene), D137, `DMBrain`-Befunde
@@ -24,7 +24,7 @@ is on-demand._
   20:55 (Sandbox leer; Bot vorher neu starten, er kennt D146, D148 und das Log-Archiv D149 nicht); Abschnitt „Next concrete step“.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
   geparkt (ADR 061, im [Live-Run-Skript](docs/live-run-script.md) markiert) und werden nach dem
-  Abend neu gesichtet; sie zählen nicht gegen die WIP-Grenze.
+  Abend neu gesichtet.
 
 ## Current focus
 
@@ -35,6 +35,20 @@ D140–D147 (ohne D143, verworfen) wartet auf ihren Lauf (Prüfliste F1–F10 im
 _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Current focus (Verlauf)`._
 
 ## Last session
+
+**Arbeitsablauf entschlackt (2026-11-15, D150).** Am Tisch ändert sich nichts. Ein Prüfbefehl ersetzt die drei
+Einzelprüfungen, der Commit-Hook prüft nach einem grünen Lauf nicht noch einmal, die WIP-Grenze ist weg.
+`uv run dm-check` grün (pytest 1561 grün, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0).
+- **`uv run dm-check`** (`dmbot/tools/dm_check.py`): ruff (F), Suite, `dm-eval`, ein Gesamtergebnis. Grün → der
+  git-Tree-Hash von `dmbot/` `tests/` `data/systems/` im Arbeitsbaum (inkl. ungetrackter Dateien) landet in
+  `.dm-check.stamp`; der pre-commit-Hook lässt den Commit ohne Lauf durch, solange der Hash passt. Ein roter Lauf löscht
+  den Merkzettel vorher. `tools/hooks/test-on-change.sh` entfällt; `tools/cleanup_15aug.py` bleibt (zwei Doku-Verweise).
+- **`characters.local.json`** (git-ignoriert) gewinnt im Lader über die getrackte `characters.json`; die lokale
+  Party-Änderung des Stamm-Channels (ohne Gellicus) liegt jetzt dort, die getrackte Datei ist wieder sauber.
+- **Werkzeuge:** Freigabeliste in `.claude/settings.json`; Subagent `log-reader` (Opus, nur lesen) für die Lesearbeit
+  in `playtest-triage`; Skill `adopt-workflow` (angelegt, nie ausgeführt). CLAUDE.md: Regeln für den Abschlussbericht
+  und „Doku im selben Commit“, Sprachkonvention und Bot-A-Abschnitt in die Golden Rules #5/#8 gefaltet.
+  `docs/conventions.md`: Regel für Review-Befunde (höchstens ein Review pro Runde, am Ende).
 
 **Log-Archiv statt Überschreiben (2026-11-15, D149).** Am 14.11. ging die Sitzungsaufzeichnung des Abends verloren:
 `terminal.log` wurde bei jedem Start überschrieben, „Sandbox leer“ löschte die `.debug`-Dateien. Jetzt hält jedes Log
@@ -51,25 +65,7 @@ ruff (F) sauber; `dm-eval` Exit 0. Live-unverifiziert: der erste Start, der die 
   alle behoben, sechs mit eigenem Test (u. a.: `--path 1` konnte einen angepinnten Ordner liefern; eine gesperrte
   Altdatei stoppte die Rotation; `--wipe-debug` aus einem anderen Ordner leerte den Store ohne Verschieben).
 
-**Nacharbeiten zum Claude-Abend (2026-11-15, D148).** Am Tisch ändert sich nichts; der nächste Lauf prüft dieselbe
-Folgerunde wie geplant. pytest 1537 grün, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
-- **ADR 066 B verworfen und entfernt (D148, Commit `a75bce0`):** der kombinierte Klassifikator-Call, das
-  Abgleich-Werkzeug, ihre 29 Tests und `DM_AUX_COMBINED` sind weg; Szene, Fakten und NSCs bleiben drei Calls. Die
-  Auswertung ([adr-066-b-parity-evaluation-2026-11-15.md](docs/plans/adr-066-b-parity-evaluation-2026-11-15.md))
-  zeigt: von den 10 abweichenden Urteilen kamen 6 aus zwei Timeouts, beide in Zügen mit einer neuen Person, und
-  ein Timeout verliert Szene, Fakt und Sichtung des Zugs zusammen. Das `/code-review` auf den Commit fand eine
-  Testlücke: kein Test prüfte mehr die Journal-Notizen der drei Klassifikatoren. Zwei Tests in
-  `tests/test_turn_boundary.py` halten sie jetzt fest (eine Notiz je gefragtem Klassifikator, keine alte Notiz
-  eines abgeschalteten).
-- **NSC-Anwesenheit nicht umgebaut:** der Entwurf „für Karten-Figuren gilt die Karte“
-  ([adr-062-card-is-authoritative-draft-2026-11-15.md](docs/plans/adr-062-card-is-authoritative-draft-2026-11-15.md))
-  bleibt Kandidat. Gegenüber D144 verhindert er keinen zusätzlichen der acht beobachteten Fehler, die Zeilenzahl
-  bleibt etwa gleich, und eine mitgehende Karten-Figur bräuchte einen getippten Befehl.
-- **Offene Punkte gesichtet:** aus 62 Einträgen wurden 18; der alte Wortlaut steht im Archiv.
-- **Davor am selben Tag:** `ClaudeClient._begin` loggt einen ERROR, wenn ein gesprochener Erzähl-Call ohne
-  `stable`-Kopf ankommt (D142-Wache, Test `test_a_spoken_turn_that_lost_its_stable_head_logs_an_error`).
-
-_Textvergleich D146/D147: [Archiv](docs/progress-archive.md), „rotiert (2026-11-15, Log-Archiv D149)“. Der
+_Nacharbeiten D148 (ADR 066 B verworfen): [Archiv](docs/progress-archive.md), „rotiert (2026-11-15, Arbeitsablauf D150)“. Textvergleich D146/D147: [Archiv](docs/progress-archive.md), „rotiert (2026-11-15, Log-Archiv D149)“. Der
 Claude-Abend vom 14.11. und die Folgerunde D140–D145: [Archiv](docs/progress-archive.md), „rotiert (2026-11-14,
 Textvergleich D146/D147)“; Ergebnis des Abends im Beipackzettel [phase-11-abend.md](docs/phase-11-abend.md)._
 
