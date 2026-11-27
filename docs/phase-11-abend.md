@@ -372,6 +372,7 @@ ein Ortswechsel mit Ankunft bei jemandem.
 | W4 | „Was kann ich?“ | Antwort aus dem Bogen |
 | W5 | Schicksal-Buttons | erscheinen nach Fehlschlägen |
 | W6 | **Psionik** (Würfel-GIF, D145) | der 🌀-Knopf zeigt den Wurf wie eine Probe; nach einem Fehlschlag kommen die Schicksal-Buttons, und die Warp-Aufladung im Panel gilt für das Ergebnis, das stehen bleibt (`🙏 … dieses Ergebnis gilt: 🌀 …`) |
+| W7 | **Angriff mit genanntem Ziel** (D151) | „Ich greife den Torwächter an“ und der Wurf gelingt: der Treffer geht ohne Auswahl auf ihn (Log `🎯 Ziel aus der Ansage: Torwächter`). Zwei Genannte, niemand genannt oder nur ein Mitspieler genannt: die Auswahl kommt, die Genannten stehen oben |
 | N3–N8 | die Beobachtungspunkte von oben („Seit dem 12.11. geändert“) | nur wenn die Lage eintritt |
 
 ### Teil B — Pause statt Nemo (D139), nach `!wrap`

@@ -416,6 +416,8 @@ importance −1, no re-gossip). While an NPC is in the current scene, its top-K 
 > code places them: a known NPC moves, a new one is registered with its adventure statblock or the
 > profile's `combat.improvised_npc` numbers. The prompt's "NSCs in der Szene" line, the NPC-memory
 > block and the attack target picker all use this one definition; NPCs elsewhere are never targets.
+> A hit whose attacker named exactly one present NPC in their own line lands on that NPC without the
+> picker (D151); in every other case the picker asks, the named candidates on top.
 > A sighting is filed under the scene the pointer stands on when the turn is over and follows a
 > move until the next turn boundary (classifier, `<<ORT>>` button, `!ort`, ↩ — not the flag
 > gate); one that is a scene-card person of that scene or of a

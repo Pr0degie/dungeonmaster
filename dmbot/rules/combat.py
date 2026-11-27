@@ -10,6 +10,8 @@ WorldState combatant, PC sheet and CharacterStore through unchanged.
 from __future__ import annotations
 
 import random
+import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from . import engine
@@ -41,6 +43,51 @@ class AttackOutcome:
     augmetic_armour: int
     soak: int
     damage: engine.DamageResult
+
+
+_WORD_RE = re.compile(r"[^\W_]+(?:-[^\W_]+)*")
+_HEAD_MIN = 5  # "Wächter" names the "Torwächter"; a short tail like "mann" names nobody
+
+
+def _words(text: str) -> list[str]:
+    return [w.casefold() for w in _WORD_RE.findall(text or "")]
+
+
+def _says(said: str, word: str) -> bool:
+    """``said`` is ``word``, bare or with the genitive s ("Brees Haare")."""
+    return said == word or said == word + "s"
+
+
+def _phrase_in(words: list[str], phrase: list[str]) -> bool:
+    n = len(phrase)
+    return n > 0 and any(
+        all(_says(words[i + j], phrase[j]) for j in range(n)) for i in range(len(words) - n + 1)
+    )
+
+
+def named_targets(text: str, candidates: Sequence[tuple[str, Sequence[str]]]) -> list[str]:
+    """The candidates the attacker's own line names, in candidate order.
+
+    ``candidates`` are ``(name, aliases)`` pairs. A candidate is named when its full name or one
+    of its authored aliases stands in ``text`` as whole words (case-insensitive, a genitive s
+    tolerated). A one-word name without aliases — an improvised figure like "Torwächter" — is also
+    named by the head of its compound ("dem Wächter"). Deliberately strict: a single word of a
+    longer name ("Alter" of "Alter Fenk") names nobody unless it is an alias, and a line that
+    names nobody returns ``[]`` — the caller then asks instead of guessing a target."""
+    words = _words(text)
+    named: list[str] = []
+    for name, aliases in candidates:
+        hit = any(_phrase_in(words, _words(phrase)) for phrase in (name, *aliases))
+        own = _words(name)
+        if not hit and not aliases and len(own) == 1:
+            hit = any(
+                len(stem) >= _HEAD_MIN and len(stem) < len(own[0]) and own[0].endswith(stem)
+                for word in words
+                for stem in {word, word.removesuffix("s")}
+            )
+        if hit:
+            named.append(name)
+    return named
 
 
 def resolve_attack(

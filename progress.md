@@ -12,13 +12,15 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** Lauf vom 27.11. ausgewertet (Zwischenstand, 15 Züge, drei Spieler, kein Code geändert):
+- **Newest round:** D151 (27.11.): ein gelungener Angriff liest sein Ziel aus der Ansage des Angreifers — genau
+  ein anwesender NSC genannt → Treffer ohne Auswahl, sonst die Auswahl mit den Genannten oben. Davor am selben
+  Tag: Lauf ausgewertet (Zwischenstand, 15 Züge, drei Spieler):
   zweimal liefen zwei Erzählzüge gleichzeitig (16:17:06, 16:22:19/21) — offen, Prüfpunkt F11. Davor
   Arbeitsablauf (D150, 15.11.): `uv run dm-check` mit Merkzettel-Hook, WIP-Grenze entfernt,
   `characters.local.json`; am Tisch ändert sich nichts. Davor am selben Tag: Log-Archiv (D149), ADR 066 B verworfen
   (D148). „Last session“.
-- **Suite:** `uv run dm-check` grün — 1561 Tests, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
-- **Live-unverifiziert:** am 27.11. belegt: F1, F3, F5 (Cache), F8, W1, W5, N1, N2, N5. Offen aus D140–D142 und
+- **Suite:** `uv run dm-check` grün — 1566 Tests, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
+- **Live-unverifiziert:** D151 (Prüfpunkt W7; der Bot vom 27.11., 16:00 kennt es nicht). Am 27.11. belegt: F1, F3, F5 (Cache), F8, W1, W5, N1, N2, N5. Offen aus D140–D142 und
   D144–D147: F2 (nur die Hängeschleife belegt), F4, F6, F7, F9, F10, W2–W4, W6 (Prüfpunkte in
   [phase-11-abend.md](docs/phase-11-abend.md), „Nächster Lauf“), D139 (Pause statt Nemo — Durchgang 3 nicht
   gespielt), D138 (am 14.11. teils widerlegt: NSCs landen in der verlassenen Szene), D137, `DMBrain`-Befunde
@@ -39,6 +41,13 @@ D140–D147 (ohne D143, verworfen) wartet auf ihren Lauf (Prüfliste F1–F10 im
 _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Current focus (Verlauf)`._
 
 ## Last session
+
+**Angriff mit genanntem Ziel (2026-11-27, D151).** Tobis Wunsch aus dem Lauf: „Ich greife den Torwächter an“
+soll den Torwächter treffen, die Zielauswahl nur kommen, wenn mehrere gemeint sind. `combat.named_targets`
+gleicht die eigene Zeile des Angreifers (beim Posten des Würfelknopfs festgehalten) mit den anwesenden
+Kandidaten ab: voller Name, Karten-Alias, Genitiv-s oder der Kopf eines einwortigen improvisierten Namens
+(„Wächter“). Genau ein NSC → Treffer ohne Auswahl (`🎯 Ziel aus der Ansage`); niemand, mehrere oder nur ein
+Mitspieler → Auswahl, Genannte oben. `uv run dm-check` grün (1566 Tests). Live-unverifiziert, Prüfpunkt W7.
 
 **Lauf vom 27.11. ausgewertet (Zwischenstand 16:00–16:25, kein Code geändert).** Drei Spieler (Tobi, Timo,
 Sezgin) auf Claude, 15 Erzählantworten, Bot lief beim Auswerten noch; kein `!wrap`, keine Pause-Probe.

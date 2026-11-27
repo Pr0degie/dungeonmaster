@@ -296,6 +296,7 @@ class DiceCog(commands.Cog):
         narration waits for it, so each test is narrated exactly once."""
         skill = req.skill or "Probe"
         who = resolved.character.name if resolved.character else req.target_name
+        said = self._declared_action(channel, who)  # now: a later turn replaces the actions
 
         async def _roll(interaction: discord.Interaction) -> None:
             guild_id = channel.guild.id if channel.guild else None
@@ -311,7 +312,7 @@ class DiceCog(commands.Cog):
                 view = FateView(
                     pc.fate_available,
                     self._make_fate_decision(channel, guild_id, dice_msg, resolved,
-                                             skill, who, result, line),
+                                             skill, who, result, line, said=said),
                     timeout=float(self._rt._fate_wait_seconds),
                 )
             if self._dice_animation_on() and resolved.target is not None:
@@ -326,9 +327,20 @@ class DiceCog(commands.Cog):
                                         palette_for(result), view)  # result (+ Fate choice)
             if view is not None:
                 return  # the Fate decision narrates
-            await self._finish_roll(channel, guild_id, result, line, skill, who)
+            await self._finish_roll(channel, guild_id, result, line, skill, who, said=said)
 
         return _roll
+
+    def _declared_action(self, channel, who: str | None) -> str:
+        """What ``who``'s player said in the turn that asked for this roll — their own line,
+        verbatim; "" when the turn had none (a typed ``!test``, a post-roll narration)."""
+        if not who or self._rt._characters is None:
+            return ""
+        for name, text in self._rt._brain.last_actions(self._rt._brain_channel(channel)):
+            char = self._rt._characters.get(name)
+            if char is not None and char.name.lower() == who.lower():
+                return text
+        return ""
 
     def _roll_test(self, resolved, skill: str, who: str | None):
         """One roll through the engine → ``(TestResult | None, German line)``."""
@@ -491,7 +503,8 @@ class DiceCog(commands.Cog):
             return None
         return pc
 
-    def _make_fate_decision(self, channel, guild_id, dice_msg, resolved, skill, who, result, line):
+    def _make_fate_decision(self, channel, guild_id, dice_msg, resolved, skill, who, result, line,
+                            *, said: str = ""):
         """The Fate choice's callback: spend → the state books the point, the engine rerolls and
         the second result stands (IM p.220); keep / timeout → the first result stands. Then the
         normal finish — narration, or the damage flow for a hit."""
@@ -521,7 +534,7 @@ class DiceCog(commands.Cog):
                     palette=palette_for(final_result), view=None,
                     prep=self._spawn_presentation(prepare_throw_async()),
                 ))
-                await self._finish_roll(channel, guild_id, final_result, final_line, skill, who)
+                await self._finish_roll(channel, guild_id, final_result, final_line, skill, who, said=said)
                 return
             if not self._dice_images_on():
                 shown: dict = {"content": content}
@@ -534,11 +547,13 @@ class DiceCog(commands.Cog):
             except discord.HTTPException:
                 if rerolled:
                     await self._rt._send_with_retry(channel, final_line)
-            await self._finish_roll(channel, guild_id, final_result, final_line, skill, who)
+            await self._finish_roll(channel, guild_id, final_result, final_line, skill, who, said=said)
         return _decide
 
-    async def _finish_roll(self, channel, guild_id, result, line: str, skill: str, who) -> None:
-        """Feed the final result to the DM and narrate it (or hand a hit to the damage flow)."""
+    async def _finish_roll(self, channel, guild_id, result, line: str, skill: str, who, *,
+                           said: str = "") -> None:
+        """Feed the final result to the DM and narrate it (or hand a hit to the damage flow).
+        ``said`` is the roller's own line of the turn — a hit reads its target from it."""
         self._rt._brain.add_test_result(self._rt._brain_channel(channel), line)
         # Auto-combat (Phase 9): a successful attack rolls & applies weapon damage to a target
         # before the DM narrates, so the narration carries the consequence. Non-attacks, misses
@@ -550,7 +565,7 @@ class DiceCog(commands.Cog):
             and self._rt._profile.combat_enabled()
             and self._rt._profile.is_attack_skill(skill)
         ):
-            if await self._begin_attack_damage(channel, attacker=who, result=result):
+            if await self._begin_attack_damage(channel, attacker=who, result=result, said=said):
                 return  # the damage flow narrates once a target is chosen/auto-applied
         await self._rt.run_and_deliver(channel, guild_id)
 
@@ -763,10 +778,28 @@ class DiceCog(commands.Cog):
                     return item, notation
         return None, self._rt._profile.default_damage()
 
-    async def _begin_attack_damage(self, channel, *, attacker: str | None, result) -> bool:
+    def _target_phrases(self, npcs: list[str], party: list[str]) -> list[tuple[str, tuple[str, ...]]]:
+        """Each attack candidate with the names a player may call it by: an NPC's authored card
+        aliases ("Fenk"), a team-mate's first name."""
+        adventure = self._rt._adventure
+        phrases: list[tuple[str, tuple[str, ...]]] = []
+        for name in npcs:
+            block = adventure.npc(name) if adventure is not None else None
+            phrases.append((name, tuple(block.aliases) if block is not None else ()))
+        for name in party:
+            first = name.split()[0] if name.split() else name
+            phrases.append((name, (first,) if first != name else ()))
+        return phrases
+
+    async def _begin_attack_damage(self, channel, *, attacker: str | None, result,
+                                   said: str = "") -> bool:
         """Start the auto-damage flow for a successful attack. Returns True if it took over (a target
         was auto-hit or a picker was posted — it will narrate); False if it couldn't (no weapon data
-        or no target), so the caller narrates the hit plainly."""
+        or no target), so the caller narrates the hit plainly.
+
+        ``said`` is the attacker's own line of the turn. Names it exactly one present NPC, that
+        NPC is hit without the picker; nobody, several or only a team-mate named → the picker,
+        the named ones on top (friendly fire is never applied unasked)."""
         cid = self._rt._brain_channel(channel)
         state = self._rt._state.get(cid)
         if state is None:
@@ -777,11 +810,9 @@ class DiceCog(commands.Cog):
             return False  # no weapon damage data → can't auto-roll; narrate the hit plainly
         # Candidates: the living NPCs PRESENT in this scene (ADR 062) first, then other party
         # members (friendly fire). Never NPCs elsewhere.
-        present = self._rt._scene_npcs(state)
-        candidates = [n.name for n in present]
-        candidates += [
-            c.name for c in state.characters if c.name.lower() != (attacker or "").lower()
-        ]
+        npcs = [n.name for n in self._rt._scene_npcs(state)]
+        party = [c.name for c in state.characters if c.name.lower() != (attacker or "").lower()]
+        candidates = npcs + party
         if not candidates:
             await self._rt._send_with_retry(
                 channel,
@@ -794,6 +825,15 @@ class DiceCog(commands.Cog):
                 result=result, target_name=candidates[0],
             )
             return True
+        named = combat.named_targets(said, self._target_phrases(npcs, party))
+        if len(named) == 1 and named[0] in npcs:
+            log.info("🎯 Ziel aus der Ansage: %s — '%s'", named[0], said[:60])
+            await self._apply_attack_damage(
+                channel, attacker=attacker, weapon=weapon, notation=notation,
+                result=result, target_name=named[0],
+            )
+            return True
+        candidates = named + [c for c in candidates if c not in named]
 
         async def _pick(interaction: discord.Interaction, name: str) -> None:
             await self._apply_attack_damage(

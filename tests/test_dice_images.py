@@ -157,7 +157,7 @@ def _cog(rng, *, images: bool = True):
     )
     cog = DiceCog(None, rt)
 
-    async def no_damage_flow(channel, *, attacker, result):  # a hit's damage flow is not under test
+    async def no_damage_flow(channel, *, attacker, result, said=""):  # a hit's damage flow is not under test
         return True
 
     cog._begin_attack_damage = no_damage_flow

@@ -199,7 +199,7 @@ def _cog(monkeypatch, tmp_path, *, link: str | None):
 
     rt = SimpleNamespace(
         _profile=_IM, _rng=random.Random(3), _state={}, _brain_channel=lambda ch: 7,
-        _dice_images=True, _dice_animation=True,
+        _characters=None, _dice_images=True, _dice_animation=True,
         _brain=SimpleNamespace(add_test_result=lambda cid, line: log.append(line)),
         run_and_deliver=run_and_deliver,
     )
