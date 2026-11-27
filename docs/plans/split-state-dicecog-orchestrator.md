@@ -1,6 +1,7 @@
 # Plan — split `memory/state.py`, `orchestrator.py` and `voice/dicecog.py`, no behaviour change
 
-**Status:** proposed, nothing moved. Waiting for Tobi's answers to the *Open decisions* below.
+**Status:** approved by Tobi on 2026-11-27, all six decisions as recommended (see *Decisions*).
+Nothing is moved yet; the first round is `memory/state.py`.
 **Date:** 2026-11-27 · **Base commit:** `676f78e` (all line numbers below refer to it)
 **Pattern:** [runtime-split.md](runtime-split.md) · **Rules:** lesson
 [byte-exact-moves-stepwise-gates](../lessons/byte-exact-moves-stepwise-gates.md)
@@ -180,37 +181,40 @@ dated amendment with those numbers in the ADR the round followed (034 for `state
 `orchestrator.py`, 039 and 065 for `dicecog.py`), and the `progress.md` entry. No new ADR is
 needed: every shape here is one an ADR already decided.
 
-## Open decisions
+## Decisions
+
+All six were decided by Tobi on 2026-11-27 as recommended. The alternatives stay written down for
+whoever asks why.
 
 1. **May `orchestrator.py` go before the next run?**
-   *Recommendation: yes, but never in between — either the round is finished and green before
-   the bot is restarted for the run, or it starts after the run is evaluated.* For: the 27.11.
+   **Decided: yes, but never in between — either the round is finished and green before
+   the bot is restarted for the run, or it starts after the run is evaluated.** For: the 27.11.
    round touched only `_prepare_turn`, which does not move; the suite and `dm-eval` both drive
    `DMBrain`; a short test run is a better place to meet a wiring mistake than the Claude
    evening. Against: the fixed `DMBrain` findings Nr. 1–4, 9 and 12 have never been heard at
    the table, and their code would move before they are.
 2. **`state.py`: stop at ≈ 860 lines, or cut into `WorldState` as well?**
-   *Recommendation: stop.* `WorldState` is one class with one job — the only writers of the
+   **Decided: stop.** `WorldState` is one class with one job — the only writers of the
    hard state (golden rule #3) — and its 727 lines already carry section headers per ADR. A
    third move would take the fact and mission writers (lines 1097–1265, 169 lines) into
    `memory/facts.py` as a mixin and bring the file to ≈ 690; it buys a shorter file, not a
    clearer one. After all three rounds `state.py` would be the third-largest file, behind
    `delivery.py` (974) and `runtime.py` (894).
 3. **`!npc`, `!npcmem`, `!agenda`, `!agenden`: sub-cog or mixin?**
-   *Recommendation: sub-cog `NpcCog`, as ADR 039 decided for scene and lore commands.* The
+   **Decided: sub-cog `NpcCog`, as ADR 039 decided for scene and lore commands.** The
    price is the round's only test edit: `tests/test_agenda.py` names the class in ten lines
    (`DiceCog.agenda.callback(...)`, the `_cog` helper), and the default `!help` lists the four
    commands under a new heading. A mixin would need no test edit, but ADR 039 ruled commands on
    mixins out, and the four commands have nothing to do with dice.
 4. **The two manifest methods that read `prepare_throw_async`** (`_send_manifest_button`,
    `_make_manifest_fate`).
-   *Recommendation: the seam commit D0* — one small method in `dicecog.py`, the four call sites
+   **Decided: the seam commit D0** — one small method in `dicecog.py`, the four call sites
    use it, and the manifest block moves whole. Alternatives: leave the two methods behind (the
    concern is then split over two files), or move them as they are (works today because no
    test that patches the name reaches a manifest, and breaks silently for the first one that
    does).
 5. **Log names of moved code.**
-   *Recommendation: the new module name, as in the runtime split* — `brain.generation` instead
+   **Decided: the new module name, as in the runtime split** — `brain.generation` instead
    of `orchestrator` in front of the `🪵 LLM roh` and echo-guard lines, `voice.dice.manifest`
    instead of `voice.dicecog`. The `[classifier]` line keeps `orchestrator` because of the pin.
    Nothing filters on these names today. The alternative is to give every new module the old
@@ -218,7 +222,7 @@ needed: every shape here is one an ADR already decided.
    that no longer says where the line comes from.
 6. **Names.** `memory/records.py`, `memory/state_text.py`, `dmbot/brain/` (`channel`,
    `pending`, `opening`, `side_calls`, `generation`), `dmbot/voice/dice/` (`routing`, `damage`,
-   `manifest`), `voice/npccog.py`. *Recommendation: as written;* they are cheap to change now
+   `manifest`), `voice/npccog.py`. **Decided: as written;** they are cheap to change now
    and expensive after the first commit.
 
 ## Out of scope

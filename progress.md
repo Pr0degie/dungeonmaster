@@ -14,7 +14,7 @@ is on-demand._
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
 - **Newest round:** 27.11.: zweiter Claude-Lauf ausgewertet, fünf Befunde gebaut — D151 genanntes Ziel, D152 ein
   Erzählzug zur Zeit (ADR 067), D153 Psi-Schaden, D154 Bogen-Antwort, D155 Schaden nur um Rüstung. Danach nur geplant:
-  Zerlegung der drei größten Dateien ([Plan](docs/plans/split-state-dicecog-orchestrator.md)), wartet auf Tobi. „Last session“.
+  Zerlegung der drei größten Dateien ([Plan](docs/plans/split-state-dicecog-orchestrator.md)), entschieden, `state.py` zuerst. „Last session“.
 - **Suite:** `uv run dm-check` grün — 1647 Tests, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
 - **Live-unverifiziert:** D151–D155 (Prüfpunkte W7, F11, W8, W4 im Beipackzettel
   [phase-11-abend.md](docs/phase-11-abend.md), „Nächster Lauf“). Aus D140–D147 noch offen: F2 (nur die
@@ -60,8 +60,8 @@ Belege des Laufs: [phase-11-abend.md](docs/phase-11-abend.md), „Ergebnis vom 2
 - **Plan für die drei größten Dateien** (kein Code bewegt):
   [split-state-dicecog-orchestrator.md](docs/plans/split-state-dicecog-orchestrator.md) — Zielmodule,
   Methodenzuordnung, Schrittfolge und Prüfung je Schritt für `memory/state.py`, `orchestrator.py` und
-  `voice/dicecog.py`. Reihenfolge: `state.py` zuerst, `dicecog.py` erst nach dem nächsten Lauf. Sechs offene
-  Entscheidungen, siehe „Open questions“.
+  `voice/dicecog.py`. Reihenfolge: `state.py` zuerst, `dicecog.py` erst nach dem nächsten Lauf. Tobi hat alle
+  sechs Entscheidungen wie empfohlen getroffen; siehe „Next concrete step“.
 
 **Arbeitsablauf entschlackt (2026-11-15, D150).** Am Tisch ändert sich nichts. Ein Prüfbefehl ersetzt die drei
 Einzelprüfungen, der Commit-Hook prüft nach einem grünen Lauf nicht noch einmal, die WIP-Grenze ist weg.
@@ -92,6 +92,14 @@ Bogen); dazu die offenen F2, F4, F6, F7, F9, F10, W2, W3, W6. Danach Teil B: Pau
 PowerShell als Administrator — die Firewall-Regel trennt auch Claude-Code-Sitzungen).
 Die Sandbox hält den Stand vom 27.11. (Pfandhalle, Tag 1, 23:06, Recap vom `!wrap`): weiterspielen oder vorher
 `ingest_session --wipe-debug`. `characters.local.json` enthält Fridolin, Gellicus und Rektalus.
+
+**Daneben, vom Lauf unabhängig: die Zerlegung der drei größten Dateien** nach
+[split-state-dicecog-orchestrator.md](docs/plans/split-state-dicecog-orchestrator.md); Tobi hat am 27.11. alle sechs
+Entscheidungen wie empfohlen getroffen, bewegt ist noch nichts. Zuerst `memory/state.py` (1457 → ≈ 860 Zeilen, zwei
+Schritte, `WorldState` bleibt ganz), dann `orchestrator.py` (1421 → ≈ 630, fünf Schritte) — vor dem Lauf erlaubt,
+aber nie dazwischen: fertig und grün vor dem Bot-Neustart oder erst nach der Auswertung. `voice/dicecog.py`
+(1442 → ≈ 730) erst, wenn der Lauf ausgewertet und seine Fix-Runde committet ist; seine Zeilennummern im Plan
+werden dann neu gemessen.
 
 **Aus dem Lauf vom 27.11., nicht gebaut:**
 - **NSCs nennen Charakternamen, die niemand gesagt hat** (16:10:51 „Fridolin, so heißt ihr doch“, 16:15:35
@@ -283,16 +291,6 @@ _Gesichtet am 2026-11-15: aus 62 Einträgen wurden 18. Die Einordnung je Eintrag
   Neusichtung der geparkten Gates nach dem Abend überleben.
 
 **Entscheidungen von Tobi:**
-- **Zerlegung der drei größten Dateien** — Plan
-  [split-state-dicecog-orchestrator.md](docs/plans/split-state-dicecog-orchestrator.md), Abschnitt „Open decisions“,
-  nichts ist verschoben. Empfohlene Reihenfolge: `memory/state.py` (1457 → ≈ 860 Zeilen, zwei Schritte), dann
-  `orchestrator.py` (1421 → ≈ 630, fünf Schritte), `voice/dicecog.py` (1442 → ≈ 730) erst, wenn der nächste Lauf
-  ausgewertet und seine Fix-Runde committet ist. Zu entscheiden: (1) darf `orchestrator.py` vor dem Lauf dran —
-  Empfehlung ja, aber nie dazwischen; (2) `state.py` bei ≈ 860 Zeilen stehen lassen oder auch `WorldState` teilen —
-  Empfehlung stehen lassen; (3) `!npc`/`!npcmem`/`!agenda`/`!agenden` als eigener Cog (ADR 039, zehn Testzeilen in
-  `test_agenda.py` ändern sich) oder als Mixin — Empfehlung eigener Cog; (4) ein kleiner Vorbereitungs-Commit für die
-  Wurf-Vorbereitung, damit der Psi-Block ganz umzieht — Empfehlung ja; (5) Log-Namen des verschobenen Codes neu
-  (`brain.generation` statt `orchestrator`) oder alt — Empfehlung neu; (6) die Modulnamen.
 - **Sprechmodus-Default** — bleibt `stream`+`flach`, bis die drei Modi am Tisch verglichen sind (der Vergleich steht
   als Schritt im geparkten Live-Run-Skript).
 - **Charakterbögen in den gecachten Kopf?** Sie stehen im Zustandsblock und gehen jeden Zug frisch raus; in den Kopf
