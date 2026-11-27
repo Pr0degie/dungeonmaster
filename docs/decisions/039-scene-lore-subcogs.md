@@ -91,3 +91,30 @@ new sub-cog tests), **0** existing-test edits, ruff clean.
 - **How the candidate was surfaced and chosen:** via a `/improve-architecture` workflow — **3 finder
   subagents** plus a **3-lens adversarial verify**; of **13 candidates, 7 survived** the verify, and
   this "dmcog-Paket" was one of them.
+
+## Amendment — `NpcCog` split out of `DiceCog` (2026-11-27)
+
+The same decision applied to the dice cog (plan
+[split-state-dicecog-orchestrator.md](../plans/split-state-dicecog-orchestrator.md), round 3, step
+D1; no new ADR). The *Consequences* note above — `dicecog.py` "has no analogous clean
+command-cluster to peel off" — no longer held: since ADR 044 and ADR 049 the cog carried four
+commands of the human GM that have nothing to do with dice.
+
+- `dmbot/voice/npccog.py` — `NpcCog`: `!npc`/`!nsc`, `!npcmem`, `!agenda`, `!agenden`, bodies
+  byte-identical to their `DiceCog` originals (154 lines moved, commit `4b97606`). They reach only
+  the runtime (`self._rt`). **No hook needed** — no other cog calls them. `__main__` adds the cog
+  right after `DiceCog`.
+- Sub-cog, not a mixin, for the reason above: commands on a mixin base land in the `CogMeta` grey
+  zone. The other three moves of that round took plain methods without commands and are mixins
+  (ADR 065, amendment of the same day).
+- Checked after the commit: names and aliases of all commands and listeners of `DiceCog` plus
+  `NpcCog` equal those of `DiceCog` before the round (ten commands, five aliases, one listener;
+  nothing lost, nothing doubled), also when both are registered on a real `commands.Bot`.
+- **Test edits, unlike the original split:** `tests/test_agenda.py` named the class in ten lines
+  (`DiceCog.agenda.callback(...)`, the `_cog` helper) and now names `NpcCog`;
+  `tests/test_command_errors.py` took `npcmem` and `agenda` from `DiceCog.__cog_commands__` and now
+  reads both cogs, and its walk over every registered command includes `npccog`. A test that names
+  the class or the module of a command pins where the command lives — grep for
+  `__cog_commands__` and `<Cog>.<command>.callback` before promising zero test edits for a sub-cog.
+- Visible at the table: the default `!help` lists the four commands under the heading `NpcCog`.
+  Live-unverified.

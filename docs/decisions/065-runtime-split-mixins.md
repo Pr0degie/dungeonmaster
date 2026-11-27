@@ -137,3 +137,56 @@ that only the moved code used are no longer names of `dmbot.orchestrator` (no re
 `tests/`, `tools/`); `__module__` and `__qualname__` of the moved methods name the mixin. As for
 the runtime: navigability improves, coupling does not — a mixin reads attributes it does not
 define; look them up in `DMBrain.__init__` and `ChannelSession`.
+
+## Amendment — `voice/dicecog.py` split (2026-11-27)
+
+The same shape applied to `DiceCog` in `dmbot/voice/dicecog.py` (plan
+[split-state-dicecog-orchestrator.md](../plans/split-state-dicecog-orchestrator.md), round 3; no new
+ADR). New package `dmbot/voice/dice/`, three byte-exact moves, each its own commit, after one seam
+commit and one sub-cog move (ADR 039, amendment of the same day). Three mixins without `__init__`
+and without state; `self` is the cog:
+
+```python
+class DiceCog(RollRoutingMixin, DamageMixin, ManifestMixin, commands.Cog):
+```
+
+| Module | Class | Methods | Lines |
+| --- | --- | --- | --- |
+| `voice/dice/routing.py` | `RollRoutingMixin` | 9 — the players' own lines, the marker check, who decides (markers or router), the roll-detection router | 192 |
+| `voice/dice/damage.py` | `DamageMixin` | 5 — weapon, target, damage roll against soak, the booking | 143 |
+| `voice/dice/manifest.py` | `ManifestMixin` | 13 and the constant `_NO_TARGET` — Manifest button and roll, Warp Charge and Perils, the Fate choice, a power's damage | 325 |
+
+`dicecog.py` went from 1442 to **720** lines (736 moved, 154 of them into `voice/npccog.py`). After
+each move: moved text byte-identical to the parent commit, kind/signature/source of every `DiceCog`
+attribute identical, names and aliases of all commands and listeners equal to the base, 1650 tests
+green, 4 xfail, ruff (F) clean, `dm-eval` exit 0 with untouched goldens. The mixins carry no
+commands — a mixin with commands is what ADR 039 rules out, and `CogMeta` collects the cog's six
+commands and its listener as before.
+
+One pin shaped the round, and a seam commit before the moves answered it:
+
+- **Whatever draws the throw or the result stays in `dicecog.py`.** Three test files replace seven
+  names on the namespace `dmbot.voice.dicecog` (`get_dice_image_async`, `get_dice_gif_async`,
+  `get_target_image_async`, `prepare_throw_async`, `flight_seconds`, `resolve_target`,
+  `REVEAL_GRACE_S`), and only a function defined in that module sees the replacement. Two manifest
+  methods read `prepare_throw_async`, so the manifest block could not have moved whole.
+- **The seam (`921a55c`, new logic, reviewed):** `DiceCog._prepare_throw` is the only reader of
+  `prepare_throw_async`; the four call sites (test button, test Fate reroll, manifest button,
+  manifest Fate reroll) call it through `self`, each keeping its own guard. Three tests pin it, two
+  of them through the manifest paths that now live in another module. Checked after every move: no
+  function defined outside `dicecog.py` reads one of the seven names. A new method in a mixin that
+  needs a renderer goes through a method of `dicecog.py`, never through its own import.
+
+Also staying: `__init__` (it sets the three runtime hooks) and `on_ready`, `_handle_dice`, the dice
+button and the roll, the presentation block, Fate for a skill test, `_finish_roll` and the
+one-narration wait (ADR 067), the turn order, and the commands `!roll`, `!test`, `!turn`, `!rules`,
+`!damage`, `!heal`.
+
+Non-byte effects: moved code logs under `dmbot.voice.dice.routing`, `.damage` and `.manifest`
+instead of `dmbot.voice.dicecog` (message text unchanged, nothing filters on the name); eight
+imports that only the moved code used and `_NO_TARGET` are no longer names of
+`dmbot.voice.dicecog` (no reader under `dmbot/`, `tests/`, `tools/`); `__module__` and
+`__qualname__` of the moved methods name the mixin. The round ran before the first live run of the
+code it moved (D151–D153) — the plan's decision 7 names that price. As before: navigability
+improves, coupling does not — a mixin reads attributes it does not define; look them up in
+`DiceCog.__init__` and on the runtime.

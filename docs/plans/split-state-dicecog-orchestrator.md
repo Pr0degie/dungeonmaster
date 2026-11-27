@@ -3,8 +3,9 @@
 **Status:** approved by Tobi on 2026-11-27, decisions 1–6 as recommended; decision 7 of the same
 day changes the order of round 3 (see *Decisions*).
 Round 1 (`memory/state.py`) and round 2 (`orchestrator.py`) done on 2026-11-27 — see *Result*
-under sections 1 and 2. Round 3 (`voice/dicecog.py`) runs on 2026-11-27 as well, **before** the
-next run — changed by Tobi the same day, decision 7.
+under sections 1 and 2. Round 3 (`voice/dicecog.py`) done on 2026-11-27 as well, **before** the
+next run — changed by Tobi the same day, decision 7; see *Result* under section 3. All three
+rounds are done; nothing of them has been heard at the table yet.
 **Date:** 2026-11-27 · **Base commit:** `676f78e` (all line numbers below refer to it)
 **Pattern:** [runtime-split.md](runtime-split.md) · **Rules:** lesson
 [byte-exact-moves-stepwise-gates](../lessons/byte-exact-moves-stepwise-gates.md)
@@ -202,6 +203,70 @@ three runtime hooks) and `on_ready`; `_handle_dice`; the dice button and the rol
 **Order:** D0, then D1 (commands, no shared helper), D2, D3, and `manifest` last — the largest
 block and the one D153 rewrote.
 
+### Result — `dicecog.py` (2026-11-27, done)
+
+| Step | Commit | `dicecog.py` | New module | Suite | Byte check | Commands and listeners |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | base `c96218d` | 1442 | — | 1647 passed, 4 xfail; ruff clean; `dm-eval` 0 | snapshot: 68 `DiceCog` attributes, 49 module names | 10 commands, 1 listener |
+| D0 | `921a55c` | 1449 | — (seam, new logic) | 1650 / 4 / clean / 0 (three new tests) | not a move: `_prepare_throw` added (7 lines), four call-site lines changed; reviewed | equal to the base |
+| D1 | `4b97606` | 1297 | `voice/npccog.py` 172 | 1650 / 4 / clean / 0 | slice 1296–1449 verbatim; rest = docstring pointer | `DiceCog` 6 + `NpcCog` 4, 1 listener — equal |
+| D2 | `f29464b` | 1131 | `voice/dice/routing.py` 192 | 1650 / 4 / clean / 0 | slice 140–307 verbatim; rest = pointer, mixin import, base-class line, 3 dropped imports | equal |
+| D3 | `d535b2c` | 1014 | `voice/dice/damage.py` 143 | 1650 / 4 / clean / 0 | slice 812–929 verbatim; rest = pointer, mixin import, base-class line, 1 dropped import | equal |
+| D4 | `fb1d6ed` | **720** | `voice/dice/manifest.py` 325 | 1650 / 4 / clean / 0 | slices 61–64 and 521–812 verbatim; rest = pointer, mixin import, base-class line, 4 dropped imports | equal |
+
+Slice numbers are measured at each step's parent commit, by symbol name with `ast`. Between D0 and
+D1 sits one docs commit (`e1e0809`, the doc findings of the D0 review).
+
+- 736 lines moved (154 + 168 + 118 + 296): four commands, 27 methods and one constant. Target
+  ≤ 800, expected ≈ 730, reached **720**. `dmbot/voice/dice/` holds 661 lines in four files.
+- **The cut is the sketch's:** the same methods went to the same modules. `dicecog.py` had not
+  changed between the plan's base `676f78e` and the round's base `c96218d`; no moved method reads
+  one of the seven replaced names after D0 (checked at every step over `co_names`, nested functions
+  included, for all 32 functions now defined outside `dicecog.py`).
+- **Differences from the sketch:**
+  - Each slice starts at the blank line before its first method, so it is one line longer than
+    the sketch (154 / 168 / 118 / 292). `_NO_TARGET` moved with its comment and two blank lines.
+  - **Test edits in three files, not one.** D0 got three tests in `tests/test_dice_animation.py`
+    instead of one: the seam itself, the manifest button, and both Fate rerolls — neither reroll
+    call site had ever run in a test with the animation on. D1 edited `tests/test_agenda.py` as
+    decision 3 says (ten lines name `NpcCog`) **and `tests/test_command_errors.py`, which this plan
+    had not counted**: `test_the_name_taking_commands_document_the_quoted_form` took `npcmem` and
+    `agenda` from `DiceCog.__cog_commands__` and went red (`KeyError`). The round stopped there;
+    Tobi approved on 2026-11-27 that the test reads both cogs and that the walk in
+    `test_all_registered_commands_yield_a_usable_usage_line` includes `npccog` (it would have
+    stayed green at 56 of 60 commands and silently dropped the four). Goldens untouched.
+  - The re-check of the test pins found the seven names unchanged. Also reached on the namespace:
+    `dicecog.asyncio.sleep` (the shared module object, so the replacement reaches the mixins too)
+    and `dicecog.CLIENT_START_S` (read only; stays).
+  - Gates, as in round 2: `dm-check` ran on the working tree before each commit. After each
+    commit: the stamp still matches the committed tree (`dm_check --fresh`) and the tree is clean,
+    then the byte check on the committed objects (`HEAD~1` → `HEAD`) and the command check.
+- Snapshot: all 69 attributes after D0 (68 of the base plus `_prepare_throw`) are reachable with the
+  same kind, signature and source — 65 as `DiceCog.<name>`, the four commands as `NpcCog.<name>`.
+  Against the base only the four D0 call sites differ. Nine of the 49 module-level names are gone
+  from `dicecog.py`: eight imports that only moved code used (`is_continuation_fragment`,
+  `marker_key`, `superseded_by_manifest`, `Character`, `TargetSelectView`, `combat`,
+  `resolve_manifest_request`, `ManifestRequest`) and `_NO_TARGET`; no reader under `dmbot/`,
+  `tests/`, `tools/`.
+- Each mixin has only methods, no `__init__`, and no name is defined twice across `DiceCog` and the
+  three mixins. Registered on a real `commands.Bot` (offline): ten commands with their five aliases
+  resolve, `on_ready` is the one listener, the three runtime hooks point at `DiceCog` methods.
+- Whole round against the base: of the 1343 non-blank lines of `dicecog.py`, twelve are found in
+  none of the files — one docstring line, six import lines, the line `class DiceCog(commands.Cog):`
+  and the four call sites D0 rewrote.
+- Review of D0 (`/code-review`, medium): no correctness finding. One finding that was there before
+  (see *Noticed while measuring*), two doc findings fixed in `e1e0809`.
+- Logger names (decision 5): under `dmbot.voice.dice.routing` now the `🎲 Marker …`,
+  `🎲 Sicherheitsnetz`, `🎲 … Inline-Marker verworfen` and `🎲 router: …` lines; under
+  `dmbot.voice.dice.damage` the `🎯 Ziel aus der Ansage` line of an attack and the booked-damage
+  line; under `dmbot.voice.dice.manifest` the `🌀` result lines, the Fate line of a manifest, the
+  `🎯` line of a power and "Warp charge not tracked". `npccog.py` logs nothing. The `🎲` result
+  line of a test and everything about the throw keep `dmbot.voice.dicecog`.
+- Visible at the table: the default `!help` lists `!npc`, `!npcmem`, `!agenda`, `!agenden` under
+  the heading `NpcCog`.
+- Docs moved with the code: the repo-layout rows in `architecture.md` and `docs/conventions.md`,
+  the module docstring of `dicecog.py`.
+
 ## Steps and gates (every round)
 
 One module per commit, on `main`, staged by explicit path. A red gate stops the round at that
@@ -272,6 +337,9 @@ whoever asks why.
    (`DiceCog.agenda.callback(...)`, the `_cog` helper), and the default `!help` lists the four
    commands under a new heading. A mixin would need no test edit, but ADR 039 ruled commands on
    mixins out, and the four commands have nothing to do with dice.
+   *Correction from the round (2026-11-27):* it was not the only test edit —
+   `tests/test_command_errors.py` reads two of the four commands from `DiceCog` as well; see
+   *Result* under section 3.
 4. **The two manifest methods that read `prepare_throw_async`** (`_send_manifest_button`,
    `_make_manifest_fate`).
    **Decided: the seam commit D0** — one small method in `dicecog.py`, the four call sites
@@ -332,6 +400,8 @@ a round should exercise:
 - **`orchestrator.py`:** one narrated turn with a roll, `!redo`, `!start` or `!intro`, `!wrap`
   (recap), `!rules` with a question.
 - **`dicecog.py`:** a skill test with a fate re-roll, a manifest with damage, an attack with
-  the target picker, `!npc`, `!agenda`, `!help`.
+  the target picker, `!npc`, `!agenda`, `!help`. With the throw animation on, both Fate rerolls
+  (test and manifest) show a second throw — D0 changed those two call sites, and before D0 no
+  test had run them.
 
 None of this opens a new live gate; it rides on the Phase 11 runs.

@@ -21,6 +21,10 @@ after every step. Review effort belongs on new logic — the moves are the safe 
   `runtime.py` name the debug sidecar, so three methods could not follow their concern into
   `dmbot/session/` and the size target was missed (ADR 065). Grep the tests for `rglob` and
   file allow-lists *before* promising a cut or a line count.
+- A test can pin the **class a command lives on**, too: the `dicecog.py` plan counted one test
+  file for the `NpcCog` sub-cog (`DiceCog.agenda.callback(...)`) and missed a second that reads
+  `DiceCog.__cog_commands__` by command name; the round stopped at the red check (2026-11-27,
+  ADR 039 amendment). For a sub-cog, grep `__cog_commands__` and `<Cog>.<command>` as well.
 
 ## The correction
 

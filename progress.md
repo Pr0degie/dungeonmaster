@@ -15,18 +15,19 @@ is on-demand._
 - **Newest round:** 27.11.: zweiter Claude-Lauf ausgewertet, fünf Befunde gebaut — D151 genanntes Ziel, D152 ein
   Erzählzug zur Zeit (ADR 067), D153 Psi-Schaden, D154 Bogen-Antwort, D155 Schaden nur um Rüstung. Danach Runde 1
   der Zerlegung ([Plan](docs/plans/split-state-dicecog-orchestrator.md)): `memory/state.py` 1457 → 868 Zeilen
-  (`records.py`, `state_text.py`, ADR 034 Nachtrag), und Runde 2: `orchestrator.py` 1421 → 608 Zeilen (Paket
-  `dmbot/brain/`: `channel.py` + vier Mixins, ADR 065 Nachtrag). Beide nur verschoben. „Last session“.
-- **Suite:** `uv run dm-check` grün — 1647 Tests, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
+  (`records.py`, `state_text.py`, ADR 034 Nachtrag), Runde 2: `orchestrator.py` 1421 → 608 Zeilen (Paket
+  `dmbot/brain/`: `channel.py` + vier Mixins, ADR 065 Nachtrag), Runde 3: `voice/dicecog.py` 1442 → 720 Zeilen
+  (`voice/npccog.py`, Paket `voice/dice/` mit drei Mixins, ADR 039 + 065 Nachtrag). Alle drei nur verschoben,
+  bis auf die Naht `DiceCog._prepare_throw` (D0). „Last session“.
+- **Suite:** `uv run dm-check` grün — 1650 Tests, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
 - **Live-unverifiziert:** D151–D155 (Prüfpunkte W7, F11, W8, W4 im Beipackzettel
   [phase-11-abend.md](docs/phase-11-abend.md), „Nächster Lauf“). Aus D140–D147 noch offen: F2 (nur die
   Hängeschleife belegt), F4, F6, F7, F9, F10, W2, W3, W6 (Schicksal nach Fehlschlag). Dazu D139 (Pause statt
-  Nemo — nie gespielt), D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134. Die Zerlegungen von `state.py` und
-  `orchestrator.py` (Prüfung im Plan, „Live-unverified after each round“).
-- **Next concrete step:** Bot neu starten (der Stand von 16:00 am 27.11. kennt weder D151–D155 noch die beiden
-  Zerlegungen), dann ein kurzer
-  Lauf für F11, W4, W7, W8 und die offenen Punkte, danach die Pause-Probe (D139). Abschnitt „Next concrete
-  step“.
+  Nemo — nie gespielt), D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134. Die Zerlegungen von `state.py`,
+  `orchestrator.py` und `dicecog.py` (Prüfung im Plan, „Live-unverified after each round“).
+- **Next concrete step:** Bot neu starten (der Stand von 16:00 am 27.11. kennt weder D151–D155 noch die drei
+  Zerlegungen), dann **ein** Lauf, der alles zusammen prüft: F11, W4, W7, W8, die offenen Punkte und die
+  Zerlegungen; danach die Pause-Probe (D139). Abschnitt „Next concrete step“.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
   geparkt (ADR 061, im [Live-Run-Skript](docs/live-run-script.md) markiert) und werden nach dem
   Abend neu gesichtet.
@@ -81,6 +82,20 @@ Belege des Laufs: [phase-11-abend.md](docs/phase-11-abend.md), „Ergebnis vom 2
   Bindungen (`text_replay`, Logger-Name im Test) in `orchestrator.py`. Ergebnistabelle im Plan. Einziger
   sichtbarer Unterschied: die Zeilen des Erzählpfads (`🪵 LLM roh`, Echo-Wächter, `[consistency]`, `✂`) tragen
   im `debug.log` jetzt `dmbot.brain.generation`, zwei Zeilen `dmbot.brain.side_calls`.
+- **Zerlegung Runde 3 — `voice/dicecog.py`** (ADR 039 und ADR 065, Nachträge): auf Tobis Entscheidung **vor**
+  dem nächsten Lauf (Entscheidung 7 im Plan; der Preis: der Lauf prüft D151–D153 und ihren Umzug zugleich).
+  Erst die Naht D0, die einzige neue Logik: `DiceCog._prepare_throw` ist der einzige Leser von
+  `prepare_throw_async`, die vier Aufrufstellen gehen über `self` — drei Tests, `/code-review` ohne
+  Korrektheitsbefund. Dann vier Umzüge, je ein Commit, Byte für Byte: `!npc`, `!npcmem`, `!agenda`, `!agenden`
+  in den Sub-Cog `voice/npccog.py` (`NpcCog`), und drei Mixins im neuen Paket `dmbot/voice/dice/` —
+  `routing.py` (welcher Wurf), `damage.py` (Treffer wird gebuchter Schaden), `manifest.py` (Psi-Kräfte).
+  1442 → 720 Zeilen; Kommandos, Aliase und Listener wie am Ausgang. **Abweichung vom Plan:** neben
+  `tests/test_agenda.py` musste auch `tests/test_command_errors.py` angepasst werden (zwei Tests lesen die
+  NSC-Kommandos jetzt aus beiden Cogs) — an der roten Prüfung angehalten, von Tobi freigegeben. Was den Wurf
+  und das Ergebnisbild zeichnet, bleibt in `dicecog.py`: die Tests ersetzen die Renderer auf dessen Namensraum.
+  Sichtbar: `!help` führt die vier NSC-Kommandos unter `NpcCog`; die `🎲 Marker`-/`🎲 router`-, `🎯`- und
+  `🌀`-Zeilen tragen im `debug.log` jetzt `dmbot.voice.dice.*`. Altbefund aus dem Review, nicht behoben:
+  `cog_unload` bricht laufende Wurf-Animationen nicht ab. Ergebnistabelle im Plan.
 
 **Arbeitsablauf entschlackt (2026-11-15, D150).** Am Tisch ändert sich nichts. Ein Prüfbefehl ersetzt die drei
 Einzelprüfungen, der Commit-Hook prüft nach einem grünen Lauf nicht noch einmal, die WIP-Grenze ist weg.
@@ -117,9 +132,13 @@ Die Sandbox hält den Stand vom 27.11. (Pfandhalle, Tag 1, 23:06, Recap vom `!wr
 Entscheidungen wie empfohlen getroffen. `memory/state.py` (1457 → 868) und `orchestrator.py` (1421 → 608) sind
 erledigt (27.11.), beide fertig und grün vor dem Bot-Neustart. Der erste Lauf danach sollte für `orchestrator.py`
 einmal durchspielen: einen erzählten Zug mit Wurf, `!redo`, `!start` oder `!intro`, `!wrap` (Recap) und `!rules`
-mit einer Frage. `voice/dicecog.py` (1442 → ≈ 730) läuft seit dem 27.11. als Runde 3, **vor** dem Lauf
-(Entscheidung 7 im Plan, mit ihrem Preis); D0 (die Naht `_prepare_throw`) ist committet, D1–D4 folgen. Der Bot
-wird erst neu gestartet, wenn die Runde fertig und grün ist.
+mit einer Frage. `voice/dicecog.py` (1442 → 720) ist seit dem 27.11. ebenfalls erledigt — als Runde 3 **vor**
+dem Lauf (Entscheidung 7 im Plan, mit ihrem Preis). Der Lauf sollte dafür einmal durchspielen: eine Probe mit
+Schicksals-Neuwurf (bei eingeschalteter Wurf-Animation erscheint ein zweiter Wurf), eine Manifestation mit
+Schaden (Smite) und eine mit Schicksals-Neuwurf, einen Angriff mit Zielauswahl und einen mit genanntem Ziel,
+`!npc add` und `!npc list`, `!agenda`, `!agenden`, `!npcmem` und `!help` (die vier NSC-Kommandos stehen dort
+unter `NpcCog`). Zeigt der Würfelfluss einen Fehler, sind Fix (D151–D153) und Umzug beide verdächtig; für den
+Fix spricht dann die Byte-Prüfung im Plan.
 
 **Aus dem Lauf vom 27.11., nicht gebaut:**
 - **NSCs nennen Charakternamen, die niemand gesagt hat** (16:10:51 „Fridolin, so heißt ihr doch“, 16:15:35
