@@ -12,22 +12,17 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** 27.11.: Lauf mit drei Spielern ausgewertet (18 Züge, `!wrap`, Ergebnis im Beipackzettel)
-  und vier Befunde daraus gebaut — D151 (Angriff trifft das genannte Ziel), D152 (ein Erzählzug zur Zeit,
-  Antworten ganz gesprochen, eine Erzählung für alle Proben eines Zugs), D153 (Psi-Schaden wird gebucht),
-  D154 („Was kann ich?“ aus dem Bogen, Rausch-Zeilen verworfen), D155 (Schaden wird nur noch um Rüstung
-  gemindert, wie im Regelbuch). Davor Arbeitsablauf (D150, 15.11.).
-  „Last session“.
+- **Newest round:** 27.11.: zweiter Claude-Lauf ausgewertet (drei Spieler, 18 Züge, `!wrap`) und fünf Befunde
+  gebaut — D151 Angriff trifft das genannte Ziel, D152 ein Erzählzug zur Zeit (ADR 067), D153 Psi-Schaden wird
+  gebucht, D154 „Was kann ich?“ aus dem Bogen, D155 Schaden nur noch um Rüstung gemindert. „Last session“.
 - **Suite:** `uv run dm-check` grün — 1647 Tests, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
-- **Live-unverifiziert:** D151–D155 (Prüfpunkte W7, F11, W8, W4; der Bot muss neu starten, der Stand von
-  16:00 am 27.11. kennt nichts davon). Am 27.11. belegt: F1, F3, F5 (Cache), F8, W1, W5, W6 (erster Teil), N1,
-  N2, N5, Recap per `!wrap`. Offen aus D140–D147: F2 (nur die Hängeschleife belegt), F4, F6, F7, F9, F10, W2,
-  W3, W6 (Schicksal nach Fehlschlag) (Prüfpunkte in [phase-11-abend.md](docs/phase-11-abend.md), „Nächster
-  Lauf“), D139 (Pause statt Nemo — nie gespielt), D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134.
-- **Next concrete step:** Bot neu starten, dann ein Lauf für F11, W4, W7, W8 und die offenen Punkte, danach die
-  Pause-Probe (D139). Offen aus der Auswertung, nicht gebaut: NSCs nennen Charakternamen, die niemand gesagt
-  hat; die Spieluhr lief in 18 Zügen 126 Minuten bei nur zwei `🕐`-Zeilen; `logs/archive/` ist nicht
-  git-ignoriert. Der Abschnitt „Next concrete step“ unten beschreibt noch die Vorbereitung vom 14.11.
+- **Live-unverifiziert:** D151–D155 (Prüfpunkte W7, F11, W8, W4 im Beipackzettel
+  [phase-11-abend.md](docs/phase-11-abend.md), „Nächster Lauf“). Aus D140–D147 noch offen: F2 (nur die
+  Hängeschleife belegt), F4, F6, F7, F9, F10, W2, W3, W6 (Schicksal nach Fehlschlag). Dazu D139 (Pause statt
+  Nemo — nie gespielt), D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134.
+- **Next concrete step:** Bot neu starten (der Stand von 16:00 am 27.11. kennt D151–D155 nicht), dann ein kurzer
+  Lauf für F11, W4, W7, W8 und die offenen Punkte, danach die Pause-Probe (D139). Abschnitt „Next concrete
+  step“.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
   geparkt (ADR 061, im [Live-Run-Skript](docs/live-run-script.md) markiert) und werden nach dem
   Abend neu gesichtet.
@@ -35,66 +30,33 @@ is on-demand._
 ## Current focus
 
 **Phase 11 — Claude als Erzähler (ADR 061), code-komplett; Live-Gate offen.** Opus erzählt, Haiku klassifiziert,
-über Tobis Abo; fällt Claude aus, pausiert das Spiel (D139). Erster Abend am 14.11. gespielt, die Folgerunde
-D140–D147 (ohne D143, verworfen) wartet auf ihren Lauf (Prüfliste F1–F10 im Beipackzettel).
+über Tobis Abo; fällt Claude aus, pausiert das Spiel (D139). Zwei Läufe gespielt (14.11., 27.11.); die Runden
+D151–D155 aus dem zweiten und der Rest der Folgerunde D140–D147 warten auf ihren Lauf (Prüfliste im
+Beipackzettel), die Pause-Probe steht noch aus.
 
 _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Current focus (Verlauf)`._
 
 ## Last session
 
-**Schaden nach Regelbuch (2026-11-27, D155).** Tobis Entscheidung auf die Regelfrage aus D153: IM, Core
-Rulebook S. 214, mindert Schaden nur um die Rüstung. Das Profil nennt kein Soak-Merkmal mehr, ein
-NSC-Widerstandsbonus zählt nur, wo ein Profil eines nennt (`combat._soak_parts`). Smite trifft voll, jeder
-Waffentreffer ist 2–4 Wunden härter als bisher. Die Tests der allgemeinen Soak-Mechanik laufen auf einem
-Profil mit Soak-Merkmal, das echte IM-Profil ist auf „nur Rüstung“ festgehalten. ADR 015, Nachtrag.
-Weiter nicht nach Buch: ein Rüstungswert je Figur, Würfel in der Waffentabelle. `uv run dm-check` grün
-(1647 Tests). Live-unverifiziert.
-
-**Psi-Schaden und Bogen-Antwort (2026-11-27, D153, D154).** Zwei Agenten haben parallel auf eigenen Zweigen
-gebaut, zusammengeführt in `main`. D153: `damage`-Block im Profil (Smite, Force Bolt, Bio-Lightning auf das
-Hauptziel; Nova nur Daten), `combat.resolve_power_damage`, eingehängt über `DiceCog._finish_manifest` in den
-Schadensablauf eines Waffentreffers (ADR 022, Nachtrag). Offene Regelfrage: „ignoriert Rüstung“ lässt den
-Widerstandsbonus stehen. D154: `is_sheet_question` + `sheet_answer_de`, der eigene Bogen als Textnachricht,
-die Erzählung bleibt; Zeilen ohne Buchstaben oder Ziffern gehen nicht mehr an den DM. Persona unverändert.
-`/code-review` über die zusammengeführten Änderungen: neun Punkte, alle behoben (kein Kurzschluss auf einen
-einzelnen NSC bei Kräften, Auswahl mit „Niemand davon“, ohne NSC nur Erzählung, Rauschen vor der Zeilen-
-Obergrenze verworfen, Merkmale in der Bogen-Antwort). `uv run dm-check` grün (1645 Tests). Beides
-live-unverifiziert (W8, W4).
-
-**Ein Erzählzug zur Zeit (2026-11-27, D152).** Der Hauptbefund des Laufs ist behoben, live-unverifiziert
-(Prüfpunkt F11). Drei Regeln: (1) nie zwei Erzählanfragen gleichzeitig — eine Sperre in der
-`DeliveryPipeline` um den LLM-Aufruf jedes Wegs; (2) jede Antwort wird ganz gesprochen, in der Reihenfolge
-der Erzeugung (`_SpeakingOrder`) — die nächste wird schon erzeugt, während die vorige läuft, spricht aber erst
-danach; (3) mehrere Proben eines Zugs ergeben eine Erzählung (`OpenRolls`, `DiceCog._narrate_rolls`), gewartet
-wird höchstens `DM_ROLL_BATCH_WAIT_SECONDS` (30; 0 = wie früher). `[latency]` zeigt die Wartezeiten als
-`queued=` und `spoke_after=`. `!wrap` schreibt seinen Recap jetzt ins Log (`🪵 Wrap-Recap`). `/code-review`
-vor dem Commit: acht Punkte, sechs behoben (schneller Klick vor dem zweiten Knopf, ein nie erzähltes
-Ergebnis, fehlgeschlagener Knopf-Post, Warte-Tasks nach `!leave`, Wartezeit in `⏱ LLM`, Trefferabbruch ohne
-Spielstand). Offen: `!say`, `!intro test`, Backend-Ansagen und Vorlesen laufen an der Sprech-Reihenfolge
-vorbei; eine Zielauswahl, die niemand bedient, hält die andere Probe bis zum Ablauf der Wartezeit auf.
-`uv run dm-check` grün (1585 Tests).
-
-**Angriff mit genanntem Ziel (2026-11-27, D151).** Tobis Wunsch aus dem Lauf: „Ich greife den Torwächter an“
-soll den Torwächter treffen, die Zielauswahl nur kommen, wenn mehrere gemeint sind. `combat.named_targets`
-gleicht die eigene Zeile des Angreifers (beim Posten des Würfelknopfs festgehalten) mit den anwesenden
-Kandidaten ab: voller Name, Karten-Alias, Genitiv-s oder der Kopf eines einwortigen improvisierten Namens
-(„Wächter“). Genau ein NSC → Treffer ohne Auswahl (`🎯 Ziel aus der Ansage`); niemand, mehrere, ein
-mehrdeutiges Wort, eine Verneinung oder nur ein Mitspieler → Auswahl, genannte NSCs oben, Mitspieler unten.
-`/code-review` über den ersten Commit fand sieben Punkte, alle im Folge-Commit behoben (die Zeile wird beim
-Entscheiden der Knöpfe übergeben statt später nachgelesen; ein einzelner Mitspieler als Kandidat wird nicht mehr
-ungefragt getroffen). Bekannte Grenze: eine Zeile, die genau einen anwesenden NSC nennt, ohne ihn anzugreifen,
-trifft ihn trotzdem. `uv run dm-check` grün (1569 Tests). Live-unverifiziert, Prüfpunkt W7.
-
-**Lauf vom 27.11. ausgewertet (Zwischenstand 16:00–16:25, kein Code geändert).** Drei Spieler (Tobi, Timo,
-Sezgin) auf Claude, 15 Erzählantworten, Bot lief beim Auswerten noch; kein `!wrap`, keine Pause-Probe.
-Ergebnis mit Belegen: [phase-11-abend.md](docs/phase-11-abend.md), „Ergebnis vom 27.11.2026“.
-- **Hauptbefund:** zwei Erzählzüge gleichzeitig, beide gesprochen und ineinander verschränkt — 16:17:06 nach
-  zwei Sprechfenstern kurz nacheinander, 16:22:19/21 nach zwei Proben im selben Zug (je Neuwurf eine eigene,
-  widersprüchliche Erzählung). Nicht behoben; Prüfpunkt F11.
-- **Belegt:** F1, F3 (0 von 15 gekappt), F5 (`cache=11022` ab Zug 2; erster Ton aber unverändert rund 10 s), F8,
-  W1, W5, N1, N2, N5. Text: 609 Zeichen je Zug, 140 je Satz.
-- **Vorbereitung:** Gellicus (Timo) steht wieder in `characters.local.json` des Stamm-Channels; der ungespielte
-  Spielstand von 15:56 liegt in `logs/archive/sandbox/2026-11-27_160018_1343673766487654464/`.
+**Zweiter Claude-Lauf ausgewertet, fünf Befunde daraus gebaut (2026-11-27, D151–D155).** Drei Spieler
+haben 44 Minuten gespielt (18 Erzählantworten, `!wrap`). Der Lauf zeigte vor allem, dass zwei Erzählzüge
+gleichzeitig laufen und ineinander gesprochen werden. Das und vier weitere Punkte sind behoben; am Tisch
+geprüft ist davon nichts, der Bot braucht einen Neustart. `uv run dm-check` grün (1647 Tests, 4 xfail).
+Belege des Laufs: [phase-11-abend.md](docs/phase-11-abend.md), „Ergebnis vom 27.11.2026“.
+- **D152 — ein Erzählzug zur Zeit** (ADR 067): nie zwei Erzählanfragen gleichzeitig, jede Antwort wird ganz
+  gesprochen, mehrere Proben eines Zugs ergeben eine Erzählung (höchstens `DM_ROLL_BATCH_WAIT_SECONDS` = 30 s
+  Wartezeit). `[latency]` zeigt `queued=` und `spoke_after=`; `!wrap` schreibt seinen Recap ins Log.
+- **D151 — ein Angriff trifft das genannte Ziel:** nennt die eigene Zeile des Angreifers genau einen
+  anwesenden NSC, entfällt die Zielauswahl; bei Verneinung, Mehrdeutigkeit oder einem Mitspieler kommt sie.
+- **D153 — Psi-Schaden wird gebucht** (ADR 022, Nachtrag): Smite, Force Bolt und Bio-Lightning ziehen Wunden
+  ab, Ziel aus der Ansage oder der Auswahl mit „Niemand davon“. Nova bleibt Erzählung.
+- **D154 — „Was kann ich?“ aus dem Bogen:** der eigene Bogen als Textnachricht, die Erzählung bleibt; Zeilen
+  ohne Buchstaben oder Ziffern gehen nicht mehr an den DM. Persona unverändert.
+- **D155 — Schaden nach Regelbuch** (ADR 015, Nachtrag): nur Rüstung mindert Schaden, der Widerstandsbonus
+  nicht mehr. Jeder Treffer ist 2–4 Wunden härter. Tobis Entscheidung.
+- **Arbeitsweise:** Psi-Schaden, Bogen-Antwort und der Beipackzettel kamen von drei parallelen Agenten, zwei
+  davon auf eigenen Zweigen; vier `/code-review`-Durchgänge (7, 8 und 9 Funde, alle bis auf zwei notierte
+  behoben). D155 lief ohne Review. Belegt im Lauf: F1, F3, F5 (Cache), F8, W1, W5, W6 (erster Teil), N1, N2, N5.
 
 **Arbeitsablauf entschlackt (2026-11-15, D150).** Am Tisch ändert sich nichts. Ein Prüfbefehl ersetzt die drei
 Einzelprüfungen, der Commit-Hook prüft nach einem grünen Lauf nicht noch einmal, die WIP-Grenze ist weg.
@@ -110,35 +72,32 @@ Einzelprüfungen, der Commit-Hook prüft nach einem grünen Lauf nicht noch einm
   und „Doku im selben Commit“, Sprachkonvention und Bot-A-Abschnitt in die Golden Rules #5/#8 gefaltet.
   `docs/conventions.md`: Regel für Review-Befunde (höchstens ein Review pro Runde, am Ende).
 
-**Log-Archiv statt Überschreiben (2026-11-15, D149).** Am 14.11. ging die Sitzungsaufzeichnung des Abends verloren:
-`terminal.log` wurde bei jedem Start überschrieben, „Sandbox leer“ löschte die `.debug`-Dateien. Jetzt hält jedes Log
-genau einen Bot-Start, und nichts wird mehr von Hand gesichert; am Tisch ändert sich nichts. pytest 1556 grün, 4 xfail;
-ruff (F) sauber; `dm-eval` Exit 0. Live-unverifiziert: der erste Start, der die alten Logs umzieht.
-- **Beim Start** wandert der vorige Lauf nach `logs/archive/runs/<Startzeit>/` (`dmbot/logarchive.py`). Scheitert das,
-  startet der Bot trotzdem, hängt an die alte Datei an und meldet `📦 LOG ARCHIVE FAILED` als ERROR.
-- **`ingest_session --wipe-debug <id>`** verschiebt die `.debug`-Dateien nach `logs/archive/sandbox/<stamp>_<id>/` und
-  leert erst danach den Store. **Grenze:** `DM_LOG_ARCHIVE_KEEP=30` je Art; Läufe ohne Zug zählen nicht mit, von ihnen
-  bleiben fünf; `pinned/` wird nie gelöscht. `python -m dmbot.tools.logruns` listet, findet (`--path N`) und pinnt.
-- **Der erste Start** schiebt die alten Dateien nach `pinned/`: `2026-11-14_d1/` (dort liest `text_replay`),
-  `bis-2026-11-14/` (mit dem 25.10.), `2026-11-14-nach-abend/`, `2026-06-15/` (Trockenprobe auf einer Kopie von
-  `logs/`). Die Beipackzettel messen über `$d`. Das `/code-review` vor dem Commit fand neun Befunde dieser Runde,
-  alle behoben, sechs mit eigenem Test (u. a.: `--path 1` konnte einen angepinnten Ordner liefern; eine gesperrte
-  Altdatei stoppte die Rotation; `--wipe-debug` aus einem anderen Ordner leerte den Store ohne Verschieben).
-
+_Die fünf Runden vom 27.11. im Einzelnen (D151–D155, Auswertung) und das Log-Archiv D149: [Archiv](docs/progress-archive.md), „rotiert (2026-11-27, Lauf und D151–D155)“._
 _Nacharbeiten D148 (ADR 066 B verworfen): [Archiv](docs/progress-archive.md), „rotiert (2026-11-15, Arbeitsablauf D150)“. Textvergleich D146/D147: [Archiv](docs/progress-archive.md), „rotiert (2026-11-15, Log-Archiv D149)“. Der
 Claude-Abend vom 14.11. und die Folgerunde D140–D145: [Archiv](docs/progress-archive.md), „rotiert (2026-11-14,
 Textvergleich D146/D147)“; Ergebnis des Abends im Beipackzettel [phase-11-abend.md](docs/phase-11-abend.md)._
 
 ## Next concrete step
 
-**Ein Lauf, der die Folgerunde prüft.** Ablauf wie Durchgang 1 am 14.11. (Sandbox leer, altes Log weg, Bot A an,
-Bot neu). Prüfpunkte F1–F7 im Beipackzettel [phase-11-abend.md](docs/phase-11-abend.md), „Nächster Lauf“: Opus' Probe
-zählt (`🎲 Marker entscheidet:`), keine Hängeschleife, Fortschritt pro Zug und weniger `✂`, die Stimme atmet an
-Kommas (Vergleich `DM_TTS_COMMA_SPLIT=0`), `cache=` > 0 ab dem zweiten Zug, NSCs in der richtigen Szene.
-Aus der alten Liste noch offen: Durchgang 3 (Pause statt Nemo, D139, PowerShell als Administrator) und die
-Würfel-/Panel-Punkte des fünften Laufs (Spieler-Panel bleibt eins, Zielauswahl nur Anwesende, kein „Wechseln“ nach
-Auto-Wechsel, „Was kann ich?“ aus dem Bogen). Danach `characters.json` zurück (`git checkout`), wenn Timo/Vinnie
-wieder mitspielen.
+**Bot neu starten, dann ein kurzer Lauf für die Runden vom 27.11.** Der laufende Bot (Start 27.11., 16:00)
+kennt D151–D155 nicht. Prüfpunkte im Beipackzettel [phase-11-abend.md](docs/phase-11-abend.md), „Nächster
+Lauf“: F11 (zwei Proben im selben Zug ergeben eine Erzählung, keine Antwort wird in eine andere gesprochen),
+W7 (das genannte Ziel wird getroffen), W8 (Smite zieht Wunden ab, ohne Abzug), W4 („Was kann ich?“ postet den
+Bogen); dazu die offenen F2, F4, F6, F7, F9, F10, W2, W3, W6. Danach Teil B: Pause statt Nemo (D139,
+PowerShell als Administrator — die Firewall-Regel trennt auch Claude-Code-Sitzungen).
+Die Sandbox hält den Stand vom 27.11. (Pfandhalle, Tag 1, 23:06, Recap vom `!wrap`): weiterspielen oder vorher
+`ingest_session --wipe-debug`. `characters.local.json` enthält Fridolin, Gellicus und Rektalus.
+
+**Aus dem Lauf vom 27.11., nicht gebaut:**
+- **NSCs nennen Charakternamen, die niemand gesagt hat** (16:10:51 „Fridolin, so heißt ihr doch“, 16:15:35
+  „Gellicus, Rektalus, oder wie eure Namen auch lauten mögen“). Ob das schon vorher so war, ist ungeprüft.
+- **Die Spieluhr** lief in 18 Zügen 126 Minuten, im Log stehen nur zwei `🕐`-Zeilen mit je +15 min. Woher der
+  Rest kommt, ist unklar; die Frist des Abenteuers (24:00) wäre nach rund 25 Zügen erreicht.
+- **Erster Ton unverändert** (Median 10,3 s gegen 10,2 s am 14.11.), obwohl der Cache greift; `cache_w=` wächst
+  jeden Zug (4353 → 10857), nur der feste Kopf wird wiederverwendet.
+- **Sprech-Reihenfolge** (ADR 067): `!say`, `!intro test`, Backend-Ansagen und Vorlesen laufen daran vorbei; eine
+  Zielauswahl, die niemand bedient, hält die andere Probe des Zugs bis zum Ablauf der Wartezeit auf.
+- **`logs/archive/LAYOUT` und `logs/archive/sandbox/`** sind nicht git-ignoriert (Folge von D149).
 
 **Kandidaten für nach dem Lauf (die ersten zwei aus der Runde vom 15.11., der Rest aus dem Textvergleich):**
 - **Ortsmarker in der Ankunftsantwort:** ein Persona-Satz, der `<<ORT>>` in dieselbe Antwort zieht, die die Ankunft
@@ -178,7 +137,7 @@ Grep one row (`grep -n "| D87 |" docs/decision-log.md`); a new decision gets the
 | 2–4 — Voice / VAD / STT | **ADR 006** (DAVE/E2EE decrypt on receive) + **ADR 007** (VAD stack, Phase 3) + `architecture.md` §4–§5 (feedback protection) + **ADR 060** (the STT hallucination blocklist: content, not confidence — D114) |
 | 5 — LLM wiring + persona | ADR 002 + ADR 005 (persona = generic core + campaign overlay) + **ADR 016** (anti-puppeting backstop, length cap, output cleanup) + **ADR 038** (single owner for the system-prompt assembly order) + **ADR 031** (`!intro` opening monologue) + **ADR 041** (`!intro` reliability: fixed low temperature + hardened director brief; add. 2 = deterministic weak-intro retry) + **ADR 042** (anti-repetition sampling `repeat_penalty`, with a deterministic carve-out for the roll router) + **ADR 045** (deterministic consistency guard: dead/absent NPC speech → regenerate once, fail-open; streaming logs only) + **ADR 060** (deterministic guards on the spoken text: two signals must coincide, whole sentences only, a quote is sanctuary, negative cases written first — the shape D112/D113/D114 all follow) |
 | 6 — TTS + full loop | **ADR 008** (TTS engine: Piper + XTTS) + ADR 002 (bridge, VRAM, GPU offload) + `architecture.md` §3 (bridge contract) + **ADR 016** (TTS speech-only normalization) + **ADR 017** (streaming pipeline: sentence-chunked TTS, hold-back rules, history parity) + **ADR 033** (global spoken-delivery mode: stream vs nahtlos × flach vs intoniert, `!sprechmodus`) |
-| 6–7 — Full loop, turn-taking, registration | ADR 003 (conversational control, registration, turn-taking) + **ADR 011** (STT latency: push-to-talk gate) + **ADR 013** (pause control) |
+| 6–7 — Full loop, turn-taking, registration | ADR 003 (conversational control, registration, turn-taking) + **ADR 011** (STT latency: push-to-talk gate) + **ADR 013** (pause control) + **ADR 067** (one narration at a time: narration lock, speaking order, roll batch) |
 | 8 — Dice engine, IM profile, marker flow | ADR 005 (engine + profile) + ADR 004 (test marker, character data) + ADR 001 (IM specifics) + **ADR 012** (difficulty ladder, character store, marker grammar) + **ADR 014** (roll-detection router; timing now D40 — fires concurrent with playback) + **ADR 018** (router wins the dedupe; echo guard + roll-feedback directive on post-roll turns) + **ADR 040** (committed default party — party loading no longer bound to one voice-channel id) + **ADR 063** (Fate: spend to reroll a failed test, recovered on `!join`) + **ADR 064** (throw GIFs stored once in Discord, clicks point at them) |
 | 9 — Memory (JSON + recaps) | ADR 004 (character/state JSON) + **ADR 015** (sheet/state split, auto-combat damage) + **ADR 027** (rolling auto-recap / context handoff — recap is no longer wrap-up-only) + **ADR 037** (attack/Warp resolution → pure `rules/combat.py`) + **ADR 044** (NPC memory: per-NPC Erinnerungen, clamped attitude drift, faction gossip) + **ADR 049** (NPC agendas: human-set goals, one clamped offscreen step per scene change riding the ADR-044 extractor) + **ADR 050** (Chekhov list: wrap-up-only thread extraction riding the ADR-044 call, code-owned cap/dedupe/status, top-3 callback offer) + **ADR 062** (improvised NPCs join the scene: presence classifier, `Combatant.scene`, one "present" for prompt + target picker) |
 | 10 — RAG + profile bootstrap | ADR 005 (profile bootstrap) + **ADR 019** (3-stage hybrid: scene tracker + rulebook-only RAG, bge-m3, W4 guard) + **ADR 021** (curated German lore compendium: `lore_imperium`/`lore_chaos` sources) + **ADR 025** (German rules glossary + 0.45 calibration) + **ADR 028** (RAG junk-shape filter) + **ADR 027** (configurable `num_ctx`, context-budget compaction) + **ADR 026** (auto scene transitions, `<<ORT>>`) + **ADR 043** (stateful scene cards: `<<ERLEDIGT>>` element flags, gated exits, dead-NPC render) + **ADR 047** (consequence clocks: `<<UHR>>` ticks, +1/turn clamp, full-clock `[Regie]` injection, clock panel) + **ADR 048** (in-game time: minutes counter, `<<ZEIT>>` advance clamped to first-marker/+12h, deadlines with one-shot expiry `[Regie]`, day phases, shared pressure panel) + **ADR 054** (campaign memory: played-session ingest per scene, hybrid KNN+FTS session retrieval, state wins over memory) + **ADR 055** (debug-run sandbox: `.debug` archives → `session_debug` source, gate G10) + **ADR 056** (the sandbox's other half: `.debug` twins for state/history/chekhov/recap, foreign scene pointer re-seeds) + **ADR 057** (scene advancement belongs to code: exit classifier + flag gate, automatic with undo; the inline `<<ORT>>` marker demoted to a fallback) + **ADR 058** (post-turn fact classifier: narrated commitments become hard facts, retraction manual via `!fakt`) + **ADR 059** (the adventure ships start time, deadlines and clocks; time advances per turn) |
@@ -326,6 +285,9 @@ _Gesichtet am 2026-11-15: aus 62 Einträgen wurden 18. Die Einordnung je Eintrag
 - **Deutsche Log-Zeilen in `session/scenes.py`** („mit der Gruppe nach“, „gemeldet als“, „bleibt in“): in CLAUDE.md
   erlauben oder übersetzen. Die Prüfpunkte F7, N1 und N2 im Beipackzettel greppen genau diese Zeilen; die Frage
   bleibt offen, bis der nächste Lauf ausgewertet ist.
+- **Waffenschaden nach Buch?** Nach D155 weicht der Kampf noch an zwei Stellen ab: die Waffentabelle würfelt
+  (`1d10+4`), das Regelbuch hat feste Werte plus Erfolgsgrade; und Rüstung ist ein Wert je Figur statt je
+  Trefferzone (ADR 015, Nachtrag 2026-11-27).
 - **Würfel-Animation:** der Würfel dreht sich nicht (`tools/dice_throw.py` schreibt `angle` nie fort; eine Zeile,
   ändert nur das Bild, nicht die Seed-Auswahl — Vorschau zuerst), und alte GIF-Sätze in `data/dice/anim/` und in
   `#bot-commands` werden nie aufgeräumt (ein Aufräum-Schritt beim Start wäre klein).

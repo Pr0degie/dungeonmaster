@@ -599,7 +599,7 @@ the narration context.
 > while the DM still speaks instead of after the whole turn. On a single GPU Ollama serialises, so
 > firing at turn-start would only queue the classifier behind the narration anyway — firing once the
 > narration generation frees the GPU is the earliest point that doesn't delay the narration.
-> **One narration at a time (D152):** a roll pressed during playback still starts the next turn early,
+> **One narration at a time (D152, ADR 067):** a roll pressed during playback still starts the next turn early,
 > but narration calls never overlap (one lock in the delivery pipeline), every answer is spoken whole
 > after the one before it, and a turn with several dice buttons is narrated once, when its last roll is
 > in (`DM_ROLL_BATCH_WAIT_SECONDS` bounds the wait for a roll nobody makes).
