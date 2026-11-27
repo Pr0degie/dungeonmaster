@@ -49,7 +49,7 @@ from .tts.textsplit import split_for_discord, strip_speech_punctuation
 from .bridge import BridgeClient
 from .rules import profile as profile_mod
 from .rules.profile import ProfileError, SystemProfile
-from .rules.characters import CharacterStore
+from .rules.characters import CharacterStore, is_sheet_question
 from .discord_ui.panel import render_player_panel_de
 from .discord_ui.transcript import format_player_line
 from .memory import chekhov as chekhov_mod
@@ -513,6 +513,31 @@ class SessionRuntime(SessionIngestMixin, ClocksMixin, NpcMemoryMixin, PanelsMixi
             # re-measure). A plain int write; the consuming turn pops it on the event loop.
             self._last_stt_ms[self._active_vc_id] = round(latency_ms)
             self._echo_player_line(speaker, text)
+            self._post_sheet_answer(speaker, text)
+
+    def _post_sheet_answer(self, speaker: str, text: str) -> None:
+        """"Was kann ich?" → post the speaker's own sheet to the text channel (live run
+        2026-11-27: the narration answered with scene options instead). The line still went to
+        the DM above; this only adds the data-backed answer. Same hand-off as
+        :meth:`_echo_player_line`: called on the STT thread, sent on the loop, fire-and-forget.
+        A speaker without a character gets nothing."""
+        if not is_sheet_question(text):
+            return
+        char = self._characters.get(speaker) if self._characters else None
+        loop = self._loop
+        channel = self._text_channel
+        if char is None or loop is None or channel is None or loop.is_closed():
+            return
+        content = self._characters.sheet_answer_de(char)
+        log.info("📋 Bogen-Antwort für %s", char.name)
+
+        async def _post() -> None:
+            try:
+                await self._send_with_retry(channel, content)
+            except Exception:
+                log.exception("posting the sheet answer failed")
+
+        asyncio.run_coroutine_threadsafe(_post(), loop)
 
     def _echo_player_line(self, speaker: str, text: str) -> None:
         """Post a DM-routed player line to the text channel (``DM_POST_PLAYER_LINES``), so the
