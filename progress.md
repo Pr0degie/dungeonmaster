@@ -42,6 +42,10 @@ _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-a
 
 ## Last session
 
+**Lern-Doku `docs/verstehen/` (2026-11-27).** Zehn Kapitel auf Deutsch zum Durchlesen (Überblick, Spielzug,
+Prompt, Würfel, Gedächtnis, Abenteuer, Audio, LLM-Backend, Testen, Warum so?), Stand Commit `89d347a`. Für
+Tobi, nicht für die Session-Lektüre; kein Code geändert.
+
 **Die drei größten Dateien zerlegt (2026-11-27, D156).** Am Tisch ändert sich nichts außer einer Überschrift
 in `!help`. `memory/state.py`, `orchestrator.py` und `voice/dicecog.py` sind in drei Runden von je rund 1450
 auf 868, 608 und 720 Zeilen geschrumpft; der Code wurde Byte für Byte verschoben, einzige neue Logik ist die
