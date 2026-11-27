@@ -12,16 +12,20 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** Arbeitsablauf (D150, 15.11.): `uv run dm-check` mit Merkzettel-Hook, WIP-Grenze entfernt,
+- **Newest round:** Lauf vom 27.11. ausgewertet (Zwischenstand, 15 Züge, drei Spieler, kein Code geändert):
+  zweimal liefen zwei Erzählzüge gleichzeitig (16:17:06, 16:22:19/21) — offen, Prüfpunkt F11. Davor
+  Arbeitsablauf (D150, 15.11.): `uv run dm-check` mit Merkzettel-Hook, WIP-Grenze entfernt,
   `characters.local.json`; am Tisch ändert sich nichts. Davor am selben Tag: Log-Archiv (D149), ADR 066 B verworfen
   (D148). „Last session“.
 - **Suite:** `uv run dm-check` grün — 1561 Tests, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
-- **Live-unverifiziert:** D140–D142 und D144–D147 (Prüfpunkte F1–F10, W1–W6 in
+- **Live-unverifiziert:** am 27.11. belegt: F1, F3, F5 (Cache), F8, W1, W5, N1, N2, N5. Offen aus D140–D142 und
+  D144–D147: F2 (nur die Hängeschleife belegt), F4, F6, F7, F9, F10, W2–W4, W6 (Prüfpunkte in
   [phase-11-abend.md](docs/phase-11-abend.md), „Nächster Lauf“), D139 (Pause statt Nemo — Durchgang 3 nicht
   gespielt), D138 (am 14.11. teils widerlegt: NSCs landen in der verlassenen Szene), D137, `DMBrain`-Befunde
   Nr. 1–4/9/12, D134.
-- **Next concrete step:** ein Lauf, der die Folgerunde prüft (F1–F10, W1–W6, Pause-Probe) — vorbereitet am 14.11.,
-  20:55 (Sandbox leer; Bot vorher neu starten, er kennt D146, D148 und das Log-Archiv D149 nicht); Abschnitt „Next concrete step“.
+- **Next concrete step:** Tobi entscheidet über die Fix-Runde zum Doppelzug (F11: eine Erzählung erst, wenn alle
+  Proben des Zugs gewürfelt sind; kein zweiter Zug neben einem laufenden). Danach ein Lauf für die offenen Punkte
+  und die Pause-Probe (D139). Der Abschnitt „Next concrete step“ unten beschreibt noch die Vorbereitung vom 14.11.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
   geparkt (ADR 061, im [Live-Run-Skript](docs/live-run-script.md) markiert) und werden nach dem
   Abend neu gesichtet.
@@ -35,6 +39,17 @@ D140–D147 (ohne D143, verworfen) wartet auf ihren Lauf (Prüfliste F1–F10 im
 _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Current focus (Verlauf)`._
 
 ## Last session
+
+**Lauf vom 27.11. ausgewertet (Zwischenstand 16:00–16:25, kein Code geändert).** Drei Spieler (Tobi, Timo,
+Sezgin) auf Claude, 15 Erzählantworten, Bot lief beim Auswerten noch; kein `!wrap`, keine Pause-Probe.
+Ergebnis mit Belegen: [phase-11-abend.md](docs/phase-11-abend.md), „Ergebnis vom 27.11.2026“.
+- **Hauptbefund:** zwei Erzählzüge gleichzeitig, beide gesprochen und ineinander verschränkt — 16:17:06 nach
+  zwei Sprechfenstern kurz nacheinander, 16:22:19/21 nach zwei Proben im selben Zug (je Neuwurf eine eigene,
+  widersprüchliche Erzählung). Nicht behoben; Prüfpunkt F11.
+- **Belegt:** F1, F3 (0 von 15 gekappt), F5 (`cache=11022` ab Zug 2; erster Ton aber unverändert rund 10 s), F8,
+  W1, W5, N1, N2, N5. Text: 609 Zeichen je Zug, 140 je Satz.
+- **Vorbereitung:** Gellicus (Timo) steht wieder in `characters.local.json` des Stamm-Channels; der ungespielte
+  Spielstand von 15:56 liegt in `logs/archive/sandbox/2026-11-27_160018_1343673766487654464/`.
 
 **Arbeitsablauf entschlackt (2026-11-15, D150).** Am Tisch ändert sich nichts. Ein Prüfbefehl ersetzt die drei
 Einzelprüfungen, der Commit-Hook prüft nach einem grünen Lauf nicht noch einmal, die WIP-Grenze ist weg.

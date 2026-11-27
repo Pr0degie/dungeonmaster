@@ -271,6 +271,67 @@ Fable reingeben.“ Tobi (19:29:50): „Das bewegt sich einfach nicht weiter.“
 Folgerunde: D140 (Opus-Marker zählt auf Claude), D141 (Fortschritt statt Atmosphäre, Kommas fürs Vorlesen,
 Komma-Pausen im Code, Budget 280), D142 (Cache), D143 (ADR 066 B, Schalter aus).
 
+## Ergebnis vom 27.11.2026 (Zwischenstand 16:00–16:25, Tobi + Timo + Sezgin, mit Bot A)
+
+Ausgewertet auf einem Schnappschuss von 16:25:46, der Bot lief da noch. Kein `!wrap`, Teil B nicht gespielt; D139
+bleibt live-unverifiziert. Lauf 0: Start 16:00:27, Opening 16:03:32, 15 Erzählantworten, Code `60c7983`, Opus
+`claude-opus-5-5`, Haiku `claude-haiku-5-5`. Lauf 1 (15:54:42–16:00:07, 0 Züge) war nur der Neustart, um Gellicus
+(Timo) in die lokale Party-Datei zu nehmen. Logs: bis zum nächsten Bot-Start in `logs\`, danach
+`logs/archive/runs/2026-11-27_160027/`.
+
+**Hauptbefund — zwei Erzählzüge gleichzeitig (neu als Prüfpunkt F11).** Zweimal liefen zwei Erzählanfragen
+nebeneinander, beide Antworten wurden gesprochen, Satz für Satz ineinander:
+
+- **16:17:06** — erstes Sprechfenster 16:16:36–16:16:56 (Timo, Tobi), zweites 16:16:57–16:16:58 (Timo: „Perfekt.“,
+  ein versehentlicher Tastendruck). Zwei `LLM roh` in derselben Sekunde (9610 ms und 7625 ms), `[latency]` turn=10
+  vor turn=9, turn=8 fehlt. Die zweite Antwort beschreibt denselben Moment noch einmal.
+- **16:22:19 / 16:22:21** — Timo und Tobi hatten im selben Zug je eine Probe (F8). Jeder Schicksals-Neuwurf
+  (16:22:10 Gellicus, 16:22:14 Fridolin) löste eine eigene Erzählung aus (turn=15, turn=16). Die beiden widersprechen
+  sich: in der einen drückt der Wächter Gellicus gegen den Käfig und Fridolins Tanz erntet einen kalten Blick, in der
+  anderen ist der Wächter abgelenkt und Opus verlangt `<<TEST Nahkampf Leicht für Gellicus>>`. Zu diesem Marker steht
+  keine `🎲`-Zeile im Log, ein Knopf ist nicht belegt.
+
+Tobis Wunsch am Tisch (16:23:11): bei zwei Proben erst beide Ergebnisse abwarten, dann eine Erzählung. In
+`logs/archive/pinned/bis-2026-11-14/` gibt es einen früheren Fall (21:37:56 turn=49, 21:38:09 turn=48 `roll`); im
+Zwei-Spieler-Lauf vom 14.11. keinen.
+
+| Punkt | Urteil | Beleg |
+|---|---|---|
+| F1 | bestanden | 16:10:51 `🎲 Marker entscheidet: Fridolin Feuchtgebietheld — Überreden (Leicht)`, 16:19:53 Nahkampf (Schwierig), 16:21:50 Nahkampf (Herausfordernd); kein `Inline-Marker verworfen` |
+| F2 | bestanden für die Hängeschleife | kein `🎲 Sicherheitsnetz`; die doppelte Beschreibung von 16:17:06 hat eine andere Ursache (Hauptbefund) |
+| F3 | bestanden | kein `✂` in 15 Antworten (14.11.: 8 von 33) |
+| F4 | nur am Tisch prüfbar | — |
+| F5 | bestanden (Cache), erster Ton nicht schneller | `cache=11022` in allen 14 Zügen ab turn=2; `first_audio` Median 10,3 s (14.11.: 10,2 s), Spanne 6,2–17,8 s |
+| F6 | nur am Tisch prüfbar | Verbrauch auf claude.ai |
+| F7 | nicht eingetreten | kein `gehört nach` |
+| F8 | bestanden | 16:21:50 `🎲 Marker entscheidet: Gellicus Schulz …`, 16:21:56 `🎲 router: Fridolin Feuchtgebietheld … → Überreden (Herausfordernd)` |
+| F9 | nur am Tisch prüfbar | im Text: NSCs nennen Charakternamen, die niemand gesagt hat (16:10:51 „Fridolin, so heißt ihr doch“, 16:15:35 „Gellicus, Rektalus, oder wie eure Namen auch lauten mögen“) |
+| F10 | nur am Tisch prüfbar | 16:19:27 Tobi: „Boah, also die Antwort gefällt mir“ |
+| W1 | bestanden | 7 × `🎲 throw gif (stored)`, auch nach den drei Neuwürfen (16:20:20, 16:22:13, 16:22:17) |
+| W2, W3, W4 | nur am Tisch prüfbar | Knopfdrücke und Befehle stehen nicht im Log |
+| W5 | bestanden | 16:20:15, 16:22:10, 16:22:14 `🙏 … gibt einen Schicksalspunkt aus …` je nach einem Fehlschlag |
+| W6 | nicht eingetreten | kein `🌀` |
+| N1 | bestanden | Bree Marlok und Alter Fenk je ein Eintrag; 16:15:39 `[classifier] npcs … → none` nach dem Zug mit dem „blinden Alten“ |
+| N2 (D138) | bestanden | 16:12:36 `scene → pfandhalle … [marker]`, 16:12:38 `👥 anwesend in 'pfandhalle': Torwächter (neu, Standardwerte)` — die neue Figur steht in der neuen Szene |
+| N3, N4, N7, N8 | nicht eingetreten | kein `echo guard`, kein `🧵` |
+| N5 | bestanden | kein `✂`, alle 15 Rohtexte enden auf einem ganzen Satz |
+| N6 | nur am Tisch prüfbar | — |
+| Teil B | nicht gespielt | — |
+
+| Messung | 27.11. | Vergleich |
+|---|---|---|
+| Würfe je Probenanforderung des Erzählers | 3 von 3 `Marker entscheidet` gewürfelt; dazu der Marker von 16:22:21 ohne Logzeile und ohne Wurf. Router: 1 Wurf | 4 von 15 am 14.11. |
+| Zeichen je Zug / je Satz | 609 / 140 (15 Antworten, 65 Sätze; `chars=` im Mittel 609) | 555 / 166 am 14.11. |
+| Schnitte | 0 von 15 | 8 von 33 |
+| `cache=` ab Zug 2 | immer 11022; `cache_w=` steigt von 4353 auf 9360 | immer 0 |
+| Doppelte oder falsch platzierte Figuren | keine; neu: „Torwächter“ (steht nicht auf der Abenteuerkarte) | drei am 14.11. |
+
+Sonst: kein `Traceback`, kein `ERROR`, keine Pause. Die Spieluhr stand nach 15 Zügen auf Tag 1, 23:00 (Start
+21:00, Frist 24:00), im Log stehen aber nur zwei `🕐`-Zeilen mit je +15 min. `logs/archive/LAYOUT` und
+`logs/archive/sandbox/` sind nicht git-ignoriert.
+
+---
+
 ## Nächster Lauf — die Folgerunde vom 14.11. prüfen
 
 Alles darin ist nur durch Tests belegt. **Vorbereitet am 14.11., 20:40:** Sandbox leer, altes Log als
@@ -299,6 +360,7 @@ ein Ortswechsel mit Ankunft bei jemandem.
 | F8 | **Zwei Spieler, eine Probe von Opus** (D140, Review) | wer keinen Marker bekam, bekommt seinen Knopf vom Router | `🎲 Marker entscheidet: A …` und `🎲 router: B …` im selben Zug |
 | F9 | **Kontext ohne Überschrift** (D142, offen) | Opus verwechselt Regelbuch-/Abenteuertext nicht mit Spielerrede, hält den Zustand (Wunden, Gegenstände) ein | nur Ohr; Verdacht mit Uhrzeit notieren. Scheitert der Punkt, ist die Abhilfe eine Kopfzeile vor dem Block (ändert den Prompt, braucht `dm-eval` und einen Lauf) |
 | F10 | **Urteil des Tisches** | jeder sagt drei Sätze: besser als am 14.11.? | wörtlich aufschreiben |
+| F11 | **Ein Erzählzug zur Zeit** (Befund vom 27.11., noch nicht behoben) | zwei Proben im selben Zug oder zwei Sprechfenster kurz nacheinander ergeben eine Antwort, nicht zwei ineinander gesprochene | keine zwei `LLM roh` innerhalb weniger Sekunden; `[latency]` turn= steigt lückenlos |
 
 ### Teil A — dabei mitprüfen, noch offen aus früheren Runden
 
