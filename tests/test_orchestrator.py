@@ -298,6 +298,21 @@ def test_buffer_unbounded_when_cap_zero() -> None:
     assert all(f"Zeile {i}" in sent for i in range(5))
 
 
+def test_a_line_without_a_letter_or_digit_is_not_a_player_line() -> None:
+    # live run 2026-11-27: background noise transcribed as "..." reached the DM (and the dice
+    # classifier) as a player line. A line with no letter or digit is dropped like an empty one.
+    brain = DMBrain(_FakeClient())
+    for noise in ("...", "…", "?!", " - "):
+        brain.add_player_line(5, "Rektalus", noise)
+    assert brain._prepare_turn(5, None) is None  # nothing left to respond to
+
+    brain.add_player_line(5, "Rektalus", "...")
+    brain.add_player_line(5, "Rektalus", "Ich öffne die Tür.")
+    user_msg, _labels, _history = brain._prepare_turn(5, None)
+    assert "Ich öffne die Tür." in user_msg and "..." not in user_msg
+    assert brain._session(5).last_action == ("Rektalus", "Ich öffne die Tür.")
+
+
 def test_sanitize_strips_meta_selfcorrection() -> None:
     # nemo breaks the fiction to "correct itself" out loud (admits to being a Sprachmodell) — only
     # the real narration after "Hier ist die korrekte Antwort:" must survive.

@@ -118,6 +118,50 @@ class ResolvedTest:
     target: int | None            # base + modifier (None if base is None)
 
 
+def _skills_text(character: Character) -> str:
+    """The sheet's skills with values, in sheet order: "Athletik 50, Nahkampf 39"."""
+    return ", ".join(f"{k} {v}" for k, v in character.skills.items())
+
+
+def _talent_names(character: Character) -> list[str]:
+    """The sheet's talent names (dicts with a ``name`` or plain strings), effects left out."""
+    names = [t.get("name", "") if isinstance(t, dict) else str(t)
+             for t in (character.raw.get("talents") or [])]
+    return [n.strip() for n in names if n and n.strip()]
+
+
+_SHEET_ANSWER_MAX = 900  # characters — one compact message, well under Discord's 2000
+
+# Words speech-to-text leaves in a spoken question ("Äh, was kann ich eigentlich?"); dropped before
+# matching. None of them turns a question about the scene into one about the sheet.
+_FILLERS = frozenset({
+    "äh", "ähm", "äähm", "öh", "öhm", "ehm", "hm", "hmm", "also", "ok", "okay", "na",
+    "eigentlich", "denn", "überhaupt", "nochmal", "alles", "so", "genau",
+})
+_ABILITIES = r"(?:fertigkeiten|talente|fähigkeiten|skills|werte)"
+# The whole (filler-free) line must be the question — "Was kann ich sehen?" is about the scene.
+_SHEET_QUESTION = re.compile(
+    r"(?:und )?(?:"
+    r"was kann ich"
+    r"|was kann (?:meine figur|mein charakter|mein character|mein char)"
+    rf"|welche {_ABILITIES} (?:habe|hab) ich"
+    rf"|was (?:sind|waren) meine {_ABILITIES}"
+    rf"|was (?:habe|hab) ich (?:für|an) {_ABILITIES}"
+    r"|was steht (?:auf|in) meinem (?:charakterbogen|bogen)"
+    r")"
+)
+
+
+def is_sheet_question(text: str) -> bool:
+    """Whether a player line asks about the speaker's OWN abilities ("Was kann ich?", "welche
+    Talente hab ich") rather than the situation ("Was kann ich sehen?", "Was kann ich hier
+    machen?"). Case, punctuation and STT fillers are ignored; the rest of the line must be the
+    question itself. In doubt ``False`` — a missed match costs nothing, the narration still
+    answers."""
+    words = [w for w in re.findall(r"[^\W_]+", text.casefold()) if w not in _FILLERS]
+    return bool(words) and _SHEET_QUESTION.fullmatch(" ".join(words)) is not None
+
+
 class CharacterStore:
     """Characters + a display-name→character alias map for one session."""
 
@@ -192,11 +236,8 @@ class CharacterStore:
         for char in self._by_name.values():
             parts: list[str] = []
             if char.skills:
-                parts.append("Fertigkeiten " + ", ".join(f"{k} {v}" for k, v in char.skills.items()))
-            talents = [t.get("name", "") if isinstance(t, dict) else str(t)
-                       for t in (char.raw.get("talents") or [])]
-            talents = [t.strip() for t in talents if t and t.strip()]
-            if talents:
+                parts.append("Fertigkeiten " + _skills_text(char))
+            if talents := _talent_names(char):
                 parts.append("Talente " + ", ".join(talents))
             if parts:
                 lines.append(f"{char.name}: " + "; ".join(parts))
@@ -204,6 +245,28 @@ class CharacterStore:
             return ""
         return ("## Bögen der Spielfiguren (Fragen nach Fertigkeiten und Talenten beantwortest du "
                 "hieraus; würfeln tut der Code)\n" + "\n".join(lines))
+
+    def sheet_answer_de(self, character: Character) -> str:
+        """One compact German Discord message with ONE character's sheet — the code's answer to
+        "Was kann ich?" (live run 2026-11-27: the persona's scene-options rule beat the prompt's
+        sheet block). Skills with values and talent names from the same source as
+        :meth:`sheet_block_de`, then the psychic powers' names and the sheet's Fate total when the
+        sheet has them. Names only, no effects; capped at :data:`_SHEET_ANSWER_MAX` characters."""
+        lines = [f"📋 **{character.name}**"]
+        if character.skills:
+            lines.append("Fertigkeiten: " + _skills_text(character))
+        if talents := _talent_names(character):
+            lines.append("Talente: " + ", ".join(talents))
+        if character.known_powers:
+            lines.append("Psychische Kräfte: " + ", ".join(character.known_powers))
+        if character.fate_total is not None:
+            lines.append(f"Schicksalspunkte: {character.fate_total}")
+        if len(lines) == 1:
+            lines.append("Auf dem Bogen stehen keine Fertigkeiten oder Talente.")
+        text = "\n".join(lines)
+        if len(text) > _SHEET_ANSWER_MAX:
+            text = text[: _SHEET_ANSWER_MAX - 1].rstrip(" ,\n") + "…"
+        return text
 
     def alias_hint_de(self, *, with_mapping: bool = True) -> str:
         """The 'who plays whom' block appended **last** to the system prompt (open item F). Besides

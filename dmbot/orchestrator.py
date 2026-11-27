@@ -359,7 +359,11 @@ class DMBrain:
             )
         if extra_text:
             lines.append(("Spieler", extra_text.strip()))
-        fresh = [(n, t) for n, t in lines if t]
+        # A line without a letter or digit ("...", "…" — STT on background noise) is no player
+        # line: dropped like an empty one, so it reaches neither the DM nor the dice classifier.
+        fresh = [(n, t) for n, t in lines if has_speakable_content(t)]
+        if noise := sum(1 for _n, t in lines if t and not has_speakable_content(t)):
+            log.debug("buffer: dropped %d player line(s) without a letter or digit", noise)
         # A turn the paused backend left unanswered leads, outside the cap above: the cap drops
         # table-talk noise, and these lines were already chosen as a turn.
         session = self._session(channel_id)
