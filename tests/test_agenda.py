@@ -21,7 +21,7 @@ from dmbot.memory.state import (
     world_state_summary_de,
 )
 from dmbot.rag.adventure import AdventureNpc
-from dmbot.voice.dicecog import DiceCog
+from dmbot.voice.npccog import NpcCog
 
 from fakes import make_runtime
 
@@ -246,8 +246,8 @@ def _runtime():
     return rt
 
 
-def _cog(rt) -> DiceCog:
-    cog = DiceCog.__new__(DiceCog)
+def _cog(rt) -> NpcCog:
+    cog = NpcCog.__new__(NpcCog)
     cog._rt = rt
     return cog
 
@@ -255,7 +255,7 @@ def _cog(rt) -> DiceCog:
 def test_agenda_sets_and_changes_goal() -> None:
     rt, ctx = _runtime(), _Ctx()
     rt._state[7].npcs.append(Combatant(name="Vex", wounds=10, max_wounds=10, is_npc=True))
-    asyncio.run(DiceCog.agenda.callback(_cog(rt), ctx, "Vex", goal='"Untertauchen"'))
+    asyncio.run(NpcCog.agenda.callback(_cog(rt), ctx, "Vex", goal='"Untertauchen"'))
     assert rt._state[7].npcs[0].goal == "Untertauchen"  # surrounding quotes stripped
     assert len(rt._persisted) == 1
     assert any("Vex" in m and "Untertauchen" in m for m in ctx.sent)
@@ -266,17 +266,17 @@ def test_agenda_weg_removes_goal_but_keeps_log() -> None:
     npc = _agenda_npc()
     npc.add_agenda_step(AgendaStep(ts_ingame="", text="Bar geräumt."))
     rt._state[7].npcs.append(npc)
-    asyncio.run(DiceCog.agenda.callback(_cog(rt), ctx, "Vex", goal="weg"))
+    asyncio.run(NpcCog.agenda.callback(_cog(rt), ctx, "Vex", goal="weg"))
     assert npc.goal == "" and len(npc.agenda_log) == 1
     assert any("entfernt" in m for m in ctx.sent)
 
 
 def test_agenda_unknown_npc_and_usage_reply() -> None:
     rt, ctx = _runtime(), _Ctx()
-    asyncio.run(DiceCog.agenda.callback(_cog(rt), ctx, "Niemand", goal="Ziel"))
+    asyncio.run(NpcCog.agenda.callback(_cog(rt), ctx, "Niemand", goal="Ziel"))
     assert any("Unbekannter NSC" in m for m in ctx.sent)
     ctx2 = _Ctx()
-    asyncio.run(DiceCog.agenda.callback(_cog(rt), ctx2))
+    asyncio.run(NpcCog.agenda.callback(_cog(rt), ctx2))
     assert any("Nutzung" in m for m in ctx2.sent)
 
 
@@ -285,7 +285,7 @@ def test_agenda_warns_past_five_agenda_npcs() -> None:
     for i in range(5):
         rt._state[7].npcs.append(_agenda_npc(name=f"N{i}", goal="Ziel"))
     rt._state[7].npcs.append(Combatant(name="Vex", wounds=10, max_wounds=10, is_npc=True))
-    asyncio.run(DiceCog.agenda.callback(_cog(rt), ctx, "Vex", goal="Sechstes Ziel"))
+    asyncio.run(NpcCog.agenda.callback(_cog(rt), ctx, "Vex", goal="Sechstes Ziel"))
     assert any("⚠️" in m and "6" in m for m in ctx.sent)
 
 
@@ -295,7 +295,7 @@ def test_agenden_lists_goals_and_recent_steps() -> None:
     for i in range(4):
         npc.add_agenda_step(AgendaStep(ts_ingame=f"Tag 1, 0{i}:00", text=f"Schritt {i}"))
     rt._state[7].npcs.append(npc)
-    asyncio.run(DiceCog.agenden.callback(_cog(rt), ctx))
+    asyncio.run(NpcCog.agenden.callback(_cog(rt), ctx))
     out = "\n".join(rt._sent_long)
     assert "Vex" in out and "Die Ware außer Reichweite schaffen" in out
     assert "Schritt 3" in out and "Schritt 0" not in out  # last 3 only
@@ -303,5 +303,5 @@ def test_agenden_lists_goals_and_recent_steps() -> None:
 
 def test_agenden_empty_replies_hint() -> None:
     rt, ctx = _runtime(), _Ctx()
-    asyncio.run(DiceCog.agenden.callback(_cog(rt), ctx))
+    asyncio.run(NpcCog.agenden.callback(_cog(rt), ctx))
     assert any("Keine Agenda-NSCs" in m for m in ctx.sent)

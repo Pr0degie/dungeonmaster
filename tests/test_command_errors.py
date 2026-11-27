@@ -143,11 +143,12 @@ def test_non_argument_errors_are_logged_not_answered() -> None:
 
 def test_all_registered_commands_yield_a_usable_usage_line() -> None:
     """No command may fall through to an empty or bare hint — walked over the real cogs."""
-    from dmbot.voice import (chekhovcog, clockcog, dicecog, dmcog, lorecog, scenecog,
-                             timecog, voicecog)
+    from dmbot.voice import (chekhovcog, clockcog, dicecog, dmcog, lorecog, npccog,
+                             scenecog, timecog, voicecog)
 
     seen = 0
-    for module in (voicecog, dicecog, dmcog, scenecog, lorecog, clockcog, timecog, chekhovcog):
+    for module in (voicecog, dicecog, npccog, dmcog, scenecog, lorecog, clockcog, timecog,
+                   chekhovcog):
         for obj in vars(module).values():
             cog = getattr(obj, "__cog_commands__", None)
             if cog is None:
@@ -176,8 +177,9 @@ def test_the_name_taking_commands_document_the_quoted_form() -> None:
     stored name EXACTLY, so a multi-word NSC needs quotes. Their usage lines must show it —
     that is also what makes the error reply print the quoting hint."""
     from dmbot.voice.dicecog import DiceCog
+    from dmbot.voice.npccog import NpcCog
 
-    by_name = {c.name: c for c in DiceCog.__cog_commands__}
+    by_name = {c.name: c for cog in (DiceCog, NpcCog) for c in cog.__cog_commands__}
     for name in ("npcmem", "agenda", "damage", "heal"):
         cmd = by_name[name]
         assert '"' in usage_de(cmd.qualified_name, cmd.help, cmd.signature), name

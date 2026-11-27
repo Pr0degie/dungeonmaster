@@ -27,6 +27,7 @@ from .shutdown import disconnect_voice, progress
 from .voice.command_errors import argument_error_de
 from .voice.voicecog import VoiceCog
 from .voice.dicecog import DiceCog
+from .voice.npccog import NpcCog
 from .voice.dmcog import DMCog
 from .voice.scenecog import SceneCog
 from .voice.lorecog import LoreCog
@@ -68,7 +69,7 @@ class DMBot(commands.Bot):
 
     async def setup_hook(self) -> None:
         # Build the shared session state/services once from the config, then register the cogs that
-        # share it (VoiceCog/DiceCog/DMCog + the thin SceneCog/LoreCog split off in ADR 039).
+        # share it (VoiceCog/DiceCog/DMCog + the thin SceneCog/LoreCog/NpcCog split off in ADR 039).
         # Cross-cog flow goes through the runtime's hooks, not bot.get_cog (ADR 029). VoiceCog is
         # added first so its cog_unload (which closes the shared services) runs first on shutdown.
         # DMCog is added before LoreCog so the runtime.speak hook LoreCog uses is wired (hooks fire
@@ -80,6 +81,7 @@ class DMBot(commands.Bot):
         # A soft pop the moment Discord is logged in (D130).
         self._ready_sound = ReadySound(enabled=self._config.ready_sound)
         await self.add_cog(DiceCog(self, runtime))
+        await self.add_cog(NpcCog(self, runtime))    # the human GM's NPC commands (ADR 039)
         await self.add_cog(DMCog(self, runtime))
         await self.add_cog(SceneCog(self, runtime))
         await self.add_cog(LoreCog(self, runtime))
