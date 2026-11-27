@@ -27,7 +27,8 @@ is on-demand._
   `orchestrator.py` und `dicecog.py` (Prüfung im Plan, „Live-unverified after each round“).
 - **Next concrete step:** Bot neu starten (der Stand von 16:00 am 27.11. kennt weder D151–D155 noch die drei
   Zerlegungen), dann **ein** Lauf, der alles zusammen prüft: F11, W4, W7, W8, die offenen Punkte und die
-  Zerlegungen; danach die Pause-Probe (D139). Abschnitt „Next concrete step“.
+  Zerlegungen; danach die Pause-Probe (D139). Die Handgriffe dafür stehen als eine Checkliste im
+  [Beipackzettel](docs/phase-11-abend.md), „Nächster Lauf“. Abschnitt „Next concrete step“.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
   geparkt (ADR 061, im [Live-Run-Skript](docs/live-run-script.md) markiert) und werden nach dem
   Abend neu gesichtet.
@@ -96,6 +97,10 @@ Belege des Laufs: [phase-11-abend.md](docs/phase-11-abend.md), „Ergebnis vom 2
   Sichtbar: `!help` führt die vier NSC-Kommandos unter `NpcCog`; die `🎲 Marker`-/`🎲 router`-, `🎯`- und
   `🌀`-Zeilen tragen im `debug.log` jetzt `dmbot.voice.dice.*`. Altbefund aus dem Review, nicht behoben:
   `cog_unload` bricht laufende Wurf-Animationen nicht ab. Ergebnistabelle im Plan.
+- **Checkliste für den nächsten Lauf** (nur Doku): im [Beipackzettel](docs/phase-11-abend.md), „Nächster
+  Lauf“, steht jetzt eine Liste mit 15 Handgriffen in Spielreihenfolge, die alles Offene berührt: D151–D155, die
+  offenen Punkte aus D140–D147, die drei Zerlegungen und die Pause-Probe. Überschrift und Vorbereitungsabsatz
+  des Abschnitts nennen den Stand vom 27.11. statt vom 14.11.
 
 **Arbeitsablauf entschlackt (2026-11-15, D150).** Am Tisch ändert sich nichts. Ein Prüfbefehl ersetzt die drei
 Einzelprüfungen, der Commit-Hook prüft nach einem grünen Lauf nicht noch einmal, die WIP-Grenze ist weg.

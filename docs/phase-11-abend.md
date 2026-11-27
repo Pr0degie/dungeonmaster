@@ -358,16 +358,52 @@ Sonst: kein `Traceback`, kein `ERROR`, keine Pause. Die Spieluhr stand beim `!wr
 
 ---
 
-## Nächster Lauf — die Folgerunde vom 14.11. prüfen
+## Nächster Lauf — die Folgerunden vom 14.11. und 27.11. und die Zerlegung prüfen
 
-Alles darin ist nur durch Tests belegt. **Vorbereitet am 14.11., 20:40:** Sandbox leer, altes Log als
-`logs/debug-2026-11-14-nach-abend.log` (wandert beim ersten Start nach dem Archiv-Umbau nach
-`logs/archive/pinned/2026-11-14-nach-abend/`), Bot A antwortet, Bot mit allen Preflights grün. Der Bot muss vorher
-neu starten (er kennt D146, D148 und das Log-Archiv nicht); danach fehlt nur `!j`.
+Alles darin ist nur durch Tests belegt. **Stand 27.11., abends:** Der Bot muss vorher neu starten. Der laufende
+Stand (Start 27.11., 16:00) kennt weder D151–D155 noch die Zerlegung von `memory/state.py`, `orchestrator.py` und
+`voice/dicecog.py` ([Plan](plans/split-state-dicecog-orchestrator.md)). Die Sandbox hält den Stand vom 27.11.
+(Pfandhalle, Tag 1, 23:06, Recap vom `!wrap`): darauf weiterspielen, dann prüft `!j` gleich das Laden eines
+bestehenden Spielstands. `characters.local.json` enthält Fridolin, Gellicus und Rektalus.
 
 **Ablauf:** `!j` → die vier Kontrollbefehle aus „Beim Start“ → `!start` → spielen (Teil A) → `!wrap` → Teil B
 (Pause-Probe, zehn Minuten) → Bot stoppen, mir Bescheid geben („werte den letzten Lauf aus“). Zu sichern ist nichts:
 die Logs bleiben bis zum nächsten Start in `logs\` und wandern dann nach `logs\archive\runs\`.
+
+### Checkliste — alles, was dieser Lauf zeigen muss
+
+Eine Zeile je Handgriff, in Spielreihenfolge. Die rechte Spalte nennt, was der Handgriff prüft; die Einzelheiten
+und Beweis-Logzeilen stehen in den Tabellen von Teil A und B darunter. Wer diese Liste abarbeitet, hat alles
+Offene berührt.
+
+| # | Was du tust | Was es prüft |
+|---|---|---|
+| 1 | Bot neu starten; beide Preflight-Zeilen stehen auf OK | der Bot fährt mit den zerlegten Modulen hoch |
+| 2 | `!j` auf dem bestehenden Spielstand, dann die vier Kontrollbefehle | Zerlegung `state.py`: der Spielstand wird geladen; das Spieler-Panel bleibt eine Nachricht (W2) |
+| 3 | `!start` oder `!intro` | Zerlegung `orchestrator.py`: das Opening |
+| 4 | ein normaler erzählter Zug, danach `!redo` | Zerlegung `orchestrator.py`: Zug und Wiederholung; die Stimme atmet an Kommas (F4); wörtliche Rede klingt am Satzende natürlich (N6); kein Regeltext als Spielerrede, Wunden und Gegenstände stimmen (F9) |
+| 5 | zwei Spieler handeln im selben Zug, beide mit Probe; nach einem Fehlschlag „🙏 Neu würfeln“ | **eine** Erzählung für beide Proben, nichts wird ineinander gesprochen (F11, D152); Zerlegung `dicecog.py`: Probe mit Schicksals-Neuwurf, bei eingeschalteter Wurf-Animation erscheint ein zweiter Wurf |
+| 6 | Angriff mit genanntem Ziel („Ich greife den Torwächter an“), der Wurf gelingt | der Treffer geht ohne Auswahl auf den Genannten (W7, D151); Zerlegung `state.py`: der Treffer wird gebucht; Waffenschaden verliert nur die Rüstung des Ziels (W8, D155) |
+| 7 | Angriff, ohne ein Ziel zu nennen, der Wurf gelingt | die Zielauswahl zeigt nur Anwesende (W3) |
+| 8 | Fridolin wirkt Smite auf einen genannten NSC; misslingt der Wurf, einen Schicksalspunkt nehmen | Psi-Schaden wird gebucht (W8, D153); Schicksal nach einem Psi-Fehlschlag (W6); Zerlegung `dicecog.py`: Manifestation mit Schaden und mit Neuwurf |
+| 9 | „Was kann ich?“ sagen | der eigene Bogen erscheint im Textkanal (W4, D154) |
+| 10 | Ortswechsel mit Ankunft bei jemandem; ein NSC übergibt etwas oder sagt etwas zu | Karten-Figuren stehen in der richtigen Szene (F7, D144); Zerlegung `state.py`: ein erzählter Fakt wird notiert |
+| 11 | `!rules` mit einer Frage | Zerlegung `orchestrator.py`: die Regelantwort |
+| 12 | `!npc add`, `!npc list`, `!agenda`, `!agenden`, `!npcmem`, `!help` | Zerlegung `dicecog.py`: die vier NSC-Kommandos laufen und stehen in `!help` unter `NpcCog` |
+| 13 | `!wrap` | Zerlegung `orchestrator.py`: der Recap; er steht jetzt auch im Log (D152) |
+| 14 | Teil B: Pause-Probe mit der Firewall-Regel, danach die Regel wieder aufheben | Pause statt Nemo (D139), noch nie gespielt |
+| 15 | zum Schluss: jeder sagt drei Sätze; Verbrauch auf claude.ai ansehen | Urteil des Tisches (F10); Zusatzanfrage der CLI (F6) |
+
+**Nur wenn die Lage von selbst eintritt:** `!redo` nach zwei gleichen Zeilen (N3), ein Zug während des
+Auto-Recaps (N4), ein Opening mitten in der Sitzung (N7), der Sprachbefehl (N8), kein zweiter Zug zum selben
+offenen Moment (F2).
+
+**Am 27.11. schon bestanden, läuft nur mit:** Opus' Probe zählt (F1), keine abgeschnittene Antwort (F3, N5), der
+Cache greift (F5), zwei Spieler mit einer Probe von Opus (F8), Würfel-Post und GIF (W1), Schicksal-Buttons nach
+einem Fehlschlag (W5), Karten-Figuren ohne Doppelgänger (N1), Ankunft in der neuen Szene (N2).
+
+Zeigt der Würfelablauf einen Fehler, sind die Änderungen D151–D153 und der Umzug von `dicecog.py` beide
+verdächtig. Jeder Umzug ist ein eigener Commit und lässt sich einzeln zurücknehmen.
 
 ### Teil A — im Spiel, Prüfpunkte der Folgerunde
 
