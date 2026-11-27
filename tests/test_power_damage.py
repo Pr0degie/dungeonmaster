@@ -8,13 +8,19 @@ Pure + fixed-seed (golden rule #2: dice = code), so every number is asserted exa
 
 from __future__ import annotations
 
+import dataclasses
 import random
 import types
 
 from dmbot.rules import combat, engine, profile as profile_mod
 from dmbot.rules.characters import Character, CharacterStore, augmetic_armour
 
-_IM = profile_mod.load("imperium_maledictum")
+_REAL_IM = profile_mod.load("imperium_maledictum")
+# The tests below pin the engine's characteristic soak — a Toughness Bonus taken off the damage.
+# IM itself reduces damage by armour only since D155 (Core Rulebook p.214), so `_IM` here is IM
+# with a soak characteristic named: the mechanism a system whose Toughness soaks would use.
+_IM = dataclasses.replace(
+    _REAL_IM, combat={**_REAL_IM.combat, "soak": {"characteristic": "Tgh", "mode": "tens"}})
 
 # Willpower 45 → Willpower Bonus 4; Toughness 38 → Toughness Bonus 3.
 _STORE = CharacterStore([
@@ -147,3 +153,21 @@ def test_dice_base_rolls_through_the_injected_rng_and_can_ignore_all_soak() -> N
     assert out.damage.weapon_roll.total == expected
     assert out.damage.success_level == 0                    # add_sl false → SL not added
     assert out.soak == 0 and out.damage.applied == expected
+
+
+# -- the real IM profile (D155): nothing but armour soaks, and Smite ignores that ------------
+
+def test_in_im_a_smite_lands_in_full() -> None:
+    psyker = Character.from_dict({"name": "Fridolin", "characteristics": {"Wil": 45}})
+    store = CharacterStore([psyker])
+    guard = types.SimpleNamespace(is_npc=True, toughness_bonus=3, armour=2)
+    out = combat.resolve_power_damage(
+        _REAL_IM, store, power="Smite", psyker_sheet=psyker, target=guard, target_sheet=None,
+        success_level=0, rng=random.Random(1),
+    )
+    assert out.soak == 0 and out.damage.applied == 2 + 4      # the live case: 6 wounds, not 3
+    bolt = combat.resolve_power_damage(
+        _REAL_IM, store, power="Force Bolt", psyker_sheet=psyker, target=guard, target_sheet=None,
+        success_level=1, rng=random.Random(1),
+    )
+    assert bolt.soak == 2 and bolt.damage.applied == 6 + 4 + 1 - 2   # armour still counts

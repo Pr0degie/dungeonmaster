@@ -1047,7 +1047,7 @@ class DiceCog(commands.Cog):
     async def _apply_attack_damage(
         self, channel, *, attacker: str | None, weapon: str | None, notation: str, result, target_name: str
     ) -> None:
-        """Roll the weapon's damage, subtract the target's soak (Toughness Bonus + armour), apply the
+        """Roll the weapon's damage, subtract the target's soak (per profile; IM: armour only), apply the
         rest to its wounds, persist, and feed the result back so the DM narrates the consequence."""
         cid = self._rt._brain_channel(channel)
         state = self._rt._state.get(cid)

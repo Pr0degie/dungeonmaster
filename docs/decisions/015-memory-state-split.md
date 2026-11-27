@@ -75,3 +75,22 @@ figures for the example party's gear, to be tuned when real loadouts are entered
   now (`Kult_Anführer`); the soak model is TB + armour (armour defaults to 0; no hit-location).
   The recap **quality** and the full "HP survives restart + recap on next session" loop are the
   live gate — pending a Discord run by Tobi.
+
+## Amendment (2026-11-27, D155) — IM damage is reduced by armour only
+
+The soak model above (Toughness Bonus + armour) was not the rulebook's. Imperium Maledictum, Core
+Rulebook p.214 ("Deal Damage"): *"This Damage is then reduced by any Armour on the target location.
+The target suffers the remaining Damage as Wounds."* The Toughness Bonus feeds Maximum Wounds
+(StrB + 2 × TghB + WilB) and the Critical Wound limit, not the damage roll. The question came up
+with Smite ("ignores Armour", D153): under the old model it still lost the Toughness Bonus.
+Tobi decided to follow the book for every hit, not only for Smite.
+
+- The IM profile names no soak characteristic any more (`combat.soak.characteristic` is empty);
+  the engine keeps the mechanism for a system whose Toughness does soak.
+- One rule for sheets and NPCs: an NPC's `toughness_bonus` counts only when the profile names a
+  soak characteristic (`combat._soak_parts`). The stat stays on statblocks and in the state.
+- Every hit is 2–4 wounds harder than before (an average human had lost 3 to the Toughness Bonus).
+  The party's Maximum Wounds already follow the book's formula, so fights get shorter, not unfair.
+- Still not the book: armour is one value per figure (no hit locations), and the weapon table rolls
+  dice (`1d10+4`) where the book has flat values — both noted above as approximate, unchanged here.
+- Live-unverified.

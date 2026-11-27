@@ -377,7 +377,7 @@ after the recap and before the history.
 
 > **Auto-applied combat damage (Phase 9, ADR 015).** On a successful **attack** test (skill ∈ the
 > profile's `combat.attack_skills`) the engine rolls the weapon's damage and the cog applies
-> **weapon damage + SL − soak** (soak = Toughness Bonus + armour) to a target's wounds, then feeds
+> **weapon damage + SL − soak** (the profile's soak; IM: armour only, D155) to a target's wounds, then feeds
 > the result back so the DM narrates the consequence — dice *and* damage are code, never the LLM
 > (golden rule #2). The target is auto-hit if there's one candidate, else picked from a dropdown
 > over the scene's NPCs + party; `!npc add` registers enemies, `!damage`/`!heal` are GM overrides.

@@ -230,7 +230,8 @@ class NpcMemory:
 class Combatant:
     """A character or NPC for state/damage purposes. Mutable — this is the code-owned layer.
 
-    ``armour`` and ``toughness_bonus`` are the soak inputs the engine subtracts from damage. For a
+    ``armour`` and ``toughness_bonus`` are the soak inputs the engine may subtract from damage (the
+    Toughness Bonus only where the profile names a soak characteristic — not in IM, D155). For a
     **player** they're derived from the sheet at damage time (TB = tens of Toughness), so a PC entry
     usually leaves ``toughness_bonus=0`` here; an **NPC** carries its own soak values directly.
     """

@@ -49,7 +49,7 @@
     "attack_skills": ["Nahkampf", "Fernkampf"],
     "default_damage": "1d10",
     "improvised_npc": { "wounds": 10, "toughness_bonus": 3, "armour": 0, "_note": "ADR 062: an NPC the DM improvised without a statblock — an average human (Tgh ~30-39)." },
-    "soak": { "characteristic": "Tgh", "mode": "tens" },
+    "soak": { "characteristic": "", "mode": "tens", "_note": "D155: IM reduces Damage by Armour only (Core Rulebook p.214, 'reduced by any Armour on the target location') — no characteristic soaks. The Toughness Bonus feeds Maximum Wounds and the Critical Wound limit, not the damage roll. A system whose Toughness does soak names it here (e.g. 'Tgh')." },
     "weapons": {
       "Kampfmesser": "1d10+1",
       "Kettenschwert": "1d10+5",
@@ -61,7 +61,7 @@
       "Schwert": "1d10+4",
       "Faust": "1d10-2"
     },
-    "_note": "Auto-damage (Phase 9): on a successful Nahkampf/Fernkampf test the engine rolls the weapon's damage, adds SL, subtracts soak (Toughness Bonus = tens of Tgh, plus armour) and applies the rest to the target's wounds. Weapon damage values are APPROXIMATE IM Core Rulebook figures for the example party's gear (Dealing Damage p.214) — tune against the real weapon tables when the party's actual loadout is entered. soak.characteristic=Tgh, mode=tens → Toughness Bonus."
+    "_note": "Auto-damage (Phase 9): on a successful Nahkampf/Fernkampf test the engine rolls the weapon's damage, adds SL, subtracts soak (IM: armour only, D155) and applies the rest to the target's wounds. Weapon damage values are APPROXIMATE IM Core Rulebook figures for the example party's gear (Dealing Damage p.214) — tune against the real weapon tables when the party's actual loadout is entered. soak.characteristic=Tgh, mode=tens → Toughness Bonus."
   },
   "psyker": {
     "test_skill": "Psi-Meisterschaft",

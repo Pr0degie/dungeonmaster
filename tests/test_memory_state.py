@@ -191,7 +191,7 @@ def test_profile_combat_accessors() -> None:
     assert _IM.weapon_damage("kettenschwert") == "1d10+5"  # case-insensitive
     assert _IM.weapon_damage("Unbekannt") is None
     assert _IM.default_damage() == "1d10"
-    assert _IM.soak_characteristic() == "Tgh" and _IM.soak_mode() == "tens"
+    assert _IM.soak_characteristic() == "" and _IM.soak_mode() == "tens"  # D155: armour only
 
 
 # -- hard facts: handed-over items, promises, the mission (ADR 058) ------------------------

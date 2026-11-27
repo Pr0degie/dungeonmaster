@@ -19,8 +19,10 @@ from .characters import augmetic_armour
 
 
 def toughness_bonus(profile, store, character) -> int:
-    """Toughness Bonus for a player from the sheet: the profile's soak characteristic (IM: Tgh),
-    rendered per soak mode (IM: tens digit). 0 if no profile/character/characteristic."""
+    """What a player's soak characteristic takes off incoming damage: the profile's soak
+    characteristic from the sheet, rendered per soak mode ('tens' = its bonus). 0 if no
+    profile/character/characteristic — and for a profile that names no soak characteristic at
+    all (IM since D155: Damage is reduced by Armour only, Core Rulebook p.214)."""
     if profile is None or character is None:
         return 0
     char_key = profile.soak_characteristic()
@@ -167,9 +169,12 @@ def resolve_attack(
 
 def _soak_parts(profile, store, target, target_sheet) -> tuple[int, int, int]:
     """The target's soak as (Toughness Bonus, worn armour, augmetic armour): an NPC carries its
-    own Toughness Bonus; a PC's comes from the sheet, plus augmetic armour (ADR 023)."""
+    own Toughness Bonus; a PC's comes from the sheet, plus augmetic armour (ADR 023). The
+    Toughness Bonus counts only when the profile names a soak characteristic (D155) — one rule
+    for sheets and NPCs; an NPC keeps the stat either way."""
     if target.is_npc:
-        return target.toughness_bonus, target.armour, 0
+        soaks = profile is not None and bool(profile.soak_characteristic())
+        return (target.toughness_bonus if soaks else 0), target.armour, 0
     tb = toughness_bonus(profile, store, target_sheet)
     augm = augmetic_armour(profile, target_sheet) if profile is not None else 0
     return tb, target.armour, augm

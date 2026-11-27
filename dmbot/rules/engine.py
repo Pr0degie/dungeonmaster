@@ -219,13 +219,13 @@ class DamageResult:
 
     weapon_roll: DiceRoll   # the weapon's damage dice (e.g. 1d10+5 → 8)
     success_level: int      # SL of the attack test (degrees), added to damage in IM
-    soak: int               # Toughness Bonus + armour, subtracted
+    soak: int               # what the profile's soak takes off (IM: armour only, D155)
     applied: int            # wounds actually lost (never < 0)
 
 
 def resolve_damage(weapon_roll: DiceRoll, success_level: int, soak: int) -> DamageResult:
     """IM 'Dealing Damage' (Core Rulebook p.214): wounds lost = weapon Damage + SL, reduced by soak
-    (Toughness Bonus + armour), never below 0. SL is only added when positive (an attack only deals
+    (IM: the target's armour; a profile may add a soak characteristic), never below 0. SL is only added when positive (an attack only deals
     damage on a success, so SL ≥ 0, but guard regardless). System-agnostic in shape — another
     profile can soak differently; the cog supplies the numbers from the active profile."""
     applied = max(0, weapon_roll.total + max(0, success_level) - max(0, soak))

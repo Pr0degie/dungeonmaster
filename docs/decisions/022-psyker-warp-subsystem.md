@@ -96,10 +96,11 @@ manifests**, which is hard state (golden rule #3) and must not be left to the na
 - IM seeding: Smite (2 + WilB + SL, ignores armour), Force Bolt (6 + WilB + SL), Nova and
   Bio-Lightning (4 + WilB + SL, area). Left narrative on purpose: Haemorrhage and Life Leech (an
   opposed test or a per-turn link decides), Sear (on touch), Spectral Hands, Stimulating Jolt.
-- **Reading of "ignores Armour":** the engine's soak is Toughness Bonus + armour (Phase 9), while
-  IM p.214 reduces damage by armour only. Within the engine's soak, "ignores Armour" drops the
-  armour and keeps the Toughness Bonus — the conservative reading; Life Leech's "ignores Armour and
-  can't be reduced in any way" is what `ignores: ["armour", "toughness_bonus"]` expresses.
+- **Reading of "ignores Armour":** the engine's soak was Toughness Bonus + armour (Phase 9), while
+  IM p.214 reduces damage by armour only; "ignores Armour" first dropped the armour and kept the
+  Toughness Bonus. Settled the same day (D155, ADR 015 amendment): the IM profile soaks with armour
+  only, so Smite lands in full. `ignores: ["armour", "toughness_bonus"]` remains for a profile
+  whose Toughness soaks.
 - Wired the same day (D153): `DiceCog._finish_manifest` feeds the result that stands and, for a
   successful power whose block says `"targets": "one"`, starts the damage flow of a weapon hit — the
   target from the psyker's own line or the picker (`combat.choose_attack_target`, D151), the wounds

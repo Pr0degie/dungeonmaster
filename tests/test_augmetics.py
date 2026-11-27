@@ -8,6 +8,7 @@ All pure + fixed-seed where dice are involved.
 
 from __future__ import annotations
 
+import dataclasses
 import random
 import types
 
@@ -17,7 +18,12 @@ from dmbot.rules.characters import (
 )
 from dmbot.voice.dicecog import DiceCog
 
-_IM = profile_mod.load("imperium_maledictum")
+_REAL_IM = profile_mod.load("imperium_maledictum")
+# The tests below pin the engine's characteristic soak — a Toughness Bonus taken off the damage.
+# IM itself reduces damage by armour only since D155 (Core Rulebook p.214), so `_IM` here is IM
+# with a soak characteristic named: the mechanism a system whose Toughness soaks would use.
+_IM = dataclasses.replace(
+    _REAL_IM, combat={**_REAL_IM.combat, "soak": {"characteristic": "Tgh", "mode": "tens"}})
 
 
 def _store(char_dict: dict) -> CharacterStore:

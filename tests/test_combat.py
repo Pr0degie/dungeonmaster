@@ -8,13 +8,19 @@ the numbers are asserted exactly and prove the move out of the cog is arithmetic
 
 from __future__ import annotations
 
+import dataclasses
 import random
 import types
 
 from dmbot.rules import combat, engine, profile as profile_mod
 from dmbot.rules.characters import Character, CharacterStore, augmetic_armour
 
-_IM = profile_mod.load("imperium_maledictum")
+_REAL_IM = profile_mod.load("imperium_maledictum")
+# The tests below pin the engine's characteristic soak — a Toughness Bonus taken off the damage.
+# IM itself reduces damage by armour only since D155 (Core Rulebook p.214), so `_IM` here is IM
+# with a soak characteristic named: the mechanism a system whose Toughness soaks would use.
+_IM = dataclasses.replace(
+    _REAL_IM, combat={**_REAL_IM.combat, "soak": {"characteristic": "Tgh", "mode": "tens"}})
 
 
 # -- toughness_bonus ----------------------------------------------------------------------
@@ -136,3 +142,21 @@ def test_warp_consequences_immediate_perils_skips_containment() -> None:
     assert any("Perils of the Warp" in ln for ln in consq.lines)
     assert not any("Warp-Kontrolle" in ln for ln in consq.lines)  # containment was skipped
     assert consq.reset_charge is True
+
+
+# -- the real IM profile: damage is reduced by armour only (D155) ----------------------------
+
+def test_im_takes_no_toughness_bonus_off_the_damage() -> None:
+    # Core Rulebook p.214: "This Damage is then reduced by any Armour on the target location."
+    assert _REAL_IM.soak_characteristic() == ""
+    npc = types.SimpleNamespace(is_npc=True, toughness_bonus=3, armour=2)
+    out = combat.resolve_attack(
+        _REAL_IM, None, target=npc, target_sheet=None,
+        notation="1d10+5", success_level=2, rng=random.Random(7),
+    )
+    assert (out.toughness_bonus, out.armour, out.soak) == (0, 2, 2)
+    roll = engine.roll_damage("1d10+5", random.Random(7))
+    assert out.damage.applied == roll.total + 2 - 2
+    # a player's sheet: Toughness 45 takes nothing off either
+    store = CharacterStore([Character.from_dict({"name": "Vask", "characteristics": {"Tgh": 45}})])
+    assert combat.toughness_bonus(_REAL_IM, store, store.get("Vask")) == 0

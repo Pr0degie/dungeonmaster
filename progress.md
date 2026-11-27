@@ -15,10 +15,11 @@ is on-demand._
 - **Newest round:** 27.11.: Lauf mit drei Spielern ausgewertet (18 Züge, `!wrap`, Ergebnis im Beipackzettel)
   und vier Befunde daraus gebaut — D151 (Angriff trifft das genannte Ziel), D152 (ein Erzählzug zur Zeit,
   Antworten ganz gesprochen, eine Erzählung für alle Proben eines Zugs), D153 (Psi-Schaden wird gebucht),
-  D154 („Was kann ich?“ aus dem Bogen, Rausch-Zeilen verworfen). Davor Arbeitsablauf (D150, 15.11.).
+  D154 („Was kann ich?“ aus dem Bogen, Rausch-Zeilen verworfen), D155 (Schaden wird nur noch um Rüstung
+  gemindert, wie im Regelbuch). Davor Arbeitsablauf (D150, 15.11.).
   „Last session“.
-- **Suite:** `uv run dm-check` grün — 1645 Tests, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
-- **Live-unverifiziert:** D151–D154 (Prüfpunkte W7, F11, W8, W4; der Bot muss neu starten, der Stand von
+- **Suite:** `uv run dm-check` grün — 1647 Tests, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
+- **Live-unverifiziert:** D151–D155 (Prüfpunkte W7, F11, W8, W4; der Bot muss neu starten, der Stand von
   16:00 am 27.11. kennt nichts davon). Am 27.11. belegt: F1, F3, F5 (Cache), F8, W1, W5, W6 (erster Teil), N1,
   N2, N5, Recap per `!wrap`. Offen aus D140–D147: F2 (nur die Hängeschleife belegt), F4, F6, F7, F9, F10, W2,
   W3, W6 (Schicksal nach Fehlschlag) (Prüfpunkte in [phase-11-abend.md](docs/phase-11-abend.md), „Nächster
@@ -40,6 +41,14 @@ D140–D147 (ohne D143, verworfen) wartet auf ihren Lauf (Prüfliste F1–F10 im
 _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Current focus (Verlauf)`._
 
 ## Last session
+
+**Schaden nach Regelbuch (2026-11-27, D155).** Tobis Entscheidung auf die Regelfrage aus D153: IM, Core
+Rulebook S. 214, mindert Schaden nur um die Rüstung. Das Profil nennt kein Soak-Merkmal mehr, ein
+NSC-Widerstandsbonus zählt nur, wo ein Profil eines nennt (`combat._soak_parts`). Smite trifft voll, jeder
+Waffentreffer ist 2–4 Wunden härter als bisher. Die Tests der allgemeinen Soak-Mechanik laufen auf einem
+Profil mit Soak-Merkmal, das echte IM-Profil ist auf „nur Rüstung“ festgehalten. ADR 015, Nachtrag.
+Weiter nicht nach Buch: ein Rüstungswert je Figur, Würfel in der Waffentabelle. `uv run dm-check` grün
+(1647 Tests). Live-unverifiziert.
 
 **Psi-Schaden und Bogen-Antwort (2026-11-27, D153, D154).** Zwei Agenten haben parallel auf eigenen Zweigen
 gebaut, zusammengeführt in `main`. D153: `damage`-Block im Profil (Smite, Force Bolt, Bio-Lightning auf das

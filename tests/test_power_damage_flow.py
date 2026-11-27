@@ -37,8 +37,9 @@ def test_a_smite_that_names_its_target_costs_it_wounds() -> None:
     cog = _fighting_cog(state, sent, narrated)
     _finish(cog, power="Smite", result=_manifest(success=True, degrees=2),
             said="Ich schleudere einen Blitz auf den Kettenmann.")
-    # Smite: 2 + Willpower Bonus (no sheet here: 0) + 2 SL = 4, armour ignored, Toughness Bonus 3 counts
-    assert state.find("Kettenmann").wounds == 9
+    # Smite: 2 + Willpower Bonus (no sheet here: 0) + 2 SL = 4, lands in full (D155: only armour
+    # would soak, and Smite ignores it)
+    assert state.find("Kettenmann").wounds == 6
     assert [view for _, view in sent] == [None]              # the damage line, no picker
     assert "Kettenmann" in sent[0][0] and "Smite" in sent[0][0]
     assert narrated == [None]                                # one narration, after the damage
@@ -105,8 +106,8 @@ def test_bio_lightning_books_its_primary_target() -> None:
     state = _state()
     _finish(_fighting_cog(state, sent, []), power="Bio-Lightning",
             result=_manifest(success=True, degrees=3), said="Der Blitz trifft den Kettenmann.")
-    # 4 + 0 + 3 SL = 7, armour 0, Toughness Bonus 3 → 4 wounds
-    assert state.find("Kettenmann").wounds == 6
+    # 4 + 0 + 3 SL = 7, armour 0 → 7 wounds
+    assert state.find("Kettenmann").wounds == 3
 
 
 def test_a_failed_manifest_and_a_power_without_damage_are_only_narrated() -> None:
