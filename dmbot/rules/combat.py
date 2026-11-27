@@ -155,19 +155,90 @@ def resolve_attack(
 
     ``target`` is the WorldState combatant (duck-typed: ``.is_npc``, ``.toughness_bonus``,
     ``.armour``); ``target_sheet`` is the PC ``Character`` sheet, or ``None`` for an NPC."""
-    augm_armour = 0
-    if target.is_npc:
-        tb = target.toughness_bonus
-    else:
-        tb = toughness_bonus(profile, store, target_sheet)
-        if profile is not None:  # augmetic armour adds to a PC's soak (ADR 023)
-            augm_armour = augmetic_armour(profile, target_sheet)
-    soak = tb + target.armour + augm_armour
+    tb, armour, augm_armour = _soak_parts(profile, store, target, target_sheet)
+    soak = tb + armour + augm_armour
     weapon_roll = engine.roll_damage(notation, rng)
     dmg = engine.resolve_damage(weapon_roll, success_level, soak)
     return AttackOutcome(
-        toughness_bonus=tb, armour=target.armour, augmetic_armour=augm_armour,
+        toughness_bonus=tb, armour=armour, augmetic_armour=augm_armour,
         soak=soak, damage=dmg,
+    )
+
+
+def _soak_parts(profile, store, target, target_sheet) -> tuple[int, int, int]:
+    """The target's soak as (Toughness Bonus, worn armour, augmetic armour): an NPC carries its
+    own Toughness Bonus; a PC's comes from the sheet, plus augmetic armour (ADR 023)."""
+    if target.is_npc:
+        return target.toughness_bonus, target.armour, 0
+    tb = toughness_bonus(profile, store, target_sheet)
+    augm = augmetic_armour(profile, target_sheet) if profile is not None else 0
+    return tb, target.armour, augm
+
+
+@dataclass(frozen=True, slots=True)
+class PowerDamageOutcome:
+    """The deterministic damage one manifested power deals to one target. ``damage.weapon_roll``
+    is the power's whole amount before SL (base + the psyker's bonus), so
+    ``engine.describe_damage_de`` narrates it with the power as the "weapon"."""
+
+    power: str                 # canonical power name from the catalog
+    bonus: int                 # the psyker's characteristic bonus added (IM: Willpower Bonus)
+    toughness_bonus: int       # the target's Toughness Bonus as counted (0 when ignored)
+    armour: int                # worn armour as counted (0 when ignored)
+    augmetic_armour: int       # augmetic armour as counted (0 when ignored)
+    soak: int
+    ignored: tuple[str, ...]   # the soak parts the power skipped, from the profile
+    targets: str               # 'one' or 'area' — the caller picks one target or loops a zone
+    damage: engine.DamageResult
+
+
+def _characteristic_bonus(store, sheet, characteristic: str, mode: str) -> int:
+    """A characteristic's bonus from the sheet ('tens' = tens digit, else the value); 0 if unknown."""
+    if not characteristic or store is None or sheet is None:
+        return 0
+    value = store.skill_value(sheet, characteristic)
+    if value is None:
+        return 0
+    return value // 10 if mode == "tens" else value
+
+
+def resolve_power_damage(
+    profile, store, *, power, psyker_sheet, target, target_sheet, success_level,
+    rng: random.Random,
+) -> PowerDamageOutcome | None:
+    """Resolve the damage a successfully manifested power deals to ``target`` from the power's
+    structured ``damage`` block in the profile (``SystemProfile.power_damage``): roll the base,
+    add the psyker's characteristic bonus and (if the block says so) the Manifest SL, subtract
+    the target's soak minus the parts the power ignores. Returns ``None`` for a power without a
+    damage block (its effect stays narrative) or an unknown power / no profile.
+
+    Pure: rolls through the injected RNG, mutates nothing; the caller applies ``damage.applied``
+    and narrates. Call it only for a Manifest Test that succeeded — the SL is the test's
+    ``degrees``. ``target``/``target_sheet`` are duck-typed exactly as in :func:`resolve_attack`;
+    ``psyker_sheet`` is the manifesting character's sheet (``None`` → no bonus)."""
+    if profile is None:
+        return None
+    block = profile.power_damage(power)
+    if block is None:
+        return None
+    name = (profile.power(power) or {}).get("name", power)
+    bonus = _characteristic_bonus(store, psyker_sheet, block["bonus_characteristic"], block["bonus_mode"])
+    tb, armour, augm_armour = _soak_parts(profile, store, target, target_sheet)
+    ignored = block["ignores"]
+    if "armour" in ignored:  # armour is armour, worn or augmetic
+        armour = augm_armour = 0
+    if "toughness_bonus" in ignored:
+        tb = 0
+    soak = tb + armour + augm_armour
+    base = engine.roll(block["base"], rng)
+    amount = engine.DiceRoll(
+        total=base.total + bonus, dice=base.dice, modifier=base.modifier + bonus,
+        notation=f"{block['base']}+{bonus}" if bonus else block["base"],
+    )
+    dmg = engine.resolve_damage(amount, success_level if block["add_sl"] else 0, soak)
+    return PowerDamageOutcome(
+        power=name, bonus=bonus, toughness_bonus=tb, armour=armour, augmetic_armour=augm_armour,
+        soak=soak, ignored=ignored, targets=block["targets"], damage=dmg,
     )
 
 

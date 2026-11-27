@@ -244,6 +244,28 @@ class SystemProfile:
         """All catalogued power names (declaration order) — for the prompt/classifier."""
         return self._catalog_names(self.psyker.get("powers", {}) or {})
 
+    def power_damage(self, name: str | None) -> dict | None:
+        """The structured damage a power deals when it manifests, or ``None`` (unknown power or a
+        power without a ``damage`` block — the effect stays narrative). Normalised from the
+        power's ``damage`` block: ``{"base", "bonus_characteristic", "bonus_mode", "add_sl",
+        "ignores", "targets"}``. ``base`` is dice notation (a constant like "2" or "1d10");
+        ``bonus`` names the psyker characteristic whose bonus is added (IM: Willpower Bonus,
+        mode 'tens'); ``ignores`` lists soak parts the damage skips ('armour' = worn + augmetic,
+        'toughness_bonus' = the soak characteristic); ``targets`` is 'one' or 'area'."""
+        stats = self.power(name)
+        block = (stats or {}).get("damage")
+        if not isinstance(block, dict) or not block.get("base"):
+            return None
+        bonus = block.get("bonus", {}) or {}
+        return {
+            "base": str(block["base"]),
+            "bonus_characteristic": bonus.get("characteristic", "") or "",
+            "bonus_mode": bonus.get("mode", "tens") or "tens",
+            "add_sl": bool(block.get("add_sl", True)),
+            "ignores": tuple(str(part).strip().lower() for part in block.get("ignores", []) or []),
+            "targets": block.get("targets", "one") or "one",
+        }
+
     def warp_threshold(self, willpower_value: int | None) -> int:
         """Warp Threshold from a character's governing characteristic (IM: Willpower Bonus =
         tens digit of Willpower). Driven by ``psyker.threshold`` = {characteristic, mode}."""

@@ -78,3 +78,26 @@ is fed back so the DM narrates. Warp Charge is a **code-owned mutable resource**
   **Warp Rating + Difficulty**. The subsystem implements IM **ch. VI**.
 - IM's reverse-the-digits Advantage (served by `reverse_d100` + the `advantage` kwarg on the
   roll-under resolver) is per rulebook **p.189**.
+
+## Amendment (2026-11-27) — a power's flat damage is data, resolved by code
+
+Live run 2026-11-27: a successful Smite was narrated as a hit while the target's wounds stayed
+untouched — nothing applied damage for a manifested power. The rejection above of "every power's
+full effect in code" stands; the narrow exception is **damage a power deals the moment it
+manifests**, which is hard state (golden rule #3) and must not be left to the narration.
+
+- A damaging power carries a structured `damage` block in the catalog:
+  `{"base": "<dice notation>", "bonus": {"characteristic", "mode"}, "add_sl": bool,
+  "ignores": ["armour" | "toughness_bonus"], "targets": "one" | "area"}`. Read through
+  `SystemProfile.power_damage`; the German `effect` text is never parsed.
+- `combat.resolve_power_damage` (pure, injected RNG, mirrors `resolve_attack`) rolls the base, adds
+  the psyker's characteristic bonus and the Manifest SL, and subtracts the target's soak minus the
+  ignored parts. "armour" covers worn and augmetic armour.
+- IM seeding: Smite (2 + WilB + SL, ignores armour), Force Bolt (6 + WilB + SL), Nova and
+  Bio-Lightning (4 + WilB + SL, area). Left narrative on purpose: Haemorrhage and Life Leech (an
+  opposed test or a per-turn link decides), Sear (on touch), Spectral Hands, Stimulating Jolt.
+- **Reading of "ignores Armour":** the engine's soak is Toughness Bonus + armour (Phase 9), while
+  IM p.214 reduces damage by armour only. Within the engine's soak, "ignores Armour" drops the
+  armour and keeps the Toughness Bonus — the conservative reading; Life Leech's "ignores Armour and
+  can't be reduced in any way" is what `ignores: ["armour", "toughness_bonus"]` expresses.
+- Wiring into the Manifest button flow is a separate step (live-unverified until then).
