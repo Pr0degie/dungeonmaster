@@ -88,7 +88,7 @@ class _Table:
             self.posted.append(req)
             self.said[req.target_name] = said
 
-        async def _post_manifest(channel, req):
+        async def _post_manifest(channel, req, *, said=""):
             self.manifest_posted.append(req)
 
         self.cog._post_dice_button = _post

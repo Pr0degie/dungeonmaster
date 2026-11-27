@@ -12,22 +12,21 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** D151 (27.11.): ein gelungener Angriff liest sein Ziel aus der Ansage des Angreifers — genau
-  ein anwesender NSC genannt → Treffer ohne Auswahl, sonst die Auswahl mit den Genannten oben. Davor am selben
-  Tag: Lauf ausgewertet (Zwischenstand, 15 Züge, drei Spieler):
-  zweimal liefen zwei Erzählzüge gleichzeitig (16:17:06, 16:22:19/21) — offen, Prüfpunkt F11. Davor
-  Arbeitsablauf (D150, 15.11.): `uv run dm-check` mit Merkzettel-Hook, WIP-Grenze entfernt,
-  `characters.local.json`; am Tisch ändert sich nichts. Davor am selben Tag: Log-Archiv (D149), ADR 066 B verworfen
-  (D148). „Last session“.
-- **Suite:** `uv run dm-check` grün — 1585 Tests, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
-- **Live-unverifiziert:** D151 (Prüfpunkt W7; der Bot vom 27.11., 16:00 kennt es nicht). Am 27.11. belegt: F1, F3, F5 (Cache), F8, W1, W5, N1, N2, N5. Offen aus D140–D142 und
-  D144–D147: F2 (nur die Hängeschleife belegt), F4, F6, F7, F9, F10, W2–W4, W6 (Prüfpunkte in
-  [phase-11-abend.md](docs/phase-11-abend.md), „Nächster Lauf“), D139 (Pause statt Nemo — Durchgang 3 nicht
-  gespielt), D138 (am 14.11. teils widerlegt: NSCs landen in der verlassenen Szene), D137, `DMBrain`-Befunde
-  Nr. 1–4/9/12, D134.
-- **Next concrete step:** Tobi entscheidet über die Fix-Runde zum Doppelzug (F11: eine Erzählung erst, wenn alle
-  Proben des Zugs gewürfelt sind; kein zweiter Zug neben einem laufenden). Danach ein Lauf für die offenen Punkte
-  und die Pause-Probe (D139). Der Abschnitt „Next concrete step“ unten beschreibt noch die Vorbereitung vom 14.11.
+- **Newest round:** 27.11.: Lauf mit drei Spielern ausgewertet (18 Züge, `!wrap`, Ergebnis im Beipackzettel)
+  und vier Befunde daraus gebaut — D151 (Angriff trifft das genannte Ziel), D152 (ein Erzählzug zur Zeit,
+  Antworten ganz gesprochen, eine Erzählung für alle Proben eines Zugs), D153 (Psi-Schaden wird gebucht),
+  D154 („Was kann ich?“ aus dem Bogen, Rausch-Zeilen verworfen). Davor Arbeitsablauf (D150, 15.11.).
+  „Last session“.
+- **Suite:** `uv run dm-check` grün — 1640 Tests, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
+- **Live-unverifiziert:** D151–D154 (Prüfpunkte W7, F11, W8, W4; der Bot muss neu starten, der Stand von
+  16:00 am 27.11. kennt nichts davon). Am 27.11. belegt: F1, F3, F5 (Cache), F8, W1, W5, W6 (erster Teil), N1,
+  N2, N5, Recap per `!wrap`. Offen aus D140–D147: F2 (nur die Hängeschleife belegt), F4, F6, F7, F9, F10, W2,
+  W3, W6 (Schicksal nach Fehlschlag) (Prüfpunkte in [phase-11-abend.md](docs/phase-11-abend.md), „Nächster
+  Lauf“), D139 (Pause statt Nemo — nie gespielt), D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134.
+- **Next concrete step:** Bot neu starten, dann ein Lauf für F11, W4, W7, W8 und die offenen Punkte, danach die
+  Pause-Probe (D139). Offen aus der Auswertung, nicht gebaut: NSCs nennen Charakternamen, die niemand gesagt
+  hat; die Spieluhr lief in 18 Zügen 126 Minuten bei nur zwei `🕐`-Zeilen; `logs/archive/` ist nicht
+  git-ignoriert. Der Abschnitt „Next concrete step“ unten beschreibt noch die Vorbereitung vom 14.11.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
   geparkt (ADR 061, im [Live-Run-Skript](docs/live-run-script.md) markiert) und werden nach dem
   Abend neu gesichtet.
@@ -41,6 +40,14 @@ D140–D147 (ohne D143, verworfen) wartet auf ihren Lauf (Prüfliste F1–F10 im
 _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Current focus (Verlauf)`._
 
 ## Last session
+
+**Psi-Schaden und Bogen-Antwort (2026-11-27, D153, D154).** Zwei Agenten haben parallel auf eigenen Zweigen
+gebaut, zusammengeführt in `main`. D153: `damage`-Block im Profil (Smite, Force Bolt; Nova und Bio-Lightning
+als Flächenkräfte nur Daten), `combat.resolve_power_damage`, eingehängt über `DiceCog._finish_manifest` in den
+Schadensablauf eines Waffentreffers (ADR 022, Nachtrag). Offene Regelfrage: „ignoriert Rüstung“ lässt den
+Widerstandsbonus stehen. D154: `is_sheet_question` + `sheet_answer_de`, der eigene Bogen als Textnachricht,
+die Erzählung bleibt; Zeilen ohne Buchstaben oder Ziffern gehen nicht mehr an den DM. Persona unverändert.
+`uv run dm-check` grün (1640 Tests). Beides live-unverifiziert (W8, W4).
 
 **Ein Erzählzug zur Zeit (2026-11-27, D152).** Der Hauptbefund des Laufs ist behoben, live-unverifiziert
 (Prüfpunkt F11). Drei Regeln: (1) nie zwei Erzählanfragen gleichzeitig — eine Sperre in der

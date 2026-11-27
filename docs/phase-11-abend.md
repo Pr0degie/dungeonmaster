@@ -395,10 +395,11 @@ ein Ortswechsel mit Ankunft bei jemandem.
 | W1 | Würfel: Zielwert-Post, GIF, Ergebnis, auch nach „🙏 Neu würfeln“ | alles erscheint; Log `🎲 throw gif (stored)` |
 | W2 | Spieler-Panel | bleibt eine Nachricht und wird nur bearbeitet |
 | W3 | Angriff: Zielauswahl | nur Anwesende; kein „Wechseln“ nach einem Auto-Wechsel |
-| W4 | „Was kann ich?“ | Antwort aus dem Bogen |
+| W4 | „Was kann ich?“ (D154) | im Textkanal erscheint der eigene Bogen (📋 Name, Fertigkeiten mit Werten, Talente, Kräfte, Schicksalspunkte), Log `📋 Bogen-Antwort für <Name>`; die Erzählung läuft normal weiter. „Was kann ich sehen?“ löst nichts aus |
 | W5 | Schicksal-Buttons | erscheinen nach Fehlschlägen |
 | W6 | **Psionik** (Würfel-GIF, D145) | der 🌀-Knopf zeigt den Wurf wie eine Probe; nach einem Fehlschlag kommen die Schicksal-Buttons, und die Warp-Aufladung im Panel gilt für das Ergebnis, das stehen bleibt (`🙏 … dieses Ergebnis gilt: 🌀 …`) |
 | W7 | **Angriff mit genanntem Ziel** (D151) | „Ich greife den Torwächter an“ und der Wurf gelingt: der Treffer geht ohne Auswahl auf ihn (Log `🎯 Ziel aus der Ansage: Torwächter`). Zwei Genannte, niemand genannt, eine Verneinung („nicht auf den Wächter“) oder nur ein Mitspieler genannt: die Auswahl kommt, genannte NSCs stehen oben, Mitspieler unten |
+| W8 | **Psi-Schaden** (D153) | Fridolin wirkt Smite auf einen genannten NSC und der Wurf gelingt: nach der 🌀-Zeile kommt eine Schadenszeile (`💥 Fridolin … trifft … mit Smite: … Wunden`), die Wunden im Panel sinken, danach eine Erzählung. Ohne genanntes Ziel kommt die Auswahl „🌀 … wen trifft es?“ |
 | N3–N8 | die Beobachtungspunkte von oben („Seit dem 12.11. geändert“) | nur wenn die Lage eintritt |
 
 ### Teil B — Pause statt Nemo (D139), nach `!wrap`

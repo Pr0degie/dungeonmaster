@@ -125,7 +125,7 @@ class DiceCog(commands.Cog):
                     await self._post_dice_button(channel, req,
                                                  said=self._said(spoken, req.target_name))
             for m in manifests:
-                await self._post_manifest_button(channel, m)
+                await self._post_manifest_button(channel, m, said=self._said(spoken, m.target_name))
         finally:
             self._open_rolls.deciding(cid, False)
             if cid in self._roll_waits and self._open_rolls.open(cid) == 0:
@@ -671,20 +671,20 @@ class DiceCog(commands.Cog):
         if not task.cancelled() and task.exception() is not None:
             log.error("narration after the roll wait failed", exc_info=task.exception())
 
-    async def _post_manifest_button(self, channel, req: ManifestRequest) -> None:
+    async def _post_manifest_button(self, channel, req: ManifestRequest, *, said: str = "") -> None:
         """Post a Manifest button and count it as an open roll of the turn (D152), like
         :meth:`_post_dice_button`; an unknown power or a failed post is not counted."""
         cid = self._rt._brain_channel(channel)
         self._open_rolls.posted(cid)
         try:
-            posted = await self._send_manifest_button(channel, req)
+            posted = await self._send_manifest_button(channel, req, said=said)
         except BaseException:
             self._open_rolls.withdrawn(cid)
             raise
         if not posted:
             self._open_rolls.withdrawn(cid)
 
-    async def _send_manifest_button(self, channel, req: ManifestRequest) -> bool:
+    async def _send_manifest_button(self, channel, req: ManifestRequest, *, said: str = "") -> bool:
         """Resolve a Manifest request (power → Warp Rating + Difficulty + the psyker's Psi-Meisterschaft
         value, all in code) and post its button (ADR 022). False: no button (unknown power)."""
         resolved = resolve_manifest_request(
@@ -705,18 +705,21 @@ class DiceCog(commands.Cog):
                 if self._dice_animation_on() and resolved.target is not None else None)
         await self._rt._send_with_retry(
             channel, "🌀 Manifestation angefordert:",
-            view=DiceTestView(label, self._make_manifest_roll(channel, req, resolved, prep=prep)),
+            view=DiceTestView(label, self._make_manifest_roll(channel, req, resolved, prep=prep,
+                                                              said=said)),
         )
         return True
 
-    def _make_manifest_roll(self, channel, req: ManifestRequest, resolved, *, prep=None):
+    def _make_manifest_roll(self, channel, req: ManifestRequest, resolved, *, prep=None,
+                            said: str = ""):
         """Build the roll callback for a Manifest button: the engine rolls the Psychic Mastery Test,
         bookkeeps Warp Charge against the Threshold, resolves Perils when triggered, persists the
         psyker's Warp Charge, and feeds every line back so the DM narrates the consequence.
 
         A failed Manifest Test by a character with Fate left gets the Fate choice first (IM p.220:
         Fate rerolls a failed Test, the Manifest Test is one). Warp Charge and Perils follow from the
-        result that stands (IM p.161, step 3), so nothing is booked before the choice."""
+        result that stands (IM p.161, step 3), so nothing is booked before the choice. ``said`` is
+        the psyker's own line — a damaging power reads its target from it (D153)."""
         power = resolved.power
         who = resolved.character.name if resolved.character else req.target_name
 
@@ -744,12 +747,13 @@ class DiceCog(commands.Cog):
                 lines = [line, *self._book_manifest(channel, cid, who, resolved, result)]
                 await self._present_manifest(channel, dice_msg, resolved, "\n".join(lines),
                                              result.test.roll, result.test, prep=prep)
-                await self._feed_manifest(channel, guild_id, lines)
+                await self._finish_manifest(channel, guild_id, lines, resolved=resolved,
+                                            result=result, who=who, said=said)
                 return
             view = FateView(
                 pc.fate_available,
                 self._make_manifest_fate(channel, guild_id, dice_msg, req, resolved, result, line,
-                                         current),
+                                         current, said=said),
                 timeout=float(self._rt._fate_wait_seconds),
             )
             await self._present_manifest(channel, dice_msg, resolved, line, result.test.roll,
@@ -815,8 +819,79 @@ class DiceCog(commands.Cog):
             self._rt._brain.add_test_result(cid, ln)
         await self._narrate_rolls(channel, guild_id)
 
+    async def _finish_manifest(self, channel, guild_id, lines: list[str], *, resolved, result,
+                               who: str | None, said: str) -> None:
+        """Feed the Manifest result that stands and narrate it — or, when the power succeeded and
+        the profile gives it a single-target ``damage`` block (ADR 022, amendment 2026-11-27),
+        hand over to the damage flow like a weapon hit: wounds are booked by code, never by the
+        narration (golden rules #2 and #3; live 2026-11-27 a Smite hit left the target at 10/10)."""
+        cid = self._rt._brain_channel(channel)
+        for ln in lines:
+            self._rt._brain.add_test_result(cid, ln)
+        if result.test.success and await self._begin_power_damage(
+                channel, psyker=who, resolved=resolved, result=result, said=said):
+            return  # the damage flow narrates once a target is chosen/auto-applied
+        await self._narrate_rolls(channel, guild_id)
+
+    async def _begin_power_damage(self, channel, *, psyker: str | None, resolved, result,
+                                  said: str) -> bool:
+        """Start the damage flow for a manifested power. True if it took over (a target was hit
+        or a picker posted — it narrates); False when there is nothing to book in code: no
+        ``damage`` block, an area power ("Nova" — its targets stay the GM's call), no state, or
+        nobody to hit. The target is chosen exactly as for a weapon hit (D151)."""
+        profile = self._rt._profile
+        state = self._rt._state.get(self._rt._brain_channel(channel))
+        block = profile.power_damage(resolved.power) if profile is not None else None
+        if block is None or state is None or block["targets"] != "one":
+            return False
+        npcs = [n.name for n in self._rt._scene_npcs(state)]
+        party = [c.name for c in state.characters if c.name.lower() != (psyker or "").lower()]
+        if not npcs and not party:
+            return False
+        choice = combat.choose_attack_target(
+            said, self._target_phrases(npcs), self._target_phrases(party, party=True))
+        lone_npc = npcs[0] if (len(npcs) == 1 and not party) else None
+        target = lone_npc or choice.auto
+        if target is not None:
+            if lone_npc is None:
+                log.info("🎯 Ziel aus der Ansage: %s — '%s'", target, said[:60])
+            await self._apply_power_damage(channel, psyker=psyker, resolved=resolved,
+                                           result=result, target_name=target)
+            return True
+
+        async def _pick(interaction: discord.Interaction, name: str) -> None:
+            await self._apply_power_damage(channel, psyker=psyker, resolved=resolved,
+                                           result=result, target_name=name)
+
+        await self._rt._send_with_retry(
+            channel, f"🌀 **{psyker}** trifft mit {resolved.power} — wen trifft es?",
+            view=TargetSelectView(choice.order, _pick),
+        )
+        return True
+
+    async def _apply_power_damage(self, channel, *, psyker: str | None, resolved, result,
+                                  target_name: str) -> None:
+        """Resolve the power's damage against the target from the profile (base + the psyker's
+        bonus + SL, minus the soak the power does not ignore) and book it like a weapon hit."""
+        state = self._rt._state.get(self._rt._brain_channel(channel))
+        target = state.find(target_name) if state is not None else None
+        outcome = None
+        if target is not None:
+            sheet = None if target.is_npc else (
+                self._rt._characters.get(target_name) if self._rt._characters else None)
+            outcome = combat.resolve_power_damage(
+                self._rt._profile, self._rt._characters, power=resolved.power,
+                psyker_sheet=resolved.character, target=target, target_sheet=sheet,
+                success_level=result.test.degrees, rng=self._rt._rng,
+            )
+        if outcome is None:  # nothing to book — the Manifest line alone is narrated
+            await self._narrate_rolls(channel, channel.guild.id if channel.guild else None)
+            return
+        await self._book_damage(channel, state, outcome.damage, attacker=psyker,
+                                target_name=target_name, weapon=outcome.power)
+
     def _make_manifest_fate(self, channel, guild_id, dice_msg: dict, req: ManifestRequest,
-                            resolved, result, line: str, current: int):
+                            resolved, result, line: str, current: int, *, said: str = ""):
         """The Fate choice under a failed Manifest Test (ADR 063 on ADR 022): spend → the point is
         booked and the Test rerolled against the same Warp Charge, the second result stands; keep /
         timeout → the first stands. Only then is Warp Charge booked and the DM fed."""
@@ -848,7 +923,8 @@ class DiceCog(commands.Cog):
                     await dice_msg["message"].edit(view=None)
                 except discord.HTTPException:
                     pass
-            await self._feed_manifest(channel, guild_id, lines)
+            await self._finish_manifest(channel, guild_id, lines, resolved=resolved,
+                                        result=final, who=who, said=said)
 
         return _decide
 
@@ -978,18 +1054,26 @@ class DiceCog(commands.Cog):
             target=target, target_sheet=sheet,
             notation=notation, success_level=result.degrees, rng=self._rt._rng,
         )
-        state.apply_damage(target_name, outcome.damage.applied)
+        await self._book_damage(channel, state, outcome.damage, attacker=attacker,
+                                target_name=target_name, weapon=weapon)
+
+    async def _book_damage(self, channel, state, damage, *, attacker: str | None,
+                           target_name: str, weapon: str | None) -> None:
+        """Apply resolved damage to the target's wounds, post and persist it, and feed the line
+        back so the DM narrates the consequence — the shared end of a weapon hit and a
+        damaging psychic power."""
+        state.apply_damage(target_name, damage.applied)
         updated = state.find(target_name)
         downed = updated is not None and updated.wounds <= 0
         line = engine.describe_damage_de(
-            outcome.damage, attacker=attacker, target=target_name, weapon=weapon,
+            damage, attacker=attacker, target=target_name, weapon=weapon,
             new_wounds=updated.wounds if updated else 0,
             max_wounds=updated.max_wounds if updated else 0, downed=downed,
         )
         log.info("%s", line)
         await self._rt._send_with_retry(channel, line)
         self._rt._persist_and_refresh(channel)
-        self._rt._brain.add_test_result(cid, line)
+        self._rt._brain.add_test_result(self._rt._brain_channel(channel), line)
         await self._narrate_rolls(channel, channel.guild.id if channel.guild else None)
 
     def _render_turn(self, key: int) -> str:

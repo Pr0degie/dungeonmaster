@@ -100,4 +100,8 @@ manifests**, which is hard state (golden rule #3) and must not be left to the na
   IM p.214 reduces damage by armour only. Within the engine's soak, "ignores Armour" drops the
   armour and keeps the Toughness Bonus — the conservative reading; Life Leech's "ignores Armour and
   can't be reduced in any way" is what `ignores: ["armour", "toughness_bonus"]` expresses.
-- Wiring into the Manifest button flow is a separate step (live-unverified until then).
+- Wired the same day (D153): `DiceCog._finish_manifest` feeds the result that stands and, for a
+  successful power whose block says `"targets": "one"`, starts the damage flow of a weapon hit — the
+  target from the psyker's own line or the picker (`combat.choose_attack_target`, D151), the wounds
+  through `_book_damage`. Area powers keep their block but stay narrative: who stands in the zone is
+  the GM's call. Live-unverified.
