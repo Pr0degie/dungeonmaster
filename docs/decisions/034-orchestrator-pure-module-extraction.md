@@ -76,3 +76,20 @@ Byte-exact body copy, **0 test edits**, ruff clean, suite **319 green**. Sole no
 `[latency]`/`[ctx]` lines now log under logger name `dmbot.turn_timing` instead of `dmbot.runtime`
 (message text and the `[latency]` prefix unchanged; the console INFO format drops the name anyway,
 and no test asserts it).
+
+## Amendment — `memory/state.py` split (2026-11-27)
+
+The same pattern applied to `dmbot/memory/state.py` (plan
+[split-state-dicecog-orchestrator.md](../plans/split-state-dicecog-orchestrator.md), round 1; no new
+ADR). Two byte-exact moves, each its own commit: the German prompt/panel renderings
+(`world_state_summary_de`, `pressure_panel_de`, the clock/fact/mission lines) into
+`memory/state_text.py`, then the records `WorldState` is made of (the ten bounding constants,
+`_validated_fact_text`, `AgendaStep` `NpcMemory` `Combatant` `step_attitude` `Clock`
+`slugify_clock_id` `Deadline` `Fact` `Quest`) into `memory/records.py`. `state.py` re-exports every
+moved name (`# noqa: F401`); `WorldState` stays whole there. `state.py` 1457 → **868** lines
+(`records.py` 451, `state_text.py` 212). **0 test edits**, ruff clean, suite **1647 green, 4 xfail**,
+`dm-eval` exit 0 with untouched goldens; a seeded, saved and reloaded `state.json` is byte-identical
+to the base. Four gametime imports only the renderings used were dropped from `state.py` (no
+reader). Sole non-byte effect: the two NPC log lines in `records.py` now log under
+`dmbot.memory.records` instead of `dmbot.memory.state` (message text unchanged, nothing filters on
+the name).

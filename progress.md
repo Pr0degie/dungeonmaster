@@ -13,13 +13,15 @@ is on-demand._
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
 - **Newest round:** 27.11.: zweiter Claude-Lauf ausgewertet, fünf Befunde gebaut — D151 genanntes Ziel, D152 ein
-  Erzählzug zur Zeit (ADR 067), D153 Psi-Schaden, D154 Bogen-Antwort, D155 Schaden nur um Rüstung. Danach nur geplant:
-  Zerlegung der drei größten Dateien ([Plan](docs/plans/split-state-dicecog-orchestrator.md)), entschieden, `state.py` zuerst. „Last session“.
+  Erzählzug zur Zeit (ADR 067), D153 Psi-Schaden, D154 Bogen-Antwort, D155 Schaden nur um Rüstung. Danach Runde 1
+  der Zerlegung ([Plan](docs/plans/split-state-dicecog-orchestrator.md)): `memory/state.py` 1457 → 868 Zeilen
+  (`records.py`, `state_text.py`, ADR 034 Nachtrag), nur verschoben. „Last session“.
 - **Suite:** `uv run dm-check` grün — 1647 Tests, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
 - **Live-unverifiziert:** D151–D155 (Prüfpunkte W7, F11, W8, W4 im Beipackzettel
   [phase-11-abend.md](docs/phase-11-abend.md), „Nächster Lauf“). Aus D140–D147 noch offen: F2 (nur die
   Hängeschleife belegt), F4, F6, F7, F9, F10, W2, W3, W6 (Schicksal nach Fehlschlag). Dazu D139 (Pause statt
-  Nemo — nie gespielt), D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134.
+  Nemo — nie gespielt), D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134. Die `state.py`-Zerlegung (Prüfung im Plan,
+  „Live-unverified after each round“).
 - **Next concrete step:** Bot neu starten (der Stand von 16:00 am 27.11. kennt D151–D155 nicht), dann ein kurzer
   Lauf für F11, W4, W7, W8 und die offenen Punkte, danach die Pause-Probe (D139). Abschnitt „Next concrete
   step“.
@@ -62,6 +64,11 @@ Belege des Laufs: [phase-11-abend.md](docs/phase-11-abend.md), „Ergebnis vom 2
   Methodenzuordnung, Schrittfolge und Prüfung je Schritt für `memory/state.py`, `orchestrator.py` und
   `voice/dicecog.py`. Reihenfolge: `state.py` zuerst, `dicecog.py` erst nach dem nächsten Lauf. Tobi hat alle
   sechs Entscheidungen wie empfohlen getroffen; siehe „Next concrete step“.
+- **Zerlegung Runde 1 — `memory/state.py`** (ADR 034, Nachtrag): zwei Umzüge, je ein Commit, Byte für Byte —
+  die deutschen Prompt-/Panel-Zeilen nach `memory/state_text.py`, die Datensätze (`Combatant`, `Clock`, `Fact`,
+  `Quest`, …) nach `memory/records.py`; `state.py` exportiert alles weiter, `WorldState` bleibt ganz. 1457 → 868
+  Zeilen, null Test-Änderungen, `state.json` byte-gleich zur Basis. Ergebnistabelle im Plan. Einziger sichtbarer
+  Unterschied: zwei NSC-Logzeilen tragen jetzt `dmbot.memory.records`.
 
 **Arbeitsablauf entschlackt (2026-11-15, D150).** Am Tisch ändert sich nichts. Ein Prüfbefehl ersetzt die drei
 Einzelprüfungen, der Commit-Hook prüft nach einem grünen Lauf nicht noch einmal, die WIP-Grenze ist weg.
@@ -95,8 +102,8 @@ Die Sandbox hält den Stand vom 27.11. (Pfandhalle, Tag 1, 23:06, Recap vom `!wr
 
 **Daneben, vom Lauf unabhängig: die Zerlegung der drei größten Dateien** nach
 [split-state-dicecog-orchestrator.md](docs/plans/split-state-dicecog-orchestrator.md); Tobi hat am 27.11. alle sechs
-Entscheidungen wie empfohlen getroffen, bewegt ist noch nichts. Zuerst `memory/state.py` (1457 → ≈ 860 Zeilen, zwei
-Schritte, `WorldState` bleibt ganz), dann `orchestrator.py` (1421 → ≈ 630, fünf Schritte) — vor dem Lauf erlaubt,
+Entscheidungen wie empfohlen getroffen. `memory/state.py` ist erledigt (1457 → 868, 27.11.). Als Nächstes
+`orchestrator.py` (1421 → ≈ 630, fünf Schritte) — vor dem Lauf erlaubt,
 aber nie dazwischen: fertig und grün vor dem Bot-Neustart oder erst nach der Auswertung. `voice/dicecog.py`
 (1442 → ≈ 730) erst, wenn der Lauf ausgewertet und seine Fix-Runde committet ist; seine Zeilennummern im Plan
 werden dann neu gemessen.

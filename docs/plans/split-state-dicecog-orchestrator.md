@@ -1,7 +1,8 @@
 # Plan — split `memory/state.py`, `orchestrator.py` and `voice/dicecog.py`, no behaviour change
 
 **Status:** approved by Tobi on 2026-11-27, all six decisions as recommended (see *Decisions*).
-Nothing is moved yet; the first round is `memory/state.py`.
+Round 1 (`memory/state.py`) done on 2026-11-27 — see *Result* under section 1. Next:
+`orchestrator.py`.
 **Date:** 2026-11-27 · **Base commit:** `676f78e` (all line numbers below refer to it)
 **Pattern:** [runtime-split.md](runtime-split.md) · **Rules:** lesson
 [byte-exact-moves-stepwise-gates](../lessons/byte-exact-moves-stepwise-gates.md)
@@ -73,6 +74,25 @@ decides at the step). `state` imports `state_text` for the re-export. No cycle.
 
 **Order:** S1 first — a leaf nobody inside `state.py` calls, so it proves the re-export shape
 on the smaller slice. S2 second.
+
+### Result — `state.py` (2026-11-27, done)
+
+| Step | Commit | `state.py` | New module | Suite | Byte check | `state.json` check |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | base `d3914c5` | 1457 | — | 1647 passed, 4 xfail; ruff clean; `dm-eval` 0 | snapshot: 187 names | 2163 bytes, sha `725262287117…` |
+| S1 | `2907fd2` | 1279 | `state_text.py` 212 | 1647 / 4 / clean / 0 | slice 1269–1457 verbatim; rest = imports + re-export block | identical bytes, prompt block, panel |
+| S2 | `81bfbbc` | **868** | `records.py` 451 | 1647 / 4 / clean / 0 | slices 59–95 and 154–549 verbatim; rest = re-export block + dropped blank lines | identical bytes, prompt block, panel |
+
+- Every name of the snapshot is still reachable as `dmbot.memory.state.<name>` with the same kind,
+  signature and source, except four gametime imports (`day_phase_de`, `deadline_line_de`,
+  `remaining_de`, `render_time_phase_de`) that only the S1 functions used: dropped from
+  `state.py`, no reader under `dmbot/`, `tests/`, `tools/`. Zero test edits; goldens untouched.
+- Logger names (decision 5): `records.py` has its own logger, so the two NPC lines (memory prune,
+  ignored attitude proposal) log under `dmbot.memory.records`. `state_text.py` logs nothing.
+- `state_text.py` imports the record types from `records` at runtime and `WorldState` only under
+  `TYPE_CHECKING` (in S1, before `records` existed, all of them came from `state` under
+  `TYPE_CHECKING`).
+- Slice B ended at base line 538, not 539 (539 is the blank line before `WorldState`).
 
 ## 2 — `dmbot/orchestrator.py` (second)
 
