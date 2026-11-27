@@ -12,13 +12,11 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** 27.11.: zweiter Claude-Lauf ausgewertet, fünf Befunde gebaut — D151 genanntes Ziel, D152 ein
-  Erzählzug zur Zeit (ADR 067), D153 Psi-Schaden, D154 Bogen-Antwort, D155 Schaden nur um Rüstung. Danach Runde 1
-  der Zerlegung ([Plan](docs/plans/split-state-dicecog-orchestrator.md)): `memory/state.py` 1457 → 868 Zeilen
-  (`records.py`, `state_text.py`, ADR 034 Nachtrag), Runde 2: `orchestrator.py` 1421 → 608 Zeilen (Paket
-  `dmbot/brain/`: `channel.py` + vier Mixins, ADR 065 Nachtrag), Runde 3: `voice/dicecog.py` 1442 → 720 Zeilen
-  (`voice/npccog.py`, Paket `voice/dice/` mit drei Mixins, ADR 039 + 065 Nachtrag). Alle drei nur verschoben,
-  bis auf die Naht `DiceCog._prepare_throw` (D0). „Last session“.
+- **Newest round:** 27.11.: zweiter Claude-Lauf ausgewertet, fünf Befunde gebaut (D151–D155, ADR 067). Danach
+  die drei größten Dateien zerlegt, nur verschoben ([Plan](docs/plans/split-state-dicecog-orchestrator.md),
+  D156): `memory/state.py` 1457 → 868 Zeilen, `orchestrator.py` 1421 → 608 (Paket `dmbot/brain/`),
+  `voice/dicecog.py` 1442 → 720 (`voice/npccog.py`, Paket `voice/dice/`). Einzige neue Logik: die Naht
+  `DiceCog._prepare_throw`. „Last session“.
 - **Suite:** `uv run dm-check` grün — 1650 Tests, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
 - **Live-unverifiziert:** D151–D155 (Prüfpunkte W7, F11, W8, W4 im Beipackzettel
   [phase-11-abend.md](docs/phase-11-abend.md), „Nächster Lauf“). Aus D140–D147 noch offen: F2 (nur die
@@ -44,31 +42,15 @@ _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-a
 
 ## Last session
 
-**Zweiter Claude-Lauf ausgewertet, fünf Befunde daraus gebaut (2026-11-27, D151–D155).** Drei Spieler
-haben 44 Minuten gespielt (18 Erzählantworten, `!wrap`). Der Lauf zeigte vor allem, dass zwei Erzählzüge
-gleichzeitig laufen und ineinander gesprochen werden. Das und vier weitere Punkte sind behoben; am Tisch
-geprüft ist davon nichts, der Bot braucht einen Neustart. `uv run dm-check` grün (1647 Tests, 4 xfail).
-Belege des Laufs: [phase-11-abend.md](docs/phase-11-abend.md), „Ergebnis vom 27.11.2026“.
-- **D152 — ein Erzählzug zur Zeit** (ADR 067): nie zwei Erzählanfragen gleichzeitig, jede Antwort wird ganz
-  gesprochen, mehrere Proben eines Zugs ergeben eine Erzählung (höchstens `DM_ROLL_BATCH_WAIT_SECONDS` = 30 s
-  Wartezeit). `[latency]` zeigt `queued=` und `spoke_after=`; `!wrap` schreibt seinen Recap ins Log.
-- **D151 — ein Angriff trifft das genannte Ziel:** nennt die eigene Zeile des Angreifers genau einen
-  anwesenden NSC, entfällt die Zielauswahl; bei Verneinung, Mehrdeutigkeit oder einem Mitspieler kommt sie.
-- **D153 — Psi-Schaden wird gebucht** (ADR 022, Nachtrag): Smite, Force Bolt und Bio-Lightning ziehen Wunden
-  ab, Ziel aus der Ansage oder der Auswahl mit „Niemand davon“. Nova bleibt Erzählung.
-- **D154 — „Was kann ich?“ aus dem Bogen:** der eigene Bogen als Textnachricht, die Erzählung bleibt; Zeilen
-  ohne Buchstaben oder Ziffern gehen nicht mehr an den DM. Persona unverändert.
-- **D155 — Schaden nach Regelbuch** (ADR 015, Nachtrag): nur Rüstung mindert Schaden, der Widerstandsbonus
-  nicht mehr. Jeder Treffer ist 2–4 Wunden härter. Tobis Entscheidung.
-- **Arbeitsweise:** Psi-Schaden, Bogen-Antwort und der Beipackzettel kamen von drei parallelen Agenten, zwei
-  davon auf eigenen Zweigen; vier `/code-review`-Durchgänge (7, 8 und 9 Funde, alle bis auf zwei notierte
-  behoben). D155 lief ohne Review. Belegt im Lauf: F1, F3, F5 (Cache), F8, W1, W5, W6 (erster Teil), N1, N2, N5.
-- **Plan für die drei größten Dateien** (kein Code bewegt):
-  [split-state-dicecog-orchestrator.md](docs/plans/split-state-dicecog-orchestrator.md) — Zielmodule,
-  Methodenzuordnung, Schrittfolge und Prüfung je Schritt für `memory/state.py`, `orchestrator.py` und
-  `voice/dicecog.py`. Reihenfolge: `state.py` zuerst, `dicecog.py` erst nach dem nächsten Lauf. Tobi hat alle
-  sechs Entscheidungen wie empfohlen getroffen; siehe „Next concrete step“. **Am selben Tag geändert
-  (Entscheidung 7 im Plan): `dicecog.py` läuft vor dem nächsten Lauf**, alles wird danach in einem Lauf geprüft.
+**Die drei größten Dateien zerlegt (2026-11-27, D156).** Am Tisch ändert sich nichts außer einer Überschrift
+in `!help`. `memory/state.py`, `orchestrator.py` und `voice/dicecog.py` sind in drei Runden von je rund 1450
+auf 868, 608 und 720 Zeilen geschrumpft; der Code wurde Byte für Byte verschoben, einzige neue Logik ist die
+Naht `DiceCog._prepare_throw`. `uv run dm-check` grün (1650 Tests, 4 xfail). Am Tisch geprüft ist davon nichts.
+Plan mit Ergebnistabelle je Runde:
+[split-state-dicecog-orchestrator.md](docs/plans/split-state-dicecog-orchestrator.md).
+- **Entscheidungen:** Tobi hat die sechs Entscheidungen des Plans wie empfohlen getroffen und am selben Tag
+  eine geändert (Entscheidung 7): `dicecog.py` läuft vor dem nächsten Lauf statt danach, alles wird in einem
+  Lauf geprüft.
 - **Zerlegung Runde 1 — `memory/state.py`** (ADR 034, Nachtrag): zwei Umzüge, je ein Commit, Byte für Byte —
   die deutschen Prompt-/Panel-Zeilen nach `memory/state_text.py`, die Datensätze (`Combatant`, `Clock`, `Fact`,
   `Quest`, …) nach `memory/records.py`; `state.py` exportiert alles weiter, `WorldState` bleibt ganz. 1457 → 868
@@ -101,21 +83,32 @@ Belege des Laufs: [phase-11-abend.md](docs/phase-11-abend.md), „Ergebnis vom 2
   Lauf“, steht jetzt eine Liste mit 15 Handgriffen in Spielreihenfolge, die alles Offene berührt: D151–D155, die
   offenen Punkte aus D140–D147, die drei Zerlegungen und die Pause-Probe. Überschrift und Vorbereitungsabsatz
   des Abschnitts nennen den Stand vom 27.11. statt vom 14.11.
+- **Doku-Abgleich beim Wrap-up:** die Commits des Tages gegen die lebende Doku geprüft. Nachgetragen: D156 im
+  Entscheidungslog (die Zerlegung hatte keine Zeile), die Regel für die Würfel-Mixins in `docs/conventions.md`
+  (Renderer nur über `DiceCog`-Methoden, Kommandos nie auf ein Mixin), Psi-Schaden (D153) und Bogen-Antwort
+  (D154) in `architecture.md` §7. Symbole, Pfade und ADR-Nachträge stimmten sonst.
 
-**Arbeitsablauf entschlackt (2026-11-15, D150).** Am Tisch ändert sich nichts. Ein Prüfbefehl ersetzt die drei
-Einzelprüfungen, der Commit-Hook prüft nach einem grünen Lauf nicht noch einmal, die WIP-Grenze ist weg.
-`uv run dm-check` grün (pytest 1561 grün, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0).
-- **`uv run dm-check`** (`dmbot/tools/dm_check.py`): ruff (F), Suite, `dm-eval`, ein Gesamtergebnis. Grün → der
-  git-Tree-Hash von `dmbot/` `tests/` `data/systems/` im Arbeitsbaum (inkl. ungetrackter Dateien) landet in
-  `.dm-check.stamp`; der pre-commit-Hook lässt den Commit ohne Lauf durch, solange der Hash passt. Ein roter Lauf löscht
-  den Merkzettel vorher. `tools/hooks/test-on-change.sh` entfällt; `tools/cleanup_15aug.py` bleibt (zwei Doku-Verweise).
-- **`characters.local.json`** (git-ignoriert) gewinnt im Lader über die getrackte `characters.json`; die lokale
-  Party-Änderung des Stamm-Channels (ohne Gellicus) liegt jetzt dort, die getrackte Datei ist wieder sauber.
-- **Werkzeuge:** Freigabeliste in `.claude/settings.json`; Subagent `log-reader` (Opus, nur lesen) für die Lesearbeit
-  in `playtest-triage`; Skill `adopt-workflow` (angelegt, nie ausgeführt). CLAUDE.md: Regeln für den Abschlussbericht
-  und „Doku im selben Commit“, Sprachkonvention und Bot-A-Abschnitt in die Golden Rules #5/#8 gefaltet.
-  `docs/conventions.md`: Regel für Review-Befunde (höchstens ein Review pro Runde, am Ende).
+**Zweiter Claude-Lauf ausgewertet, fünf Befunde daraus gebaut (2026-11-27, D151–D155).** Drei Spieler
+haben 44 Minuten gespielt (18 Erzählantworten, `!wrap`). Der Lauf zeigte vor allem, dass zwei Erzählzüge
+gleichzeitig laufen und ineinander gesprochen werden. Das und vier weitere Punkte sind behoben; am Tisch
+geprüft ist davon nichts, der Bot braucht einen Neustart. `uv run dm-check` grün (1647 Tests, 4 xfail).
+Belege des Laufs: [phase-11-abend.md](docs/phase-11-abend.md), „Ergebnis vom 27.11.2026“.
+- **D152 — ein Erzählzug zur Zeit** (ADR 067): nie zwei Erzählanfragen gleichzeitig, jede Antwort wird ganz
+  gesprochen, mehrere Proben eines Zugs ergeben eine Erzählung (höchstens `DM_ROLL_BATCH_WAIT_SECONDS` = 30 s
+  Wartezeit). `[latency]` zeigt `queued=` und `spoke_after=`; `!wrap` schreibt seinen Recap ins Log.
+- **D151 — ein Angriff trifft das genannte Ziel:** nennt die eigene Zeile des Angreifers genau einen
+  anwesenden NSC, entfällt die Zielauswahl; bei Verneinung, Mehrdeutigkeit oder einem Mitspieler kommt sie.
+- **D153 — Psi-Schaden wird gebucht** (ADR 022, Nachtrag): Smite, Force Bolt und Bio-Lightning ziehen Wunden
+  ab, Ziel aus der Ansage oder der Auswahl mit „Niemand davon“. Nova bleibt Erzählung.
+- **D154 — „Was kann ich?“ aus dem Bogen:** der eigene Bogen als Textnachricht, die Erzählung bleibt; Zeilen
+  ohne Buchstaben oder Ziffern gehen nicht mehr an den DM. Persona unverändert.
+- **D155 — Schaden nach Regelbuch** (ADR 015, Nachtrag): nur Rüstung mindert Schaden, der Widerstandsbonus
+  nicht mehr. Jeder Treffer ist 2–4 Wunden härter. Tobis Entscheidung.
+- **Arbeitsweise:** Psi-Schaden, Bogen-Antwort und der Beipackzettel kamen von drei parallelen Agenten, zwei
+  davon auf eigenen Zweigen; vier `/code-review`-Durchgänge (7, 8 und 9 Funde, alle bis auf zwei notierte
+  behoben). D155 lief ohne Review. Belegt im Lauf: F1, F3, F5 (Cache), F8, W1, W5, W6 (erster Teil), N1, N2, N5.
 
+_Arbeitsablauf entschlackt (D150): [Archiv](docs/progress-archive.md), „rotiert (2026-11-27, Zerlegung der drei größten Dateien)“._
 _Die fünf Runden vom 27.11. im Einzelnen (D151–D155, Auswertung) und das Log-Archiv D149: [Archiv](docs/progress-archive.md), „rotiert (2026-11-27, Lauf und D151–D155)“._
 _Nacharbeiten D148 (ADR 066 B verworfen): [Archiv](docs/progress-archive.md), „rotiert (2026-11-15, Arbeitsablauf D150)“. Textvergleich D146/D147: [Archiv](docs/progress-archive.md), „rotiert (2026-11-15, Log-Archiv D149)“. Der
 Claude-Abend vom 14.11. und die Folgerunde D140–D145: [Archiv](docs/progress-archive.md), „rotiert (2026-11-14,
@@ -123,27 +116,20 @@ Textvergleich D146/D147)“; Ergebnis des Abends im Beipackzettel [phase-11-aben
 
 ## Next concrete step
 
-**Bot neu starten, dann ein kurzer Lauf für die Runden vom 27.11.** Der laufende Bot (Start 27.11., 16:00)
-kennt D151–D155 nicht. Prüfpunkte im Beipackzettel [phase-11-abend.md](docs/phase-11-abend.md), „Nächster
-Lauf“: F11 (zwei Proben im selben Zug ergeben eine Erzählung, keine Antwort wird in eine andere gesprochen),
-W7 (das genannte Ziel wird getroffen), W8 (Smite zieht Wunden ab, ohne Abzug), W4 („Was kann ich?“ postet den
-Bogen); dazu die offenen F2, F4, F6, F7, F9, F10, W2, W3, W6. Danach Teil B: Pause statt Nemo (D139,
-PowerShell als Administrator — die Firewall-Regel trennt auch Claude-Code-Sitzungen).
+**Bot neu starten, dann ein Lauf, der alles vom 27.11. zusammen prüft.** Der laufende Bot (Start 27.11., 16:00)
+kennt weder D151–D155 noch die drei Zerlegungen. Abzuarbeiten ist die Checkliste im Beipackzettel
+[phase-11-abend.md](docs/phase-11-abend.md), „Nächster Lauf“: 15 Handgriffe in Spielreihenfolge. Sie deckt
+F11, W7, W8 und W4 (D151–D155), die offenen F2, F4, F6, F7, F9, F10, W2, W3, W6 und je Zerlegung die Stellen,
+die ihr Code berührt (`state.py`: Laden und Buchen; `orchestrator.py`: Zug, `!redo`, Opening, `!wrap`, `!rules`;
+`dicecog.py`: Schicksals-Neuwurf mit zweitem Wurf, Manifestation mit Schaden, Zielauswahl, die NSC-Kommandos und
+`!help`). Am Ende steht Teil B: Pause statt Nemo (D139, PowerShell als Administrator — die Firewall-Regel trennt
+auch Claude-Code-Sitzungen).
 Die Sandbox hält den Stand vom 27.11. (Pfandhalle, Tag 1, 23:06, Recap vom `!wrap`): weiterspielen oder vorher
 `ingest_session --wipe-debug`. `characters.local.json` enthält Fridolin, Gellicus und Rektalus.
 
-**Daneben, vom Lauf unabhängig: die Zerlegung der drei größten Dateien** nach
-[split-state-dicecog-orchestrator.md](docs/plans/split-state-dicecog-orchestrator.md); Tobi hat am 27.11. alle sechs
-Entscheidungen wie empfohlen getroffen. `memory/state.py` (1457 → 868) und `orchestrator.py` (1421 → 608) sind
-erledigt (27.11.), beide fertig und grün vor dem Bot-Neustart. Der erste Lauf danach sollte für `orchestrator.py`
-einmal durchspielen: einen erzählten Zug mit Wurf, `!redo`, `!start` oder `!intro`, `!wrap` (Recap) und `!rules`
-mit einer Frage. `voice/dicecog.py` (1442 → 720) ist seit dem 27.11. ebenfalls erledigt — als Runde 3 **vor**
-dem Lauf (Entscheidung 7 im Plan, mit ihrem Preis). Der Lauf sollte dafür einmal durchspielen: eine Probe mit
-Schicksals-Neuwurf (bei eingeschalteter Wurf-Animation erscheint ein zweiter Wurf), eine Manifestation mit
-Schaden (Smite) und eine mit Schicksals-Neuwurf, einen Angriff mit Zielauswahl und einen mit genanntem Ziel,
-`!npc add` und `!npc list`, `!agenda`, `!agenden`, `!npcmem` und `!help` (die vier NSC-Kommandos stehen dort
-unter `NpcCog`). Zeigt der Würfelfluss einen Fehler, sind Fix (D151–D153) und Umzug beide verdächtig; für den
-Fix spricht dann die Byte-Prüfung im Plan.
+**Zeigt der Würfelablauf im Lauf einen Fehler,** sind die Änderungen D151–D153 und der Umzug von `dicecog.py`
+beide verdächtig (Entscheidung 7 im [Plan](docs/plans/split-state-dicecog-orchestrator.md)). Für den Fix spricht
+dann die Byte-Prüfung dort; jeder Umzug ist ein eigener Commit und lässt sich einzeln zurücknehmen.
 
 **Aus dem Lauf vom 27.11., nicht gebaut:**
 - **NSCs nennen Charakternamen, die niemand gesagt hat** (16:10:51 „Fridolin, so heißt ihr doch“, 16:15:35

@@ -66,7 +66,7 @@ here is its contract, which DMbot calls:
   only the cosmetic edits run in a task (`_animate_result`): the throw swaps **only the picture** (never
   `content`, or the box jumps), then `_result_edit(large=True)` puts the result line in the text and the
   die in the box. A Fate reroll is thrown the same way. The throw is picked and pre-rendered when the
-  button is posted (`prepare_throw_async`). Renderer stages live in `tools/generate_dice.py`
+  button is posted (`DiceCog._prepare_throw`, the only reader of `prepare_throw_async`). Renderer stages live in `tools/generate_dice.py`
   (`shaded_die` → `transform` → `ascii_pass`; move the *shaded* die, never the ASCII image); side faces
   carry `face_numbers` (fixed per value). PNGs are saved 600 px / 64 colours, GIFs 16 colours.
   `tools/dice_throw.py`: `simulate` is Tobi's tuned prototype — keep it verbatim; the frame plan around
@@ -77,6 +77,15 @@ here is its contract, which DMbot calls:
   re-fetching, never re-uploading) and `_animate_stored` points the box at the link; the result stays an
   uploaded attachment, started early by the learnt `_upload_lead_s`. The trajectory comes from
   `dice_images._THROW_RNG`, never `self._rt._rng`. Look at one throw: `--preview-throw <seed>`.
+- **Dice mixins (`voice/dice/`, ADR 065 amendment 2026-11-27):** `routing`, `damage` and `manifest` hold
+  methods of `DiceCog`; `self` is the cog, state is created in `DiceCog.__init__`. Whatever draws the throw or
+  the result stays in `dicecog.py`: the dice tests replace seven names on the namespace `dmbot.voice.dicecog`
+  (`get_dice_image_async`, `get_dice_gif_async`, `get_target_image_async`, `prepare_throw_async`,
+  `flight_seconds`, `resolve_target`, `REVEAL_GRACE_S`), and only a function defined in that module sees the
+  replacement. A mixin method that needs one of them calls a `DiceCog` method through `self`
+  (`_prepare_throw`, `_animate_result`, `_result_edit`), never its own import. Commands never go on a mixin
+  (ADR 039): a command cluster becomes a sub-cog, as `NpcCog` (`voice/npccog.py`) did for `!npc`, `!npcmem`,
+  `!agenda`, `!agenden`.
 - **Player panel (D132/D133):** posted once at the bottom, then only edited in place — never re-posted;
   after a restart `_adopt_old_panel` edits the bot's newest panel from the channel and deletes older
   duplicates (one per channel). With the panel on there is no separate pressure panel: time, deadlines

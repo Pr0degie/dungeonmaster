@@ -373,7 +373,10 @@ after the recap and before the history.
 > (§9) — so it differs between D&D, IM, etc. That lets the engine roll stat-aware and track the
 > right resource (HP/wounds/stress/…). The vector store holds only the *rulebook/lore corpus*
 > and *played-session transcripts* (ADR 054, §8) — never the sheets; the adventure takes the
-> scene-card path (§8).
+> scene-card path (§8). A player's explicit question about their own abilities ("Was kann ich?")
+> is answered from this data in code (D154): `characters.is_sheet_question` recognises the line,
+> the speaker's characteristics, skills, talents, powers and Fate are posted as a text message
+> (`SessionRuntime._post_sheet_answer`), and the line still reaches the DM for the narration.
 
 > **Auto-applied combat damage (Phase 9, ADR 015).** On a successful **attack** test (skill ∈ the
 > profile's `combat.attack_skills`) the engine rolls the weapon's damage and the cog applies
@@ -383,7 +386,11 @@ after the recap and before the history.
 > over the scene's NPCs + party; `!npc add` registers enemies, `!damage`/`!heal` are GM overrides.
 > All profile-driven (a `combat` block: `attack_skills`, a `weapons` damage table, `default_damage`,
 > a `soak` source) so it stays system-agnostic — a profile without that block simply has no
-> auto-damage.
+> auto-damage. A **psychic power that deals damage the moment it manifests** is booked the same
+> way (D153, ADR 022 amendment): the power's structured `damage` block in the profile's catalog is
+> resolved by `combat.resolve_power_damage`, the target comes from the psyker's own line or the
+> picker (which also offers "nobody"), and the wounds go through the same booking as a weapon hit.
+> Powers without such a block, and those whose block says `"targets": "area"` (Nova), stay narration.
 
 **b) Session recaps (free text) — the "narrative thread"**
 On session end (the `wrap up` command) — or on context overflow — the LLM produces a
