@@ -37,7 +37,7 @@ Blöcke fallen weg.
 | 3 | Abenteuer | `Adventure.adventure_block_de` (`rag/adventure.py`) | bei Szenenwechsel und abgehakten Elementen |
 | 4 | Weltzustand | `world_state_summary_de` (`memory/state_text.py`) | bei jeder Zustandsänderung |
 | 5 | NSC-Gedächtnis | `npc_memory_block_de` (`memory/npc_memory.py`) | bei Szenenwechsel |
-| 6 | RAG | `RulebookRetriever.fetch_block` (`rag/retrieve.py`) | jeden Zug |
+| 6 | RAG | `RulebookRetriever.fetch_block` (`rag/retrieve.py`) | jeden Zug mit Spielerzeile |
 | 7 | Wer spielt wen | `CharacterStore.alias_hint_de` (`rules/characters.py`) | beim `!join` |
 
 ### 1 · Persona
@@ -125,7 +125,8 @@ Nur für NSCs, die gerade in der Szene sind: die wichtigsten Erinnerungen jedes 
 
 ### 6 · RAG
 
-Der einzige Block, der pro Zug frisch gesucht wird. Meist leer. Wenn nicht, in dieser
+Der einzige Block, der pro Zug frisch gesucht wird (bei Zügen ohne Spielerzeile entfällt
+die Suche, der Block ist dann leer). Meist leer. Wenn nicht, in dieser
 Reihenfolge: `## Regelwerk`, `## Weltwissen`, `## Früher in der Kampagne`. Details in
 Kapitel 5.
 

@@ -680,7 +680,11 @@ class DeliveryPipeline:
                         should_abort=lambda: self._rt._paused,
                     )
                 timing.llm_done = time.monotonic()
-                timing.take_llm_stats(self._rt._brain.last_llm_stats)
+                timing.take_llm_stats(
+                    self._rt._brain.last_llm_stats,
+                    # an opening looks nothing up — last_rag_ms would be an earlier turn's
+                    rag_ms=self._rt._brain.last_rag_ms if opening is None else None,
+                )
             finally:
                 await sentence_q.put(None)  # sentinel: generation finished
 
@@ -933,7 +937,8 @@ class DeliveryPipeline:
                     channel_id, check=self._rt.consistency_checker(channel)
                 )
             timing.llm_done = time.monotonic()
-            timing.take_llm_stats(self._rt._brain.last_llm_stats)
+            timing.take_llm_stats(self._rt._brain.last_llm_stats,
+                                  rag_ms=self._rt._brain.last_rag_ms)
         except Exception:
             log.exception("DM turn failed (auto)")
             await self._rt._send_with_retry(channel, "(Der Spielleiter schweigt — Fehler, siehe Log.)")
@@ -964,7 +969,8 @@ class DeliveryPipeline:
                     self._rt._brain_channel(channel), check=self._rt.consistency_checker(channel)
                 )
             timing.llm_done = time.monotonic()
-            timing.take_llm_stats(self._rt._brain.last_llm_stats)
+            timing.take_llm_stats(self._rt._brain.last_llm_stats,
+                                  rag_ms=self._rt._brain.last_rag_ms)
         except Exception:
             log.exception("DM turn failed (after roll)")
             await self._rt._send_with_retry(channel, "(Der Spielleiter schweigt — Fehler, siehe Log.)")

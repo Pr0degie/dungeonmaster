@@ -178,12 +178,16 @@ Gibt es weder Zeilen noch Ergebnisse, liefert `_prepare_turn` `None` und der Zug
 
 Zwei Dinge passieren, bevor das Modell gefragt wird.
 
-**RAG auffrischen.** `_refresh_rag` schickt die Spielerzeile an
+**RAG auffrischen.** `_refresh_rag` schickt die Eingabe des Zugs an
 `RulebookRetriever.fetch_block` (`rag/retrieve.py`). Der Text wird in einen Vektor
 umgewandelt, im Vektorspeicher werden ähnliche Regelwerk- und Lore-Stücke gesucht. In den
 Prompt kommen sie nur, wenn sie nah genug sind. Bei den meisten Erzählzügen ist der Block
 leer. Dazu können bis zu zwei Stücke aus früher gespielten Sitzungen kommen. Wie das genau
 funktioniert, ist Stoff für Kapitel 5.
+
+Ein Zug ohne Spielerzeile, etwa der Folgezug nach einem Würfelwurf, wird nicht
+nachgeschlagen: In einer Würfelzeile steckt keine Frage. Die Dauer der Suche steht als `rag=`
+in der `[latency]`-Zeile.
 
 **Anfrage bauen.** `_build_request` setzt drei Teile zusammen:
 

@@ -26,7 +26,8 @@ class _TurnTiming:
     ``[latency]`` line per turn by the delivery paths (``voice/delivery.py``, ``voice/dmcog.py``).
 
     Stages: stt (last routed utterance's transcribe ms), trigger→llm_done (turn start → Ollama
-    returned, with the autosend ``wait_idle`` portion broken out), tts (synth → WAV), bridge_wait
+    returned, with the autosend ``wait_idle`` portion and the retrieval before the call — ``rag``,
+    only on a turn that looked something up — broken out), tts (synth → WAV), bridge_wait
     (``/speak`` POST → return), total (trigger → ``/speak`` returned). ctx/gen come from the LLM
     client's ``last_stats``; spawn/cache/cut only appear when the backend reports them (the Claude
     client does, ADR 061 — Ollama's stats carry none of the three, so its line is unchanged).
@@ -39,6 +40,7 @@ class _TurnTiming:
     wait_ms: int = 0  # wait_idle before respond (autosend only); 0 otherwise
     queued_ms: int = 0  # waited for the narration call before this one (D152); 0 otherwise
     spoke_after_ms: int = 0  # the first sentence waited for the answer before to end (D152)
+    rag_ms: int | None = None  # embed + search before the narration call (None: nothing looked up)
     stt_ms: int | None = None  # transcribe ms of the last DM-routed utterance (None if not speech-driven)
     llm_done: float | None = None  # monotonic when Ollama returned (generation finished)
     first_audio: float | None = None  # monotonic at the first /speak POST (streaming time-to-first-audio)
@@ -57,7 +59,10 @@ class _TurnTiming:
     bridge_ms: int | None = None  # /speak POST → return = playback + transfer (streaming: summed)
     end: float | None = None  # monotonic when the last /speak returned
 
-    def take_llm_stats(self, stats: dict | None) -> None:
+    def take_llm_stats(self, stats: dict | None, *, rag_ms: int | None = None) -> None:
+        """Copy the narration call's stats. ``rag_ms`` is the brain's ``last_rag_ms`` for the same
+        turn; the opening turns, which look nothing up, leave it out."""
+        self.rag_ms = rag_ms
         if not stats:
             return
         self.prompt_eval = stats.get("prompt_eval_count")
@@ -101,6 +106,8 @@ class _TurnTiming:
             parts.append(f"wait={self.wait_ms}ms")
         if self.queued_ms:
             parts.append(f"queued={self.queued_ms}ms")
+        if self.rag_ms is not None:
+            parts.append(f"rag={self.rag_ms}ms")
         t2l = round((self.llm_done - self.trigger) * 1000) if self.llm_done is not None else None
         parts.append(f"trigger→llm_done={ms(t2l)}")
         if self.prompt_eval is not None:

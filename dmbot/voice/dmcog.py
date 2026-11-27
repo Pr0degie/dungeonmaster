@@ -297,7 +297,8 @@ class DMCog(commands.Cog):
                     check=self._rt.consistency_checker(ctx.channel),
                 )
                 timing.llm_done = time.monotonic()
-                timing.take_llm_stats(self._rt._brain.last_llm_stats)
+                timing.take_llm_stats(self._rt._brain.last_llm_stats,
+                                      rag_ms=self._rt._brain.last_rag_ms)
         except Exception:
             log.exception("DM turn failed")
             await ctx.send("(Der Spielleiter schweigt — Fehler bei der Antwort, siehe Log.)")
@@ -346,7 +347,8 @@ class DMCog(commands.Cog):
                     channel_id, check=self._rt.consistency_checker(ctx.channel)
                 )
                 timing.llm_done = time.monotonic()
-                timing.take_llm_stats(self._rt._brain.last_llm_stats)
+                timing.take_llm_stats(self._rt._brain.last_llm_stats,
+                                      rag_ms=self._rt._brain.last_rag_ms)
         except Exception:
             log.exception("DM redo failed")
             await ctx.send("(Fehler beim Neu-Erzählen, siehe Log.)")

@@ -17,8 +17,10 @@ is on-demand._
   D156): `memory/state.py` 1457 → 868 Zeilen, `orchestrator.py` 1421 → 608 (Paket `dmbot/brain/`),
   `voice/dicecog.py` 1442 → 720 (`voice/npccog.py`, Paket `voice/dice/`). Einzige neue Logik: die Naht
   `DiceCog._prepare_throw`. „Last session“.
-- **Suite:** `uv run dm-check` grün — 1650 Tests, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
-- **Live-unverifiziert:** D151–D155 (Prüfpunkte W7, F11, W8, W4 im Beipackzettel
+- **Suite:** `uv run dm-check` grün — 1650 Tests, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0 (Stand D156).
+  D157 bringt 7 Tests dazu und lief nur in einer Umgebung ohne PyTorch — **`uv run dm-check` steht aus**.
+- **Live-unverifiziert:** D157 (`rag=` in der `[latency]`-Zeile ansehen, vor allem beim ersten Zug nach einer
+  Pause). D151–D155 (Prüfpunkte W7, F11, W8, W4 im Beipackzettel
   [phase-11-abend.md](docs/phase-11-abend.md), „Nächster Lauf“). Aus D140–D147 noch offen: F2 (nur die
   Hängeschleife belegt), F4, F6, F7, F9, F10, W2, W3, W6 (Schicksal nach Fehlschlag). Dazu D139 (Pause statt
   Nemo — nie gespielt), D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134. Die Zerlegungen von `state.py`,
@@ -41,6 +43,12 @@ Beipackzettel), die Pause-Probe steht noch aus.
 _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Current focus (Verlauf)`._
 
 ## Last session
+
+**RAG-Nachschlag vor dem Erzählaufruf (2026-11-27, D157).** Ein Zug ohne Spielerzeile (Würfel-Folgezug,
+Regie-Notiz) wird nicht mehr nachgeschlagen, sein RAG-Block ist leer. Die `[latency]`-Zeile zeigt die Dauer
+des Nachschlags als `rag=…ms`, nur bei Zügen, die gesucht haben. Der Embed-Aufruf hält `bge-m3` 30 Minuten
+geladen. Vorher nicht gemessen; geprüft ohne PyTorch-Stack (Suite, ruff (F), `dm-eval`), nicht mit
+`uv run dm-check` und nicht am Tisch.
 
 **Lern-Doku `docs/verstehen/` (2026-11-27).** Zehn Kapitel auf Deutsch zum Durchlesen (Überblick, Spielzug,
 Prompt, Würfel, Gedächtnis, Abenteuer, Audio, LLM-Backend, Testen, Warum so?), Stand Commit `89d347a`. Für

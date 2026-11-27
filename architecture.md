@@ -522,8 +522,10 @@ adventure and the rulebook take **different paths**:
   multilingual — German questions against English rule text; D28's `nomic-embed-text` failed
   that, the store's meta table pins the model) → **sqlite-vec** (`data/vectordb/rag.db`,
   cosine). Offline CLI: `python -m dmbot.rag.ingest <md> --source rulebook`. Per turn the brain
-  embeds the player input; chunks join the prompt **only above a relevance threshold**, so
-  narration turns stay lean — grouped as `## Regelwerk` (source `rulebook`, rules ground truth)
+  embeds the player input (a turn without a player line — a roll to narrate, a director note —
+  is not looked up; the lookup's time is `rag=` in the `[latency]` line, and the embed call keeps
+  the embedder loaded for 30 minutes); chunks join the prompt **only above a relevance
+  threshold**, so narration turns stay lean — grouped as `## Regelwerk` (source `rulebook`, rules ground truth)
   and `## Weltwissen` (sources `lore_imperium` + `lore_chaos`: the curated German Imperium/Chaos
   compendium `data/lore/*.md`, hand-authored, local-only — ADR 021; and `setting`: the Starter
   Set's Rokarth Setting Guide, ingested **without** its "Villains on Voll" spoiler chapter —

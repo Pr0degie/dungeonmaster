@@ -42,6 +42,11 @@ SESSION_TOP_K = 2
 # Mild recency preference: distance malus per session of age (exact-term FTS hits are exempt —
 # "Vosk" asked by name should surface no matter how old the session).
 SESSION_RECENCY_MALUS = 0.01
+# How long Ollama keeps the embedder loaded after a query. Without it Ollama's own default
+# (five minutes) applies, and the first turn after a longer break waits for the model to load
+# again before its narration call can start. Same value as the chat model's (llm/client.py).
+EMBED_KEEP_ALIVE = "30m"
+
 _SESSION_LABEL = (
     "## Früher in der Kampagne (Erinnerungen aus Session vom {dates} — kann veraltet sein; "
     "aktueller Status, NPC-Stand und Uhren haben immer Vorrang)"
@@ -209,7 +214,7 @@ class RulebookRetriever:
         model = await asyncio.to_thread(self._embed_model)
         resp = await self._client.post(
             f"{self._host}/api/embed",
-            json={"model": model, "input": [query]},
+            json={"model": model, "input": [query], "keep_alive": EMBED_KEEP_ALIVE},
         )
         resp.raise_for_status()
         return resp.json()["embeddings"][0]

@@ -124,6 +124,10 @@ class DMBrain(GenerationMixin, SideCallsMixin, OpeningMixin, PendingMixin):
         # calls don't overwrite it. The cog reads it right after respond()/redo() for the [latency]
         # line. None until the first turn.
         self.last_llm_stats: dict | None = None
+        # How long the most recent turn's retrieval took (embed + search), in ms — read next to
+        # last_llm_stats for the [latency] line. None when the turn looked nothing up (no
+        # retriever, or a turn without a player line).
+        self.last_rag_ms: int | None = None
         # The roll router's last classify_test verdict: {"raw": <constrained-JSON text>,
         # "decision": <TestRequest as dict> | None}. Stateless like the call itself — the dice
         # cog copies it into the turn's replay notes right after classifying. None until then
@@ -291,16 +295,26 @@ class DMBrain(GenerationMixin, SideCallsMixin, OpeningMixin, PendingMixin):
             "result(s), %d GM note(s)", len(turn.held) + len(turn.fresh), len(turn.results), len(turn.notes),
         )
 
-    async def _refresh_rag(self, channel_id: int, user_msg: str) -> None:
-        """Fetch the turn's ``## Regelwerk`` block for ``user_msg`` (stage 3, ADR 019). Empty for
-        most turns (threshold) and on any failure — retrieval must never break a turn."""
+    async def _refresh_rag(self, channel_id: int, turn: _Turn) -> None:
+        """Fetch the turn's ``## Regelwerk`` block for its input (stage 3, ADR 019). Empty for
+        most turns (threshold) and on any failure — retrieval must never break a turn.
+
+        A turn without a player line (a dice result to narrate, a director note, an opening) is
+        not looked up: there is no question in it, and the embedding round trip would only stand
+        between the roll and its narration. Its block is empty, as the threshold left it before."""
+        self.last_rag_ms = None
         if self._retriever is None:
             return
+        if not (turn.held or turn.fresh):
+            self._session(channel_id).rag_block = ""
+            return
+        started = time.monotonic()
         try:
-            block = await self._retriever.fetch_block(user_msg, channel_id=channel_id)
+            block = await self._retriever.fetch_block(turn.user_msg, channel_id=channel_id)
         except Exception:
             log.exception("rag refresh failed — turn continues without it")
             block = ""
+        self.last_rag_ms = round((time.monotonic() - started) * 1000)
         self._session(channel_id).rag_block = block or ""
 
     async def _respond(
@@ -324,7 +338,7 @@ class DMBrain(GenerationMixin, SideCallsMixin, OpeningMixin, PendingMixin):
             return None
         user_msg, labels, history = prep
         turn = session.last_turn  # this turn's record — taken before any await
-        await self._refresh_rag(channel_id, user_msg)
+        await self._refresh_rag(channel_id, turn)
         try:
             answer = await self._run_turn(session, turn, history, sink=sink, check=check)
         except LLMPausedError:
@@ -371,7 +385,7 @@ class DMBrain(GenerationMixin, SideCallsMixin, OpeningMixin, PendingMixin):
         last.stored = None
         pending = session.pending
         self._drop_pending(channel_id)  # the redo supersedes the old turn's marker requests
-        await self._refresh_rag(channel_id, last.user_msg)
+        await self._refresh_rag(channel_id, last)
         try:
             answer = await self._run_turn(session, last, history, sink=sink, check=check)
             session.turn_held = False
