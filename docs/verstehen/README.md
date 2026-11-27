@@ -5,7 +5,7 @@ ADRs), sondern zum Durchlesen von vorne nach hinten gedacht: Nach jedem Kapitel 
 beschriebenen Teil jemandem ohne Blick in den Code erklären können.
 
 Stand: Commit `89d347a` (27.11.2026, nach der Aufteilung von `SessionRuntime`, `DMBrain` und
-`DiceCog` in Mixins).
+`DiceCog` in Mixins), dazu die Änderung D157 am RAG-Nachschlag (Kapitel 2, 3, 5 und 9).
 
 ## Reihenfolge
 

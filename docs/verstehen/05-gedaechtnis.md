@@ -226,7 +226,7 @@ Das laufende Journal wird nie eingelesen. Was heute gespielt wurde, steht ohnehi
 
 ### Suchen
 
-`RulebookRetriever._search_session` in `rag/retrieve.py`, pro Zug:
+`RulebookRetriever._search_session` in `rag/retrieve.py`, bei jedem Zug mit Spielerzeile:
 
 ```mermaid
 flowchart TD

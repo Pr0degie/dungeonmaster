@@ -182,7 +182,8 @@ Automatische Tests decken die Maschinerie ab. Für den Rest gibt es eigene Hilfe
   Persona-Varianten durch das echte Erzählmodell und misst Länge und Satzlänge. So siehst du,
   was eine Änderung an `dm_core_de.md` bewirkt, bevor der Tisch sie hört
   (`docs/lessons/measure-persona-changes-on-replayed-turns.md`).
-- **Die `[latency]`-Zeile** im Log: pro Zug die Dauer jeder Stufe (STT, LLM, TTS, Bridge).
+- **Die `[latency]`-Zeile** im Log: pro Zug die Dauer jeder Stufe (STT, RAG-Suche, LLM, TTS,
+  Bridge).
 - **`docs/live-test-checklist.md`** und **`docs/lessons/one-variable-per-live-run.md`**: Pro
   Spielabend nur eine Sache ändern, sonst weißt du nicht, was gewirkt hat.
 
