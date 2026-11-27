@@ -15,14 +15,16 @@ is on-demand._
 - **Newest round:** 27.11.: zweiter Claude-Lauf ausgewertet, fünf Befunde gebaut — D151 genanntes Ziel, D152 ein
   Erzählzug zur Zeit (ADR 067), D153 Psi-Schaden, D154 Bogen-Antwort, D155 Schaden nur um Rüstung. Danach Runde 1
   der Zerlegung ([Plan](docs/plans/split-state-dicecog-orchestrator.md)): `memory/state.py` 1457 → 868 Zeilen
-  (`records.py`, `state_text.py`, ADR 034 Nachtrag), nur verschoben. „Last session“.
+  (`records.py`, `state_text.py`, ADR 034 Nachtrag), und Runde 2: `orchestrator.py` 1421 → 608 Zeilen (Paket
+  `dmbot/brain/`: `channel.py` + vier Mixins, ADR 065 Nachtrag). Beide nur verschoben. „Last session“.
 - **Suite:** `uv run dm-check` grün — 1647 Tests, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
 - **Live-unverifiziert:** D151–D155 (Prüfpunkte W7, F11, W8, W4 im Beipackzettel
   [phase-11-abend.md](docs/phase-11-abend.md), „Nächster Lauf“). Aus D140–D147 noch offen: F2 (nur die
   Hängeschleife belegt), F4, F6, F7, F9, F10, W2, W3, W6 (Schicksal nach Fehlschlag). Dazu D139 (Pause statt
-  Nemo — nie gespielt), D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134. Die `state.py`-Zerlegung (Prüfung im Plan,
-  „Live-unverified after each round“).
-- **Next concrete step:** Bot neu starten (der Stand von 16:00 am 27.11. kennt D151–D155 nicht), dann ein kurzer
+  Nemo — nie gespielt), D137, `DMBrain`-Befunde Nr. 1–4/9/12, D134. Die Zerlegungen von `state.py` und
+  `orchestrator.py` (Prüfung im Plan, „Live-unverified after each round“).
+- **Next concrete step:** Bot neu starten (der Stand von 16:00 am 27.11. kennt weder D151–D155 noch die beiden
+  Zerlegungen), dann ein kurzer
   Lauf für F11, W4, W7, W8 und die offenen Punkte, danach die Pause-Probe (D139). Abschnitt „Next concrete
   step“.
 - **Open live gates:** **eins** — das Live-Gate von Phase 11. Die 17 alten sind seit 2026-10-06
@@ -69,6 +71,15 @@ Belege des Laufs: [phase-11-abend.md](docs/phase-11-abend.md), „Ergebnis vom 2
   `Quest`, …) nach `memory/records.py`; `state.py` exportiert alles weiter, `WorldState` bleibt ganz. 1457 → 868
   Zeilen, null Test-Änderungen, `state.json` byte-gleich zur Basis. Ergebnistabelle im Plan. Einziger sichtbarer
   Unterschied: zwei NSC-Logzeilen tragen jetzt `dmbot.memory.records`.
+- **Zerlegung Runde 2 — `orchestrator.py`** (ADR 065, Nachtrag): fünf Umzüge, je ein Commit, Byte für Byte, in
+  das neue Paket `dmbot/brain/` — die Datensätze (`ChannelSession`, `TurnAnswer`, `_Turn`, …) nach `channel.py`
+  (von `orchestrator.py` weiter exportiert), dann vier Mixins: `pending.py` (was die Cogs holen und ablegen),
+  `opening.py` (`!start`/`!intro`), `side_calls.py` (Klassifizierer, Recap, Regelantwort), `generation.py` (eine
+  Antwort durch die Wächter). 1421 → 608 Zeilen, null Test-Änderungen, alle 74 `DMBrain`-Attribute mit gleicher
+  Signatur und gleichem Quelltext erreichbar. `_build_request` und `_log_classifier` bleiben wegen zweier
+  Bindungen (`text_replay`, Logger-Name im Test) in `orchestrator.py`. Ergebnistabelle im Plan. Einziger
+  sichtbarer Unterschied: die Zeilen des Erzählpfads (`🪵 LLM roh`, Echo-Wächter, `[consistency]`, `✂`) tragen
+  im `debug.log` jetzt `dmbot.brain.generation`, zwei Zeilen `dmbot.brain.side_calls`.
 
 **Arbeitsablauf entschlackt (2026-11-15, D150).** Am Tisch ändert sich nichts. Ein Prüfbefehl ersetzt die drei
 Einzelprüfungen, der Commit-Hook prüft nach einem grünen Lauf nicht noch einmal, die WIP-Grenze ist weg.
@@ -102,11 +113,11 @@ Die Sandbox hält den Stand vom 27.11. (Pfandhalle, Tag 1, 23:06, Recap vom `!wr
 
 **Daneben, vom Lauf unabhängig: die Zerlegung der drei größten Dateien** nach
 [split-state-dicecog-orchestrator.md](docs/plans/split-state-dicecog-orchestrator.md); Tobi hat am 27.11. alle sechs
-Entscheidungen wie empfohlen getroffen. `memory/state.py` ist erledigt (1457 → 868, 27.11.). Als Nächstes
-`orchestrator.py` (1421 → ≈ 630, fünf Schritte) — vor dem Lauf erlaubt,
-aber nie dazwischen: fertig und grün vor dem Bot-Neustart oder erst nach der Auswertung. `voice/dicecog.py`
-(1442 → ≈ 730) erst, wenn der Lauf ausgewertet und seine Fix-Runde committet ist; seine Zeilennummern im Plan
-werden dann neu gemessen.
+Entscheidungen wie empfohlen getroffen. `memory/state.py` (1457 → 868) und `orchestrator.py` (1421 → 608) sind
+erledigt (27.11.), beide fertig und grün vor dem Bot-Neustart. Der erste Lauf danach sollte für `orchestrator.py`
+einmal durchspielen: einen erzählten Zug mit Wurf, `!redo`, `!start` oder `!intro`, `!wrap` (Recap) und `!rules`
+mit einer Frage. Offen ist `voice/dicecog.py` (1442 → ≈ 730) — erst, wenn der Lauf ausgewertet und seine
+Fix-Runde committet ist; seine Zeilennummern im Plan werden dann neu gemessen.
 
 **Aus dem Lauf vom 27.11., nicht gebaut:**
 - **NSCs nennen Charakternamen, die niemand gesagt hat** (16:10:51 „Fridolin, so heißt ihr doch“, 16:15:35

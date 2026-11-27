@@ -1,8 +1,9 @@
 # Plan — split `memory/state.py`, `orchestrator.py` and `voice/dicecog.py`, no behaviour change
 
 **Status:** approved by Tobi on 2026-11-27, all six decisions as recommended (see *Decisions*).
-Round 1 (`memory/state.py`) done on 2026-11-27 — see *Result* under section 1. Next:
-`orchestrator.py`.
+Round 1 (`memory/state.py`) and round 2 (`orchestrator.py`) done on 2026-11-27 — see *Result*
+under sections 1 and 2. Next: `voice/dicecog.py`, after the next run is evaluated and its fix
+round is committed.
 **Date:** 2026-11-27 · **Base commit:** `676f78e` (all line numbers below refer to it)
 **Pattern:** [runtime-split.md](runtime-split.md) · **Rules:** lesson
 [byte-exact-moves-stepwise-gates](../lessons/byte-exact-moves-stepwise-gates.md)
@@ -127,6 +128,46 @@ the turn's hot path, last.
 **Left alone on purpose:** the open `DMBrain` findings (Nr. 5–8, 10, 13, 14 in `progress.md`)
 sit in `_prepare_turn`, `_queue_markers` and the retry paths. This round moves code and fixes
 none of them; the four xfails stay xfail.
+
+### Result — `orchestrator.py` (2026-11-27, done)
+
+| Step | Commit | `orchestrator.py` | New module | Suite | Byte check | Pins and `text_replay` |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | base `c7c09f9` | 1421 | — | 1647 passed, 4 xfail; ruff clean; `dm-eval` 0 | snapshot: 70 module names, 74 `DMBrain` attributes | hold; `--help` starts |
+| O1 | `bb24158` | 1274 | `brain/channel.py` 177 | 1647 / 4 / clean / 0 | slice 76–235 verbatim; rest = docstring pointer, re-export block, 2 dropped imports | hold; starts |
+| O2 | `506072d` | 1158 | `brain/pending.py` 138 | 1647 / 4 / clean / 0 | slice 858–969 (base 1005–1116) verbatim; rest = pointer, mixin import, base-class line, 5 dropped imports | hold; starts |
+| O3 | `79b0b2f` | 1083 | `brain/opening.py` 96 | 1647 / 4 / clean / 0 | slice 457–532 (base 607–682) verbatim; rest = pointer, mixin import, base-class line | hold; starts |
+| O4 | `1a9689b` | 895 | `brain/side_calls.py` 215 | 1647 / 4 / clean / 0 | slices 788–908, 946–982, 1036–1055 (base 1126–1246, 1284–1320, 1374–1393) verbatim; rest = pointer, mixin import, base-class line, 16 dropped imports | hold; starts |
+| O5 | `03349e8` | **608** | `brain/generation.py` 318 | 1647 / 4 / clean / 0 | slices 399–450, 483–712 (base 554–605, 715–944) verbatim; rest = pointer, mixin import, base-class line, 4 dropped imports | hold; starts |
+
+Slice numbers are measured at each step's parent commit, by symbol name with `ast`; the base numbers
+in brackets are the ones of this plan. `orchestrator.py` had not changed between the plan's base
+`676f78e` and the round's base `c7c09f9`, so they still held.
+
+- 808 lines moved (160 + 112 + 76 + 178 + 282): seven records and 40 methods. `dmbot/brain/` holds
+  946 lines in six files. Target ≤ 800, expected ≈ 630, reached **608**.
+- All 74 attributes of `DMBrain` at the base are still reachable as `DMBrain.<name>` with the same
+  kind, signature and source. Of the 70 module-level names, 43 likewise; the other 27 are imports
+  that only the moved code used (`json`, `asdict`, `dataclass`, `field`, `empty_markers`, six marker
+  request types, the three router functions and their verdict types, the roll-router and recap
+  helpers, `retry_nudge_de`, `INTRO_RETRY_NUDGE`, `caller_reports_cut`): dropped from
+  `orchestrator.py`, no reader under `dmbot/`, `tests/`, `tools/`. Zero test edits; goldens untouched.
+- Each mixin has only methods, no `__init__`, and no name is defined twice across `DMBrain` and the
+  four mixins (checked at every step, beyond the plan's list).
+- Whole round against the base: of the 1303 non-blank lines of `orchestrator.py`, ten import lines
+  and the line `class DMBrain:` are the only ones found in neither `orchestrator.py` nor `brain/`.
+- Logger names (decision 5): `side_calls.py` and `generation.py` have their own loggers. Under
+  `dmbot.brain.generation` now: `🪵 LLM roh`, the echo-guard, intro-guard and `[consistency]` lines,
+  the `✂` cut line, "streaming turn failed mid-generation". Under `dmbot.brain.side_calls`:
+  "roll-router classification failed" and the over-long-recap warning. The `[classifier]` line
+  keeps `dmbot.orchestrator`. `channel.py`, `pending.py` and `opening.py` log nothing.
+- Deviation from *Steps and gates*: the byte check, `dm-check` and the three extra checks ran on the
+  working tree **before** each commit (against `HEAD`), not after it — the pre-commit hook wants the
+  green stamp anyway, and a red check then leaves no commit to take back. After the round the
+  slices were compared once more on the committed objects (`<commit>` against `<commit>~1`): same
+  result.
+- Docs moved with the code: the repo-layout rows in `architecture.md` and `docs/conventions.md`
+  (new `brain/` row) and the "likely spots" line in the `improve-architecture` skill.
 
 ## 3 — `dmbot/voice/dicecog.py` (after the next run — sketch)
 

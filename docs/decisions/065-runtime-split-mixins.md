@@ -90,3 +90,50 @@ interface has to make them writable:
 The six names that travel as strings (`_SWITCHES`, `clear_panel`) would pass a grep for
 `_rt._`. Seven stub runtimes in six test files carry only the private names, so a cog-side
 rename cannot be done with zero test edits.
+
+## Amendment — `orchestrator.py` split (2026-11-27)
+
+The same shape applied to `DMBrain` in `dmbot/orchestrator.py` (plan
+[split-state-dicecog-orchestrator.md](../plans/split-state-dicecog-orchestrator.md), round 2; no new
+ADR). New package `dmbot/brain/`, five byte-exact moves, each its own commit. First the per-channel
+and per-turn records (`TurnAnswer`, `turn_user_msg`, `_Turn`, `_markers_dict`, `ChannelSession`,
+`_Sink`, `_Attempt`) as a plain module `channel.py`, which `orchestrator.py` re-exports (ADR 034) —
+the mixins need them, and importing them from `orchestrator` would be a cycle. Then four mixins
+without `__init__` and without state; `self` is the brain:
+
+```python
+class DMBrain(GenerationMixin, SideCallsMixin, OpeningMixin, PendingMixin):
+```
+
+| Module | Class | Methods | Lines |
+| --- | --- | --- | --- |
+| `brain/pending.py` | `PendingMixin` | 16 — the pending-marker store, GM notes, last action(s), replay capture, history restore | 138 |
+| `brain/opening.py` | `OpeningMixin` | 4 — the `!start` / `!intro` turn | 96 |
+| `brain/side_calls.py` | `SideCallsMixin` | 12 — roll router, the three post-turn classifiers, `summarize`, `answer_rules` | 215 |
+| `brain/generation.py` | `GenerationMixin` | 8 — `_chat_once`, `_stream_once`, `_guarded_answer`, `_run_turn`, `_apply_consistency` and helpers | 318 |
+
+`orchestrator.py` went from 1421 to **608** lines (808 moved; `channel.py` 177). After each move:
+moved text byte-identical to the parent commit, kind/signature/source of all 74 `DMBrain`
+attributes identical to the base, **0 test edits**, 1647 tests green, 4 xfail, ruff (F) clean,
+`dm-eval` exit 0 with untouched goldens.
+
+Two pins shaped the cut, as the ADR 052 pin did for the runtime:
+
+- **`_build_request` stays in `orchestrator.py`.** `dmbot/tools/text_replay.py` rebinds
+  `orchestrator.load_system_prompt` for its persona comparison, and only a function defined in that
+  module sees the rebind. Checked after every step: `DMBrain._build_request.__globals__` is the
+  namespace of `dmbot.orchestrator`. Do not move it without changing how the tool swaps the persona.
+- **`_log_classifier` stays in `orchestrator.py`.** `test_classifier_latency` captures the
+  `[classifier]` line on the logger `dmbot.orchestrator`; the classifiers in `side_calls.py` call it
+  through `self`.
+
+Also staying: `__init__`, the buffer, `_prepare_turn`, `_hold_turn`, `_refresh_rag`, the
+`respond`/`redo` entry points, `_queue_markers`, `_append_turn`, the context setters, `clear_history`,
+`reset`. The open `DMBrain` findings sit in that part and were not touched.
+
+Non-byte effects: moved code logs under `dmbot.brain.generation` and `dmbot.brain.side_calls`
+instead of `dmbot.orchestrator` (message text unchanged, nothing filters on the name); 27 imports
+that only the moved code used are no longer names of `dmbot.orchestrator` (no reader under `dmbot/`,
+`tests/`, `tools/`); `__module__` and `__qualname__` of the moved methods name the mixin. As for
+the runtime: navigability improves, coupling does not — a mixin reads attributes it does not
+define; look them up in `DMBrain.__init__` and `ChannelSession`.
