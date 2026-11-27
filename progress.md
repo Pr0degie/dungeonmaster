@@ -19,7 +19,7 @@ is on-demand._
   Arbeitsablauf (D150, 15.11.): `uv run dm-check` mit Merkzettel-Hook, WIP-Grenze entfernt,
   `characters.local.json`; am Tisch ändert sich nichts. Davor am selben Tag: Log-Archiv (D149), ADR 066 B verworfen
   (D148). „Last session“.
-- **Suite:** `uv run dm-check` grün — 1566 Tests, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
+- **Suite:** `uv run dm-check` grün — 1569 Tests, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
 - **Live-unverifiziert:** D151 (Prüfpunkt W7; der Bot vom 27.11., 16:00 kennt es nicht). Am 27.11. belegt: F1, F3, F5 (Cache), F8, W1, W5, N1, N2, N5. Offen aus D140–D142 und
   D144–D147: F2 (nur die Hängeschleife belegt), F4, F6, F7, F9, F10, W2–W4, W6 (Prüfpunkte in
   [phase-11-abend.md](docs/phase-11-abend.md), „Nächster Lauf“), D139 (Pause statt Nemo — Durchgang 3 nicht
@@ -46,8 +46,12 @@ _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-a
 soll den Torwächter treffen, die Zielauswahl nur kommen, wenn mehrere gemeint sind. `combat.named_targets`
 gleicht die eigene Zeile des Angreifers (beim Posten des Würfelknopfs festgehalten) mit den anwesenden
 Kandidaten ab: voller Name, Karten-Alias, Genitiv-s oder der Kopf eines einwortigen improvisierten Namens
-(„Wächter“). Genau ein NSC → Treffer ohne Auswahl (`🎯 Ziel aus der Ansage`); niemand, mehrere oder nur ein
-Mitspieler → Auswahl, Genannte oben. `uv run dm-check` grün (1566 Tests). Live-unverifiziert, Prüfpunkt W7.
+(„Wächter“). Genau ein NSC → Treffer ohne Auswahl (`🎯 Ziel aus der Ansage`); niemand, mehrere, ein
+mehrdeutiges Wort, eine Verneinung oder nur ein Mitspieler → Auswahl, genannte NSCs oben, Mitspieler unten.
+`/code-review` über den ersten Commit fand sieben Punkte, alle im Folge-Commit behoben (die Zeile wird beim
+Entscheiden der Knöpfe übergeben statt später nachgelesen; ein einzelner Mitspieler als Kandidat wird nicht mehr
+ungefragt getroffen). Bekannte Grenze: eine Zeile, die genau einen anwesenden NSC nennt, ohne ihn anzugreifen,
+trifft ihn trotzdem. `uv run dm-check` grün (1569 Tests). Live-unverifiziert, Prüfpunkt W7.
 
 **Lauf vom 27.11. ausgewertet (Zwischenstand 16:00–16:25, kein Code geändert).** Drei Spieler (Tobi, Timo,
 Sezgin) auf Claude, 15 Erzählantworten, Bot lief beim Auswerten noch; kein `!wrap`, keine Pause-Probe.

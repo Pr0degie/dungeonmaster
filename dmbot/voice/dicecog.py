@@ -88,6 +88,7 @@ class DiceCog(commands.Cog):
         is off. Runs concurrently with playback (D40) so the button appears while the DM still speaks."""
         cid = self._rt._brain_channel(channel)
         markers = self._rt._brain.take_pending_tests(cid)
+        spoken = self._spoken(cid)  # now: the next turn replaces the actions
         # Psychic Manifest requests (ADR 022) are independent of the skill-roll router: each gets
         # a button so the engine rolls the Manifest Test + bookkeeps Warp Charge. Taken first so
         # a test for the same psyker (router or marker) can be dropped — no double roll.
@@ -98,14 +99,36 @@ class DiceCog(commands.Cog):
             # The narrator of the markers' own turn, recorded when they were queued — not
             # last_llm_stats, which the next prose call may already have overwritten.
             if markers and marker_decides({"backend": self._rt._brain.tests_narrator(cid)}):
-                await self._markers_decide(channel, cid, markers, manifesting=manifesting)
+                await self._markers_decide(channel, cid, markers, manifesting=manifesting,
+                                           spoken=spoken)
             else:
-                await self._router_decides(channel, cid, markers, manifesting=manifesting)
+                await self._router_decides(channel, cid, markers, manifesting=manifesting,
+                                           spoken=spoken)
         elif source == "marker":
             for req in markers:
-                await self._post_dice_button(channel, req)
+                await self._post_dice_button(channel, req, said=self._said(spoken, req.target_name))
         for m in manifests:
             await self._post_manifest_button(channel, m)
+
+    def _spoken(self, cid: int) -> dict[str, str]:
+        """Each character's own line of the turn just answered (lower-cased character name →
+        text). Taken once, when the turn's buttons are decided: a hit reads its target from the
+        line that asked for the roll (D151), and the brain's actions are replaced by the next turn."""
+        store = self._rt._characters
+        if store is None:
+            return {}
+        spoken: dict[str, str] = {}
+        for name, text in self._rt._brain.last_actions(cid):
+            char = store.get(name)
+            if char is not None:
+                spoken[char.name.lower()] = text
+        return spoken
+
+    def _said(self, spoken: dict[str, str] | None, who: str | None) -> str:
+        """``who``'s own line out of :meth:`_spoken`; "" when they said nothing this turn."""
+        store = self._rt._characters
+        char = store.get(who) if (store is not None and who) else None
+        return (spoken or {}).get(char.name.lower(), "") if char is not None else ""
 
     def _check_marker(self, req: TestRequest) -> tuple[str | None, str | None]:
         """``(character name, None)`` for a marker the engine can roll as written, else
@@ -134,7 +157,7 @@ class DiceCog(commands.Cog):
         return req.difficulty or "Standard"
 
     async def _markers_decide(self, channel, cid: int, markers: list[TestRequest], *,
-                              manifesting: set[str]) -> None:
+                              manifesting: set[str], spoken: dict[str, str] | None = None) -> None:
         """Claude narrated (D140): each valid marker posts its own button. The router still
         classifies every speaker no valid marker covers — one whose marker was invalid, and one
         the narrator asked nothing for (the persona allows one test per reply, so with two players
@@ -157,12 +180,12 @@ class DiceCog(commands.Cog):
                 continue
             posted.add(key)
             log.info("🎲 Marker entscheidet: %s — %s (%s)", name, req.skill, self._difficulty_label(req))
-            await self._post_dice_button(channel, req)
+            await self._post_dice_button(channel, req, said=(spoken or {}).get(name.lower(), ""))
         await self._post_router_dice(channel, manifesting=manifesting, skip=covered)
         self._repeats.turn(cid, set())  # the narrator's requests were honoured: nothing hangs
 
     async def _router_decides(self, channel, cid: int, markers: list[TestRequest], *,
-                              manifesting: set[str]) -> None:
+                              manifesting: set[str], spoken: dict[str, str] | None = None) -> None:
         """Ollama narrated, or Claude asked nothing (D43): the router decides. The repeat safety
         net (D140) then honours a valid marker the previous turn already asked for (same
         character + skill, no roll in between) where the router posted nothing for that
@@ -180,7 +203,7 @@ class DiceCog(commands.Cog):
             rescued += 1
             log.info("🎲 Sicherheitsnetz: %s — %s (%s) zum zweiten Mal angefordert, kein Wurf "
                      "dazwischen → der Marker gilt", name, req.skill, self._difficulty_label(req))
-            await self._post_dice_button(channel, req)
+            await self._post_dice_button(channel, req, said=(spoken or {}).get(name.lower(), ""))
         if len(markers) > rescued:
             log.info("🎲 %d Inline-Marker verworfen — der Router entscheidet (D43)",
                      len(markers) - rescued)
@@ -252,11 +275,12 @@ class DiceCog(commands.Cog):
                 log.info("🎲 router: %s — '%s' → %s (%s)",
                          char.name, text[:50], req.skill, req.difficulty or "Standard")
                 decided.add(char.name.lower())
-                await self._post_dice_button(channel, req)
+                await self._post_dice_button(channel, req, said=text)  # the line it was classified from
         return decided
 
-    async def _post_dice_button(self, channel, req: TestRequest) -> None:
-        """Resolve a test request (skill value + difficulty → target, all in code) and post its button."""
+    async def _post_dice_button(self, channel, req: TestRequest, *, said: str = "") -> None:
+        """Resolve a test request (skill value + difficulty → target, all in code) and post its button.
+        ``said`` is the roller's own line that asked for it ("" for a typed ``!test``)."""
         skill = req.skill or "Probe"
         resolved = resolve_target(
             self._rt._profile, self._rt._characters, skill=skill,
@@ -276,7 +300,7 @@ class DiceCog(commands.Cog):
         # Cosmetic, in the background: the button does not wait for it.
         prep = (self._spawn_presentation(prepare_throw_async())
                 if self._dice_animation_on() and resolved.target is not None else None)
-        view = DiceTestView(label, self._make_dice_roll(channel, req, resolved, prep=prep))
+        view = DiceTestView(label, self._make_dice_roll(channel, req, resolved, prep=prep, said=said))
         image = await get_target_image_async(resolved.target) if self._dice_images_on() else None
         if image is not None:  # the steel "≤target" die; a free !roll / no sheet value has none
             embed, file = target_embed(image)
@@ -288,7 +312,7 @@ class DiceCog(commands.Cog):
                 log.warning("dice button with target die failed — posting it without", exc_info=True)
         await self._rt._send_with_retry(channel, text, view=view)
 
-    def _make_dice_roll(self, channel, req: TestRequest, resolved, *, prep=None):
+    def _make_dice_roll(self, channel, req: TestRequest, resolved, *, prep=None, said: str = ""):
         """Build the roll callback for a dice button: the engine rolls + resolves, the message is
         replaced with the result, and it's fed back so the DM narrates the consequence.
 
@@ -296,7 +320,6 @@ class DiceCog(commands.Cog):
         narration waits for it, so each test is narrated exactly once."""
         skill = req.skill or "Probe"
         who = resolved.character.name if resolved.character else req.target_name
-        said = self._declared_action(channel, who)  # now: a later turn replaces the actions
 
         async def _roll(interaction: discord.Interaction) -> None:
             guild_id = channel.guild.id if channel.guild else None
@@ -330,17 +353,6 @@ class DiceCog(commands.Cog):
             await self._finish_roll(channel, guild_id, result, line, skill, who, said=said)
 
         return _roll
-
-    def _declared_action(self, channel, who: str | None) -> str:
-        """What ``who``'s player said in the turn that asked for this roll — their own line,
-        verbatim; "" when the turn had none (a typed ``!test``, a post-roll narration)."""
-        if not who or self._rt._characters is None:
-            return ""
-        for name, text in self._rt._brain.last_actions(self._rt._brain_channel(channel)):
-            char = self._rt._characters.get(name)
-            if char is not None and char.name.lower() == who.lower():
-                return text
-        return ""
 
     def _roll_test(self, resolved, skill: str, who: str | None):
         """One roll through the engine → ``(TestResult | None, German line)``."""
@@ -778,18 +790,14 @@ class DiceCog(commands.Cog):
                     return item, notation
         return None, self._rt._profile.default_damage()
 
-    def _target_phrases(self, npcs: list[str], party: list[str]) -> list[tuple[str, tuple[str, ...]]]:
-        """Each attack candidate with the names a player may call it by: an NPC's authored card
+    def _target_phrases(self, names: list[str], *, party: bool = False) -> list[tuple[str, tuple[str, ...]]]:
+        """Attack candidates with the names a player may call them by: an NPC's authored card
         aliases ("Fenk"), a team-mate's first name."""
+        if party:
+            return [(name, tuple(name.split()[:1]) if len(name.split()) > 1 else ()) for name in names]
         adventure = self._rt._adventure
-        phrases: list[tuple[str, tuple[str, ...]]] = []
-        for name in npcs:
-            block = adventure.npc(name) if adventure is not None else None
-            phrases.append((name, tuple(block.aliases) if block is not None else ()))
-        for name in party:
-            first = name.split()[0] if name.split() else name
-            phrases.append((name, (first,) if first != name else ()))
-        return phrases
+        blocks = [(name, adventure.npc(name) if adventure is not None else None) for name in names]
+        return [(name, tuple(block.aliases) if block is not None else ()) for name, block in blocks]
 
     async def _begin_attack_damage(self, channel, *, attacker: str | None, result,
                                    said: str = "") -> bool:
@@ -797,9 +805,10 @@ class DiceCog(commands.Cog):
         was auto-hit or a picker was posted — it will narrate); False if it couldn't (no weapon data
         or no target), so the caller narrates the hit plainly.
 
-        ``said`` is the attacker's own line of the turn. Names it exactly one present NPC, that
-        NPC is hit without the picker; nobody, several or only a team-mate named → the picker,
-        the named ones on top (friendly fire is never applied unasked)."""
+        ``said`` is the attacker's own line that asked for the roll; ``combat.choose_attack_target``
+        reads the target from it (D151): exactly one present NPC named → hit without the picker,
+        otherwise the picker. A lone NPC candidate is hit as before; a team-mate never without
+        the picker."""
         cid = self._rt._brain_channel(channel)
         state = self._rt._state.get(cid)
         if state is None:
@@ -819,21 +828,19 @@ class DiceCog(commands.Cog):
                 "💥 Treffer! Aber kein Ziel hinterlegt — `!npc add <Name> [Wunden]`, dann erneut würfeln.",
             )
             return False
-        if len(candidates) == 1:
+        choice = combat.choose_attack_target(
+            said, self._target_phrases(npcs), self._target_phrases(party, party=True))
+        lone_npc = npcs[0] if (len(npcs) == 1 and not party) else None
+        target = lone_npc or choice.auto
+        if target is not None:
+            if lone_npc is None:
+                log.info("🎯 Ziel aus der Ansage: %s — '%s'", target, said[:60])
             await self._apply_attack_damage(
                 channel, attacker=attacker, weapon=weapon, notation=notation,
-                result=result, target_name=candidates[0],
+                result=result, target_name=target,
             )
             return True
-        named = combat.named_targets(said, self._target_phrases(npcs, party))
-        if len(named) == 1 and named[0] in npcs:
-            log.info("🎯 Ziel aus der Ansage: %s — '%s'", named[0], said[:60])
-            await self._apply_attack_damage(
-                channel, attacker=attacker, weapon=weapon, notation=notation,
-                result=result, target_name=named[0],
-            )
-            return True
-        candidates = named + [c for c in candidates if c not in named]
+        candidates = choice.order
 
         async def _pick(interaction: discord.Interaction, name: str) -> None:
             await self._apply_attack_damage(

@@ -59,6 +59,7 @@ class _Table:
         self.verdicts: dict[str, _Req | None] = {}
         self.classified: list[str] = []
         self.posted: list[_Req] = []
+        self.said: dict[str, str] = {}
         self.manifest_posted: list[ManifestRequest] = []
 
         async def classify_test(*, action, character, skills):
@@ -83,8 +84,9 @@ class _Table:
         self.rt = rt
         self.cog = DiceCog(None, rt)
 
-        async def _post(channel, req):
+        async def _post(channel, req, *, said=""):
             self.posted.append(req)
+            self.said[req.target_name] = said
 
         async def _post_manifest(channel, req):
             self.manifest_posted.append(req)
@@ -308,3 +310,16 @@ def test_a_dice_button_press_clears_the_repeat_memory() -> None:
     roll = t.cog._make_dice_roll(_CH, other, resolved)
     asyncio.run(roll(types.SimpleNamespace(message=None)))
     assert t.turn(markers=[marker], actions=[("Fridolin", "y")], verdicts={"Fridolin": None}) == []
+
+
+def test_every_button_carries_the_line_that_asked_for_it() -> None:
+    # D151: a hit reads its target from the roller's own line. The marker's button gets the
+    # line of the marker's character, the router's button the line it was classified from —
+    # taken when the buttons are decided, so a later turn cannot swap it.
+    t = _Table(backend="claude")
+    t.turn(
+        markers=["<<TEST Nahkampf Leicht für Fridolin>>"],
+        actions=[("Fridolin", "Ich greife den Torwächter an."), ("Rektalus", "Ich schieße auf Bree.")],
+        verdicts={"Rektalus": _Req(skill="Fernkampf", target_name="Rektalus")},
+    )
+    assert t.said == {"Fridolin": "Ich greife den Torwächter an.", "Rektalus": "Ich schieße auf Bree."}
