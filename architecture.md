@@ -757,7 +757,7 @@ cogitator/                 # = the DMbot repo
 │   ├── rules/             # engine.py + combat.py (attack/Warp resolution, ADR 037) + profile loader (+ tests)  ← deterministic core
 │   ├── discord_ui/        # buttons, turn-order view
 │   ├── orchestrator.py    # the DM brain (history + buffer → LLM)
-│   ├── brain/             # DMBrain's per-channel and per-turn records (channel.py), re-exported by orchestrator (ADR 034)
+│   ├── brain/             # DMBrain's records (channel.py, re-exported by orchestrator, ADR 034) and its method groups as mixins (ADR 065): pending
 │   ├── session/           # SessionRuntime's method groups as mixins (ADR 065): ingest, clocks, npcs, panels, persistence, seeding, scenes
 │   └── runtime.py         # SessionRuntime — shared session state/services, injected into the cogs (ADR 029)
 ├── data/
