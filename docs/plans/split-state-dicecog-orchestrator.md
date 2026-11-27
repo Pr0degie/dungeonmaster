@@ -1,6 +1,7 @@
 # Plan — split `memory/state.py`, `orchestrator.py` and `voice/dicecog.py`, no behaviour change
 
-**Status:** approved by Tobi on 2026-11-27, all six decisions as recommended (see *Decisions*).
+**Status:** approved by Tobi on 2026-11-27, decisions 1–6 as recommended; decision 7 of the same
+day changes the order of round 3 (see *Decisions*).
 Round 1 (`memory/state.py`) and round 2 (`orchestrator.py`) done on 2026-11-27 — see *Result*
 under sections 1 and 2. Round 3 (`voice/dicecog.py`) runs on 2026-11-27 as well, **before** the
 next run — changed by Tobi the same day, decision 7.
@@ -44,7 +45,7 @@ exit 0 — step 0 of each round measures it again before the first move.
 
 | Fact | Consequence |
 | --- | --- |
-| `test_dice_animation`, `test_dice_assets`, `test_dice_images` patch seven names on the namespace `dmbot.voice.dicecog`: `get_dice_image_async`, `get_dice_gif_async`, `get_target_image_async`, `prepare_throw_async`, `flight_seconds`, `resolve_target`, `REVEAL_GRACE_S` | A method that reads one of them stays in `dicecog.py`: `_send_dice_button`, `_animate_result`, `_animate_stored`, `_result_edit`, `_make_fate_decision`, `!roll`. Two manifest methods read `prepare_throw_async` too — decision 4. |
+| `test_dice_animation`, `test_dice_assets`, `test_dice_images` patch seven names on the namespace `dmbot.voice.dicecog`: `get_dice_image_async`, `get_dice_gif_async`, `get_target_image_async`, `prepare_throw_async`, `flight_seconds`, `resolve_target`, `REVEAL_GRACE_S` | A method that reads one of them stays in `dicecog.py`: `_send_dice_button`, `_animate_result`, `_animate_stored`, `_result_edit`, `_make_fate_decision`, `!roll`. Two manifest methods read `prepare_throw_async` too — decision 4. **Since D0 (`921a55c`) `DiceCog._prepare_throw` is the only reader of `prepare_throw_async`;** the other six names are read as listed. |
 | `dmbot/tools/text_replay.py:273` rebinds `orchestrator.load_system_prompt` for a persona comparison | `DMBrain._build_request` (the only reader, line 701) stays in `orchestrator.py`. |
 | `test_classifier_latency` captures the `[classifier]` line on the logger `dmbot.orchestrator` (three places) | `DMBrain._log_classifier` (7 lines) stays in `orchestrator.py`; the classifier methods move and keep calling it through `self`. |
 | Tests reach names through `dmbot.orchestrator` (`_ROLE_LABELS`, `finalize_answer`, `StreamAssembler`, …) and through `dmbot.memory.state` (26 names) | Every name stays importable from the old module. An import that becomes unused there is deleted only if a grep over `dmbot/`, `tests/` and `tools/` finds no reader; otherwise it stays with `# noqa: F401`. |
@@ -170,7 +171,10 @@ in brackets are the ones of this plan. `orchestrator.py` had not changed between
 - Docs moved with the code: the repo-layout rows in `architecture.md` and `docs/conventions.md`
   (new `brain/` row) and the "likely spots" line in the `improve-architecture` skill.
 
-## 3 — `dmbot/voice/dicecog.py` (after the next run — sketch)
+## 3 — `dmbot/voice/dicecog.py` (third — before the next run, decision 7)
+
+The tables below are the sketch at the plan's base `676f78e`; the round measured again at its own
+base — see *Result* at the end of this section.
 
 **Shape:** the NPC commands become a sub-cog (ADR 039); three concerns of `DiceCog` move as
 mixins into a new package `dmbot/voice/dice/` (ADR 065):
@@ -313,6 +317,10 @@ whoever asks why.
 
 - `DiceCog._toughness_bonus` (`dicecog.py:251`) has no caller left under `dmbot/`; only two
   tests in `tests/test_augmetics.py` call it. Probably orphaned by D155. Not touched here.
+- `DiceCog.cog_unload` ends the roll waits but not the running presentation tasks in
+  `self._presentations` (throw preparation, `_animate_result` with its reveal sleep): a task still
+  running when the cog unloads edits its dice message afterwards or is destroyed while pending.
+  Found by the review of D0 (2026-11-27), there before D0. Not touched here.
 
 ## Live-unverified after each round
 

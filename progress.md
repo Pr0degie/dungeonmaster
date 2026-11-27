@@ -65,7 +65,8 @@ Belege des Laufs: [phase-11-abend.md](docs/phase-11-abend.md), „Ergebnis vom 2
   [split-state-dicecog-orchestrator.md](docs/plans/split-state-dicecog-orchestrator.md) — Zielmodule,
   Methodenzuordnung, Schrittfolge und Prüfung je Schritt für `memory/state.py`, `orchestrator.py` und
   `voice/dicecog.py`. Reihenfolge: `state.py` zuerst, `dicecog.py` erst nach dem nächsten Lauf. Tobi hat alle
-  sechs Entscheidungen wie empfohlen getroffen; siehe „Next concrete step“.
+  sechs Entscheidungen wie empfohlen getroffen; siehe „Next concrete step“. **Am selben Tag geändert
+  (Entscheidung 7 im Plan): `dicecog.py` läuft vor dem nächsten Lauf**, alles wird danach in einem Lauf geprüft.
 - **Zerlegung Runde 1 — `memory/state.py`** (ADR 034, Nachtrag): zwei Umzüge, je ein Commit, Byte für Byte —
   die deutschen Prompt-/Panel-Zeilen nach `memory/state_text.py`, die Datensätze (`Combatant`, `Clock`, `Fact`,
   `Quest`, …) nach `memory/records.py`; `state.py` exportiert alles weiter, `WorldState` bleibt ganz. 1457 → 868
@@ -116,8 +117,9 @@ Die Sandbox hält den Stand vom 27.11. (Pfandhalle, Tag 1, 23:06, Recap vom `!wr
 Entscheidungen wie empfohlen getroffen. `memory/state.py` (1457 → 868) und `orchestrator.py` (1421 → 608) sind
 erledigt (27.11.), beide fertig und grün vor dem Bot-Neustart. Der erste Lauf danach sollte für `orchestrator.py`
 einmal durchspielen: einen erzählten Zug mit Wurf, `!redo`, `!start` oder `!intro`, `!wrap` (Recap) und `!rules`
-mit einer Frage. Offen ist `voice/dicecog.py` (1442 → ≈ 730) — erst, wenn der Lauf ausgewertet und seine
-Fix-Runde committet ist; seine Zeilennummern im Plan werden dann neu gemessen.
+mit einer Frage. `voice/dicecog.py` (1442 → ≈ 730) läuft seit dem 27.11. als Runde 3, **vor** dem Lauf
+(Entscheidung 7 im Plan, mit ihrem Preis); D0 (die Naht `_prepare_throw`) ist committet, D1–D4 folgen. Der Bot
+wird erst neu gestartet, wenn die Runde fertig und grün ist.
 
 **Aus dem Lauf vom 27.11., nicht gebaut:**
 - **NSCs nennen Charakternamen, die niemand gesagt hat** (16:10:51 „Fridolin, so heißt ihr doch“, 16:15:35
