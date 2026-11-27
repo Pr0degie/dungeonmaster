@@ -308,7 +308,7 @@ dmbot/          the DM bot
   discord_ui/   buttons, turn-order view + panel.py (the player panel: scene, mission, time, what is still open) + undo.py (take back an automatic scene change, ADR 057)
   tools/        dev CLIs via [project.scripts]: sync_check (`uv run dm-sync`, D89/D90) + eval_replay (`uv run dm-eval`, golden-transcript regression replay, ADR 046 — goldens in tests/golden/) + dm_check (`uv run dm-check`, ruff F + suite + dm-eval, stamp for the pre-commit hook); text_replay (`python -m dmbot.tools.text_replay dry|run|show`, six turns of the 2026-11-14 evening through the narration model with a persona variant — measures turn and sentence length before a persona change goes live; needs `logs/archive/pinned/2026-11-14_d1/debug.log`); logruns (`python -m dmbot.tools.logruns [--path N | --pin N]`, the archived runs)
   orchestrator.py   the DM brain (history + buffer → LLM)
-  brain/        DMBrain's per-channel and per-turn records (channel.py: ChannelSession, TurnAnswer, …; re-exported by orchestrator, ADR 034) and its method groups as mixins, one module per concern (ADR 065): pending, opening, side_calls (classifiers, recap, rules answer)
+  brain/        DMBrain's per-channel and per-turn records (channel.py: ChannelSession, TurnAnswer, …; re-exported by orchestrator, ADR 034) and its method groups as mixins, one module per concern (ADR 065): pending, opening, side_calls (classifiers, recap, rules answer), generation (one answer through the guards)
   bridge.py     HTTP client to Bot A's /speak
   logsetup.py   console (green chat) + file logging
   logarchive.py one run per log file: rotation at start, sandbox archive, archive limit, pinning (logs/archive/runs|sandbox|pinned)

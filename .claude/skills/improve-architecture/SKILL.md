@@ -39,7 +39,7 @@ orchestrator/delivery split). Then use the **Explore** subagent to walk the code
 - Understanding one concept requires bouncing between many small modules.
 - A module is **shallow** — interface nearly as complex as its implementation.
 - Pure functions were extracted just for testability, but the real bugs hide in *how they're
-  called* (no **locality**) — likely spots: `orchestrator.py` ↔ the extracted `llm/` helpers,
+  called* (no **locality**) — likely spots: `orchestrator.py` and its `brain/` mixins ↔ the extracted `llm/` helpers,
   the voice cogs ↔ `delivery.py`.
 - Tightly-coupled modules leak across their seams; or a part is hard to test through its
   current interface.
