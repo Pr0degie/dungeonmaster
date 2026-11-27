@@ -24,6 +24,9 @@ or an ADR already holds — link there instead.
 - [sampling-defaults-leak-into-aux-calls](sampling-defaults-leak-into-aux-calls.md) —
   Client-wide temperature/penalty defaults sabotage specific call types; every call type
   pins its own sampling.
+- [answers-interleave-without-a-speaking-order](answers-interleave-without-a-speaking-order.md) —
+  The bridge plays WAVs in arrival order: two answers delivered sentence by sentence are spoken into
+  each other. Who may narrate, who may speak and when rolls are narrated are three separate guards.
 - [cli-caches-the-system-prompt-as-one-block](cli-caches-the-system-prompt-as-one-block.md) —
   The Claude CLI caches our whole system prompt as one block; per-turn context in it means a
   miss every turn. Check `cache_w=`, and capture the request body before guessing.

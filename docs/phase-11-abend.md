@@ -271,11 +271,13 @@ Fable reingeben.“ Tobi (19:29:50): „Das bewegt sich einfach nicht weiter.“
 Folgerunde: D140 (Opus-Marker zählt auf Claude), D141 (Fortschritt statt Atmosphäre, Kommas fürs Vorlesen,
 Komma-Pausen im Code, Budget 280), D142 (Cache), D143 (ADR 066 B, Schalter aus).
 
-## Ergebnis vom 27.11.2026 (Zwischenstand 16:00–16:25, Tobi + Timo + Sezgin, mit Bot A)
+## Ergebnis vom 27.11.2026 (16:00–16:44, Tobi + Timo + Sezgin, mit Bot A)
 
-Ausgewertet auf einem Schnappschuss von 16:25:46, der Bot lief da noch. Kein `!wrap`, Teil B nicht gespielt; D139
-bleibt live-unverifiziert. Lauf 0: Start 16:00:27, Opening 16:03:32, 15 Erzählantworten, Code `60c7983`, Opus
-`claude-opus-5-5`, Haiku `claude-haiku-5-5`. Lauf 1 (15:54:42–16:00:07, 0 Züge) war nur der Neustart, um Gellicus
+Der ganze Lauf, beendet mit `!wrap` um 16:44:02 (die Zeit stammt aus dem Änderungsdatum von `recap.debug.md`; im
+Log steht der Befehl nicht, s. unten). Teil B nicht gespielt; D139 bleibt live-unverifiziert. Lauf 0: Start
+16:00:27, Opening 16:03:32, letzte Erzählantwort 16:35:55, 18 Erzählantworten, Code `60c7983`, Opus
+`claude-opus-5-5`, Haiku `claude-haiku-5-5`. Nach dem `!wrap` lief der Bot weiter (beim Auswerten reichte das Log bis
+17:05, nur Mitschrift, kein Zug mehr); gezählt ist bis zum `!wrap`. Lauf 1 (15:54:42–16:00:07, 0 Züge) war nur der Neustart, um Gellicus
 (Timo) in die lokale Party-Datei zu nehmen. Logs: bis zum nächsten Bot-Start in `logs\`, danach
 `logs/archive/runs/2026-11-27_160027/`.
 
@@ -291,42 +293,66 @@ nebeneinander, beide Antworten wurden gesprochen, Satz für Satz ineinander:
   anderen ist der Wächter abgelenkt und Opus verlangt `<<TEST Nahkampf Leicht für Gellicus>>`. Zu diesem Marker steht
   keine `🎲`-Zeile im Log, ein Knopf ist nicht belegt.
 
+Nach 16:25 kein weiterer Fall: `[latency]` turn=17, 18, 19 kommen in Reihenfolge.
+
 Tobis Wunsch am Tisch (16:23:11): bei zwei Proben erst beide Ergebnisse abwarten, dann eine Erzählung. In
 `logs/archive/pinned/bis-2026-11-14/` gibt es einen früheren Fall (21:37:56 turn=49, 21:38:09 turn=48 `roll`); im
 Zwei-Spieler-Lauf vom 14.11. keinen.
+
+**Weitere Befunde nach 16:25:**
+
+- **16:34:34 — Smite macht keinen Schaden.** Fridolin manifestiert Smite (16:34:26 `🌀 … 05 — Erfolg, 0 EG · Warp
+  2/4.`), die Erzählung lässt den Blitz den Torwächter in die Brust treffen und gegen einen Pfandkäfig schleudern.
+  Der Zustand führt den Torwächter danach weiter bei 10/10 Wunden, obwohl das Profil für Smite „2 + WillkürB + EG
+  Schaden“ angibt: eine Schadenskraft wendet keinen Schaden an.
+- **16:35:49 — „Was kann ich?“ wird nicht aus dem Bogen beantwortet.** Tobi fragt, im selben Sprechfenster geht ein
+  „...“ von Timo mit an die Spielleitung. Die Antwort um 16:35:55 ist Szenenerzählung mit Vorschlägen („Fridolin, du
+  könntest ihr eine glaubwürdige Geschichte auftischen …“), ohne Fertigkeit und ohne Wert aus dem Bogen. Tobi um
+  16:36:05: „Okay, das hat schon mal nicht funktioniert.“
+- **16:35:49 — Hintergrundton als Spielerzeile.** Timos Mikrofon nahm englischen Videoton auf (16:35:58 „... was
+  $64.000, almost four times my salary …“, 16:36:09 „...dollars. In 2026, the average new car now cost...“); ein
+  „...“ davon ging als Timos Zeile an die Spielleitung. Dazu drei `🚫 Whisper-Halluzination verworfen` (16:30:06,
+  16:31:18, 16:36:05).
+- **16:44:02 — der `!wrap` hinterlässt keine Spur im Log.** Recap und Zustand sind geschrieben (s. Zeile „Recap /
+  `!wrap`“), aber weder `debug.log` noch `terminal.log` hat eine Zeile dazu: kein Befehl, kein Recap-Text, keine
+  Dauer.
 
 | Punkt | Urteil | Beleg |
 |---|---|---|
 | F1 | bestanden | 16:10:51 `🎲 Marker entscheidet: Fridolin Feuchtgebietheld — Überreden (Leicht)`, 16:19:53 Nahkampf (Schwierig), 16:21:50 Nahkampf (Herausfordernd); kein `Inline-Marker verworfen` |
 | F2 | bestanden für die Hängeschleife | kein `🎲 Sicherheitsnetz`; die doppelte Beschreibung von 16:17:06 hat eine andere Ursache (Hauptbefund) |
-| F3 | bestanden | kein `✂` in 15 Antworten (14.11.: 8 von 33) |
+| F3 | bestanden | kein `✂` in 18 Antworten (14.11.: 8 von 33) |
 | F4 | nur am Tisch prüfbar | — |
-| F5 | bestanden (Cache), erster Ton nicht schneller | `cache=11022` in allen 14 Zügen ab turn=2; `first_audio` Median 10,3 s (14.11.: 10,2 s), Spanne 6,2–17,8 s |
+| F5 | bestanden (Cache), erster Ton nicht schneller | `cache=11022` in 16 von 17 Zügen ab turn=2; einmal `cache=0 cache_w=15326` um 16:36:32 (turn=19), der erste Zug nach dem Auto-Recap — erwartet; `first_audio` Median 10,3 s (14.11.: 10,2 s), Spanne 6,2–17,8 s |
 | F6 | nur am Tisch prüfbar | Verbrauch auf claude.ai |
 | F7 | nicht eingetreten | kein `gehört nach` |
 | F8 | bestanden | 16:21:50 `🎲 Marker entscheidet: Gellicus Schulz …`, 16:21:56 `🎲 router: Fridolin Feuchtgebietheld … → Überreden (Herausfordernd)` |
 | F9 | nur am Tisch prüfbar | im Text: NSCs nennen Charakternamen, die niemand gesagt hat (16:10:51 „Fridolin, so heißt ihr doch“, 16:15:35 „Gellicus, Rektalus, oder wie eure Namen auch lauten mögen“) |
 | F10 | nur am Tisch prüfbar | 16:19:27 Tobi: „Boah, also die Antwort gefällt mir“ |
-| W1 | bestanden | 7 × `🎲 throw gif (stored)`, auch nach den drei Neuwürfen (16:20:20, 16:22:13, 16:22:17) |
-| W2, W3, W4 | nur am Tisch prüfbar | Knopfdrücke und Befehle stehen nicht im Log |
+| W1 | bestanden | 8 × `🎲 throw gif (stored)`, auch nach den drei Neuwürfen (16:20:20, 16:22:13, 16:22:17) und beim Psionik-Wurf (16:34:30) |
+| W2 | nur am Tisch prüfbar | Knopfdrücke stehen nicht im Log |
+| W3 | nicht eingetreten | beide Nahkampf-Proben von Gellicus misslangen, auch nach dem Neuwurf (16:20:15, 16:22:10); die Zielauswahl kommt erst nach einem Treffer |
+| W4 | nicht bestanden | 16:35:49 „Was kann ich?“ → 16:35:55 Szenenerzählung mit Vorschlägen, keine Fertigkeit und kein Wert aus dem Bogen |
 | W5 | bestanden | 16:20:15, 16:22:10, 16:22:14 `🙏 … gibt einen Schicksalspunkt aus …` je nach einem Fehlschlag |
-| W6 | nicht eingetreten | kein `🌀` |
+| W6 | erster Teil bestanden; Schicksal nach Fehlschlag nicht eingetreten | 16:34:17 `<<MANIFEST Smite für Fridolin Feuchtgebietheld>>`, 16:34:22 `🎲 router: Fridolin Feuchtgebietheld — Psi-Meisterschaft verworfen, die Manifestation deckt die Handlung ab`, 16:34:26 `🌀 Fridolin Feuchtgebietheld manifestiert Smite (Ziel 41): 05 — Erfolg, 0 EG · Warp 2/4.`, 16:34:30 `🎲 throw gif (stored)`; danach `warp_charge` 2 im Zustand. Der Wurf gelang, also kamen keine Schicksal-Buttons |
 | N1 | bestanden | Bree Marlok und Alter Fenk je ein Eintrag; 16:15:39 `[classifier] npcs … → none` nach dem Zug mit dem „blinden Alten“ |
 | N2 (D138) | bestanden | 16:12:36 `scene → pfandhalle … [marker]`, 16:12:38 `👥 anwesend in 'pfandhalle': Torwächter (neu, Standardwerte)` — die neue Figur steht in der neuen Szene |
-| N3, N4, N7, N8 | nicht eingetreten | kein `echo guard`, kein `🧵` |
-| N5 | bestanden | kein `✂`, alle 15 Rohtexte enden auf einem ganzen Satz |
+| N3, N7, N8 | nicht eingetreten | kein `echo guard`, kein `⚡ … böser Junge`, nur das eine Opening von 16:03:32 |
+| N4 | nicht eingetreten | Auto-Recap 16:34:45–16:34:53 (`🧵 Kontext bei 21881/24576`, `🧵 Auto-Recap fertig`), dazwischen keine `[latency]`-Zeile: kein Zug während des Auto-Recaps |
+| N5 | bestanden | kein `✂`, alle 18 Antworten enden auf einem ganzen Satz |
 | N6 | nur am Tisch prüfbar | — |
+| Recap / `!wrap` | geschrieben, Text stimmt, nicht im Log | 16:44:02 `recap.debug.md` und `recap` in `state.debug.json` (beide 1144 Zeichen): Zollhaus, Schrein, Pfandhalle, endet auf Brees offener Frage. Die widersprüchliche zweite Fassung des Doppelzugs von 16:22, die das Auto-Recap von 16:34:53 (1214 Zeichen) noch trug („Fridolin lenkte den Wächter ab“), ist weg. Keine Zeile in `debug.log` oder `terminal.log` |
 | Teil B | nicht gespielt | — |
 
 | Messung | 27.11. | Vergleich |
 |---|---|---|
-| Würfe je Probenanforderung des Erzählers | 3 von 3 `Marker entscheidet` gewürfelt; dazu der Marker von 16:22:21 ohne Logzeile und ohne Wurf. Router: 1 Wurf | 4 von 15 am 14.11. |
-| Zeichen je Zug / je Satz | 609 / 140 (15 Antworten, 65 Sätze; `chars=` im Mittel 609) | 555 / 166 am 14.11. |
-| Schnitte | 0 von 15 | 8 von 33 |
-| `cache=` ab Zug 2 | immer 11022; `cache_w=` steigt von 4353 auf 9360 | immer 0 |
+| Würfe je Probenanforderung des Erzählers | 3 von 3 `Marker entscheidet` gewürfelt; dazu der Marker von 16:22:21 ohne Logzeile und ohne Wurf. Router: 2 Zeilen, 1 gewürfelt (16:22:05), 1 verworfen, weil die Manifestation die Handlung abdeckt (16:34:22). `🌀`: 1 von 1 gewürfelt (16:34:26) | 4 von 15 am 14.11. |
+| Zeichen je Zug / je Satz | 595 / 142 (18 Antworten, 75 Sätze; `chars=` im Mittel 595) | 555 / 166 am 14.11. |
+| Schnitte | 0 von 18 | 8 von 33 |
+| `cache=` ab Zug 2 | 11022 in 16 von 17 Zügen, einmal 0 (16:36:32, turn=19, erster Zug nach dem Auto-Recap, `cache_w=15326`); `cache_w=` steigt davor von 4353 auf 10857 | immer 0 |
 | Doppelte oder falsch platzierte Figuren | keine; neu: „Torwächter“ (steht nicht auf der Abenteuerkarte) | drei am 14.11. |
 
-Sonst: kein `Traceback`, kein `ERROR`, keine Pause. Die Spieluhr stand nach 15 Zügen auf Tag 1, 23:00 (Start
+Sonst: kein `Traceback`, kein `ERROR`, keine Pause. Die Spieluhr stand beim `!wrap` auf Tag 1, 23:06 (Start
 21:00, Frist 24:00), im Log stehen aber nur zwei `🕐`-Zeilen mit je +15 min. `logs/archive/LAYOUT` und
 `logs/archive/sandbox/` sind nicht git-ignoriert.
 
@@ -360,7 +386,7 @@ ein Ortswechsel mit Ankunft bei jemandem.
 | F8 | **Zwei Spieler, eine Probe von Opus** (D140, Review) | wer keinen Marker bekam, bekommt seinen Knopf vom Router | `🎲 Marker entscheidet: A …` und `🎲 router: B …` im selben Zug |
 | F9 | **Kontext ohne Überschrift** (D142, offen) | Opus verwechselt Regelbuch-/Abenteuertext nicht mit Spielerrede, hält den Zustand (Wunden, Gegenstände) ein | nur Ohr; Verdacht mit Uhrzeit notieren. Scheitert der Punkt, ist die Abhilfe eine Kopfzeile vor dem Block (ändert den Prompt, braucht `dm-eval` und einen Lauf) |
 | F10 | **Urteil des Tisches** | jeder sagt drei Sätze: besser als am 14.11.? | wörtlich aufschreiben |
-| F11 | **Ein Erzählzug zur Zeit** (Befund vom 27.11., noch nicht behoben) | zwei Proben im selben Zug oder zwei Sprechfenster kurz nacheinander ergeben eine Antwort, nicht zwei ineinander gesprochene | keine zwei `LLM roh` innerhalb weniger Sekunden; `[latency]` turn= steigt lückenlos |
+| F11 | **Ein Erzählzug zur Zeit** (D152, Befund vom 27.11.) | zwei Proben im selben Zug ergeben **eine** Erzählung, wenn beide gewürfelt sind (Log `🎲 Erzählung wartet auf 1 weitere Probe(n)`); zwei Sprechfenster kurz nacheinander ergeben zwei Antworten nacheinander, nie ineinander gesprochen; eine Würfel-Erzählung beginnt erst, wenn die Antwort davor zu Ende gesprochen ist | keine zwei `🪵 LLM roh` näher beieinander als die `⏱ LLM`-Dauer der ersten; `[latency]` turn= in steigender Reihenfolge (Lücken sind erlaubt: ein Tastendruck, der nichts an die Spielleitung schickt, verbraucht eine Zugnummer ohne Zeile) |
 
 ### Teil A — dabei mitprüfen, noch offen aus früheren Runden
 

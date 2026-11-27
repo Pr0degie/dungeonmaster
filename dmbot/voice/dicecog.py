@@ -23,7 +23,8 @@ from ..dice_images import (
     roll_image_value,
 )
 from ..llm.roll_router import (
-    MarkerRepeats, is_continuation_fragment, marker_decides, marker_key, roll_button_source,
+    MarkerRepeats, OpenRolls, is_continuation_fragment, marker_decides, marker_key,
+    roll_button_source,
     superseded_by_manifest,
 )
 from ..discord_ui.dice import (
@@ -58,11 +59,16 @@ class DiceCog(commands.Cog):
         self._rt = runtime
         runtime.handle_dice = self._handle_dice          # hook: DMCog delivery posts the dice button
         runtime.post_turn_order = self._post_turn_order  # hook: VoiceCog !join posts the turn panel
+        runtime.cancel_roll_waits = self._cancel_all_roll_waits  # hook: VoiceCog !leave ends the session
         # (cid, name) pairs already warned about an untracked party psyker — keep it one-time so the
         # channel isn't spammed every Manifest Test.
         self._warp_untracked_warned: set[tuple[int, str]] = set()
         # The repeat safety net (D140): marker requests the previous turn left unrolled, per channel.
         self._repeats = MarkerRepeats()
+        # One narration for all rolls of a turn (D152): the open buttons per channel, and the
+        # task that ends the wait when somebody never rolls.
+        self._open_rolls = OpenRolls()
+        self._roll_waits: dict[int, asyncio.Task] = {}
         # Running throw animations (cosmetic message edits) — referenced so they aren't collected.
         self._presentations: set[asyncio.Task] = set()
         # Throw GIFs stored once in Discord (ADR 064); None = upload per roll.
@@ -89,26 +95,42 @@ class DiceCog(commands.Cog):
         cid = self._rt._brain_channel(channel)
         markers = self._rt._brain.take_pending_tests(cid)
         spoken = self._spoken(cid)  # now: the next turn replaces the actions
+        # This answer's buttons are one batch (D152). A roll that is finished but not narrated
+        # yet keeps its wait — this answer was generated before it and did not take it along —
+        # and the new buttons join that batch.
+        if not (cid in self._roll_waits and self._rt._brain.waiting_turn(cid)):
+            self._open_rolls.turn(cid)
+            self._cancel_roll_wait(cid)
         # Psychic Manifest requests (ADR 022) are independent of the skill-roll router: each gets
         # a button so the engine rolls the Manifest Test + bookkeeps Warp Charge. Taken first so
         # a test for the same psyker (router or marker) can be dropped — no double roll.
         manifests = self._rt._brain.take_pending_manifests(cid)
         manifesting = self._manifesting(manifests)
         source = roll_button_source(self._rt._roll_router, len(markers))
-        if source == "router":
-            # The narrator of the markers' own turn, recorded when they were queued — not
-            # last_llm_stats, which the next prose call may already have overwritten.
-            if markers and marker_decides({"backend": self._rt._brain.tests_narrator(cid)}):
-                await self._markers_decide(channel, cid, markers, manifesting=manifesting,
-                                           spoken=spoken)
-            else:
-                await self._router_decides(channel, cid, markers, manifesting=manifesting,
-                                           spoken=spoken)
-        elif source == "marker":
-            for req in markers:
-                await self._post_dice_button(channel, req, said=self._said(spoken, req.target_name))
-        for m in manifests:
-            await self._post_manifest_button(channel, m)
+        # The buttons appear one after another, a classifier call apart: until the last one is
+        # decided, a roll already finished is not the turn's last.
+        self._open_rolls.deciding(cid, True)
+        try:
+            if source == "router":
+                # The narrator of the markers' own turn, recorded when they were queued — not
+                # last_llm_stats, which the next prose call may already have overwritten.
+                if markers and marker_decides({"backend": self._rt._brain.tests_narrator(cid)}):
+                    await self._markers_decide(channel, cid, markers, manifesting=manifesting,
+                                               spoken=spoken)
+                else:
+                    await self._router_decides(channel, cid, markers, manifesting=manifesting,
+                                               spoken=spoken)
+            elif source == "marker":
+                for req in markers:
+                    await self._post_dice_button(channel, req,
+                                                 said=self._said(spoken, req.target_name))
+            for m in manifests:
+                await self._post_manifest_button(channel, m)
+        finally:
+            self._open_rolls.deciding(cid, False)
+            if cid in self._roll_waits and self._open_rolls.open(cid) == 0:
+                # a roll finished while the buttons were still being decided and no other came
+                self._start_roll_wait(channel, channel.guild.id if channel.guild else None, cid, 0.0)
 
     def _spoken(self, cid: int) -> dict[str, str]:
         """Each character's own line of the turn just answered (lower-cased character name →
@@ -279,6 +301,18 @@ class DiceCog(commands.Cog):
         return decided
 
     async def _post_dice_button(self, channel, req: TestRequest, *, said: str = "") -> None:
+        """Post a test's dice button and count it as an open roll of the turn (D152) — counted
+        first, so it is never clickable uncounted. A button that could not be posted is taken
+        off the count again: nobody can press it."""
+        cid = self._rt._brain_channel(channel)
+        self._open_rolls.posted(cid)
+        try:
+            await self._send_dice_button(channel, req, said=said)
+        except BaseException:
+            self._open_rolls.withdrawn(cid)
+            raise
+
+    async def _send_dice_button(self, channel, req: TestRequest, *, said: str = "") -> None:
         """Resolve a test request (skill value + difficulty → target, all in code) and post its button.
         ``said`` is the roller's own line that asked for it ("" for a typed ``!test``)."""
         skill = req.skill or "Probe"
@@ -579,11 +613,80 @@ class DiceCog(commands.Cog):
         ):
             if await self._begin_attack_damage(channel, attacker=who, result=result, said=said):
                 return  # the damage flow narrates once a target is chosen/auto-applied
+        await self._narrate_rolls(channel, guild_id)
+
+    def _cancel_roll_wait(self, cid: int) -> None:
+        task = self._roll_waits.pop(cid, None)
+        if task is not None and task is not asyncio.current_task():
+            task.cancel()
+
+    async def _narrate_rolls(self, channel, guild_id) -> None:
+        """A roll reached its final result and is fed to the DM: narrate it — unless other
+        rolls of the same turn are still open (D152). Then the narration waits for them, so
+        two players acting in one turn get one answer; a roll nobody makes holds it for at most
+        ``DM_ROLL_BATCH_WAIT_SECONDS`` (0 = every roll narrated on its own)."""
+        cid = self._rt._brain_channel(channel)
+        wait = float(self._rt._roll_batch_wait_seconds)
+        last = self._open_rolls.finished(cid)
+        self._cancel_roll_wait(cid)
+        if last or wait <= 0:
+            await self._rt.run_and_deliver(channel, guild_id)
+            return
+        if self._open_rolls.open(cid):
+            log.info("🎲 Erzählung wartet auf %d weitere Probe(n) dieses Zugs (höchstens %.0f s)",
+                     self._open_rolls.open(cid), wait)
+        else:
+            log.info("🎲 Erzählung wartet, bis die Proben dieses Zugs vergeben sind")
+        self._start_roll_wait(channel, guild_id, cid, wait)
+
+    def _start_roll_wait(self, channel, guild_id, cid: int, wait: float) -> None:
+        self._cancel_roll_wait(cid)
+        task = asyncio.create_task(self._narrate_after_wait(channel, guild_id, cid, wait))
+        task.add_done_callback(self._log_roll_wait)
+        self._roll_waits[cid] = task
+
+    def _cancel_all_roll_waits(self) -> None:
+        """The session ends (``!leave``, shutdown): no narration may fire after it."""
+        for cid in list(self._roll_waits):
+            self._cancel_roll_wait(cid)
+        self._open_rolls = OpenRolls()
+
+    async def cog_unload(self) -> None:
+        self._cancel_all_roll_waits()
+
+    async def _narrate_after_wait(self, channel, guild_id, cid: int, wait: float) -> None:
+        await asyncio.sleep(wait)
+        self._roll_waits.pop(cid, None)
+        still_open = self._open_rolls.open(cid)
+        self._open_rolls.release(cid)
+        if not self._rt._brain.waiting_turn(cid):
+            return  # a player turn took the result along meanwhile — nothing left to tell
+        if still_open:
+            log.info("🎲 %d Probe(n) nach %.0f s nicht gewürfelt — die Erzählung geht ohne sie weiter",
+                     still_open, wait)
         await self._rt.run_and_deliver(channel, guild_id)
 
+    @staticmethod
+    def _log_roll_wait(task: asyncio.Task) -> None:
+        if not task.cancelled() and task.exception() is not None:
+            log.error("narration after the roll wait failed", exc_info=task.exception())
+
     async def _post_manifest_button(self, channel, req: ManifestRequest) -> None:
+        """Post a Manifest button and count it as an open roll of the turn (D152), like
+        :meth:`_post_dice_button`; an unknown power or a failed post is not counted."""
+        cid = self._rt._brain_channel(channel)
+        self._open_rolls.posted(cid)
+        try:
+            posted = await self._send_manifest_button(channel, req)
+        except BaseException:
+            self._open_rolls.withdrawn(cid)
+            raise
+        if not posted:
+            self._open_rolls.withdrawn(cid)
+
+    async def _send_manifest_button(self, channel, req: ManifestRequest) -> bool:
         """Resolve a Manifest request (power → Warp Rating + Difficulty + the psyker's Psi-Meisterschaft
-        value, all in code) and post its button (ADR 022)."""
+        value, all in code) and post its button (ADR 022). False: no button (unknown power)."""
         resolved = resolve_manifest_request(
             self._rt._profile, self._rt._characters, power=req.power, target_name=req.target_name,
         )
@@ -592,7 +695,7 @@ class DiceCog(commands.Cog):
             await self._rt._send_with_retry(
                 channel, f"🌀 Unbekannte psychische Kraft {note} — nicht im Regelprofil hinterlegt.",
             )
-            return
+            return False
         who = (resolved.character.name if resolved.character else req.target_name) or "Psioniker"
         diff = f" ({resolved.difficulty})" if resolved.difficulty else ""
         push = " · Push" if req.pushed else ""
@@ -604,6 +707,7 @@ class DiceCog(commands.Cog):
             channel, "🌀 Manifestation angefordert:",
             view=DiceTestView(label, self._make_manifest_roll(channel, req, resolved, prep=prep)),
         )
+        return True
 
     def _make_manifest_roll(self, channel, req: ManifestRequest, resolved, *, prep=None):
         """Build the roll callback for a Manifest button: the engine rolls the Psychic Mastery Test,
@@ -709,7 +813,7 @@ class DiceCog(commands.Cog):
         cid = self._rt._brain_channel(channel)
         for ln in lines:
             self._rt._brain.add_test_result(cid, ln)
-        await self._rt.run_and_deliver(channel, guild_id)
+        await self._narrate_rolls(channel, guild_id)
 
     def _make_manifest_fate(self, channel, guild_id, dice_msg: dict, req: ManifestRequest,
                             resolved, result, line: str, current: int):
@@ -862,7 +966,8 @@ class DiceCog(commands.Cog):
         rest to its wounds, persist, and feed the result back so the DM narrates the consequence."""
         cid = self._rt._brain_channel(channel)
         state = self._rt._state.get(cid)
-        if state is None:
+        if state is None:  # no session state to book damage in: the hit is narrated plainly
+            await self._narrate_rolls(channel, channel.guild.id if channel.guild else None)
             return
         target = state.find(target_name)
         if target is None:  # picker only lists state names, but guard: register an ad-hoc enemy
@@ -885,7 +990,7 @@ class DiceCog(commands.Cog):
         await self._rt._send_with_retry(channel, line)
         self._rt._persist_and_refresh(channel)
         self._rt._brain.add_test_result(cid, line)
-        await self._rt.run_and_deliver(channel, channel.guild.id if channel.guild else None)
+        await self._narrate_rolls(channel, channel.guild.id if channel.guild else None)
 
     def _render_turn(self, key: int) -> str:
         order = self._rt._turn_order.get(key, [])

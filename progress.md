@@ -19,7 +19,7 @@ is on-demand._
   Arbeitsablauf (D150, 15.11.): `uv run dm-check` mit Merkzettel-Hook, WIP-Grenze entfernt,
   `characters.local.json`; am Tisch ändert sich nichts. Davor am selben Tag: Log-Archiv (D149), ADR 066 B verworfen
   (D148). „Last session“.
-- **Suite:** `uv run dm-check` grün — 1569 Tests, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
+- **Suite:** `uv run dm-check` grün — 1585 Tests, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
 - **Live-unverifiziert:** D151 (Prüfpunkt W7; der Bot vom 27.11., 16:00 kennt es nicht). Am 27.11. belegt: F1, F3, F5 (Cache), F8, W1, W5, N1, N2, N5. Offen aus D140–D142 und
   D144–D147: F2 (nur die Hängeschleife belegt), F4, F6, F7, F9, F10, W2–W4, W6 (Prüfpunkte in
   [phase-11-abend.md](docs/phase-11-abend.md), „Nächster Lauf“), D139 (Pause statt Nemo — Durchgang 3 nicht
@@ -41,6 +41,19 @@ D140–D147 (ohne D143, verworfen) wartet auf ihren Lauf (Prüfliste F1–F10 im
 _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-archive.md), `## Current focus (Verlauf)`._
 
 ## Last session
+
+**Ein Erzählzug zur Zeit (2026-11-27, D152).** Der Hauptbefund des Laufs ist behoben, live-unverifiziert
+(Prüfpunkt F11). Drei Regeln: (1) nie zwei Erzählanfragen gleichzeitig — eine Sperre in der
+`DeliveryPipeline` um den LLM-Aufruf jedes Wegs; (2) jede Antwort wird ganz gesprochen, in der Reihenfolge
+der Erzeugung (`_SpeakingOrder`) — die nächste wird schon erzeugt, während die vorige läuft, spricht aber erst
+danach; (3) mehrere Proben eines Zugs ergeben eine Erzählung (`OpenRolls`, `DiceCog._narrate_rolls`), gewartet
+wird höchstens `DM_ROLL_BATCH_WAIT_SECONDS` (30; 0 = wie früher). `[latency]` zeigt die Wartezeiten als
+`queued=` und `spoke_after=`. `!wrap` schreibt seinen Recap jetzt ins Log (`🪵 Wrap-Recap`). `/code-review`
+vor dem Commit: acht Punkte, sechs behoben (schneller Klick vor dem zweiten Knopf, ein nie erzähltes
+Ergebnis, fehlgeschlagener Knopf-Post, Warte-Tasks nach `!leave`, Wartezeit in `⏱ LLM`, Trefferabbruch ohne
+Spielstand). Offen: `!say`, `!intro test`, Backend-Ansagen und Vorlesen laufen an der Sprech-Reihenfolge
+vorbei; eine Zielauswahl, die niemand bedient, hält die andere Probe bis zum Ablauf der Wartezeit auf.
+`uv run dm-check` grün (1585 Tests).
 
 **Angriff mit genanntem Ziel (2026-11-27, D151).** Tobis Wunsch aus dem Lauf: „Ich greife den Torwächter an“
 soll den Torwächter treffen, die Zielauswahl nur kommen, wenn mehrere gemeint sind. `combat.named_targets`

@@ -101,6 +101,9 @@ class Config:
     npc_router: bool = True
     # Fate choice under a failed test (ADR 063): seconds before "Hinnehmen" applies on its own.
     fate_wait_seconds: float = 20.0
+    # Several tests in one turn (D152): seconds the narration waits for the turn's other rolls
+    # after one is finished. 0 = narrate every roll on its own, as before.
+    roll_batch_wait_seconds: float = 30.0
     # Dice results as an embed with the rolled die as a thumbnail (dmbot/dice_images.py). Default on.
     dice_images: bool = True
     # A test's button shows the target die; the click plays a throw GIF before the result (needs
@@ -431,6 +434,7 @@ class Config:
             npc_router=os.environ.get("DM_NPC_ROUTER", "1").strip().lower()
             in ("1", "true", "yes", "on"),
             fate_wait_seconds=float(os.environ.get("DM_FATE_WAIT_SECONDS", "20")),
+            roll_batch_wait_seconds=float(os.environ.get("DM_ROLL_BATCH_WAIT_SECONDS", "30")),
             dice_images=os.environ.get("DM_DICE_IMAGES", "1").strip().lower()
             in ("1", "true", "yes", "on"),
             dice_animation=os.environ.get("DM_DICE_ANIMATION", "1").strip().lower()

@@ -291,7 +291,7 @@ class DMCog(commands.Cog):
                 await self._nothing_answered(ctx, channel_id, "(Nichts zu beantworten.)")
             return
         try:
-            async with ctx.typing():
+            async with ctx.typing(), self._delivery.narrating():  # D152
                 answer = await self._rt._brain.respond(
                     channel_id, extra_text=text or None,
                     check=self._rt.consistency_checker(ctx.channel),
@@ -341,7 +341,7 @@ class DMCog(commands.Cog):
                 await self._nothing_answered(ctx, channel_id, "Nichts zum Wiederholen — erst eine Runde mit `!dm` spielen.")
             return
         try:
-            async with ctx.typing():
+            async with ctx.typing(), self._delivery.narrating():  # D152
                 answer = await self._rt._brain.redo(
                     channel_id, check=self._rt.consistency_checker(ctx.channel)
                 )
@@ -400,7 +400,7 @@ class DMCog(commands.Cog):
                 await ctx.send("(Kein Auftakt — siehe Log.)")
             return
         try:
-            async with ctx.typing():
+            async with ctx.typing(), self._delivery.narrating():  # D152
                 answer = await self._rt._brain.respond_opening(cid, director_msg)
                 timing.llm_done = time.monotonic()
                 timing.take_llm_stats(self._rt._brain.last_llm_stats)
@@ -541,7 +541,7 @@ class DMCog(commands.Cog):
                 await ctx.send("(Kein Auftakt — siehe Log.)")
             return
         try:
-            async with ctx.typing():
+            async with ctx.typing(), self._delivery.narrating():  # D152
                 answer = await self._rt._brain.respond_opening(cid, director_msg, num_predict=np, temperature=tmp)
                 timing.llm_done = time.monotonic()
                 timing.take_llm_stats(self._rt._brain.last_llm_stats)
@@ -572,7 +572,7 @@ class DMCog(commands.Cog):
         # once. Streaming !intro can't (audio already plays), so this is the path to prefer.
         roster_names = self._rt._characters.character_names() if self._rt._characters else []
         try:
-            async with ctx.typing():
+            async with ctx.typing(), self._delivery.narrating():  # D152
                 answer = await self._rt._brain.respond_opening(
                     cid, director_msg, num_predict=np, temperature=tmp,
                     is_weak=lambda t: is_weak_intro(t, roster_names),
@@ -603,6 +603,8 @@ class DMCog(commands.Cog):
         """`!wrap up` / `!wrapup` — generate & store the session recap (D14). It's re-injected at the
         front of the next session so the story carries over. Non-destructive: play can continue."""
         cid = self._rt._brain_channel(ctx.channel)
+        started = time.monotonic()
+        log.info("📜 !wrap — die Sitzung wird zusammengefasst")
         await ctx.send("📜 Ich fasse die Sitzung zusammen …")
         # NPC memory (ADR 044), catch-all for the last scene: the scene-change trigger never fires
         # for the scene the session ends in, so mine it here BEFORE the recap (awaited — wrap-up is
@@ -622,8 +624,12 @@ class DMCog(commands.Cog):
             await ctx.send("Konnte keine Zusammenfassung erstellen (siehe Log).")
             return
         if not recap:
+            log.info("📜 !wrap — nichts zusammenzufassen")
             await ctx.send("Noch nichts passiert, das sich zusammenfassen ließe.")
             return
+        # Like the auto-recap: the text itself goes to the log (live 2026-11-27: a wrap left no trace).
+        log.info("🪵 Wrap-Recap (%d Zeichen, %d ms): %s",
+                 len(recap), round((time.monotonic() - started) * 1000), recap)
         self._persist_recap(ctx.channel, recap)
         # the shared send util splits past Discord's 2000 characters (a recap can be longer)
         await self._rt._send_with_retry(ctx.channel, f"📜 **Was bisher geschah:**\n{recap}")

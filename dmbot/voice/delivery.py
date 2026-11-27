@@ -81,6 +81,22 @@ def zeit_verdict(req, *, seen: bool) -> tuple[str, int]:
     return "ok", min(req.minutes, MAX_MARKER_ADVANCE_MINUTES)
 
 
+class _SpeakingOrder:
+    """Answers are spoken whole, in the order they were generated (D152). The bridge plays
+    WAVs in arrival order, so two answers delivered sentence by sentence would be spoken
+    into each other; each answer therefore waits for the one before it."""
+
+    def __init__(self) -> None:
+        self._last: asyncio.Event | None = None
+
+    def join(self) -> tuple[asyncio.Event | None, asyncio.Event]:
+        """``(the answer before, mine)``: wait for the first before speaking, set the second
+        when this answer is done — also when it failed or had nothing to say."""
+        before, mine = self._last, asyncio.Event()
+        self._last = mine
+        return before, mine
+
+
 class DeliveryPipeline:
     """The answer->audio delivery pipeline (ADR 035). Owns TTS synth/speak, the batch + streaming
     delivery paths, the seamless (`nahtlos`) one-track speak, the `<<ORT>>` scene-marker drain, the
@@ -93,6 +109,29 @@ class DeliveryPipeline:
         # The shared end-of-turn tail (autosave -> mic re-anchor -> auto-recap) lives on DMCog so the
         # recap/session concern — and its tests — stay there; both delivery paths call it via this.
         self._post_deliver = post_deliver
+        # One narration call at a time (D152): a second trigger — a mic release a second after
+        # the first, a roll finished while the DM still generates — waits and then answers with
+        # the first answer in its history. Speaking has its own order, so the second answer is
+        # generated while the first still plays.
+        self._narration = asyncio.Lock()
+        self._speaking = _SpeakingOrder()
+
+    def narrating(self) -> asyncio.Lock:
+        """``async with pipeline.narrating():`` around a narration call that does not go
+        through :meth:`_deliver_streaming` (the batch paths of the typed commands)."""
+        return self._narration
+
+    async def _speak_in_order(self, speak: Callable) -> bool:
+        """Speak one whole answer after the answer before it (batch delivery). ``speak`` builds
+        the speaking coroutine. The place in the order is given up on every exit — a failed or
+        cancelled answer must not leave the next one waiting."""
+        before, spoken = self._speaking.join()
+        try:
+            if before is not None:
+                await before.wait()
+            return await speak()
+        finally:
+            spoken.set()
 
     def _synthesize(self, text: str) -> str | None:
         """Synthesise ``text`` to a WAV path, first waiting on the boot-time TTS preload
@@ -509,14 +548,15 @@ class DeliveryPipeline:
         speak_task = None
         if speakable:
             await self._rt._send_with_retry(channel, answer)
+            # Spoken whole, after the answer before it (D152).
             if self._rt.deliver_seamless():
-                speak_task = asyncio.create_task(
-                    self._speak_seamless(answer, guild_id, timing, transform=transform)
-                )
+                speak_task = asyncio.create_task(self._speak_in_order(
+                    lambda: self._speak_seamless(answer, guild_id, timing, transform=transform)
+                ))
             else:
-                speak_task = asyncio.create_task(
-                    self._speak(answer, guild_id, timing, speech_transform=transform)
-                )
+                speak_task = asyncio.create_task(self._speak_in_order(
+                    lambda: self._speak(answer, guild_id, timing, speech_transform=transform)
+                ))
         else:
             log.info("(inhaltslose Antwort — nichts gepostet/gesprochen; nur ggf. Würfel)")
         self._note_state_before(channel)  # replay journal (ADR 046): the verdict context
@@ -676,6 +716,10 @@ class DeliveryPipeline:
                 await wav_q.put(wav)
 
         async def _play_one(wav: str) -> None:
+            if before is not None and not before.is_set():
+                tw = time.monotonic()
+                await before.wait()  # the answer before this one is spoken to its end first
+                timing.spoke_after_ms += round((time.monotonic() - tw) * 1000)
             if self._rt._paused:
                 _safe_remove(wav)
                 return
@@ -718,6 +762,10 @@ class DeliveryPipeline:
                 for wav in buffered:
                     _safe_remove(wav)
 
+        tq = time.monotonic()
+        await self._narration.acquire()  # one narration call at a time (D152)
+        timing.queued_ms = round((time.monotonic() - tq) * 1000)
+        before, spoken = self._speaking.join()  # speaking order = generation order
         if sink is not None:
             sink.mute()  # layer 2: stay muted across the WHOLE answer, no flapping between sentences
         prod = asyncio.create_task(producer())
@@ -731,6 +779,8 @@ class DeliveryPipeline:
                 await prod  # generation finished (mid-playback) — the full answer is known now
             except Exception:
                 log.exception("streaming producer failed")
+            finally:
+                self._narration.release()  # the next turn may generate while this one plays
             # The turn's own player line rides on its answer (D43: the dice button below can start
             # the next turn while the tail still plays; a compaction can clear the last turn).
             answer = holder["answer"]
@@ -759,6 +809,7 @@ class DeliveryPipeline:
             except Exception:
                 log.exception("streaming synth/play worker failed mid-stream")
         finally:
+            spoken.set()  # the next answer may speak — also when this one failed or was cut
             if sink is not None:
                 sink.unmute()
             # Cancel any pipeline task still pending (producer/synth/play) after a mid-stream failure
@@ -875,9 +926,12 @@ class DeliveryPipeline:
                 await self._rt._send_with_retry(channel, "(Der Spielleiter schweigt — Fehler, siehe Log.)")
             return
         try:
-            answer = await self._rt._brain.respond(
-                channel_id, check=self._rt.consistency_checker(channel)
-            )
+            tq = time.monotonic()
+            async with self._narration:
+                timing.queued_ms = round((time.monotonic() - tq) * 1000)
+                answer = await self._rt._brain.respond(
+                    channel_id, check=self._rt.consistency_checker(channel)
+                )
             timing.llm_done = time.monotonic()
             timing.take_llm_stats(self._rt._brain.last_llm_stats)
         except Exception:
@@ -903,9 +957,12 @@ class DeliveryPipeline:
                 await self._rt._send_with_retry(channel, "(Der Spielleiter schweigt — Fehler, siehe Log.)")
             return
         try:
-            answer = await self._rt._brain.respond(
-                self._rt._brain_channel(channel), check=self._rt.consistency_checker(channel)
-            )
+            tq = time.monotonic()
+            async with self._narration:
+                timing.queued_ms = round((time.monotonic() - tq) * 1000)
+                answer = await self._rt._brain.respond(
+                    self._rt._brain_channel(channel), check=self._rt.consistency_checker(channel)
+                )
             timing.llm_done = time.monotonic()
             timing.take_llm_stats(self._rt._brain.last_llm_stats)
         except Exception:

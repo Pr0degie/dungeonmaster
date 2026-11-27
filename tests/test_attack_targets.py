@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
+from dmbot.llm.roll_router import OpenRolls
 from dmbot.memory.state import Combatant, WorldState
 from dmbot.rules import engine
 from dmbot.rules.profile import load
@@ -27,10 +28,13 @@ def _cog(state: WorldState, sent: list) -> DiceCog:
         _profile=load("imperium_maledictum"),
         _scene_npcs=lambda st: st.present_npcs("schrein", ["Schwester Vall"]),
         _adventure=None,
+        _roll_batch_wait_seconds=30.0,
         _send_with_retry=send,
     )
     cog = DiceCog.__new__(DiceCog)
     cog._rt = rt
+    cog._open_rolls = OpenRolls()
+    cog._roll_waits = {}
     return cog
 
 

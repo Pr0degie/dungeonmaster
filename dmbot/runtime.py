@@ -273,6 +273,7 @@ class SessionRuntime(SessionIngestMixin, ClocksMixin, NpcMemoryMixin, PanelsMixi
         self._fact_router = config.fact_router
         self._npc_router = config.npc_router
         self._fate_wait_seconds = config.fate_wait_seconds
+        self._roll_batch_wait_seconds = config.roll_batch_wait_seconds
         self._dice_images = config.dice_images  # dice result thumbnails (dmbot/dice_images.py)
         self._dice_animation = config.dice_animation  # throw GIF between click and result
         self._dice_asset_channel = config.dice_asset_channel  # stored throw GIFs (ADR 064)
@@ -453,6 +454,7 @@ class SessionRuntime(SessionIngestMixin, ClocksMixin, NpcMemoryMixin, PanelsMixi
         # after !join, so registration order doesn't matter.
         self.run_and_deliver = None   # ← DMCog delivery._run_and_deliver (called by DiceCog roll callbacks)
         self.auto_dm_turn = None      # ← DMCog delivery._auto_dm_turn    (called by VoiceCog mic release)
+        self.cancel_roll_waits = None  # ← DiceCog: drop pending roll narrations (called by VoiceCog !leave)
         self.speak = None             # ← DMCog delivery._speak    (called by LoreCog !lore tts)
         self.handle_dice = None       # ← DiceCog._handle_dice     (called by DMCog delivery)
         self.reanchor_mic = None      # ← VoiceCog._post_mic_button (called by DMCog delivery end)

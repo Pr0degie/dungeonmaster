@@ -344,6 +344,8 @@ class VoiceCog(commands.Cog):
         if isinstance(vc, voice_recv.VoiceRecvClient) and vc.is_listening():
             vc.stop_listening()
         await vc.disconnect()
+        if self._rt.cancel_roll_waits is not None:
+            self._rt.cancel_roll_waits()  # no roll narration after the session ended (D152)
         # End the session cleanly: forget this channel's buffered lines + history, drop the sink
         # handle and the per-user counters, so a later !join starts a fresh session (session
         # state is per channel, ADR 003).

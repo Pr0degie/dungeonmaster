@@ -107,6 +107,49 @@ class MarkerRepeats:
         self._last.pop(channel_id, None)
 
 
+class OpenRolls:
+    """The dice buttons one turn posted that nobody has finished yet, per channel (D152).
+
+    Two players acting in the same turn get a button each. Narrating every finished roll on
+    its own gave two answers that contradicted each other (live 2026-11-27, 16:22); the
+    narration now waits until the turn's last roll is in. A count, not a list: a button left
+    over from an earlier turn that is pressed late takes one off the current turn's count and
+    can end the wait one roll early — the result is still narrated, only not together."""
+
+    def __init__(self) -> None:
+        self._open: dict[int, int] = {}
+        self._deciding: set[int] = set()
+
+    def deciding(self, channel_id: int, on: bool) -> None:
+        """The turn's buttons are posted one after another, a classifier call apart. While
+        that runs, a roll already finished must not count as the turn's last."""
+        (self._deciding.add if on else self._deciding.discard)(channel_id)
+
+    def turn(self, channel_id: int) -> None:
+        """A new answer decides its buttons: what the turn before left unpressed holds nothing."""
+        self._open.pop(channel_id, None)
+
+    def posted(self, channel_id: int) -> None:
+        self._open[channel_id] = self._open.get(channel_id, 0) + 1
+
+    def finished(self, channel_id: int) -> bool:
+        """A roll reached its final result. True → no other roll of the turn is open: narrate."""
+        left = max(0, self._open.get(channel_id, 0) - 1)
+        self._open[channel_id] = left
+        return left == 0 and channel_id not in self._deciding
+
+    def withdrawn(self, channel_id: int) -> None:
+        """A counted button never appeared (the post failed): nobody can press it."""
+        self._open[channel_id] = max(0, self._open.get(channel_id, 0) - 1)
+
+    def open(self, channel_id: int) -> int:
+        return self._open.get(channel_id, 0)
+
+    def release(self, channel_id: int) -> None:
+        """The wait ran out: whoever rolls later is narrated alone."""
+        self._open.pop(channel_id, None)
+
+
 def to_test_request(data: object, *, character: str | None) -> TestRequest | None:
     """Turn the classifier's parsed JSON into a :class:`TestRequest` (or ``None`` for no test)."""
     if not isinstance(data, dict) or not data.get("needs_test"):

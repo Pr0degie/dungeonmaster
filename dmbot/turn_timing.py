@@ -37,6 +37,8 @@ class _TurnTiming:
     kind: str = ""  # "", "redo", "auto", "roll" — which trigger started the turn
     streamed: bool = False  # True when the turn used the streaming pipeline (ADR 017)
     wait_ms: int = 0  # wait_idle before respond (autosend only); 0 otherwise
+    queued_ms: int = 0  # waited for the narration call before this one (D152); 0 otherwise
+    spoke_after_ms: int = 0  # the first sentence waited for the answer before to end (D152)
     stt_ms: int | None = None  # transcribe ms of the last DM-routed utterance (None if not speech-driven)
     llm_done: float | None = None  # monotonic when Ollama returned (generation finished)
     first_audio: float | None = None  # monotonic at the first /speak POST (streaming time-to-first-audio)
@@ -73,7 +75,7 @@ class _TurnTiming:
         meaning of the existing ``⏱ LLM`` log line, preserved across the four trigger sites."""
         if self.llm_done is None:
             return 0
-        return round((self.llm_done - self.trigger) * 1000) - self.wait_ms
+        return round((self.llm_done - self.trigger) * 1000) - self.wait_ms - self.queued_ms
 
     def ctx_over_budget(self, fraction: float = _CTX_WARN_FRACTION) -> bool:
         """True when this turn's prompt filled more than ``fraction`` of num_ctx — the early signal
@@ -97,6 +99,8 @@ class _TurnTiming:
         parts.append(f"stt={ms(self.stt_ms)}")
         if self.wait_ms:
             parts.append(f"wait={self.wait_ms}ms")
+        if self.queued_ms:
+            parts.append(f"queued={self.queued_ms}ms")
         t2l = round((self.llm_done - self.trigger) * 1000) if self.llm_done is not None else None
         parts.append(f"trigger→llm_done={ms(t2l)}")
         if self.prompt_eval is not None:
@@ -118,6 +122,8 @@ class _TurnTiming:
         # Headline metric for streaming (ADR 017): trigger → first audio leaves Bot A.
         if self.first_audio is not None:
             parts.append(f"first_audio={round((self.first_audio - self.trigger) * 1000)}ms")
+        if self.spoke_after_ms:
+            parts.append(f"spoke_after={self.spoke_after_ms}ms")
         parts.append(f"tts={ms(self.tts_ms)}")
         if self.wav_s is not None:
             parts.append(f"wav={self.wav_s:.1f}s")
