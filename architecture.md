@@ -339,7 +339,7 @@ after the recap and before the history.
 >   skills, `max_wounds`, aliases), transferred **once** from the player sheets (ADR 004). Code
 >   never rewrites it. A git-ignored `characters.local.json` in the same folder wins over it — a
 >   per-machine party edit that never shows up as a repo change.
-> - **`data/sessions/<channel>/state.json`** — the **code-owned mutable layer** (`dmbot/memory/state.py`; its German prompt/panel lines in `state_text.py`):
+> - **`data/sessions/<channel>/state.json`** — the **code-owned mutable layer** (`dmbot/memory/state.py`; its records in `records.py`, its German prompt/panel lines in `state_text.py`):
 >   current `wounds`/`conditions`/`inventory` per character, the `npcs`, `quests`, `location`,
 >   `time_minutes`/`time_ingame`/`deadlines` (ADR 048), and the stored `recap`. **Seeded once**
 >   from the sheet on the first `!join` (the seeded `inventory` merges the sheet's `inventory`,

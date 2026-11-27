@@ -17,9 +17,10 @@ from .gametime import (
     render_time_de,
     render_time_phase_de,
 )
+from .records import Clock, Combatant, Fact, Quest
 
 if TYPE_CHECKING:
-    from .state import Clock, Combatant, Fact, Quest, WorldState
+    from .state import WorldState
 
 
 def _combatant_line_de(c: Combatant) -> str:
