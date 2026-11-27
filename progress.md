@@ -12,9 +12,9 @@ is on-demand._
   0–8 live-validiert. Phase 10b (Profil-Bootstrap) bleibt zurückgestellt.
 - **Project priority:** der isolierte Claude-Abend — nur das Modell ist die Variable. Plan:
   [claude-backend.md](docs/plans/claude-backend.md), Zielbild: [target-vision.md](docs/plans/target-vision.md).
-- **Newest round:** 27.11.: zweiter Claude-Lauf ausgewertet (drei Spieler, 18 Züge, `!wrap`) und fünf Befunde
-  gebaut — D151 Angriff trifft das genannte Ziel, D152 ein Erzählzug zur Zeit (ADR 067), D153 Psi-Schaden wird
-  gebucht, D154 „Was kann ich?“ aus dem Bogen, D155 Schaden nur noch um Rüstung gemindert. „Last session“.
+- **Newest round:** 27.11.: zweiter Claude-Lauf ausgewertet, fünf Befunde gebaut — D151 genanntes Ziel, D152 ein
+  Erzählzug zur Zeit (ADR 067), D153 Psi-Schaden, D154 Bogen-Antwort, D155 Schaden nur um Rüstung. Danach nur geplant:
+  Zerlegung der drei größten Dateien ([Plan](docs/plans/split-state-dicecog-orchestrator.md)), wartet auf Tobi. „Last session“.
 - **Suite:** `uv run dm-check` grün — 1647 Tests, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
 - **Live-unverifiziert:** D151–D155 (Prüfpunkte W7, F11, W8, W4 im Beipackzettel
   [phase-11-abend.md](docs/phase-11-abend.md), „Nächster Lauf“). Aus D140–D147 noch offen: F2 (nur die
@@ -57,6 +57,11 @@ Belege des Laufs: [phase-11-abend.md](docs/phase-11-abend.md), „Ergebnis vom 2
 - **Arbeitsweise:** Psi-Schaden, Bogen-Antwort und der Beipackzettel kamen von drei parallelen Agenten, zwei
   davon auf eigenen Zweigen; vier `/code-review`-Durchgänge (7, 8 und 9 Funde, alle bis auf zwei notierte
   behoben). D155 lief ohne Review. Belegt im Lauf: F1, F3, F5 (Cache), F8, W1, W5, W6 (erster Teil), N1, N2, N5.
+- **Plan für die drei größten Dateien** (kein Code bewegt):
+  [split-state-dicecog-orchestrator.md](docs/plans/split-state-dicecog-orchestrator.md) — Zielmodule,
+  Methodenzuordnung, Schrittfolge und Prüfung je Schritt für `memory/state.py`, `orchestrator.py` und
+  `voice/dicecog.py`. Reihenfolge: `state.py` zuerst, `dicecog.py` erst nach dem nächsten Lauf. Sechs offene
+  Entscheidungen, siehe „Open questions“.
 
 **Arbeitsablauf entschlackt (2026-11-15, D150).** Am Tisch ändert sich nichts. Ein Prüfbefehl ersetzt die drei
 Einzelprüfungen, der Commit-Hook prüft nach einem grünen Lauf nicht noch einmal, die WIP-Grenze ist weg.
@@ -278,6 +283,16 @@ _Gesichtet am 2026-11-15: aus 62 Einträgen wurden 18. Die Einordnung je Eintrag
   Neusichtung der geparkten Gates nach dem Abend überleben.
 
 **Entscheidungen von Tobi:**
+- **Zerlegung der drei größten Dateien** — Plan
+  [split-state-dicecog-orchestrator.md](docs/plans/split-state-dicecog-orchestrator.md), Abschnitt „Open decisions“,
+  nichts ist verschoben. Empfohlene Reihenfolge: `memory/state.py` (1457 → ≈ 860 Zeilen, zwei Schritte), dann
+  `orchestrator.py` (1421 → ≈ 630, fünf Schritte), `voice/dicecog.py` (1442 → ≈ 730) erst, wenn der nächste Lauf
+  ausgewertet und seine Fix-Runde committet ist. Zu entscheiden: (1) darf `orchestrator.py` vor dem Lauf dran —
+  Empfehlung ja, aber nie dazwischen; (2) `state.py` bei ≈ 860 Zeilen stehen lassen oder auch `WorldState` teilen —
+  Empfehlung stehen lassen; (3) `!npc`/`!npcmem`/`!agenda`/`!agenden` als eigener Cog (ADR 039, zehn Testzeilen in
+  `test_agenda.py` ändern sich) oder als Mixin — Empfehlung eigener Cog; (4) ein kleiner Vorbereitungs-Commit für die
+  Wurf-Vorbereitung, damit der Psi-Block ganz umzieht — Empfehlung ja; (5) Log-Namen des verschobenen Codes neu
+  (`brain.generation` statt `orchestrator`) oder alt — Empfehlung neu; (6) die Modulnamen.
 - **Sprechmodus-Default** — bleibt `stream`+`flach`, bis die drei Modi am Tisch verglichen sind (der Vergleich steht
   als Schritt im geparkten Live-Run-Skript).
 - **Charakterbögen in den gecachten Kopf?** Sie stehen im Zustandsblock und gehen jeden Zug frisch raus; in den Kopf
