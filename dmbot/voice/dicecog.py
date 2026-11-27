@@ -53,6 +53,10 @@ REVEAL_GRACE_S = 1.0
 CLIENT_START_S = 0.3
 
 
+# The way out of the power target picker: the power hit a thing or someone the state does not know.
+_NO_TARGET = "Niemand davon — nur erzählen"
+
+
 class DiceCog(commands.Cog):
     def __init__(self, bot: commands.Bot, runtime: SessionRuntime) -> None:
         self.bot = bot
@@ -838,7 +842,10 @@ class DiceCog(commands.Cog):
         """Start the damage flow for a manifested power. True if it took over (a target was hit
         or a picker posted — it narrates); False when there is nothing to book in code: no
         ``damage`` block, an area power ("Nova" — its targets stay the GM's call), no state, or
-        nobody to hit. The target is chosen exactly as for a weapon hit (D151)."""
+        no NPC in the scene (an enemy the state does not know is narrated, never a team-mate
+        offered instead). The target is read from the psyker's own line (D151); unlike a weapon
+        hit there is no shortcut for a lone NPC — a power may be aimed at a door — and the
+        picker offers "nobody", so the narration is never stuck behind it."""
         profile = self._rt._profile
         state = self._rt._state.get(self._rt._brain_channel(channel))
         block = profile.power_damage(resolved.power) if profile is not None else None
@@ -846,26 +853,26 @@ class DiceCog(commands.Cog):
             return False
         npcs = [n.name for n in self._rt._scene_npcs(state)]
         party = [c.name for c in state.characters if c.name.lower() != (psyker or "").lower()]
-        if not npcs and not party:
+        if not npcs:
             return False
         choice = combat.choose_attack_target(
             said, self._target_phrases(npcs), self._target_phrases(party, party=True))
-        lone_npc = npcs[0] if (len(npcs) == 1 and not party) else None
-        target = lone_npc or choice.auto
-        if target is not None:
-            if lone_npc is None:
-                log.info("🎯 Ziel aus der Ansage: %s — '%s'", target, said[:60])
+        if choice.auto is not None:
+            log.info("🎯 Ziel aus der Ansage: %s — '%s'", choice.auto, said[:60])
             await self._apply_power_damage(channel, psyker=psyker, resolved=resolved,
-                                           result=result, target_name=target)
+                                           result=result, target_name=choice.auto)
             return True
 
         async def _pick(interaction: discord.Interaction, name: str) -> None:
+            if name == _NO_TARGET:  # aimed at a thing, or at someone the state does not know
+                await self._narrate_rolls(channel, channel.guild.id if channel.guild else None)
+                return
             await self._apply_power_damage(channel, psyker=psyker, resolved=resolved,
                                            result=result, target_name=name)
 
         await self._rt._send_with_retry(
             channel, f"🌀 **{psyker}** trifft mit {resolved.power} — wen trifft es?",
-            view=TargetSelectView(choice.order, _pick),
+            view=TargetSelectView([*choice.order, _NO_TARGET], _pick),
         )
         return True
 
@@ -884,7 +891,9 @@ class DiceCog(commands.Cog):
                 psyker_sheet=resolved.character, target=target, target_sheet=sheet,
                 success_level=result.test.degrees, rng=self._rt._rng,
             )
-        if outcome is None:  # nothing to book — the Manifest line alone is narrated
+        if outcome is None:  # the picked figure left the state meanwhile: say so, book nothing
+            await self._rt._send_with_retry(
+                channel, f"🌀 {target_name} ist nicht mehr in der Szene — kein Schaden gebucht.")
             await self._narrate_rolls(channel, channel.guild.id if channel.guild else None)
             return
         await self._book_damage(channel, state, outcome.damage, attacker=psyker,

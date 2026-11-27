@@ -56,7 +56,7 @@ def test_only_powers_that_deal_damage_on_manifest_carry_the_block() -> None:
     damaging = {name for name in _IM.power_names() if _IM.power_damage(name)}
     assert damaging == {"Smite", "Nova", "Bio-Lightning", "Force Bolt"}
     assert _IM.power_damage("Nova")["targets"] == "area"
-    assert _IM.power_damage("Bio-Lightning")["targets"] == "area"
+    assert _IM.power_damage("Bio-Lightning")["targets"] == "one"   # the primary target is booked
     assert _IM.power_damage("Force Bolt")["ignores"] == ()
 
 

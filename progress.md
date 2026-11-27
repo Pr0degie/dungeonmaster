@@ -17,7 +17,7 @@ is on-demand._
   Antworten ganz gesprochen, eine Erzählung für alle Proben eines Zugs), D153 (Psi-Schaden wird gebucht),
   D154 („Was kann ich?“ aus dem Bogen, Rausch-Zeilen verworfen). Davor Arbeitsablauf (D150, 15.11.).
   „Last session“.
-- **Suite:** `uv run dm-check` grün — 1640 Tests, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
+- **Suite:** `uv run dm-check` grün — 1645 Tests, 4 xfail; ruff (F) sauber; `dm-eval` Exit 0.
 - **Live-unverifiziert:** D151–D154 (Prüfpunkte W7, F11, W8, W4; der Bot muss neu starten, der Stand von
   16:00 am 27.11. kennt nichts davon). Am 27.11. belegt: F1, F3, F5 (Cache), F8, W1, W5, W6 (erster Teil), N1,
   N2, N5, Recap per `!wrap`. Offen aus D140–D147: F2 (nur die Hängeschleife belegt), F4, F6, F7, F9, F10, W2,
@@ -42,12 +42,15 @@ _Ältere Current-focus-Blöcke: siehe [docs/progress-archive.md](docs/progress-a
 ## Last session
 
 **Psi-Schaden und Bogen-Antwort (2026-11-27, D153, D154).** Zwei Agenten haben parallel auf eigenen Zweigen
-gebaut, zusammengeführt in `main`. D153: `damage`-Block im Profil (Smite, Force Bolt; Nova und Bio-Lightning
-als Flächenkräfte nur Daten), `combat.resolve_power_damage`, eingehängt über `DiceCog._finish_manifest` in den
+gebaut, zusammengeführt in `main`. D153: `damage`-Block im Profil (Smite, Force Bolt, Bio-Lightning auf das
+Hauptziel; Nova nur Daten), `combat.resolve_power_damage`, eingehängt über `DiceCog._finish_manifest` in den
 Schadensablauf eines Waffentreffers (ADR 022, Nachtrag). Offene Regelfrage: „ignoriert Rüstung“ lässt den
 Widerstandsbonus stehen. D154: `is_sheet_question` + `sheet_answer_de`, der eigene Bogen als Textnachricht,
 die Erzählung bleibt; Zeilen ohne Buchstaben oder Ziffern gehen nicht mehr an den DM. Persona unverändert.
-`uv run dm-check` grün (1640 Tests). Beides live-unverifiziert (W8, W4).
+`/code-review` über die zusammengeführten Änderungen: neun Punkte, alle behoben (kein Kurzschluss auf einen
+einzelnen NSC bei Kräften, Auswahl mit „Niemand davon“, ohne NSC nur Erzählung, Rauschen vor der Zeilen-
+Obergrenze verworfen, Merkmale in der Bogen-Antwort). `uv run dm-check` grün (1645 Tests). Beides
+live-unverifiziert (W8, W4).
 
 **Ein Erzählzug zur Zeit (2026-11-27, D152).** Der Hauptbefund des Laufs ist behoben, live-unverifiziert
 (Prüfpunkt F11). Drei Regeln: (1) nie zwei Erzählanfragen gleichzeitig — eine Sperre in der

@@ -257,13 +257,16 @@ class SystemProfile:
         if not isinstance(block, dict) or not block.get("base"):
             return None
         bonus = block.get("bonus", {}) or {}
+        ignores = block.get("ignores") or []
+        if isinstance(ignores, str):  # "armour" written without the list brackets
+            ignores = [ignores]
         return {
             "base": str(block["base"]),
             "bonus_characteristic": bonus.get("characteristic", "") or "",
             "bonus_mode": bonus.get("mode", "tens") or "tens",
             "add_sl": bool(block.get("add_sl", True)),
-            "ignores": tuple(str(part).strip().lower() for part in block.get("ignores", []) or []),
-            "targets": block.get("targets", "one") or "one",
+            "ignores": tuple(str(part).strip().lower() for part in ignores),
+            "targets": str(block.get("targets") or "one").strip().lower(),
         }
 
     def warp_threshold(self, willpower_value: int | None) -> int:

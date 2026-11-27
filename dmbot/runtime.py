@@ -45,7 +45,7 @@ from .llm import consistency as consistency_mod
 from .llm import build_llm_client, recap_cap
 from .orchestrator import DMBrain
 from .tts.piper import PiperTTS
-from .tts.textsplit import split_for_discord, strip_speech_punctuation
+from .tts.textsplit import has_speakable_content, split_for_discord, strip_speech_punctuation
 from .bridge import BridgeClient
 from .rules import profile as profile_mod
 from .rules.profile import ProfileError, SystemProfile
@@ -503,6 +503,10 @@ class SessionRuntime(SessionIngestMixin, ClocksMixin, NpcMemoryMixin, PanelsMixi
             return  # a table command, not a line for the DM
         # Buffer the line for the next DM turn (triggered by !dm) only when routed. Runs on the STT
         # thread; the brain's buffer is lock-guarded.
+        if for_dm and not has_speakable_content(text):
+            # "..." on background noise (live 2026-11-27): neither a line for the DM nor an echo.
+            log.info("🚫 Zeile ohne Wort verworfen (%s)", name)
+            return
         if for_dm and self._active_vc_id is not None:
             # Under the CHARACTER's name, not the Discord one (PRD "Identity", ADR 003): the DM
             # must address characters. The log line above keeps the Discord name — that is the

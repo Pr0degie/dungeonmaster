@@ -350,6 +350,11 @@ class DMBrain:
         of :meth:`respond` and :meth:`respond_streaming`. Records the turn's last action (roll
         router) and last turn (redo). Returns ``None`` if there's nothing to respond to."""
         lines = self._drain(channel_id)
+        # A line without a letter or digit ("...", "…" — STT on background noise) is no player
+        # line. Dropped before the cap, so noise cannot push a real line out of the turn.
+        if noise := sum(1 for _n, t in lines if t and not has_speakable_content(t)):
+            log.debug("buffer: dropped %d player line(s) without a letter or digit", noise)
+            lines = [(n, t) for n, t in lines if not t or has_speakable_content(t)]
         total = len(lines)
         if self._max_buffer_lines and total > self._max_buffer_lines:
             lines = lines[-self._max_buffer_lines:]  # keep the most recent — the latest intent
@@ -359,11 +364,7 @@ class DMBrain:
             )
         if extra_text:
             lines.append(("Spieler", extra_text.strip()))
-        # A line without a letter or digit ("...", "…" — STT on background noise) is no player
-        # line: dropped like an empty one, so it reaches neither the DM nor the dice classifier.
-        fresh = [(n, t) for n, t in lines if has_speakable_content(t)]
-        if noise := sum(1 for _n, t in lines if t and not has_speakable_content(t)):
-            log.debug("buffer: dropped %d player line(s) without a letter or digit", noise)
+        fresh = [(n, t) for n, t in lines if has_speakable_content(t)]  # also an empty/noise extra_text
         # A turn the paused backend left unanswered leads, outside the cap above: the cap drops
         # table-talk noise, and these lines were already chosen as a turn.
         session = self._session(channel_id)

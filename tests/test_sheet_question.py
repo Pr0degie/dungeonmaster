@@ -100,10 +100,24 @@ def test_an_empty_sheet_says_so_instead_of_posting_a_bare_name() -> None:
 def test_a_long_sheet_stays_under_the_cap() -> None:
     store = CharacterStore.from_dict({"characters": [
         {"name": "Vielkönner", "skills": {f"Fertigkeit Nummer {i}": 40 + i for i in range(60)},
-         "talents": [f"Talent Nummer {i}" for i in range(40)]},
+         "talents": [f"Talent Nummer {i}" for i in range(60)],
+         "psyker": True, "known_powers": ["Smite"], "fate": 2},
     ]})
     answer = store.sheet_answer_de(store.get("Vielkönner"))
-    assert len(answer) <= 900 and answer.endswith("…")
+    skills, talents, powers, fate = answer.split("\n")[1:]
+    assert skills.endswith("…") and talents.endswith("…")    # the long lists are cut ...
+    assert powers == "Psychische Kräfte: Smite"                # ... the short lines survive
+    assert fate == "Schicksalspunkte: 2"
+    assert len(answer) < 2000
+
+
+def test_the_answer_carries_the_characteristics() -> None:
+    # "Was sind meine Werte?" matches — the answer must hold the values it asks for
+    store = CharacterStore.from_dict({"characters": [
+        {"name": "Rektalus", "characteristics": {"WS": 29, "Wil": 28}, "skills": {"Athletik": 50}},
+    ]})
+    assert store.sheet_answer_de(store.get("Rektalus")) == (
+        "📋 **Rektalus**\nMerkmale: WS 29, Wil 28\nFertigkeiten: Athletik 50")
 
 
 def test_the_prompt_block_still_reads_the_same_sheet() -> None:

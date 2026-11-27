@@ -103,5 +103,7 @@ manifests**, which is hard state (golden rule #3) and must not be left to the na
 - Wired the same day (D153): `DiceCog._finish_manifest` feeds the result that stands and, for a
   successful power whose block says `"targets": "one"`, starts the damage flow of a weapon hit — the
   target from the psyker's own line or the picker (`combat.choose_attack_target`, D151), the wounds
-  through `_book_damage`. Area powers keep their block but stay narrative: who stands in the zone is
-  the GM's call. Live-unverified.
+  through `_book_damage`. There is no shortcut for a lone NPC (a power may be aimed at a door), the
+  picker offers "nobody", and without an NPC in the scene the result is narrated only. Bio-Lightning
+  is booked on its primary target (`"targets": "one"`; the creatures next to it are the GM's call),
+  Nova keeps its block but stays narrative: who stands in the zone is the GM's call. Live-unverified.

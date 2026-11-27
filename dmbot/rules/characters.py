@@ -130,7 +130,13 @@ def _talent_names(character: Character) -> list[str]:
     return [n.strip() for n in names if n and n.strip()]
 
 
-_SHEET_ANSWER_MAX = 900  # characters — one compact message, well under Discord's 2000
+_SHEET_LINE_MAX = 600  # characters per list line — the whole answer stays under Discord's 2000
+
+
+def _capped(line: str) -> str:
+    """A list line cut to :data:`_SHEET_LINE_MAX`, so a long skill list cannot push the short
+    lines (powers, Fate) out of the message."""
+    return line if len(line) <= _SHEET_LINE_MAX else line[: _SHEET_LINE_MAX - 1].rstrip(" ,") + "…"
 
 # Words speech-to-text leaves in a spoken question ("Äh, was kann ich eigentlich?"); dropped before
 # matching. None of them turns a question about the scene into one about the sheet.
@@ -251,22 +257,23 @@ class CharacterStore:
         "Was kann ich?" (live run 2026-11-27: the persona's scene-options rule beat the prompt's
         sheet block). Skills with values and talent names from the same source as
         :meth:`sheet_block_de`, then the psychic powers' names and the sheet's Fate total when the
-        sheet has them. Names only, no effects; capped at :data:`_SHEET_ANSWER_MAX` characters."""
+        sheet has them — and the characteristics, since "Was sind meine Werte?" asks for them.
+        Names only, no effects; each list line capped at :data:`_SHEET_LINE_MAX` characters."""
         lines = [f"📋 **{character.name}**"]
+        if character.characteristics:
+            lines.append(_capped("Merkmale: " + ", ".join(
+                f"{k} {v}" for k, v in character.characteristics.items())))
         if character.skills:
-            lines.append("Fertigkeiten: " + _skills_text(character))
+            lines.append(_capped("Fertigkeiten: " + _skills_text(character)))
         if talents := _talent_names(character):
-            lines.append("Talente: " + ", ".join(talents))
+            lines.append(_capped("Talente: " + ", ".join(talents)))
         if character.known_powers:
-            lines.append("Psychische Kräfte: " + ", ".join(character.known_powers))
+            lines.append(_capped("Psychische Kräfte: " + ", ".join(character.known_powers)))
         if character.fate_total is not None:
             lines.append(f"Schicksalspunkte: {character.fate_total}")
         if len(lines) == 1:
             lines.append("Auf dem Bogen stehen keine Fertigkeiten oder Talente.")
-        text = "\n".join(lines)
-        if len(text) > _SHEET_ANSWER_MAX:
-            text = text[: _SHEET_ANSWER_MAX - 1].rstrip(" ,\n") + "…"
-        return text
+        return "\n".join(lines)
 
     def alias_hint_de(self, *, with_mapping: bool = True) -> str:
         """The 'who plays whom' block appended **last** to the system prompt (open item F). Besides
