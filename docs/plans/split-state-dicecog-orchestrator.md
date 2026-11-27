@@ -2,8 +2,8 @@
 
 **Status:** approved by Tobi on 2026-11-27, all six decisions as recommended (see *Decisions*).
 Round 1 (`memory/state.py`) and round 2 (`orchestrator.py`) done on 2026-11-27 — see *Result*
-under sections 1 and 2. Next: `voice/dicecog.py`, after the next run is evaluated and its fix
-round is committed.
+under sections 1 and 2. Round 3 (`voice/dicecog.py`) runs on 2026-11-27 as well, **before** the
+next run — changed by Tobi the same day, decision 7.
 **Date:** 2026-11-27 · **Base commit:** `676f78e` (all line numbers below refer to it)
 **Pattern:** [runtime-split.md](runtime-split.md) · **Rules:** lesson
 [byte-exact-moves-stepwise-gates](../lessons/byte-exact-moves-stepwise-gates.md)
@@ -24,6 +24,7 @@ state, `self` stays the host), ADR 046 (`dm-eval` as the refactor gate), ADR 052
    would move except the command block. Fixes from the run will land in exactly those blocks,
    and a move in between would put a second variable into the run that is meant to verify them.
    Its line numbers below are a sketch; the round re-measures at its own base commit.
+   **Changed on 2026-11-27 — decision 7: the round runs before the run.**
 
 Each file is its own round with its own closing report. This plan does not bundle them.
 
@@ -285,6 +286,17 @@ whoever asks why.
    `pending`, `opening`, `side_calls`, `generation`), `dmbot/voice/dice/` (`routing`, `damage`,
    `manifest`), `voice/npccog.py`. **Decided: as written;** they are cheap to change now
    and expensive after the first commit.
+7. **Changed on 2026-11-27 (Tobi): `voice/dicecog.py` goes before the next run, not after it.**
+   Recommendation 3 said to wait until the run is evaluated and its fix round is committed.
+   **Decided instead: the round runs now, and one run afterwards checks everything together** —
+   D151–D155 and all three splits. **The price, as this plan named it:** the round of 27.11.
+   (D151, D152, D153) changed 357 lines in exactly the blocks that move, and none of them has
+   been heard at the table; the run that is meant to verify them now carries the move as a
+   second variable. If the dice flow misbehaves in that run, the fix and the move are both
+   suspects, and fixes from the run land in the new modules. What speaks for the fix in that
+   case is the byte check (moved text identical to the parent commit, same kind, signature and
+   source for every attribute). The rule of decision 1 holds here too: the round is finished and
+   green before the bot is restarted. Decisions 1–6 stand as decided.
 
 ## Out of scope
 

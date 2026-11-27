@@ -19,6 +19,9 @@ from PIL import Image, ImageSequence
 
 from dmbot import dice_images
 from dmbot.discord_ui.dice import DICE_FILENAME, TARGET_FILENAME, THROW_FILENAME
+from dmbot.memory.state import WorldState
+from dmbot.rules.characters import Character, CharacterStore, resolve_manifest_request
+from dmbot.rules.marker import ManifestRequest
 from dmbot.rules.profile import load
 from dmbot.runtime import SessionRuntime
 from dmbot.voice import dicecog
@@ -356,6 +359,49 @@ def test_a_deleted_message_reposts_a_pending_fate_choice(monkeypatch, tmp_path) 
     assert send[2] is not None                              # the view rides along — it narrates
 
 
+def test_a_reroll_bought_with_fate_is_thrown_with_a_freshly_prepared_throw(monkeypatch, tmp_path) -> None:
+    """Both Fate rerolls — a skill test's and a Manifest Test's — prepare a new throw through
+    ``DiceCog._prepare_throw``, as the first roll did when its button was posted."""
+    asked = _fakes(monkeypatch, tmp_path)
+    channel = SimpleNamespace(guild=None)
+
+    def spend(cog, decide) -> None:
+        async def go():
+            await decide(None, True)
+            await asyncio.gather(*list(cog._presentations))   # the reroll's throw
+
+        asyncio.run(go())
+
+    # a skill test: 95 fails against 40, the reroll bought with Fate rolls a 12
+    cog, log = _fate_cog(_Fixed(95, 12))
+    resolved = SimpleNamespace(target=40, difficulty=None, character=None)
+    result, line, _ = cog._roll_test_face(resolved, "Wahrnehmung", "Rektalus")
+    assert not result.success
+    spend(cog, cog._make_fate_decision(channel, None, _Msg(log), resolved, "Wahrnehmung", "Rektalus",
+                                       result, line))
+    assert asked["prepare"] == [True] and asked["seed"] == [777]
+
+    # a Manifest Test: the same two rolls for a psyker with Fate left
+    store = CharacterStore([Character.from_dict({
+        "name": "Mortn", "characteristics": {"Wil": 48},
+        "skills": {"Psi-Meisterschaft": 45, "Disziplin (Psi)": 30},
+        "psyker": True, "known_powers": ["Smite"], "fate_total": 2,
+    })])
+    state = WorldState.seed_from_store(store)
+    state.start_fate_session(default=3)
+    cog, log = _cog(_Fixed(95, 12))
+    cog._rt._characters, cog._rt._state = store, {7: state}
+    cog._rt._persist_and_refresh = lambda ch: None
+    cog._finish_manifest = _noop                            # the damage flow is not under test
+    req = ManifestRequest(power="Smite", target_name="Mortn")
+    resolved = resolve_manifest_request(_IM, store, power="Smite", target_name="Mortn")
+    failed = cog._manifest_once(resolved, req, 0)
+    assert not failed.test.success
+    spend(cog, cog._make_manifest_fate(channel, None, {"message": _Msg(log)}, req, resolved, failed,
+                                       "🌀 Fehlschlag", 0))
+    assert asked["prepare"] == [True, True] and asked["seed"] == [777, 777]
+
+
 def test_the_throw_choice_never_touches_the_engine_rng(monkeypatch, tmp_path) -> None:
     """Same engine seed, animation on vs off → the same results fed to the DM, same RNG state."""
     _fakes(monkeypatch, tmp_path)
@@ -435,6 +481,45 @@ def test_nothing_is_prepared_with_the_animation_off(monkeypatch, tmp_path) -> No
     cog, _ = _cog(random.Random(3), animation=False)
     _post(cog, monkeypatch, 45)
     assert asked["prepare"] == [] and asked["target"] == [45]
+
+
+def test_the_throw_is_prepared_in_the_background_and_kept_referenced(monkeypatch, tmp_path) -> None:
+    """Every "prepare the throw" goes through ``DiceCog._prepare_throw``: it runs the renderer
+    these tests replace on ``dicecog``, as a cosmetic task the cog keeps referenced."""
+    asked = _fakes(monkeypatch, tmp_path)
+    cog, _ = _cog(random.Random(3))
+
+    async def go():
+        task = cog._prepare_throw()
+        assert task in cog._presentations                  # referenced while it runs
+        seed = await task
+        await asyncio.sleep(0)                             # let the done callback run
+        return seed
+
+    assert asyncio.run(go()) == 777
+    assert asked["prepare"] == [True] and not cog._presentations
+
+
+def test_a_posted_manifest_prepares_its_throw_through_the_same_seam(monkeypatch, tmp_path) -> None:
+    """A Manifest button prepares its throw like a skill test (ADR 064) — with the renderer
+    replaced on ``dicecog``, whichever module the manifest methods live in."""
+    asked = _fakes(monkeypatch, tmp_path)
+    for animation, prepared in ((True, [True]), (False, [])):
+        asked["prepare"].clear()
+        cog, log = _cog(random.Random(3), animation=animation)
+        cog._rt._characters = CharacterStore([Character.from_dict({
+            "name": "Mortn", "characteristics": {"Wil": 48}, "skills": {"Psi-Meisterschaft": 45},
+            "psyker": True, "known_powers": ["Smite"],
+        })])
+
+        async def go():
+            await cog._post_manifest_button(SimpleNamespace(guild=None),
+                                            ManifestRequest(power="Smite", target_name="Mortn"))
+            await asyncio.gather(*list(cog._presentations))   # the throw preparation, if any
+
+        asyncio.run(go())
+        assert asked["prepare"] == prepared, animation
+        assert [entry[1] for entry in log if entry[0] == "send"] == ["🌀 Manifestation angefordert:"]
 
 
 def test_a_test_without_a_target_or_with_images_off_posts_the_plain_button(monkeypatch, tmp_path) -> None:

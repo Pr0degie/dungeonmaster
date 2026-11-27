@@ -336,7 +336,7 @@ class DiceCog(commands.Cog):
         text = f"🎲 Probe angefordert{note}:"
         # Pick the throw now and render its groundwork, so the click only renders the landing.
         # Cosmetic, in the background: the button does not wait for it.
-        prep = (self._spawn_presentation(prepare_throw_async())
+        prep = (self._prepare_throw()
                 if self._dice_animation_on() and resolved.target is not None else None)
         view = DiceTestView(label, self._make_dice_roll(channel, req, resolved, prep=prep, said=said))
         image = await get_target_image_async(resolved.target) if self._dice_images_on() else None
@@ -441,6 +441,13 @@ class DiceCog(commands.Cog):
 
         task.add_done_callback(_done)
         return task
+
+    def _prepare_throw(self) -> asyncio.Task:
+        """Pick the next throw and render its groundwork in the background, so a click only
+        renders the landing (ADR 064). Every caller goes through here: the tests replace
+        ``prepare_throw_async`` on this module's namespace, and only a function defined in this
+        module sees that."""
+        return self._spawn_presentation(prepare_throw_async())
 
     async def _animate_result(self, channel, dice_msg: dict, *, target: int, line: str, face: int | None,
                               palette: str, view, prep=None) -> None:
@@ -582,7 +589,7 @@ class DiceCog(commands.Cog):
                 self._spawn_presentation(self._animate_result(
                     channel, dice_msg, target=resolved.target, line=content, face=face,
                     palette=palette_for(final_result), view=None,
-                    prep=self._spawn_presentation(prepare_throw_async()),
+                    prep=self._prepare_throw(),
                 ))
                 await self._finish_roll(channel, guild_id, final_result, final_line, skill, who, said=said)
                 return
@@ -705,7 +712,7 @@ class DiceCog(commands.Cog):
         push = " · Push" if req.pushed else ""
         label = f"{who} manifestiert: {resolved.power}{diff}{push}"
         # The throw is prepared at post time, as for a skill test (ADR 064): the click only lands it.
-        prep = (self._spawn_presentation(prepare_throw_async())
+        prep = (self._prepare_throw()
                 if self._dice_animation_on() and resolved.target is not None else None)
         await self._rt._send_with_retry(
             channel, "🌀 Manifestation angefordert:",
@@ -923,7 +930,7 @@ class DiceCog(commands.Cog):
             if final is not result:  # the reroll is thrown like the first roll
                 await self._present_manifest(channel, dice_msg, resolved, text, final.test.roll,
                                              final.test,
-                                             prep=(self._spawn_presentation(prepare_throw_async())
+                                             prep=(self._prepare_throw()
                                                    if self._dice_animation_on() else None))
             elif len(lines) > 1 or not self._dice_images_on():
                 await self._edit_manifest_text(channel, dice_msg, text, final)
